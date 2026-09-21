@@ -1,0 +1,245 @@
+{
+ "engines": [
+  {
+   "appliesVia": "set_fx_param",
+   "durability": "jpar",
+   "engine": "je8086",
+   "paramCount": 52
+  },
+  {
+   "appliesVia": "load_nord_bank",
+   "durability": "presetSysex",
+   "engine": "nodalred2x",
+   "paramCount": 17
+  },
+  {
+   "appliesVia": "waldorf_dump",
+   "durability": "presetSysex",
+   "engine": "xenia",
+   "paramCount": 86
+  },
+  {
+   "appliesVia": "set_fx_param",
+   "durability": "stateBlob",
+   "engine": "virus",
+   "paramCount": 93
+  },
+  {
+   "appliesVia": "waldorf_dump",
+   "durability": "presetSysex",
+   "engine": "vavra",
+   "paramCount": 363
+  }
+ ],
+ "excludedStages": [
+  "arranger",
+  "pattern-researcher"
+ ],
+ "intents": [
+  {
+   "id": "filter-sweep",
+   "kind": "movement",
+   "label": "Filter cutoff sweep (open/close)",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "resonance",
+   "kind": "movement",
+   "label": "Filter resonance emphasis",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "pump",
+   "kind": "movement",
+   "label": "Amplitude pump / rhythmic duck",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "riser",
+   "kind": "movement",
+   "label": "Riser (feedback / rising tension)",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "delay-throw",
+   "kind": "movement",
+   "label": "Delay throw / wet stab",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "reverb-space",
+   "kind": "movement",
+   "label": "Reverb space / decay",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "chorus-motion",
+   "kind": "movement",
+   "label": "Chorus / flanger motion",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "phaser-sweep",
+   "kind": "movement",
+   "label": "Phaser movement",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "distortion-drive",
+   "kind": "movement",
+   "label": "Distortion / overdrive grit",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "wave-morph",
+   "kind": "movement",
+   "label": "Oscillator / wave-envelope morph",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "fm-metal",
+   "kind": "movement",
+   "label": "FM / cross-mod / sync metallic movement",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "pitch-env",
+   "kind": "movement",
+   "label": "Envelope to pitch (metallic only)",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "vibrato",
+   "kind": "movement",
+   "label": "LFO to pitch",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "tremolo",
+   "kind": "movement",
+   "label": "LFO to amplitude",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "pan-motion",
+   "kind": "movement",
+   "label": "Pan movement",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "formant-vocal",
+   "kind": "movement",
+   "label": "Vocoder / formant texture",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "ring-mod",
+   "kind": "movement",
+   "label": "Ring modulation",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "mod-rate",
+   "kind": "movement",
+   "label": "LFO rate / depth movement",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "mod-routing",
+   "kind": "movement",
+   "label": "Modulation-matrix routing",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "fx-mix",
+   "kind": "movement",
+   "label": "FX wet/dry balance",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "osc-wave",
+   "kind": "identity",
+   "label": "Oscillator waveform / type",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "osc-mix",
+   "kind": "identity",
+   "label": "Oscillator balance / mix",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "filter-type",
+   "kind": "identity",
+   "label": "Filter type / slope",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "amp-env",
+   "kind": "identity",
+   "label": "Amp envelope shape (pluck/pad)",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "env-shape",
+   "kind": "identity",
+   "label": "Envelope stage shape",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "detune-width",
+   "kind": "identity",
+   "label": "Detune / unison width (static <=10c)",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "glide-portamento",
+   "kind": "identity",
+   "label": "Glide / portamento",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "fx-type",
+   "kind": "identity",
+   "label": "FX type selection",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "eq-shape",
+   "kind": "identity",
+   "label": "EQ band shape",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "key-vel-track",
+   "kind": "identity",
+   "label": "Key / velocity tracking",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "mix-balance",
+   "kind": "identity",
+   "label": "Part / channel level + pan",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "mod-source",
+   "kind": "identity",
+   "label": "Modulation source select",
+   "stage": "sound-selector"
+  }
+ ],
+ "schema": "hdaw.device.index.v1",
+ "stageNotes": {
+  "arranger": "No device params - arrangement-internal automation (clip gain / CC envelopes) only.",
+  "curator": "Offline; uses category tags for library descriptors.",
+  "fx-automation-engineer": "Owns movement intents (filter-sweep, pump, riser, delay-throw, ...) and the automation lanes / LFOs / movement plans that drive them.",
+  "mix-verifier": "Read-only; consumes the audibility gate + noise floor. Does not write device params.",
+  "sound-selector": "Picks identity params (waveform, filter type, envelope shape, FX type) when choosing/shaping a patch."
+ },
+ "stages": [
+  "fx-automation-engineer",
+  "sound-selector"
+ ],
+ "verifiedOn": "2026-09-21"
+}

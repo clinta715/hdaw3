@@ -214,6 +214,7 @@ src/engine/StretchRenderer.cpp
     src/engine/LibraryClusterer.cpp
     src/engine/ClusterPresetStore.cpp
     src/common/MessagePumpThread.cpp
+    src/common/DeviceParamMap.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
@@ -257,6 +258,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Tuning.cpp
     src/mcp/McpTools_Rave.cpp
     src/mcp/McpTools_Matrix.cpp
+    src/mcp/McpTools_Device.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp
@@ -280,6 +282,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/router/Router_Pool.cpp
     src/frontend/router/Router_PsyFm.cpp
     src/frontend/router/Router_Rave.cpp
+    src/frontend/router/Router_Device.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
     src/frontend/TreeDeltaAccumulator.cpp

@@ -19,21 +19,25 @@ state does not round-trip its patch, the export sounds different from the auditi
 device-internal modulation costs nothing and is saved inside the patch.
 
 Encoders per device (verified where stated): JP-8080 → `set_fx_param` (461
-parameters; DT1 dumps do NOT apply), Virus → `load_virus_preset` and CC via
-`send_fx_midi` (currently queued-but-silent on Osirus — finding F-A), Nord 2x →
-`load_nord_bank` (verified render change; morph chains performable) and HDAW FX
-for the effects it lacks, microQ/Vavra → no host parameters (injection measured
-NOT applying — matrix presets are blueprints only), Dexed → use the internal
-`fm_synth`. Full recipes: `docs/hardware-va-suite.md` §3.
+parameters; DT1 patch dumps apply since the 2026-09-20 wrapper retarget —
+`load_je8086_preset`), Virus → `load_virus_preset` + `set_fx_param` (6939 TI /
+3086 A/B/C host params; F-A resolved 2026-09-20 — state round-trips via the
+`stateSet` SHM ring), Nord 2x → `load_nord_bank` (verified render change; morph
+chains performable) and 362 host params, Xenia → single-dump SysEx into the edit
+buffer (verified audible) and 2151 host params, microQ/Vavra → `waldorf_dump`
+dumps apply since 2026-09-19 and 7557 host params (96 curated × 16 parts), Dexed →
+use the internal `fm_synth`. Per-engine route + durability: ask
+`list_device_params` (never re-derive it from this page). Full recipes:
+`docs/hardware-va-suite.md` §3.
 
 ## Matrix presets first (step 0 of the modulation-first rule)
 
 Before inventing an FX chain or reaching for plugin FX on a core synth, look up
 `timbre-lib/matrix_presets/<engine>.json` — named FX/mod-matrix configs harvested
 from that plugin's own patch corpus (schema `hdaw.matrix.preset.v1`; 40 presets
-per engine across all five devices). The live apply/ear pass ran 2026-09-16/17:
-je8086/xenia/nodalred2x **verified live**, vavra measured NOT applying, virus
-blocked by finding F-A (status table below). Mechanical front door:
+per engine across all five devices). The live apply/ear pass ran 2026-09-16/17;
+vavra (dump retarget) and virus (state-SHM) were fixed 2026-09-19/20 — all five
+verified live (status table below). Mechanical front door:
 `list_matrix_presets {engine}` / `apply_matrix_preset {engine, id, trackId,
 slotIndex}` — they resolve index maps and emit/inject SysEx for you. Use the
 engine's verified apply path and fall through the modulation-first order only for
@@ -41,16 +45,18 @@ what the preset does not cover:
 
 | Engine | Apply (`appliesVia`) | Verify |
 |---|---|---|
-| je8086 | `set_fx_param` via `je8086_param_index_map.json` (the plugin publishes display names; never dump offsets; DT1 dumps do not apply) — `apply_matrix_preset` resolves this | **VERIFIED live + offline with custom JPAR CLAP (2026-09-18)**: 46/46 params of preset b44052f76c82a7a7, audible A/B; `list_fx_params` readback + ear; offline export/save-load now carries the parameter preset (`compositions/je8086-jpar/`). |
+| je8086 | `set_fx_param` via `je8086_param_index_map.json` (the plugin publishes display names; never dump offsets) — `apply_matrix_preset` resolves this; DT1 patch dumps also apply since 2026-09-20 (`load_je8086_preset`, wrapper retarget) | **VERIFIED live + offline with custom JPAR CLAP (2026-09-18)**: 46/46 params of preset b44052f76c82a7a7, audible A/B; `list_fx_params` readback + ear; offline export/save-load now carries the parameter preset (`compositions/je8086-jpar/`). |
 | nodalred2x | `load_nord_bank` (morph chains: `nord_morphs/*.syx`) | **VERIFIED AUDIBLE live** (map 5,350 files / 353,100 values / 0 mismatches); render assertion |
-| virus | `load_virus_preset` (CC0+PC) queues but does NOT change Osirus renders (preset-load ext absent — finding F-A); `virus_dump.py` writer format-verified; parameter path pending F-B | live A/B **blocked** by F-A (Osirus renders bit-identical silence) — do not budget time here |
+| virus | `load_virus_preset` (CC0+PC) + `set_fx_param` (6939 TI / 3086 A/B/C host params); `virus_dump.py` writer format-verified | **F-A RESOLVED 2026-09-20** — boot-patch fix (Osirus rms 0.047) + `stateSet` SHM ring make the state round-trip (gates ~0.019, VERDICT ROUND-TRIPS). Confirm a param→rebuilt-render A/B per build; the host cache / `GET_STATE` blob are NOT readbacks |
 | xenia | SysEx single-dump → **edit buffer** (bank 0x20) via `send_fx_midi` / `apply_matrix_preset` (`xenia_dump.py` emits) | **VERIFIED AUDIBLE live** (offset map 1,166,386 values / 0 mismatches); `get_fx_capture_status` stays `unchanged` — the capture reads the program, not the edit buffer |
-| vavra | **no working apply path** — single-dump injection MEASURED NOT APPLYING (queued=1, captureStatus=unchanged, render identical); `vavra_morphs.json` blueprint-only | none — documented emulator limitation; puppetry not pursued |
+| vavra | `waldorf_dump` (0x20 single-mode edit-buffer retarget since 2026-09-19) + `set_fx_param` (7557 host params = 96 curated × 16 parts); FX sub-params are **bit-aliases** (use FX1Type/FX2Type/FX1Mix/FX2Mix) | **VERIFIED AUDIBLE / replay** (live rms 0.0094→0.0151, rebuilt-from-tree Δ0.0054). **Host params: LIVE `set_fx_param` writes do NOT move the render** (2026-09-21, `VavraHostParamsLiveReachability`) though the `appliedParamOverrides` replay does (`VavraHostParamOfflineReplayAffectsExport`, monotonic) — for live movement use `waldorf_dump`, not param automation |
 
 Format and Phase D checklist: `docs/hardware-va-suite.md` §9.
 
 ## Surface area
-`list_fx_chains`, `load_fx_chain`, `add_fx`, `remove_fx`, `set_fx_param`,
+`list_device_params` (device parameter map — engines, intent vocabulary, tier,
+durability; call this FIRST to pick a target), `list_fx_chains`, `load_fx_chain`,
+`add_fx`, `remove_fx`, `set_fx_param`,
 `apply_movement_plan` (batch section-aware movement across tracks in ONE undo unit),
 `set_internal_fx_param`, `list_fx_params`, `capture_fx_snapshot`,
 `swap_fx_snapshot`, `add_automation_lane`, `set_automation_points`,

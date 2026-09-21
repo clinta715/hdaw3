@@ -121,6 +121,10 @@ graphify-out/
 .opencode/goals/
 .zcode/
 
+# Agent-harness config, written by skill installs (not shared project state)
+.opencode/opencode.json
+.opencode/plugins/
+
 # Build/test log scratch
 build_output*.txt
 test_output*.txt

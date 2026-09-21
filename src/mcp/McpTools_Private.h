@@ -45,6 +45,7 @@ void registerTransportDomain(McpServer& s, AudioEngine* e);
 void registerAudioDomain(McpServer& s, AudioEngine* e);
 void registerFxSlotTools(McpServer& s, AudioEngine* e);
 void registerMatrixTools(McpServer& s, AudioEngine* e);
+void registerDeviceTools(McpServer& s, AudioEngine* e);
 void registerFxPresetTools(McpServer& s, AudioEngine* e);
 void registerFxChainTools(McpServer& s, AudioEngine* e);
 void registerSamplerTools(McpServer& s, AudioEngine* e);

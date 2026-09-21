@@ -1,0 +1,181 @@
+{
+  "schema": "hdaw.device.intents.v1",
+  "note": "Intent vocabulary + name-grammar + per-engine overrides for the core-synth Device Parameter Map (docs/plans/2026-09-21-device-param-map.md). Consumed by timbre-lib/build_device_map.py. Rules are ordered; `match` is case-insensitive substring. Category = first matching categoryRule. Explicit intentRules win; if none matched, categoryDefaults supplies intents+tier. tier = movement if any matched rule is movement, else identity. Engine trap overrides + nameTrapRules win over both. Anything still unclassified is reported, never hidden.",
+  "verifiedOn": "2026-09-21",
+
+  "intents": [
+    { "id": "filter-sweep",   "label": "Filter cutoff sweep (open/close)",        "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "resonance",      "label": "Filter resonance emphasis",               "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "pump",           "label": "Amplitude pump / rhythmic duck",          "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "riser",          "label": "Riser (feedback / rising tension)",       "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "delay-throw",    "label": "Delay throw / wet stab",                  "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "reverb-space",   "label": "Reverb space / decay",                    "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "chorus-motion",  "label": "Chorus / flanger motion",                 "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "phaser-sweep",   "label": "Phaser movement",                         "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "distortion-drive","label": "Distortion / overdrive grit",            "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "wave-morph",     "label": "Oscillator / wave-envelope morph",        "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "fm-metal",       "label": "FM / cross-mod / sync metallic movement", "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "pitch-env",      "label": "Envelope to pitch (metallic only)",       "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "vibrato",        "label": "LFO to pitch",                            "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "tremolo",        "label": "LFO to amplitude",                        "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "pan-motion",     "label": "Pan movement",                            "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "formant-vocal",  "label": "Vocoder / formant texture",               "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "ring-mod",       "label": "Ring modulation",                         "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "mod-rate",       "label": "LFO rate / depth movement",               "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "mod-routing",    "label": "Modulation-matrix routing",               "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "fx-mix",         "label": "FX wet/dry balance",                      "kind": "movement", "stage": "fx-automation-engineer" },
+    { "id": "osc-wave",       "label": "Oscillator waveform / type",              "kind": "identity", "stage": "sound-selector" },
+    { "id": "osc-mix",        "label": "Oscillator balance / mix",                "kind": "identity", "stage": "sound-selector" },
+    { "id": "filter-type",    "label": "Filter type / slope",                     "kind": "identity", "stage": "sound-selector" },
+    { "id": "amp-env",        "label": "Amp envelope shape (pluck/pad)",          "kind": "identity", "stage": "sound-selector" },
+    { "id": "env-shape",      "label": "Envelope stage shape",                    "kind": "identity", "stage": "sound-selector" },
+    { "id": "detune-width",   "label": "Detune / unison width (static <=10c)",    "kind": "identity", "stage": "sound-selector" },
+    { "id": "glide-portamento","label": "Glide / portamento",                     "kind": "identity", "stage": "sound-selector" },
+    { "id": "fx-type",        "label": "FX type selection",                       "kind": "identity", "stage": "sound-selector" },
+    { "id": "eq-shape",       "label": "EQ band shape",                           "kind": "identity", "stage": "sound-selector" },
+    { "id": "key-vel-track",  "label": "Key / velocity tracking",                 "kind": "identity", "stage": "sound-selector" },
+    { "id": "mix-balance",    "label": "Part / channel level + pan",              "kind": "identity", "stage": "sound-selector" },
+    { "id": "mod-source",     "label": "Modulation source select",                "kind": "identity", "stage": "sound-selector" }
+  ],
+
+  "categoryRules": [
+    { "id": "fx-vocoder",    "match": ["vocoder"],                                             "category": "fx-vocoder" },
+    { "id": "fx-ringmod",    "match": ["ringmod", "ring mod", "ring modulator"],               "category": "fx-ringmod" },
+    { "id": "lfo",           "match": ["lfo"],                                                 "category": "lfo" },
+    { "id": "fx-phaser",     "match": ["phaser"],                                              "category": "fx-phaser" },
+    { "id": "fx-chorus",     "match": ["chorus", "flanger"],                                   "category": "fx-chorus" },
+    { "id": "fx-delay",      "match": ["delay"],                                               "category": "fx-delay" },
+    { "id": "fx-reverb",     "match": ["reverb", "rev decay"],                                 "category": "fx-reverb" },
+    { "id": "fx-distortion", "match": ["distortion", "overdrive"],                              "category": "fx-distortion" },
+    { "id": "fx-eq",         "match": ["high eq", "low eq", "mid eq", "eqgain", "eq gain", "q-factor", "q factor", "eq frequency"], "category": "fx-eq" },
+    { "id": "fx-type",       "match": ["fx1type", "fx2type", "fx1mix", "fx2mix", "effecttype", "multieffectstype", "effectparam"], "category": "fx-type" },
+    { "id": "dynamics",      "match": ["input follower"],                                      "category": "dynamics" },
+    { "id": "filter-env",    "match": ["filterenvelope", "filter env", "filter_env", "f1env", "f2env", "fenvelope"], "category": "filter-env" },
+    { "id": "amp-env",       "match": ["ampenvelope", "amp env", "ampenv", "a amp env"],        "category": "amp-env" },
+    { "id": "pitch-env",     "match": ["pitchenvelope", "pitch env", "pitch_env"],             "category": "pitch-env" },
+    { "id": "filter",        "match": ["cutoff", "resonance", "filter", "f1", "f2", "envmod", "cuto", "reson"], "category": "filter" },
+    { "id": "envelope",      "match": ["envelope", "env"],                                      "category": "envelope" },
+    { "id": "osc",           "match": ["osc", "wave", "harmonics", "w1", "w2", "unison", "detune", "noise", "sync", "crossmod", "cross modulation", "fm depth", "fm_depth", "fm amount", "fmamount"], "category": "osc" },
+    { "id": "mod-matrix",    "match": ["assign", "mod1", "mod2", "mod3", "mod4", "mod_param", "modparam", "modulation", "modsource", "mod_source", "source1", "source2", "destination", "dest", "slot1", "slot2", "slot3", "slot4", "slot5", "slot6", "slot7", "slot8", "slot9", "slot10", "slot11", "slot12", "slot13", "slot14", "slot15", "slot16"], "category": "mod-matrix" },
+    { "id": "part-mixer",    "match": ["volume", "level", "pan", "balance", "mix", "intensity", "tune"], "category": "part-mixer" }
+  ],
+
+  "categoryDefaults": {
+    "fx-vocoder":    { "tier": "movement", "intents": ["formant-vocal"] },
+    "fx-ringmod":    { "tier": "movement", "intents": ["ring-mod"] },
+    "fx-phaser":     { "tier": "movement", "intents": ["phaser-sweep"] },
+    "fx-chorus":     { "tier": "movement", "intents": ["chorus-motion"] },
+    "fx-delay":      { "tier": "movement", "intents": ["delay-throw"] },
+    "fx-reverb":     { "tier": "movement", "intents": ["reverb-space"] },
+    "fx-distortion": { "tier": "movement", "intents": ["distortion-drive"] },
+    "fx-eq":         { "tier": "identity", "intents": ["eq-shape"] },
+    "fx-type":       { "tier": "identity", "intents": ["fx-type"] },
+    "lfo":           { "tier": "movement", "intents": ["mod-rate"] },
+    "filter":        { "tier": "movement", "intents": ["filter-sweep"] },
+    "filter-env":    { "tier": "movement", "intents": ["filter-sweep"] },
+    "amp-env":       { "tier": "identity", "intents": ["amp-env"] },
+    "pitch-env":     { "tier": "identity", "intents": ["pitch-env"] },
+    "envelope":      { "tier": "identity", "intents": ["env-shape"] },
+    "osc":           { "tier": "identity", "intents": ["osc-wave"] },
+    "mod-matrix":    { "tier": "movement", "intents": ["mod-routing"] },
+    "part-mixer":    { "tier": "identity", "intents": ["mix-balance"] },
+    "dynamics":      { "tier": "movement", "intents": ["pump"] }
+  },
+
+  "intentRules": [
+    { "id": "filter-sweep",  "match": ["cutoff", "envmod", "env_amount", "envamount", "filter_env_amount", "filterenvelopedepth", "filterenvdepth", "envvelamount", "cutoffmod", "cuto"], "intents": ["filter-sweep"], "tier": "movement" },
+    { "id": "resonance",     "match": ["resonance", "reson"],                                  "intents": ["resonance"], "tier": "movement" },
+    { "id": "pump",          "match": ["amp level", "amplevel", "amplifier level", "volume", "input follower"], "intents": ["pump"], "tier": "movement" },
+    { "id": "riser",         "match": ["feedback"],                                            "intents": ["riser"], "tier": "movement" },
+    { "id": "delay-throw",   "match": ["delaytime", "delay time", "delaytype", "delay type", "delaymode", "delay mode", "delay level", "delay mix", "delay send", "delay feedback", "delay clock", "tape delay", "delaysend"], "intents": ["delay-throw"], "tier": "movement" },
+    { "id": "reverb-space",  "match": ["reverb", "rev decay", "dly rate"],                     "intents": ["reverb-space"], "tier": "movement" },
+    { "id": "chorus-motion", "match": ["chorus", "flanger"],                                   "intents": ["chorus-motion"], "tier": "movement" },
+    { "id": "phaser-sweep",  "match": ["phaser"],                                              "intents": ["phaser-sweep"], "tier": "movement" },
+    { "id": "distortion",    "match": ["distortion", "overdrive", "intensity", "curve", "drive"], "intents": ["distortion-drive"], "tier": "movement" },
+    { "id": "wave-morph",    "match": ["wave", "harmonics", "w1env", "w2env", "wavetable", "pulse width", "pwm", "shape"], "intents": ["wave-morph"], "tier": "movement" },
+    { "id": "fm-metal",      "match": ["crossmod", "cross modulation", "fm depth", "fm_depth", "fm amount", "fmamount", "fm source", "fmsource", "sync"], "intents": ["fm-metal"], "tier": "movement" },
+    { "id": "pitch-env",     "match": ["pitchenvelope", "pitch env", "pitch_env", "pitchenvelopedepth"], "intents": ["pitch-env"], "tier": "movement" },
+    { "id": "vibrato",       "match": ["pitchlfo", "pitch lfo", "pitchmod"],                     "intents": ["vibrato"], "tier": "movement" },
+    { "id": "tremolo",       "match": ["amplfo", "amp lfo"],                                     "intents": ["tremolo"], "tier": "movement" },
+    { "id": "mod-rate",      "match": ["lfo rate", "lforate", "lfo1rate", "lfo2rate", "lfo1_rate", "lfo2_rate", "lfo_rate", "lfo clock", "lfoclk", "lfo1 clock", "lfo2 clock", "lfo3 clock", "lfo mode", "lfo1 mode", "lfo2 mode", "lfo3 mode", "lfo depth", "lfodepth", "lfo1depth", "lfo2depth", "lfo level", "lfo1_level", "lfo2_level", "lfolevel", "lfo amount", "lfo fade", "lfofade", "fade", "depthselect"], "intents": ["mod-rate"], "tier": "movement" },
+    { "id": "pan-motion",    "match": ["autopan", "auto pan", "depan", "panmod", "pan mod"],      "intents": ["pan-motion"], "tier": "movement" },
+    { "id": "formant-vocal", "match": ["vocoder"],                                                "intents": ["formant-vocal"], "tier": "movement" },
+    { "id": "ring-mod",      "match": ["ringmod", "ring mod", "ring modulator"],                  "intents": ["ring-mod"], "tier": "movement" },
+    { "id": "fx-mix",        "match": ["fx1mix", "fx2mix", "multieffectslevel", "effect mix", "carrier balance", "effectparam", "fxmix"], "intents": ["fx-mix"], "tier": "movement" },
+    { "id": "mod-routing",   "match": ["assign", "mod1", "mod2", "mod3", "mod4", "slot1", "slot2", "slot3", "slot4", "slot5", "slot6", "slot7", "slot8", "slot9", "slot10", "slot11", "slot12", "slot13", "slot14", "slot15", "slot16", "destination", "dest"], "intents": ["mod-routing"], "tier": "movement" },
+    { "id": "fx-type",       "match": ["fx1type", "fx2type", "effecttype", "multieffectstype"],   "intents": ["fx-type"], "tier": "identity" },
+    { "id": "eq-shape",      "match": ["high eq", "low eq", "mid eq", "q-factor", "q factor", "eq gain", "eq frequency"], "intents": ["eq-shape"], "tier": "identity" },
+    { "id": "env-stage",     "match": ["attack", "decay", "sustain", "release", "trigger"],       "intents": ["env-shape"], "tier": "identity" },
+    { "id": "key-vel-track", "match": ["keytrack", "key track", "velmod", "vel amount", "velamount", "velocity"], "intents": ["key-vel-track"], "tier": "identity" },
+    { "id": "osc-wave",      "match": ["osc waveform", "oscwaveform", "waveform", "osc type", "osc1 type", "osc2 range", "osc2 fine", "rangewide", "noise mode", "noisemode", "range"], "intents": ["osc-wave"], "tier": "identity" },
+    { "id": "osc-mix",       "match": ["oscillator balance", "osc balance", "mixringmod"],         "intents": ["osc-mix"], "tier": "identity" },
+    { "id": "filter-type",   "match": ["filter type", "f1type", "f2type", "cutoffslope", "slope"], "intents": ["filter-type"], "tier": "identity" },
+    { "id": "detune-width",  "match": ["detune", "fine", "wide", "unison"],                       "intents": ["detune-width"], "tier": "identity" },
+    { "id": "glide",         "match": ["glide", "portamento"],                                    "intents": ["glide-portamento"], "tier": "identity" },
+    { "id": "mix-balance",   "match": ["level", "mix", "pan", "balance", "bass tune", "bass intensity"], "intents": ["mix-balance"], "tier": "identity" },
+    { "id": "mod-source",    "match": ["modsource", "mod source", "source1", "source2", "mod_source"], "intents": ["mod-source"], "tier": "identity" }
+  ],
+
+  "nameTrapRules": [
+    { "id": "unnamed-dump-field", "regex": "^off_[0-9]+$", "reason": "unnamed-dump-field", "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it." }
+  ],
+
+  "engineOverrides": {
+    "je8086": {
+      "appliesVia": "set_fx_param",
+      "durability": "jpar",
+      "durabilityNote": "JPAR v1 chunk carries every exposed param's unnormalized value (jePluginProcessor save/load) -> param writes round-trip to offline renders and saves. DT1 patch dumps additionally persist via IDs::presetSysex replay (wrapper retarget, 2026-09-20).",
+      "traps": {
+        "AutoPanManualPanSwitch": { "reason": "unmatched-index", "note": "in je8086_param_index_map unmatched list (no live plugin index)" },
+        "MultiEffectsType":       { "reason": "unmatched-index", "note": "in je8086_param_index_map unmatched list (no live plugin index)" }
+      },
+      "notes": {
+        "ControlCutoffFrequency": "Panel/remote-control layer (Control* prefix). Name-mapped only; has no SysEx dump offset (hardware-va-suite.md section 3). Map by NAME against list_fx_params, never by patch offset."
+      }
+    },
+    "nodalred2x": {
+      "appliesVia": "load_nord_bank",
+      "durability": "presetSysex",
+      "durabilityNote": "Bank SysEx loads audibly (verified live) and persists via the injected-SysEx capture path; HDAW shows 362 host params (Nord 2x voice selection is not host-controllable).",
+      "traps": {}
+    },
+    "xenia": {
+      "appliesVia": "waldorf_dump",
+      "durability": "presetSysex",
+      "durabilityNote": "Single-dump SysEx targets the edit buffer (bank 0x20); persisted via IDs::presetSysex replay. get_fx_capture_status stays 'unchanged' because the capture reads the program, not the edit buffer - not a failure.",
+      "traps": {}
+    },
+    "virus": {
+      "appliesVia": "set_fx_param",
+      "durability": "stateBlob",
+      "durabilityNote": "F-A RESOLVED 2026-09-20 (hardware-va-suite.md section 9 CORRECTION): state once travelled as 140-600 chunked pipe messages and timed out against the child's 12 s OS warmup; the stateSet SHM ring (1 MiB, lock-free, applied from the child's audio loop) now delivers ROM+OBST+PRGS+JPAR in ~30 ms and the gate round-trips (deltas ~0.019, VERDICT ROUND-TRIPS). The earlier row-2 'round-trips' claim and the 'no JPAR-equivalent chunk' mechanism note are both superseded. A host param VALUE still reaches the OS only if the live child applied it first, and the host param cache / live GET_STATE blob are NOT valid readbacks for these devices (2026-09-21 readback contract) - confirm with a rebuilt-render A/B before budgeting automation.",
+      "traps": {}
+    },
+    "vavra": {
+      "appliesVia": "waldorf_dump",
+      "durability": "presetSysex",
+      "durabilityNote": "Dumps apply since 2026-09-19 (0x20 single-mode edit-buffer retarget; live rms 0.0094->0.0151, rebuilt-from-tree replay D0.0054) and are the DURABLE route for LIVE sound. 7557 host params (96 curated sound/FX x 16 parts) are reachable via set_fx_param AND land in the param cache, but LIVE writes do NOT move the render (2026-09-21, VavraHostParamsLiveReachability; the old 'VavraHostParamsChangeRender |delta|>1e-5' pass was below the live child's own ~8e-3 mode-flip noise, and Xenia/NodalRed2x DO move on the same harness so the null is Vavra-specific). They are NOT dead: replayed from the appliedParamOverrides ledger into a fresh export child they ARE audible and monotonic (VavraHostParamOfflineReplayAffectsExport: export rms 0.00631; every Ch N AmpVolume ->0 = 0.0023, ->1 = 0.0086). Wrapper source verified structurally correct (mqstate.cpp SingleParameterChange -> 0x20 edit buffer; packet indices match), so the gap is the LIVE write path - use dumps for live movement, offline/replayed renders for param overrides. FX sub-params are bit-aliases (derived-parameter collapse onto the type-level params).",
+      "traps": {
+        "Fx1ChorusDelay":      { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "Fx1ChorusDepth":      { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "Fx1ChorusSpeed":      { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "Fx1FlangerFeedback":  { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "Fx1FlangerPolarity":  { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "Fx1OverdrivePostGain":{ "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "Fx1PhaserCenter":     { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "Fx1PhaserSpacing":    { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "FiveFX1RingModLevel": { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" },
+        "FiveFX2RingModLevel": { "reason": "bit-alias", "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix" }
+      }
+    }
+  },
+
+  "stageNotes": {
+    "sound-selector": "Picks identity params (waveform, filter type, envelope shape, FX type) when choosing/shaping a patch.",
+    "fx-automation-engineer": "Owns movement intents (filter-sweep, pump, riser, delay-throw, ...) and the automation lanes / LFOs / movement plans that drive them.",
+    "mix-verifier": "Read-only; consumes the audibility gate + noise floor. Does not write device params.",
+    "arranger": "No device params - arrangement-internal automation (clip gain / CC envelopes) only.",
+    "curator": "Offline; uses category tags for library descriptors."
+  },
+  "excludedStages": ["arranger", "pattern-researcher"]
+}

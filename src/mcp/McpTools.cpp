@@ -111,6 +111,7 @@ void registerAllTools(McpServer& s) {
     registerEngineInfoTool(s);
     registerEngineRestartTool(s);
     registerRaveTools(s, e);
+    registerDeviceTools(s, e);
     registerJobTools(s);
 }
 

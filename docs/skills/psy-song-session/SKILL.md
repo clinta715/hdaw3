@@ -37,10 +37,14 @@ Two rules that follow from measurement (details in `docs/hardware-va-suite.md`):
 1. **Modulation-first**: prefer the device's own matrix/envelopes/onboard FX, then HDAW
    parameter automation, then HDAW internal FX, and only then a third-party plugin -
    plugin FX add CPU, latency, isolation and state-round-trip risk.
-2. **Only JE8086 publishes host parameters** (461). Every other VA device is
-   CC/PC + patch/bank loading (plus microQ front-panel puppetry, unverified). Plan
-   automatable movement on the internal engines or the Nord's verified bank loads, and
-   treat the rest as character/audition sources.r/master gain only |
+2. **Every core synth publishes host parameters** — JE8086 (461), Vavra (7557),
+   OsTIrus (6939) / Osirus (3086), Xenia (2151), NodalRed2x (362). Reachability is not
+   the limit; *route + durability* are, and they differ per engine AND per build. Do not
+   guess: call `list_device_params` (no args = engines + intent vocabulary + stage
+   ownership; `{engine}` = the filtered, durability-tagged parameter map). Treat a
+   `durability` you have not re-confirmed on the current build as "verify before
+   budgeting automation". JE8086 DT1 dumps apply since 2026-09-20; Nord bank loads and
+   Xenia/Vavra edit-buffer dumps are verified audible; F-A (Virus) resolved 2026-09-20.
 
 Role files resolve against this skill's directory (parent of SKILL.md).
 

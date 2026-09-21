@@ -1,0 +1,2036 @@
+{
+ "appliesVia": "waldorf_dump",
+ "counts": {
+  "identity": 3,
+  "indexMapped": 0,
+  "movement": 83,
+  "offsetMapped": 85,
+  "total": 86,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "presetSysex",
+ "durabilityNote": "Single-dump SysEx targets the edit buffer (bank 0x20); persisted via IDs::presetSysex replay. get_fx_capture_status stays 'unchanged' because the capture reads the program, not the edit buffer - not a failure.",
+ "engine": "xenia",
+ "params": [
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "ChorusEnabled",
+   "note": null,
+   "offset": 89,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "pan-motion",
+    "mix-balance"
+   ],
+   "name": "DePan",
+   "note": null,
+   "offset": 119,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:pan-motion",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "DelayTime",
+   "note": null,
+   "offset": 88,
+   "roles": [],
+   "sources": [
+    "offsetmap",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-mix"
+   ],
+   "name": "EffectParamA",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "grammar:fx-mix"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-mix"
+   ],
+   "name": "EffectParamB",
+   "note": null,
+   "offset": 90,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:fx-mix"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-mix"
+   ],
+   "name": "EffectParamC",
+   "note": null,
+   "offset": 93,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:fx-mix"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-type"
+   ],
+   "name": "EffectType",
+   "note": null,
+   "offset": 83,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:fx-type"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "F1Cutoff",
+   "note": null,
+   "offset": 69,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "F1EnvAmount",
+   "note": null,
+   "offset": 73,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "filter-sweep",
+    "key-vel-track"
+   ],
+   "name": "F1EnvVelAmount",
+   "note": null,
+   "offset": 74,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:filter-sweep",
+    "grammar:key-vel-track"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "resonance"
+   ],
+   "name": "F1Resonance",
+   "note": null,
+   "offset": 70,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:resonance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo1Delay",
+   "note": null,
+   "offset": 168,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:categoryDefault:lfo"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo2Delay",
+   "note": null,
+   "offset": 175,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:categoryDefault:lfo"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-ringmod",
+   "index": null,
+   "intents": [
+    "ring-mod",
+    "osc-mix",
+    "mix-balance"
+   ],
+   "name": "MixRingMod",
+   "note": null,
+   "offset": 56,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:ring-mod",
+    "grammar:osc-mix",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Mod1Parameter",
+   "note": null,
+   "offset": 186,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing",
+    "mod-source"
+   ],
+   "name": "Mod1Source1",
+   "note": null,
+   "offset": 183,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing",
+    "mod-source"
+   ],
+   "name": "Mod1Source2",
+   "note": null,
+   "offset": 184,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Mod1Type",
+   "note": null,
+   "offset": 185,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Mod2Parameter",
+   "note": null,
+   "offset": 190,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing",
+    "mod-source"
+   ],
+   "name": "Mod2Source1",
+   "note": null,
+   "offset": 187,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing",
+    "mod-source"
+   ],
+   "name": "Mod2Source2",
+   "note": null,
+   "offset": 188,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Mod2Type",
+   "note": null,
+   "offset": 189,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Mod3Parameter",
+   "note": null,
+   "offset": 194,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing",
+    "mod-source"
+   ],
+   "name": "Mod3Source1",
+   "note": null,
+   "offset": 191,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing",
+    "mod-source"
+   ],
+   "name": "Mod3Source2",
+   "note": null,
+   "offset": 192,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Mod3Type",
+   "note": null,
+   "offset": 193,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Mod4Parameter",
+   "note": null,
+   "offset": 198,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing",
+    "mod-source"
+   ],
+   "name": "Mod4Source1",
+   "note": null,
+   "offset": 195,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing",
+    "mod-source"
+   ],
+   "name": "Mod4Source2",
+   "note": null,
+   "offset": 196,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Mod4Type",
+   "note": null,
+   "offset": 197,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "ModDelaySource",
+   "note": null,
+   "offset": 181,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:categoryDefault:fx-delay"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "ModDelayTime",
+   "note": null,
+   "offset": 182,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "Pan",
+   "note": null,
+   "offset": 91,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "key-vel-track",
+    "mix-balance"
+   ],
+   "name": "PanKeytrack",
+   "note": null,
+   "offset": 92,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:key-vel-track",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot10Amount",
+   "note": null,
+   "offset": 227,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot10Destination",
+   "note": null,
+   "offset": 228,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot10Source",
+   "note": null,
+   "offset": 226,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot11Amount",
+   "note": null,
+   "offset": 230,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot11Destination",
+   "note": null,
+   "offset": 231,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot11Source",
+   "note": null,
+   "offset": 229,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot12Amount",
+   "note": null,
+   "offset": 233,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot12Destination",
+   "note": null,
+   "offset": 234,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot12Source",
+   "note": null,
+   "offset": 232,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot13Amount",
+   "note": null,
+   "offset": 236,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot13Destination",
+   "note": null,
+   "offset": 237,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot13Source",
+   "note": null,
+   "offset": 235,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot14Amount",
+   "note": null,
+   "offset": 239,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot14Destination",
+   "note": null,
+   "offset": 240,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot14Source",
+   "note": null,
+   "offset": 238,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot15Amount",
+   "note": null,
+   "offset": 242,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot15Destination",
+   "note": null,
+   "offset": 243,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot15Source",
+   "note": null,
+   "offset": 241,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot16Amount",
+   "note": null,
+   "offset": 245,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot16Destination",
+   "note": null,
+   "offset": 246,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot16Source",
+   "note": null,
+   "offset": 244,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot1Amount",
+   "note": null,
+   "offset": 200,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot1Destination",
+   "note": null,
+   "offset": 201,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot1Source",
+   "note": null,
+   "offset": 199,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot2Amount",
+   "note": null,
+   "offset": 203,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot2Destination",
+   "note": null,
+   "offset": 204,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot2Source",
+   "note": null,
+   "offset": 202,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot3Amount",
+   "note": null,
+   "offset": 206,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot3Destination",
+   "note": null,
+   "offset": 207,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot3Source",
+   "note": null,
+   "offset": 205,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot4Amount",
+   "note": null,
+   "offset": 209,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot4Destination",
+   "note": null,
+   "offset": 210,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot4Source",
+   "note": null,
+   "offset": 208,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot5Amount",
+   "note": null,
+   "offset": 212,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot5Destination",
+   "note": null,
+   "offset": 213,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot5Source",
+   "note": null,
+   "offset": 211,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot6Amount",
+   "note": null,
+   "offset": 215,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot6Destination",
+   "note": null,
+   "offset": 216,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot6Source",
+   "note": null,
+   "offset": 214,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot7Amount",
+   "note": null,
+   "offset": 218,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot7Destination",
+   "note": null,
+   "offset": 219,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot7Source",
+   "note": null,
+   "offset": 217,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot8Amount",
+   "note": null,
+   "offset": 221,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot8Destination",
+   "note": null,
+   "offset": 222,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot8Source",
+   "note": null,
+   "offset": 220,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot9Amount",
+   "note": null,
+   "offset": 224,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot9Destination",
+   "note": null,
+   "offset": 225,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Slot9Source",
+   "note": null,
+   "offset": 223,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "envelope",
+   "index": null,
+   "intents": [
+    "filter-sweep",
+    "wave-morph"
+   ],
+   "name": "W1EnvAmount",
+   "note": null,
+   "offset": 35,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:filter-sweep",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "envelope",
+   "index": null,
+   "intents": [
+    "filter-sweep",
+    "wave-morph",
+    "key-vel-track"
+   ],
+   "name": "W1EnvVelAmount",
+   "note": null,
+   "offset": 36,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:filter-sweep",
+    "grammar:wave-morph",
+    "grammar:key-vel-track"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "envelope",
+   "index": null,
+   "intents": [
+    "filter-sweep",
+    "wave-morph"
+   ],
+   "name": "W2EnvAmount",
+   "note": null,
+   "offset": 45,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:filter-sweep",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "envelope",
+   "index": null,
+   "intents": [
+    "filter-sweep",
+    "wave-morph",
+    "key-vel-track"
+   ],
+   "name": "W2EnvVelAmount",
+   "note": null,
+   "offset": 46,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:xenia.json",
+    "offsetmap",
+    "grammar:filter-sweep",
+    "grammar:wave-morph",
+    "grammar:key-vel-track"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "patchCount": 2554,
+  "sheet": "matrix_presets/xenia.json",
+  "unmatchedIndexNames": []
+ },
+ "verifiedOn": "2026-09-21"
+}

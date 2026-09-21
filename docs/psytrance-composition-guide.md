@@ -671,9 +671,11 @@ entries / 2676 usable patches, plus an exploded per-patch tree), microQ
 `microq_patch.py` (528 patches, categories carried in the dump), Nord 2x
 `nl2x_patch.py` (6841 sidecars), Virus `virus_patch.py`. Loaders:
 `load_nord_bank` is the one **verified** bank loader (a test asserts the render
-changes); `load_virus_preset` (CC0+PC) works; **JE8086 DT1 dumps never apply** — use
-`set_fx_param` (461 params); **Vavra exposes no host parameters**
-(`{"params":[]}`), so it is matrix/audition-only from HDAW. Rendering caveat: an
+changes); `load_virus_preset` (CC0+PC) works; **JE8086 DT1 dumps apply since
+2026-09-20** (wrapper retargets UserPatch→temp performance; use `load_je8086_preset`),
+and `set_fx_param` covers 461 params; **Vavra's FX sub-params cannot be exposed**
+(derived-parameter collapse onto the type-level params) — use its 392-byte device dump
+or the `FX1Type`/`FX2Type`/`FX1Mix`/`FX2Mix` params. Rendering caveat: an
 isolated export restores `pluginState` into a **fresh child**, so a plugin whose
 state does not round-trip its patch exports differently from what you audition.
 Device matrix, per-device modulation/FX recipes and the modulation-first policy:
@@ -727,7 +729,7 @@ Live writes reach offline renders via the standard save snapshot.
 | Distortion gating | Osirus | `Ch 1 Distortion Curve`=275 (set 1-11), `Intensity`=276 | square preset on 276 per beat window |
 | Delay throw at a drop | JE8086 | `A DELAY TYPE`=184 (PANNING L->R…), TIME=185, FEEDBACK=186, LEVEL=187 (>0 enables) | delayThrow preset on 186 |
 | Vocal FX gating | JE8086 | `VOCAL MIX`=542, `EXT TO VOCAL SEND`=424 | pump on 542 |
-| FX slot switch + movement | Vavra (microQ) | **device/LCD parameter indices** (FX1Type≈191, FX2Type≈192, FX1Mix≈193, FX2Mix≈194, Fx1/Fx2 chorus-phaser-delay sub-params) — these are NOT CLAP parameters: measured `list_fx_params` gives `{"params":[]}`, so they cannot be set with `set_fx_param` | reachable only via the emulation's remote-control SysEx (`SetParam`, page/index/value nibbles); **unverified from HDAW**. Practically: the microQ FX are patch content — set them inside the patch and load it, or audition them in the plugin's own editor |
+| FX slot switch + movement | Vavra (microQ) | type-level host params (`FX1Type`/`FX2Type`/`FX1Mix`/`FX2Mix`) — the Fx1/Fx2 chorus-phaser-delay sub-params are **bit-aliases** (derived-parameter collapse) and still cannot be set with `set_fx_param` (the full surface is 7557 host params since 2026-09-19; the old `{"params":[]}` reading is superseded). **LIVE host-param writes do NOT move the render (2026-09-21)** — only a replayed/offline render responds | bake the FX into the patch, or load a `waldorf_dump` (durable route); do not budget live param automation for movement. Sub-params also via dump; the device's remote-control SysEx (`EmuButtons`/`EmuRotaries` — a `SetParam` message is ignored) is the remaining route but is not yet driven from HDAW |
 | Distortion accents | NodalRed2x | `A Distortion`=154 (0/1), `ChPrs Amount A`=444 (0-7 chor./pres.) | square/steppedGate on 154 for rhythmic grit |
 
 `list_fx_params` text gives real units (0-127, -64..+63, type enums like
@@ -751,19 +753,25 @@ range before writing (lesson 23 discipline: no out-of-range writes).
   `timbre-lib/nl2x_patch.py` writes `<patch>.nl2x.json` descriptions
   over `D:\pdf\NL2x Banks` (6841 sidecars, 29436 dumps) — searchable
   by FileLibraryManager.
-- `load_je8086_preset {trackId, slotIndex, filePath, preset?, recall?}` — Roland
+- `load_je8086_preset {trackId, slotIndex, filePath, preset?}` — Roland
   JP-8080 banks (`.syx` raw DT1 SysEx, `.mid` SMF-wrapped) into JE8086: ATOMIC —
   every DT1 message validated (F0 41 10 00 06 12 header, F7-terminated, Roland
-  checksum, ≤32768B) BEFORE queueing, then the selected patch is recalled with
-  CC0=1 (USER bank) + PC = bank*64 + slot-1. `preset` is the 1-based patch unit
+  checksum, ≤32768B) BEFORE queueing. The dump keeps its UserPatch bank address, and the
+  JE8086 wrapper retargets it onto the sounding temp performance, so the file's patch
+  sounds immediately. No `CC0=1 USER + PC` recall is sent any more — a JP-8080 PC
+  *loads* the emulator's bank program into the current patch and overwrote the dump
+  (probe: 2026-09-20). Confirm the load with `poll_fx_capture` + a render: a patch
+  dump does not appear in the param list, and the persisted `IDs::presetSysex`
+  replay is what carries it into exports. `preset` is the 1-based patch unit
   in file order — choose one from the je8086 survey `roleShortlist` refs
   (`perf016/part2`, `bank0/slot25`). PER-PATCH by design: a 64-patch bank is 128
   DT1 messages while the injection carries ≤64 events over a single sysex lane
   that drops (not queues) when busy. Sidecar pipeline:
   `timbre-lib/je8086_patch.py` writes `<bank>.je8086.json` over `D:\pdf\je8086`
   (45 sidecars, 4276 entries + role shortlist) — searchable by FileLibraryManager.
-  LIVE VERIFICATION (2026-09-16) — DT1 dumps DO NOT apply, but the PARAMETER
-  API does, and the plugin's saved state is a 233-byte stub:
+  LIVE VERIFICATION (2026-09-16; the DT1 part is superseded 2026-09-20) — at that time
+  DT1 dumps did not apply, the PARAMETER API did, and the plugin's saved state was a
+  233-byte stub:
   - **Which tools isolate (RESOLVED 2026-09-16).** `add_fx {pluginId}` and
     `audition_plugin` BOTH create isolated slots while
     `pluginManager->isolationEnabled` is on (the default; the `--mcp-http` launcher
@@ -784,18 +792,28 @@ range before writing (lesson 23 discipline: no out-of-range writes).
     commanded (verified by diffing `list_fx_params` before/after). This is the
     supported control surface — it is what the JE8086 recipes above already use
     (delay type 184, vocal mix 542).
-  - **DT1 patch dumps are never applied.** The 461-entry parameter list was
-    byte-identical after an injection. Root cause (gearmulator sources):
-    `jeLib/device.cpp` routes live host MIDI to the DSP thread and only offers
-    SysEx to `SysexRemoteControl`, which implements just LCD / Button / Rotary /
-    SetParam (`sysexRemoteControl.h`); the patch protocol (`CommandIdDataSet1`)
-    lives in `State` (`state.cpp`), which only the device→host and plugin-state
-    restore paths feed. So a host cannot write patches into the emulation this way.
+  - **DT1 patch dumps apply since 2026-09-20 (CORRECTED).** The 2026-09-16 reading
+    ("never applied") rested on a byte-identical param list — which a *bank* write never
+    changes anyway. The real cause: a real patch file addresses the UserPatch **bank**
+    (`0x02000000`) and the wrapper's `jeController::parseSysexMessage` had an empty
+    `case AddressArea::UserPatch`, so the write went nowhere and the sounding
+    temp-performance patch stayed untouched. `JE8086.clap` now retargets host DT1s to
+    `PerformanceTemp | PatchUpper` (the plugin browser's own `Controller::sendSingle`
+    transform), and `load_je8086_preset` no longer appends a `CC0=1 USER + PC` recall (a
+    PC *loads* the bank program and discarded the dump). Device probe + gate:
+    `docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md`,
+    `FxMidiInjection.Je8086UserPatchDumpChangesOfflineRender`. **Confirming a load:**
+    use `poll_fx_capture` + a render A/B — the param list does **not** move for a
+    patch dump (a bank write never changed it, and the SysEx path does not echo back),
+    and the live child state blob stayed constant too (2026-09-21). The durable
+    readback is the persisted `IDs::presetSysex` replay, which is why a rebuilt child
+    reproduces the patch exactly.
   - **Captured state and renders (CORRECTED 2026-09-16).** An isolated render
     instantiates a fresh child that restores `IDs::pluginState`, so an export only
     sounds like the live instance when the plugin's own `getStateInformation`
-    carries the patch. The JP-8080 emulation's 233-byte state does not - that is why
-    exports play its default patch, and it is plugin-side. Measured directly by
+    carries the patch. The JP-8080 emulation's 233-byte state did not (2026-08 build;
+    superseded by the custom `JPAR` CLAP 2026-09-18 and the DT1 retarget 2026-09-20) -
+    which is why exports then played its default patch. Measured directly by
     holding the SLOT fixed (isolated, created via `add_fx {pluginId}`) and varying
     only the presence of a captured state: both renders were identical to 16 digits
     (`peak 0.10575640201568604`, rms 0.032181 vs 0.032177). Restoring a captured

@@ -1,0 +1,2104 @@
+{
+ "appliesVia": "set_fx_param",
+ "counts": {
+  "identity": 8,
+  "indexMapped": 0,
+  "movement": 85,
+  "offsetMapped": 0,
+  "total": 93,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "stateBlob",
+ "durabilityNote": "F-A RESOLVED 2026-09-20 (hardware-va-suite.md section 9 CORRECTION): state once travelled as 140-600 chunked pipe messages and timed out against the child's 12 s OS warmup; the stateSet SHM ring (1 MiB, lock-free, applied from the child's audio loop) now delivers ROM+OBST+PRGS+JPAR in ~30 ms and the gate round-trips (deltas ~0.019, VERDICT ROUND-TRIPS). The earlier row-2 'round-trips' claim and the 'no JPAR-equivalent chunk' mechanism note are both superseded. A host param VALUE still reaches the OS only if the live child applied it first, and the host param cache / live GET_STATE blob are NOT valid readbacks for these devices (2026-09-21 readback contract) - confirm with a rebuilt-render A/B before budgeting automation.",
+ "engine": "virus",
+ "params": [
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 4 Amount",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 4 Destination",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 4 Source",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 5 Amount",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 5 Destination",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 5 Source",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 6 Amount",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 6 Destination",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign 6 Source",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign1 Amount",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign1 Destination",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign1 Source",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign2 Amount1",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign2 Amount2",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign2 Destination1",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign2 Destination2",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign2 Source",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign3 Amount1",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign3 Amount2",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign3 Amount3",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign3 Destination1",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign3 Destination2",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign3 Destination3",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "mod-matrix",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Assign3 Source",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "distortion-drive",
+    "mix-balance"
+   ],
+   "name": "Bass Intensity",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:distortion",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "Bass Tune",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Chorus Delay",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Chorus Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "riser",
+    "chorus-motion"
+   ],
+   "name": "Chorus Feedback",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:riser",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "chorus-motion",
+    "wave-morph"
+   ],
+   "name": "Chorus Lfo Shape",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion",
+    "mix-balance"
+   ],
+   "name": "Chorus Mix",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Chorus Rate",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Chorus/LowHigh Bal",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Chorus/Mic Angle",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion",
+    "mix-balance"
+   ],
+   "name": "Chorus/Mix2",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Chorus/Speed",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Chorus/Type",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Chorus/X Over",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "Delay Clock",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "wave-morph"
+   ],
+   "name": "Delay Lfo Shape",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "Delay Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "Delay Send",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "Delay Time",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "Delay/Tape Delay Center Frequency",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "riser",
+    "delay-throw"
+   ],
+   "name": "Delay/Tape Delay Feedback",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:riser",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "Delay/Tape Delay Modulation",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-distortion",
+   "index": null,
+   "intents": [
+    "distortion-drive"
+   ],
+   "name": "Distortion Curve",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:distortion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-distortion",
+   "index": null,
+   "intents": [
+    "distortion-drive"
+   ],
+   "name": "Distortion Intensity",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:distortion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-reverb",
+   "index": null,
+   "intents": [
+    "reverb-space",
+    "env-shape"
+   ],
+   "name": "Dly Rate / Rev Decay",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:reverb-space",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-eq",
+   "index": null,
+   "intents": [
+    "eq-shape"
+   ],
+   "name": "HighEQ Frequency",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-eq",
+   "index": null,
+   "intents": [
+    "eq-shape"
+   ],
+   "name": "HighEQ Gain",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "dynamics",
+   "index": null,
+   "intents": [
+    "pump"
+   ],
+   "name": "Input Follower Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:pump"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "dynamics",
+   "index": null,
+   "intents": [
+    "pump",
+    "env-shape"
+   ],
+   "name": "Input Follower/Attack",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:pump",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "dynamics",
+   "index": null,
+   "intents": [
+    "pump",
+    "mix-balance"
+   ],
+   "name": "Input Follower/Level",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:pump",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "dynamics",
+   "index": null,
+   "intents": [
+    "pump",
+    "env-shape"
+   ],
+   "name": "Input Follower/Release",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:pump",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-ringmod",
+   "index": null,
+   "intents": [
+    "ring-mod"
+   ],
+   "name": "Input Ringmodulator",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:ring-mod"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "LFO1 Assign Amount",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "LFO1 Assign Dest",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "LFO2 Assign Amount",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "LFO2 Assign Dest",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo1 Clock",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo1 Env Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:categoryDefault:lfo"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo1 Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo2 Clock",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo2 Env Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:categoryDefault:lfo"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo2 Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo3 Clock",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Lfo3 Destination",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo3 Fade-In Time",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo3 Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-eq",
+   "index": null,
+   "intents": [
+    "eq-shape"
+   ],
+   "name": "LowEQ Frequency",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-eq",
+   "index": null,
+   "intents": [
+    "eq-shape"
+   ],
+   "name": "LowEQ Gain",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-eq",
+   "index": null,
+   "intents": [
+    "eq-shape"
+   ],
+   "name": "MidEQ Frequency",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-eq",
+   "index": null,
+   "intents": [
+    "eq-shape"
+   ],
+   "name": "MidEQ Gain",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-eq",
+   "index": null,
+   "intents": [
+    "eq-shape"
+   ],
+   "name": "MidEQ Q-Factor",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Phaser Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "riser",
+    "phaser-sweep"
+   ],
+   "name": "Phaser Feedback",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:riser",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Phaser Frequency",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep",
+    "mix-balance"
+   ],
+   "name": "Phaser Mix",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:phaser-sweep",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Phaser Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Phaser Rate",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Phaser Spread",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-ringmod",
+   "index": null,
+   "intents": [
+    "pump",
+    "ring-mod"
+   ],
+   "name": "Ringmodulator Volume",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:pump",
+    "grammar:ring-mod"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "Settings/ValueKeys Repeat Delay",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:categoryDefault:fx-delay"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "Switches/Delay Enable",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:categoryDefault:fx-delay"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal"
+   ],
+   "name": "Vocoder Link",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:formant-vocal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal"
+   ],
+   "name": "Vocoder Mode",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:formant-vocal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "mix-balance"
+   ],
+   "name": "Vocoder/Balance",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:formant-vocal",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal"
+   ],
+   "name": "Vocoder/Carrier Center Frequency",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:formant-vocal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "eq-shape"
+   ],
+   "name": "Vocoder/Carrier Q Factor",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:formant-vocal",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal"
+   ],
+   "name": "Vocoder/Modulator Frequency Spread",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:formant-vocal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "eq-shape"
+   ],
+   "name": "Vocoder/Modulator Q Factor",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:formant-vocal",
+    "grammar:eq-shape"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "env-shape"
+   ],
+   "name": "Vocoder/Release",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "mod-matrix"
+   ],
+   "sources": [
+    "matrix:virus.json",
+    "grammar:formant-vocal",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "patchCount": 127,
+  "sheet": "matrix_presets/virus.json",
+  "unmatchedIndexNames": []
+ },
+ "verifiedOn": "2026-09-21"
+}

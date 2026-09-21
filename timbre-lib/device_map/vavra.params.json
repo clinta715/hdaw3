@@ -1,0 +1,6735 @@
+{
+ "appliesVia": "waldorf_dump",
+ "counts": {
+  "identity": 22,
+  "indexMapped": 0,
+  "movement": 54,
+  "offsetMapped": 86,
+  "total": 363,
+  "trap": 287,
+  "unclassified": 0
+ },
+ "durability": "presetSysex",
+ "durabilityNote": "Dumps apply since 2026-09-19 (0x20 single-mode edit-buffer retarget; live rms 0.0094->0.0151, rebuilt-from-tree replay D0.0054) and are the DURABLE route for LIVE sound. 7557 host params (96 curated sound/FX x 16 parts) are reachable via set_fx_param AND land in the param cache, but LIVE writes do NOT move the render (2026-09-21, VavraHostParamsLiveReachability; the old 'VavraHostParamsChangeRender |delta|>1e-5' pass was below the live child's own ~8e-3 mode-flip noise, and Xenia/NodalRed2x DO move on the same harness so the null is Vavra-specific). They are NOT dead: replayed from the appliedParamOverrides ledger into a fresh export child they ARE audible and monotonic (VavraHostParamOfflineReplayAffectsExport: export rms 0.00631; every Ch N AmpVolume ->0 = 0.0023, ->1 = 0.0086). Wrapper source verified structurally correct (mqstate.cpp SingleParameterChange -> 0x20 edit buffer; packet indices match), so the gap is the LIVE write path - use dumps for live movement, offline/replayed renders for param overrides. FX sub-params are bit-aliases (derived-parameter collapse onto the type-level params).",
+ "engine": "vavra",
+ "params": [
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "F1Cutoff",
+   "note": null,
+   "offset": 85,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "F1CutoffMod",
+   "note": null,
+   "offset": 97,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "distortion-drive"
+   ],
+   "name": "F1Drive",
+   "note": null,
+   "offset": 88,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:distortion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "F1EnvMod",
+   "note": null,
+   "offset": 94,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "F1FmAmount",
+   "note": null,
+   "offset": 99,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "F1FmSource",
+   "note": null,
+   "offset": 98,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "key-vel-track"
+   ],
+   "name": "F1KeyTrack",
+   "note": null,
+   "offset": 93,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:key-vel-track"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "mod-source"
+   ],
+   "name": "F1ModSource",
+   "note": null,
+   "offset": 96,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "F1Pan",
+   "note": null,
+   "offset": 100,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "pan-motion",
+    "mix-balance"
+   ],
+   "name": "F1PanMod",
+   "note": null,
+   "offset": 102,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:pan-motion",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "pan-motion",
+    "mix-balance",
+    "mod-source"
+   ],
+   "name": "F1PanModSource",
+   "note": null,
+   "offset": 101,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:pan-motion",
+    "grammar:mix-balance",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "resonance"
+   ],
+   "name": "F1Resonance",
+   "note": null,
+   "offset": 87,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:resonance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "filter-type"
+   ],
+   "name": "F1Type",
+   "note": null,
+   "offset": 84,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:filter-type"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "key-vel-track"
+   ],
+   "name": "F1VelMod",
+   "note": null,
+   "offset": 95,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:key-vel-track"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "F2Cutoff",
+   "note": null,
+   "offset": 105,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "F2CutoffMod",
+   "note": null,
+   "offset": 117,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "distortion-drive"
+   ],
+   "name": "F2Drive",
+   "note": null,
+   "offset": 108,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:distortion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "F2EnvMod",
+   "note": null,
+   "offset": 114,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "F2FmAmount",
+   "note": null,
+   "offset": 119,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "F2FmSource",
+   "note": null,
+   "offset": 118,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "key-vel-track"
+   ],
+   "name": "F2KeyTrack",
+   "note": null,
+   "offset": 113,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:key-vel-track"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "mod-source"
+   ],
+   "name": "F2ModSource",
+   "note": null,
+   "offset": 116,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "F2Pan",
+   "note": null,
+   "offset": 120,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "pan-motion",
+    "mix-balance"
+   ],
+   "name": "F2PanMod",
+   "note": null,
+   "offset": 122,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:pan-motion",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "pan-motion",
+    "mix-balance",
+    "mod-source"
+   ],
+   "name": "F2PanModSource",
+   "note": null,
+   "offset": 121,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:pan-motion",
+    "grammar:mix-balance",
+    "grammar:mod-source"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "resonance"
+   ],
+   "name": "F2Resonance",
+   "note": null,
+   "offset": 107,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:resonance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "filter-type"
+   ],
+   "name": "F2Type",
+   "note": null,
+   "offset": 104,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:filter-type"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "key-vel-track"
+   ],
+   "name": "F2VelMod",
+   "note": null,
+   "offset": 115,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:key-vel-track"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-mix",
+    "mix-balance"
+   ],
+   "name": "FX1Mix",
+   "note": null,
+   "offset": 136,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fx-mix",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-type"
+   ],
+   "name": "FX1Type",
+   "note": null,
+   "offset": 135,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fx-type"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-mix",
+    "mix-balance"
+   ],
+   "name": "FX2Mix",
+   "note": null,
+   "offset": 152,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fx-mix",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-type"
+   ],
+   "name": "FX2Type",
+   "note": null,
+   "offset": 151,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fx-type"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-ringmod",
+   "index": null,
+   "intents": [
+    "ring-mod",
+    "mix-balance"
+   ],
+   "name": "FiveFX1RingModLevel",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 144,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:ring-mod",
+    "grammar:mix-balance"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-ringmod",
+   "index": null,
+   "intents": [
+    "ring-mod",
+    "mix-balance"
+   ],
+   "name": "FiveFX2RingModLevel",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 160,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:ring-mod",
+    "grammar:mix-balance"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Fx1ChorusDelay",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 140,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Fx1ChorusDepth",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 138,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Fx1ChorusSpeed",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 137,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "riser",
+    "chorus-motion"
+   ],
+   "name": "Fx1FlangerFeedback",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 141,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:riser",
+    "grammar:chorus-motion"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Fx1FlangerPolarity",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 145,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-distortion",
+   "index": null,
+   "intents": [
+    "distortion-drive"
+   ],
+   "name": "Fx1OverdrivePostGain",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 139,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:distortion"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Fx1PhaserCenter",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 142,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Fx1PhaserSpacing",
+   "note": "derived-parameter collapse onto FX1Type/FX2Type/FX1Mix/FX2Mix",
+   "offset": 143,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "bit-alias"
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "env-shape"
+   ],
+   "name": "Fx1VocoderDecay",
+   "note": null,
+   "offset": 146,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal"
+   ],
+   "name": "Fx1VocoderEQBandMid",
+   "note": null,
+   "offset": 148,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "mix-balance"
+   ],
+   "name": "Fx1VocoderEQLevelHigh",
+   "note": null,
+   "offset": 150,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "mix-balance"
+   ],
+   "name": "Fx1VocoderEQLevelLow",
+   "note": null,
+   "offset": 147,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "mix-balance"
+   ],
+   "name": "Fx1VocoderEQLevelMid",
+   "note": null,
+   "offset": 149,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Fx2ChorusDelay",
+   "note": null,
+   "offset": 156,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Fx2ChorusDepth",
+   "note": null,
+   "offset": 154,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Fx2ChorusSpeed",
+   "note": null,
+   "offset": 153,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": null,
+   "intents": [
+    "pan-motion",
+    "mix-balance"
+   ],
+   "name": "Fx2DelayAutopan",
+   "note": null,
+   "offset": 162,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:pan-motion",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "riser",
+    "chorus-motion"
+   ],
+   "name": "Fx2FlangerFeedback",
+   "note": null,
+   "offset": 157,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:riser",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "Fx2FlangerPolarity",
+   "note": null,
+   "offset": 161,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-distortion",
+   "index": null,
+   "intents": [
+    "distortion-drive"
+   ],
+   "name": "Fx2OverdrivePostGain",
+   "note": null,
+   "offset": 155,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:distortion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Fx2PhaserCenter",
+   "note": null,
+   "offset": 158,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-phaser",
+   "index": null,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "name": "Fx2PhaserSpacing",
+   "note": null,
+   "offset": 159,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:phaser-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal"
+   ],
+   "name": "Fx2VocoderEQBandMid",
+   "note": null,
+   "offset": 164,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "mix-balance"
+   ],
+   "name": "Fx2VocoderEQLevelHigh",
+   "note": null,
+   "offset": 166,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "mix-balance"
+   ],
+   "name": "Fx2VocoderEQLevelLow",
+   "note": null,
+   "offset": 163,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-vocoder",
+   "index": null,
+   "intents": [
+    "formant-vocal",
+    "mix-balance"
+   ],
+   "name": "Fx2VocoderEQLevelMid",
+   "note": null,
+   "offset": 165,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:formant-vocal",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "NoiseBalance",
+   "note": null,
+   "offset": 75,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "NoiseLevel",
+   "note": null,
+   "offset": 74,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "osc-wave"
+   ],
+   "name": "NoiseModeF1",
+   "note": null,
+   "offset": 82,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:osc-wave"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": null,
+   "intents": [
+    "osc-wave"
+   ],
+   "name": "NoiseModeF2",
+   "note": null,
+   "offset": 83,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:osc-wave"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "O1Balance",
+   "note": null,
+   "offset": 69,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "O1FmAmount",
+   "note": null,
+   "offset": 14,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "O1FmSource",
+   "note": null,
+   "offset": 13,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "O1Level",
+   "note": null,
+   "offset": 68,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "wave-morph"
+   ],
+   "name": "O1Pwm",
+   "note": null,
+   "offset": 18,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "wave-morph"
+   ],
+   "name": "O1PwmSource",
+   "note": null,
+   "offset": 17,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "O2Balance",
+   "note": null,
+   "offset": 71,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "O2FmAmount",
+   "note": null,
+   "offset": 30,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "O2FmSource",
+   "note": null,
+   "offset": 29,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "O2Level",
+   "note": null,
+   "offset": 70,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "wave-morph"
+   ],
+   "name": "O2Pwm",
+   "note": null,
+   "offset": 34,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "wave-morph"
+   ],
+   "name": "O2PwmSource",
+   "note": null,
+   "offset": 33,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "O3Balance",
+   "note": null,
+   "offset": 73,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "O3FmAmount",
+   "note": null,
+   "offset": 46,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "O3FmSource",
+   "note": null,
+   "offset": 45,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "O3Level",
+   "note": null,
+   "offset": 72,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "wave-morph"
+   ],
+   "name": "O3Pwm",
+   "note": null,
+   "offset": 50,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "wave-morph"
+   ],
+   "name": "O3PwmSource",
+   "note": null,
+   "offset": 49,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:wave-morph"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "vibrato"
+   ],
+   "name": "PitchModAmount",
+   "note": null,
+   "offset": 58,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:vibrato"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [
+    "vibrato"
+   ],
+   "name": "PitchModSrc",
+   "note": null,
+   "offset": 57,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:vibrato"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-ringmod",
+   "index": null,
+   "intents": [
+    "ring-mod",
+    "mix-balance"
+   ],
+   "name": "RingModBalance",
+   "note": null,
+   "offset": 79,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:ring-mod",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-ringmod",
+   "index": null,
+   "intents": [
+    "ring-mod",
+    "mix-balance"
+   ],
+   "name": "RingModLevel",
+   "note": null,
+   "offset": 78,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json",
+    "offsetmap",
+    "grammar:ring-mod",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_10",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_103",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_106",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_109",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_11",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_110",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_111",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_112",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_12",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_123",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_124",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_125",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_126",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_127",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_128",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_129",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_130",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_131",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_132",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_133",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_134",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_15",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_16",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_167",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_168",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_169",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_170",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_171",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_172",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_173",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_174",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_175",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_176",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_177",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_178",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_179",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_180",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_181",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_182",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_183",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_184",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_185",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_186",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_187",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_188",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_189",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_19",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_190",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_191",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_192",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_193",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_194",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_195",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_196",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_197",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_198",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_199",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_20",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_200",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_201",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_202",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_203",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_204",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_205",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_206",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_207",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_208",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_209",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_21",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_210",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_211",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_212",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_213",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_214",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_215",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_216",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_217",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_218",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_219",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_22",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_220",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_221",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_222",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_223",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_224",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_225",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_226",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_227",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_228",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_229",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_23",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_230",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_231",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_232",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_233",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_234",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_235",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_236",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_237",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_238",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_239",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_24",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_240",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_241",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_242",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_243",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_244",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_245",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_246",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_247",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_248",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_249",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_25",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_250",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_251",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_252",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_253",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_254",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_255",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_256",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_257",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_258",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_259",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_26",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_260",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_261",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_262",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_263",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_264",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_265",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_266",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_267",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_268",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_269",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_27",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_270",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_271",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_272",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_273",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_274",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_275",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_276",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_277",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_278",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_279",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_28",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_280",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_281",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_282",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_283",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_284",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_285",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_286",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_287",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_288",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_289",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_290",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_291",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_292",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_293",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_294",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_295",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_296",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_297",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_298",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_299",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_300",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_301",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_302",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_303",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_304",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_305",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_306",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_307",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_308",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_309",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_31",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_310",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_311",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_312",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_313",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_314",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_315",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_316",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_317",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_318",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_319",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_32",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_320",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_321",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_322",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_323",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_324",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_325",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_326",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_327",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_328",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_329",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_330",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_331",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_332",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_333",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_334",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_335",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_336",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_337",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_338",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_339",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_340",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_341",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_342",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_343",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_344",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_345",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_346",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_347",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_348",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_349",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_35",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_350",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_351",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_352",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_353",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_354",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_355",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_356",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_357",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_358",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_359",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_36",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_360",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_361",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_362",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_363",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_364",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_365",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_366",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_367",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_368",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_369",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_37",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_38",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_39",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_40",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_41",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_42",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_43",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_44",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_47",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_48",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_51",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_52",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_53",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_54",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_55",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_56",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_59",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_60",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_61",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_62",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_63",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_64",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_65",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_66",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_67",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_7",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_76",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_77",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_8",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_80",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_81",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_86",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_89",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_9",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_90",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_91",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  },
+  {
+   "category": "unclassified",
+   "index": null,
+   "intents": [],
+   "name": "off_92",
+   "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it.",
+   "offset": null,
+   "roles": [
+    "fx"
+   ],
+   "sources": [
+    "matrix:vavra.json"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unnamed-dump-field"
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "patchCount": 527,
+  "sheet": "matrix_presets/vavra.json",
+  "unmatchedIndexNames": []
+ },
+ "verifiedOn": "2026-09-21"
+}

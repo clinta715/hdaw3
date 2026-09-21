@@ -1,0 +1,421 @@
+{
+ "appliesVia": "load_nord_bank",
+ "counts": {
+  "identity": 7,
+  "indexMapped": 0,
+  "movement": 10,
+  "offsetMapped": 0,
+  "total": 17,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "presetSysex",
+ "durabilityNote": "Bank SysEx loads audibly (verified live) and persists via the injected-SysEx capture path; HDAW shows 362 host params (Nord 2x voice selection is not host-controllable).",
+ "engine": "nodalred2x",
+ "params": [
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "filter_env_amount",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "filter_env_attack",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "filter_env_decay",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "filter_env_release",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": null,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "filter_env_sustain",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": null,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "fm_depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "lfo1_dest",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate",
+    "mix-balance"
+   ],
+   "name": "lfo1_level",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:mod-rate",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "lfo1_rate",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "wave-morph",
+    "osc-wave"
+   ],
+   "name": "lfo1_waveform",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:wave-morph",
+    "grammar:osc-wave"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "lfo2_dest",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": null,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "lfo2_rate",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "envelope",
+   "index": null,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "mod_env_attack",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "envelope",
+   "index": null,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "mod_env_decay",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "envelope",
+   "index": null,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "mod_env_dest",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "envelope",
+   "index": null,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "mod_env_level",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-distortion",
+   "index": null,
+   "intents": [
+    "distortion-drive",
+    "fm-metal"
+   ],
+   "name": "sync_distortion",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "lfo",
+    "mod"
+   ],
+   "sources": [
+    "matrix:nodalred2x.json",
+    "grammar:distortion",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "patchCount": 4246,
+  "sheet": "matrix_presets/nodalred2x.json",
+  "unmatchedIndexNames": []
+ },
+ "verifiedOn": "2026-09-21"
+}

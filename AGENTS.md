@@ -524,16 +524,36 @@ keep the arrange view smooth and avoid the "black screen" cliff (lesson 6, now m
    O(project) and are the hot path to keep incremental (the incremental routing
    path, default ON, avoids `rebuildRoutingGraph` for clip add/remove/move).
 
-## MCP feature parity
+## Feature parity: MCP + RPC (GUI parity not required)
 
-The MCP server is a first-class client of the engine, not a secondary surface.
-**Any feature available to the user through the UI must also be available
-through the MCP** — if a human can do it from the frontend, an MCP tool must be
-able to do it too. When you add a user-facing capability (a command, edit op,
-transport action, or project mutation), expose it as an MCP tool in the same
-change; when you audit a feature gap, the MCP side counts as unfinished until
-it's reachable. The UI and MCP share the same RPC/command layer, so this is
+Two parity contracts hold; a third intentionally does not.
+
+**MCP parity.** The MCP server is a first-class client of the engine, not a
+secondary surface. **Any feature available to the user through the UI must also
+be available through the MCP** — if a human can do it from the frontend, an MCP
+tool must be able to do it too. When you add a user-facing capability (a command,
+edit op, transport action, or project mutation), expose it as an MCP tool in the
+same change; when you audit a feature gap, the MCP side counts as unfinished
+until it's reachable. The UI and MCP share the same RPC/command layer, so this is
 usually wiring a tool onto an existing command rather than new engine work.
+
+**RPC parity (standing general rule).** Every MCP tool must also be reachable
+over the frontend JSON-RPC surface as `namespace.method`, dispatched by
+`frontend::dispatch` (`src/frontend/FrontendRouter.cpp`) into a
+`src/frontend/router/Router_<Domain>.cpp` handler — whether or not any UI control
+consumes it. Add the RPC method in the same change as the MCP tool.
+
+Where both surfaces read or shape the same artifact, put the shared logic in
+`src/common/` and call it from both rather than copying it. The worked example is
+the core-synth device map: `src/mcp/McpTools_Device.cpp` (`list_device_params`)
+and `src/frontend/router/Router_Device.cpp` (`device.listParams`) both delegate to
+`src/common/DeviceParamMap.{h,cpp}`, so identical payload + identical filters are
+**parity by construction, not by discipline**. A duplicated loader will drift.
+
+**GUI parity is NOT required.** Not every RPC/MCP capability needs a UI control —
+do not block a feature on frontend work. Where a UI control does exist it should
+go through the RPC path, and a genuinely user-facing capability still wants one
+eventually; but the agent/MCP surface is the contract and may ship first.
 
 ## Generative composition, randomization & modulation
 
@@ -615,8 +635,10 @@ product pillar and should be reached for wherever it fits:
   patches (2026-09-18 ear pass — delivery gap, see
   docs/handoffs/2026-09-18-gearmulator-custom-builds.md), `load_virus_preset` (CC0+PC)
   queues but does NOT change Osirus renders on the current build (preset-load ext
-  absent; finding F-A — under investigation), JE8086 DT1 dumps
-  do NOT apply (its 461 parameters do), Vavra exposes no host parameters and its
+  absent; finding F-A — under investigation), JE8086 DT1 dumps **do** apply since
+  2026-09-20 (wrapper retargets UserPatch → temp performance; `load_je8086_preset`),
+  as do its 461 parameters — confirm a dump via `poll_fx_capture` + render, not the
+  param list (§9), Vavra exposes no host parameters and its
   SysEx injection is MEASURED NOT APPLYING (2026-09-16/17: queued but state
   unchanged; channel filter excluded — see
   docs/plans/2026-09-16-matrix-preset-engine-fixes.md). **Prefer the device over a plugin for movement:**
@@ -660,6 +682,40 @@ the same no-op is **2 s (0 steps)** and the TU edit is **52 s (3 steps)**.
   fan-out (e.g. `src/common/ProjectCommands.h` → 155 TUs, ~260 s);
   `HDAW_lib` is built with LTO (`INTERPROCEDURAL_OPTIMIZATION`);
   `windeployqt` runs as a POST_BUILD step on `hdaw_tests`.
+
+### `cmake --build` never re-runs CMake here (the suppressed-regeneration trap)
+
+This build tree is configured with **`CMAKE_SUPPRESS_REGENERATION=ON`**
+(`build/CMakeCache.txt`, `UNINITIALIZED`), so `build.ninja` contains **no
+`build build.ninja: RERUN_CMAKE` statement at all** (verify:
+`Select-String build\build.ninja -Pattern ': RERUN_CMAKE'` → 0 hits). Ninja's
+special "regenerate the manifest first" behaviour is therefore compiled out:
+**editing `CMakeLists.txt` / `tests/CMakeLists.txt` does NOT trigger a
+reconfigure when you run `cmake --build` / `ninja`.**
+
+The failure mode is genuinely confusing, because the source is correct and only
+the *build graph* is stale:
+
+- You add a new `.cpp` **and** its `CMakeLists.txt` entry → the file is never
+  compiled (no `.obj` is ever produced) → the build fails at **link** with
+  `LNK2001: unresolved external symbol` for a function that plainly exists in
+  the source, or (worse) an edited `main()`/entry point never takes effect —
+  the same "the source says X" unreliability as lesson 15 / the `.ninja_deps`
+  trap, in a different disguise.
+- Diagnose: `Select-String build\build.ninja -Pattern '<NewFile>'` → **ABSENT**
+  means the graph was never regenerated (`build.ninja` mtime older than
+  `CMakeLists.txt` confirms it).
+
+- **Fix (always after adding/removing/renaming a source, target, or option):**
+  re-run CMake explicitly, then build:
+  `cmake -S . -B build` then `cmake --build build --target hdaw_tests`
+  (equivalently `cmake --build build --target rebuild_cache`, or
+  `cmake --regenerate-during-build -S . -B build` — what CMake itself would run).
+- **Do NOT** conclude "the tool/file is broken" from an unresolved external
+  before checking the manifest — confirm the new source is in `build.ninja`.
+- The suppression is deliberate (it keeps no-op builds from paying a CMake
+  manifest check). Keep it; just pair every structural edit with an explicit
+  configure.
 
 ### Test speed: shard the suite across processes (2026-09-21)
 

@@ -1,0 +1,1403 @@
+{
+ "appliesVia": "set_fx_param",
+ "counts": {
+  "identity": 13,
+  "indexMapped": 46,
+  "movement": 37,
+  "offsetMapped": 0,
+  "total": 52,
+  "trap": 2,
+  "unclassified": 0
+ },
+ "durability": "jpar",
+ "durabilityNote": "JPAR v1 chunk carries every exposed param's unnormalized value (jePluginProcessor save/load) -> param writes round-trip to offline renders and saves. DT1 patch dumps additionally persist via IDs::presetSysex replay (wrapper retarget, 2026-09-20).",
+ "engine": "je8086",
+ "params": [
+  {
+   "category": "amp-env",
+   "index": 73,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "AmpEnvelopeAttackTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "amp-env",
+   "index": 74,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "AmpEnvelopeDecayTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "amp-env",
+   "index": 76,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "AmpEnvelopeReleaseTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "amp-env",
+   "index": 75,
+   "intents": [
+    "env-shape",
+    "mix-balance"
+   ],
+   "name": "AmpEnvelopeSustainLevel",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 70,
+   "intents": [
+    "tremolo",
+    "mod-rate"
+   ],
+   "name": "AmpLfo1Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:tremolo",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 72,
+   "intents": [
+    "tremolo",
+    "mod-rate"
+   ],
+   "name": "AmpLfo2Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:tremolo",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": null,
+   "intents": [
+    "pan-motion",
+    "mix-balance"
+   ],
+   "name": "AutoPanManualPanSwitch",
+   "note": "in je8086_param_index_map unmatched list (no live plugin index)",
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "grammar:pan-motion",
+    "grammar:mix-balance"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unmatched-index"
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion",
+    "mix-balance"
+   ],
+   "name": "ChorusLevel",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "grammar:chorus-motion",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-chorus",
+   "index": null,
+   "intents": [
+    "chorus-motion"
+   ],
+   "name": "ChorusType",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "grammar:chorus-motion"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "amp-env",
+   "index": 124,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "ControlAmpEnvAttackTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": 121,
+   "intents": [
+    "pump",
+    "mix-balance"
+   ],
+   "name": "ControlAmpLevel",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:pump",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 122,
+   "intents": [
+    "tremolo",
+    "mod-rate"
+   ],
+   "name": "ControlAmpLfo1Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:tremolo",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": 98,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "ControlCrossModulationDepth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": 111,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "ControlCutoffFrequency",
+   "note": "Panel/remote-control layer (Control* prefix). Name-mapped only; has no SysEx dump offset (hardware-va-suite.md section 3). Map by NAME against list_fx_params, never by patch offset.",
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": 116,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "ControlFilterEnvDepth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 95,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "ControlLfo1Rate",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 97,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "ControlLfo2Rate",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": 108,
+   "intents": [
+    "detune-width"
+   ],
+   "name": "ControlOsc2FineWide",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:detune-width"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": 107,
+   "intents": [
+    "osc-wave"
+   ],
+   "name": "ControlOsc2Range",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:osc-wave"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": 99,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "ControlOscillatorBalance",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": 112,
+   "intents": [
+    "resonance"
+   ],
+   "name": "ControlResonance",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:resonance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "osc",
+   "index": 22,
+   "intents": [
+    "fm-metal"
+   ],
+   "name": "CrossModulationDepth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:fm-metal"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": 59,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "CutoffFrequency",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": 58,
+   "intents": [
+    "filter-sweep",
+    "filter-type"
+   ],
+   "name": "CutoffSlope",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:filter-sweep",
+    "grammar:filter-type"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": 86,
+   "intents": [
+    "riser"
+   ],
+   "name": "DelayFeedback",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:riser"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": 84,
+   "intents": [
+    "mix-balance"
+   ],
+   "name": "DelayLevel",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": 84,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "DelayTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-delay",
+   "index": 84,
+   "intents": [
+    "delay-throw"
+   ],
+   "name": "DelayType",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:delay-throw"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": 65,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "FilterEnvelopeAttackTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": 66,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "FilterEnvelopeDecayTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": 64,
+   "intents": [
+    "filter-sweep"
+   ],
+   "name": "FilterEnvelopeDepth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:filter-sweep"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": 68,
+   "intents": [
+    "env-shape"
+   ],
+   "name": "FilterEnvelopeReleaseTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter-env",
+   "index": 67,
+   "intents": [
+    "env-shape",
+    "mix-balance"
+   ],
+   "name": "FilterEnvelopeSustainLevel",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:env-stage",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 62,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "FilterLfo1Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 63,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "FilterLfo2Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 24,
+   "intents": [
+    "mod-routing"
+   ],
+   "name": "Lfo1AndEnvelopeDestination",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-routing"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 18,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo1Fade",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 17,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo1Rate",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 16,
+   "intents": [
+    "wave-morph",
+    "osc-wave"
+   ],
+   "name": "Lfo1Waveform",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:wave-morph",
+    "grammar:osc-wave"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 26,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo2DepthSelect",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 19,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "Lfo2Rate",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "part-mixer",
+   "index": 83,
+   "intents": [
+    "fx-mix",
+    "mix-balance"
+   ],
+   "name": "MultiEffectsLevel",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:fx-mix",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-type",
+   "index": null,
+   "intents": [
+    "fx-type"
+   ],
+   "name": "MultiEffectsType",
+   "note": "in je8086_param_index_map unmatched list (no live plugin index)",
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "grammar:fx-type"
+   ],
+   "stages": [],
+   "tier": "trap",
+   "trapReason": "unmatched-index"
+  },
+  {
+   "category": "lfo",
+   "index": 25,
+   "intents": [
+    "mod-rate"
+   ],
+   "name": "OscLfo1Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "pitch-env",
+   "index": 28,
+   "intents": [
+    "pitch-env",
+    "env-shape"
+   ],
+   "name": "PitchEnvelopeAttackTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:pitch-env",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "pitch-env",
+   "index": 29,
+   "intents": [
+    "pitch-env",
+    "env-shape"
+   ],
+   "name": "PitchEnvelopeDecayTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:pitch-env",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "pitch-env",
+   "index": 27,
+   "intents": [
+    "pitch-env"
+   ],
+   "name": "PitchEnvelopeDepth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:pitch-env"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "pitch-env",
+   "index": null,
+   "intents": [
+    "pitch-env",
+    "env-shape"
+   ],
+   "name": "PitchEnvelopeReleaseTime",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "grammar:pitch-env",
+    "grammar:env-stage"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "pitch-env",
+   "index": null,
+   "intents": [
+    "pitch-env",
+    "env-shape",
+    "mix-balance"
+   ],
+   "name": "PitchEnvelopeSustainLevel",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "grammar:pitch-env",
+    "grammar:env-stage",
+    "grammar:mix-balance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "lfo",
+   "index": 26,
+   "intents": [
+    "vibrato",
+    "mod-rate"
+   ],
+   "name": "PitchLfo2Depth",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:vibrato",
+    "grammar:mod-rate"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "index": 444,
+   "intents": [
+    "resonance"
+   ],
+   "name": "Resonance",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:resonance"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fx-ringmod",
+   "index": 21,
+   "intents": [
+    "ring-mod"
+   ],
+   "name": "RingModulatorSwitch",
+   "note": null,
+   "offset": null,
+   "roles": [
+    "baseline",
+    "env",
+    "fx",
+    "mod"
+   ],
+   "sources": [
+    "matrix:je8086.json",
+    "indexmap",
+    "grammar:ring-mod"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "patchCount": 3836,
+  "sheet": "matrix_presets/je8086.json",
+  "unmatchedIndexNames": [
+   "AutoPanManualPanSwitch",
+   "MultiEffectsType"
+  ]
+ },
+ "verifiedOn": "2026-09-21"
+}

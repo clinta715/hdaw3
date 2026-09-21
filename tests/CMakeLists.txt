@@ -29,6 +29,7 @@ add_executable(hdaw_tests
     integration/mcp/engine_tools_test.cpp
     integration/mcp/workflow_pack_test.cpp
     integration/mcp/matrix_presets_test.cpp
+    integration/mcp/device_params_test.cpp
     unit/proxy/common_test.cpp
     unit/proxy/pipe_test.cpp
     unit/proxy/shm_test.cpp
@@ -168,6 +169,7 @@ add_executable(hdaw_tests
     unit/frontend/loop_align_rpc_test.cpp
     unit/frontend/rhythm_generation_rpc_test.cpp
     unit/frontend/rave_rpc_test.cpp
+    unit/frontend/device_params_rpc_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     integration/proxy/isolation_integration_test.cpp
     integration/proxy/namespace_collision_test.cpp
