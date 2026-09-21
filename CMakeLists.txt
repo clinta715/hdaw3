@@ -218,6 +218,8 @@ src/engine/StretchRenderer.cpp
     src/common/PsyFmModMatrixView.cpp
     src/common/ParamOverrideLedger.cpp
     src/common/MatrixPresetService.cpp
+    src/common/SongPlanView.cpp
+    src/common/FxCaptureStatus.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp

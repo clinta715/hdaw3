@@ -5,6 +5,7 @@
 #include "../engine/AudioEngine.h"
 #include "../engine/SongStructureAudit.h"
 #include "../common/ProjectCommands.h"
+#include "../common/SongPlanView.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -409,22 +410,10 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
     // handoff evidence here instead of relying on external layers.json parsing;
     // audit_modulation_coverage verifies the modulation evidence mechanically.
     {
+        // The handoff JSON shape lives in src/common/SongPlanView.cpp — shared with
+        // the RPC method composition.getLayerHandoffs, so the surfaces cannot drift.
         auto handoffObj = [](const ProjectCommands::LayerHandoff& h) {
-            QJsonObject o;
-            if (!h.role.empty())          o["role"]          = QString::fromStdString(h.role);
-            if (!h.soundIntent.empty())   o["soundIntent"]   = QString::fromStdString(h.soundIntent);
-            if (!h.patternIntent.empty()) o["patternIntent"] = QString::fromStdString(h.patternIntent);
-            if (!h.modulation.empty())
-            {
-                const auto mod = QJsonDocument::fromJson(QString::fromStdString(h.modulation).toUtf8()).object();
-                o["modulation"] = mod.isEmpty() ? QJsonValue(QString::fromStdString(h.modulation)) : QJsonValue(mod);
-            }
-            if (!h.verify.empty())
-            {
-                const auto v = QJsonDocument::fromJson(QString::fromStdString(h.verify).toUtf8()).object();
-                o["verify"] = v.isEmpty() ? QJsonValue(QString::fromStdString(h.verify)) : QJsonValue(v);
-            }
-            return o;
+            return HDAW::layerHandoffJson(h);
         };
 
         s.registerTool({ "set_layer_handoff",
@@ -498,45 +487,11 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
                 int trackId = all ? -1 : a.value("trackId").toInt(-1);
                 if (!all && (trackId < 0 || trackId >= trackList.getNumChildren()))
                     return McpToolResult::text("trackId out of range", true);
-                QJsonArray arr;
-                auto emitEntry = [&arr](const juce::ValueTree& t) {
-                    QJsonObject o;
-                    o["trackId"] = t.getParent().indexOf(t);
-                    o["name"] = jstr(t.getProperty(IDs::name, "Track").toString());
-                    o["hasHandoff"] = t.hasProperty(IDs::layerRole) || t.hasProperty(IDs::layerSoundIntent)
-                        || t.hasProperty(IDs::layerPatternIntent) || t.hasProperty(IDs::layerModulation)
-                        || t.hasProperty(IDs::layerVerify);
-                    if (o["hasHandoff"].toBool())
-                    {
-                        auto rd = [](const juce::ValueTree& tt, const juce::Identifier& id) {
-                            return tt.getProperty(id, "").toString();
-                        };
-                        const QString role = jstr(rd(t, IDs::layerRole));
-                        const QString sound = jstr(rd(t, IDs::layerSoundIntent));
-                        const QString pattern = jstr(rd(t, IDs::layerPatternIntent));
-                        const QString mod = jstr(rd(t, IDs::layerModulation));
-                        const QString ver = jstr(rd(t, IDs::layerVerify));
-                        if (!role.isEmpty())    o["role"] = role;
-                        if (!sound.isEmpty())   o["soundIntent"] = sound;
-                        if (!pattern.isEmpty()) o["patternIntent"] = pattern;
-                        if (!mod.isEmpty())
-                        {
-                            const auto m = QJsonDocument::fromJson(mod.toUtf8()).object();
-                            o["modulation"] = m.isEmpty() ? QJsonValue(mod) : QJsonValue(m);
-                        }
-                        if (!ver.isEmpty())
-                        {
-                            const auto v = QJsonDocument::fromJson(ver.toUtf8()).object();
-                            o["verify"] = v.isEmpty() ? QJsonValue(ver) : QJsonValue(v);
-                        }
-                    }
-                    arr.append(o);
-                };
-                if (all)
-                    for (int i = 0; i < trackList.getNumChildren(); ++i) emitEntry(trackList.getChild(i));
-                else
-                    emitEntry(trackList.getChild(trackId));
-                return McpToolResult::text(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+                // Ledger shaping lives in src/common/SongPlanView.cpp — shared with
+                // the RPC method composition.getLayerHandoffs.
+                return McpToolResult::text(QString::fromUtf8(QJsonDocument(
+                    HDAW::layerHandoffsJson(trackList, all ? -1 : trackId))
+                        .toJson(QJsonDocument::Compact)));
             } });
     }
 
@@ -556,61 +511,8 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
             const auto audit = HDAW::auditSongStructure(
                 e->getProjectModel().getTrackListTree(), plan, bpm);
             return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(structureAuditJson(audit)).toJson(QJsonDocument::Compact)));
+                QJsonDocument(HDAW::structureAuditJson(audit)).toJson(QJsonDocument::Compact)));
         } });
-}
-
-QJsonObject structureAuditJson(const HDAW::SongStructureAudit& audit)
-{
-    if (!audit.hasPlan)
-        return QJsonObject{ { "ok", false }, { "hasPlan", false },
-                            { "note", "no song plan set — structure gates not evaluated" } };
-    QJsonArray sections, spans, dropsMissing;
-    for (const auto& s : audit.sections)
-    {
-        QJsonArray roles, kinds;
-        for (const auto& r : s.soundingRoles) roles.append(QString::fromStdString(r));
-        for (const auto& k : s.roleKinds) kinds.append(QString::fromStdString(k));
-        sections.append(QJsonObject{
-            { "name", QString::fromStdString(s.name) },
-            { "kind", QString::fromStdString(s.kind) },
-            { "bars", s.bars },
-            { "startBeat", s.startBeat },
-            { "endBeat", s.endBeat },
-            { "soundingRoles", roles },
-            { "roleKinds", kinds },
-            { "hasMelodic", s.hasMelodic },
-            { "hasBackbeat", s.hasBackbeat } });
-    }
-    for (const auto& sp : audit.spans)
-        spans.append(QJsonObject{
-            { "flag", QString::fromStdString(sp.flag) },
-            { "startName", QString::fromStdString(sp.startName) },
-            { "endName", QString::fromStdString(sp.endName) },
-            { "bars", sp.bars },
-            { "startBeat", sp.startBeat },
-            { "endBeat", sp.endBeat } });
-    for (const auto& n : audit.dropNamesMissingBackbeat)
-        dropsMissing.append(QString::fromStdString(n));
-    QJsonArray dropsThinner;
-    for (const auto& n : audit.dropNamesThinnerThanBuild)
-        dropsThinner.append(QString::fromStdString(n));
-    return QJsonObject{
-        { "ok", audit.ok },
-        { "hasPlan", true },
-        { "gates", QJsonObject{
-            { "boredomSpans", static_cast<int>(audit.spans.size()) },
-            { "allDropsHaveBackbeat", audit.dropNamesMissingBackbeat.empty() },
-            { "dropsAtLeastBuildLoad", audit.dropNamesThinnerThanBuild.empty() },
-            { "firstDropHasMotif", !audit.anyDrop || audit.firstDropHasMotif } } },
-        { "dropChecks", QJsonObject{
-            { "anyDrop", audit.anyDrop },
-            { "firstDrop", QString::fromStdString(audit.firstDropName) },
-            { "firstDropHasMotif", audit.firstDropHasMotif },
-            { "dropsMissingBackbeat", dropsMissing },
-            { "dropsThinnerThanBuild", dropsThinner } } },
-        { "sections", sections },
-        { "spans", spans } };
 }
 
 } // namespace mcp

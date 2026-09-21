@@ -6,6 +6,7 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../common/MasterFxDefs.h"
+#include "../common/FxCaptureStatus.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/EnvelopeGenerator.h"
@@ -446,14 +447,11 @@ s.registerTool({"get_fx_capture_status",
             .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
         if (!slotTree.isValid())
             return McpToolResult::text("slot not found in tree", true);
-        const QString status = QString::fromUtf8(
-            slotTree.getProperty(IDs::captureStatus, "none").toString().toRawUTF8());
-        const int stateBytes = static_cast<int>(slotTree.getProperty(IDs::captureBytes, 0));
-        const juce::int64 atMs = static_cast<juce::int64>(slotTree.getProperty(IDs::captureTimeMs, 0));
-        const QString stateB64 = QString::fromUtf8(
-            slotTree.getProperty(IDs::pluginState, "").toString().toRawUTF8());
+        // The receipt read lives in src/common/FxCaptureStatus.cpp — shared with the
+        // RPC method audio.getFxCaptureStatus. Output text is unchanged.
+        const auto st = HDAW::readFxCaptureStatus(slotTree);
         return McpToolResult::text(QString("status=%1 stateBytes=%2 capturedAtMs=%3 hasPluginState=%4")
-            .arg(status).arg(stateBytes).arg(atMs).arg(stateB64.isEmpty() ? 0 : 1));
+            .arg(st.status).arg(st.stateBytes).arg(st.capturedAtMs).arg(st.hasPluginState ? 1 : 0));
     }});
 s.registerTool({"load_virus_preset",
     "Load a Virus ROM preset into a gearmulator plugin slot (Osirus=Virus A/B/C, OsTIrus, Vavra, Xenia): CC0 bank select (0-7 = banks A-H singles) + program change (0-127), like the hardware front panel. Applies to the LIVE plugin instance; for offline exports capture via project save.",

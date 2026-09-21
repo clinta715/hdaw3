@@ -5,6 +5,7 @@
 #include "../../engine/Dx7SysexImport.h"
 #include "../../engine/MixReport.h"
 #include "../../common/ProjectCommands.h"
+#include "../../common/FxCaptureStatus.h"
 #include "../../common/SettingsKeys.h"
 
 #include <QJsonArray>
@@ -200,6 +201,25 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         QSettings s;
         s.setValue(SettingsKeys::kKeyAudioBufferSize, size);
         return { false, QJsonValue::Null };
+    }
+
+    // Deferred-capture receipt for one FX slot — the RPC twin of the MCP tool
+    // get_fx_capture_status (shared HDAW::readFxCaptureStatus, so the receipt cannot
+    // disagree between surfaces). Poll this after a bank load / preset apply instead
+    // of trusting the immediate capturedToTree=0: a deferred capture completes after
+    // the call returns. READ-ONLY.
+    if (m == "getFxCaptureStatus") {
+        int ti, si;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        auto slotTree = engine.getProjectModel().getTrackListTree()
+            .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
+        if (!slotTree.isValid()) return makeError(-32602, "slot not found in tree");
+        const auto st = HDAW::readFxCaptureStatus(slotTree);
+        return { false, QJsonObject{ { "status", st.status },
+                                     { "stateBytes", st.stateBytes },
+                                     { "capturedAtMs", static_cast<double>(st.capturedAtMs) },
+                                     { "hasPluginState", st.hasPluginState } } };
     }
 
     // FX A/B comparison: capture/swap plugin state snapshots.

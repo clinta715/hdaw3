@@ -59,8 +59,18 @@ tool body and the router handlers.
 | `rave` (13 tools) | **clean** | 11 have direct `rave.*` routes; `rave_get_config`/`rave_set_config` are reachable as `settings.getRaveConfig`/`setRaveConfig` (`Router_Project.cpp`, sharing `RaveService::persistedConfigJson`) |
 | `pool` | **clean** | `pool_list` maps to `pool.list`; the router even adds `pool.cleanup` (RPC is a superset) |
 | fx capture | **partly** | `capture_fx_snapshot`/`swap_fx_snapshot` map to `audio.captureFxSnapshot`/`swapFxSnapshot`; `snapshot_project` maps to `read.snapshot`; **`get_fx_capture_status` has no route** |
-| `song plan` / cells (18 tools) | **12 covered, 6 missing** | `Router_Composition` has the singular `setCellRecipe` but **not the batch `setCellRecipes`**, nor `get_clip_provenance`, `set_layer_handoff`, `clear_layer_handoff`, `get_layer_handoffs`, `audit_song_structure` |
+| `song plan` / cells (18 tools) | **15 covered, 3 missing** | real gaps: the BATCH `set_cells` (`setCellRecipes` — the router had only the singular `setCellRecipe`), `audit_song_structure` (`auditSongStructure`), and `get_layer_handoffs` (the ledger was **write-only** over RPC: `project.setLayerHandoff` / `clearLayerHandoff` existed with no reader). `get_clip_provenance`, `set_layer_handoff` and `clear_layer_handoff` **do** have routes — see the correction note below |
 | `tuning` (1 tool) | **missing** | `analyze_tuning` has no RPC route and there is no `tuning` namespace |
+
+**Correction (same day):** the first pass of this table was produced with a *keyword* filter
+over the `if (m == "..."` lines of the routers (`song|cell|reroll|brief|section`), which
+produced false positives **exactly like the name screen this audit exists to replace**:
+`getClipProvenance` contains none of those keywords, so it was reported missing when it has
+a route, and the handoff *writes* live in `Router_Project.cpp`, not `Router_Composition.cpp`.
+**Rule: join on the command symbol / method identifier**
+(`rg 'setCellRecipes|setLayerHandoff|auditSongStructure' src/frontend`), **never on a keyword
+filter.** The verified gap list before slice 3 was therefore 4 methods: `set_cells`,
+`audit_song_structure`, `get_layer_handoffs`, `get_fx_capture_status` — all fixed in slice 3.
 
 **Two corrections to this plan's own assumptions.** (a) The original candidate order named
 `Router_Matrix` and `Router_Tuning` — **neither file exists**; this plan now uses the real
@@ -184,6 +194,58 @@ other routes use — required for a surface-neutral payload. The error path is u
 itself is untouched and still serves `load_nord_bank`; de-duplicating it with the
 service's file route is item 4 below.
 
+## Slice 3 — song plan / cells + capture receipt (SHIPPED 2026-09-21)
+
+Four MCP tools had no RPC route (see the corrected audit table):
+
+| New RPC method | MCP twin | Why it mattered |
+| --- | --- | --- |
+| `composition.setCellRecipes` | `set_cells` | The **batch** cell write: `ProjectCommands::setCellRecipes` = ONE command, one undo unit, one message-loop tick. The router had only the singular `setCellRecipe`, so the batch path the performance rules require was unreachable from the frontend |
+| `composition.auditSongStructure` | `audit_song_structure` | The Mix Verifier's arrangement-variety gates (boredom spans, drop backbeats, first-drop motif) |
+| `composition.getLayerHandoffs` | `get_layer_handoffs` | The ledger was **write-only** over RPC — `project.setLayerHandoff`/`clearLayerHandoff` existed but nothing could read the evidence back |
+| `audio.getFxCaptureStatus` | `get_fx_capture_status` | The polling companion every capture/preset flow points at ("poll get_fx_capture_status to confirm") |
+
+### Implementation
+
+- **`src/common/SongPlanView.{h,cpp}`** (new) — the single shaping for
+  `layerHandoffJson`, `layerHandoffsJson` (whole ledger or one track, `hasHandoff`
+  detection, JSON-or-string `modulation`/`verify`) and `structureAuditJson`. The MCP
+  side now calls these too, so payloads cannot drift; the previous `mcp::structureAuditJson`
+  is gone (its unqualified call became **ambiguous via ADL** once the `HDAW::` twin
+  existed — a real compile error the build caught, resolved by qualifying both call sites).
+- **`src/common/FxCaptureStatus.{h,cpp}`** (new) — `readFxCaptureStatus(slotTree)`
+  returns {status, stateBytes, capturedAtMs, hasPluginState}; the MCP tool keeps its
+  exact prose (`status=… stateBytes=… capturedAtMs=… hasPluginState=…`, pinned by
+  `MatrixPresetsTest`) while formatting it from the shared read, and the RPC returns the
+  same four values as JSON.
+- **`Router_Composition.cpp`** — `setCellRecipes` + `getLayerHandoffs` +
+  `auditSongStructure`. **`Router_Audio.cpp`** — `getFxCaptureStatus`.
+- Argument naming follows each namespace's existing convention (`composition` uses
+  `trackId`, `project`/`audio` use `trackIndex`), which is why the error *text* differs
+  between surfaces for an out-of-range track while the verdict does not.
+- Documented asymmetry: the handoff **writes** stay in `project.*` (they need only
+  commands), the **read** lives in `composition.getLayerHandoffs` (it needs the engine's
+  track tree, and `dispatchProject` receives only `ProjectCommands&`).
+
+### Success gates
+
+| # | Gate | Status |
+| --- | --- | --- |
+| T1 | `composition.setCellRecipes` payload identical to `set_cells` (incl. a partial-failure batch: per-recipe `ok`/`error`, batch not aborted) | **PASS** |
+| T2 | `composition.auditSongStructure` payload identical to `audit_song_structure`, with and without a plan | **PASS** |
+| T3 | `composition.getLayerHandoffs` identical to `get_layer_handoffs` — empty ledger, after a real `project.setLayerHandoff` write (nested `modulation`/`verify` survive as JSON), and single-track vs all-tracks | **PASS** |
+| T4 | `audio.getFxCaptureStatus` returns the same four values the MCP prose reports | **PASS** |
+| T5 | Argument failures are clean `-32602` on both surfaces | **PASS** |
+| T6 | MCP behaviour unchanged (prose pinned, shared builders used) — `McpCoverageTest`, `McpServer`, `MatrixPresetsTest`, `ApplyPreset*`, `workflow_pack*`, `SongPlan.*`, `SongStructureAudit.*` | **PASS** |
+| T7 | Registry/RPC-surface sweep unaffected | **PASS** (216 tests / 12 suites in the combined run) |
+| T8 | Build graph — the three new files present in `build.ninja` after an explicit reconfigure | **PASS** |
+| T9 | Blast radius — no `processBlock` / DSP / `RoutingManager` / render / playback / plugin-isolation file touched | **PASS** |
+
+Evidence: `SongPlanRpcTest.*` 6/6 (new), and the combined sweep 216/216 across
+`ToolRegistry*`, `McpCoverage*`, `RpcSurface*`, `McpServer*`, `DeviceParams*`,
+`PsyFmRpcTest*`, `MatrixPresetsTest*`, `ApplyPreset*`, `workflow_pack*`, `SongPlan*`,
+`SongStructureAudit*`, `SongPlanRpcTest*`.
+
 ## Remaining backlog
 
 1. **Semantic pass over the remaining domains.** For each `Router_*.cpp`, list its
@@ -194,12 +256,28 @@ service's file route is item 4 below.
    (`src/frontend/router/`: Audio, AudioGraph, Composition, Device, Export, Library,
    Midi, Plugin, Pool, Preview, Project, PsyFm, Rave, Read, Sampler, Session,
    Transport). Confirmed status:
-   * **Matrix** — `list_matrix_presets` + `apply_matrix_preset` (`McpTools_Matrix.cpp`,
-     751 lines of Qt domain logic) have **no RPC route** and there is no `matrix`
-     namespace. Slice 2.
    * **Device** — done (slice 0, `src/common/DeviceParamMap.cpp`).
    * **PsyFm** — done (slice 1).
-   * Next candidates after Matrix: `Rave`, `Pool` (both have router files).
+   * **Matrix** — done (slice 2, `src/common/MatrixPresetService`).
+   * **Rave** — clean: its two config tools are reachable as
+     `settings.getRaveConfig` / `settings.setRaveConfig` (sharing
+     `RaveService::persistedConfigJson`). A false positive of the name screen.
+   * **Pool** — clean: `pool_list` maps to `pool.list`, and the router even adds
+     `pool.cleanup`, so the RPC surface is a superset. Also a false positive.
+   * **Song plan / cells + fx capture receipt** — done (slice 3): the batch
+     `set_cells`, `audit_song_structure`, `get_layer_handoffs` and
+     `get_fx_capture_status` now have RPC routes.
+   * **Tuning** — the one remaining confirmed gap: `analyze_tuning` has no route and
+     there is no `tuning` namespace. It needs `analyzeTuningText` / `analyzeTuningObject`
+     (~140 lines of spectral analysis) extracted from `McpTools_Tuning.cpp` into
+     `src/common/`, and it participates in the async job registry (`wait:false` +
+     `poll_job`) — so that slice must also decide whether to expose a generic
+     `audio.pollJob` or to document that each async domain has its own status route
+     (`rave.jobStatus`, `rave.trainingJobStatus`). `poll_job` is MCP-only today.
+   * **Untouched domains** (no gap found by the symbol join, no separate slice needed):
+     Clip/Note/Cc/Track/Transport/Read/Settings/Automation/Modulation/Send/Envelope/
+     Sampler/FmSynth/MidiFx/FxSlot/FxChain/FxPreset/Library/Session/AudioRead/Arranger/
+     Composition-* — their tools drive the same command entry points their routers do.
 2. ~~**A namespace-coverage gate.**~~ **DONE (slice 2).**
    `frontend::allMethodNamespaces()` (src/frontend/FrontendRpc.h) is the single source and
    `tests/unit/frontend/rpc_namespace_coverage_test.cpp` asserts every namespace answers
@@ -209,6 +287,12 @@ service's file route is item 4 below.
 3. **Ratchet the guard.** Once the backlog is cleared, add a CI-style check (like the
    device-map `--check`) that fails when an MCP tool has no corresponding RPC method, so
    the contract stops depending on discipline.
+4. **De-duplicate the nord `.syx` file loader.** Slice 2 re-implemented the
+   validate-then-queue sequence inside `MatrixPresetService` (the matrix tool's file route
+   needed a structured payload), while `mcp::runNordBankFile` (`PresetRoute.h`) still
+   serves `load_nord_bank` with the same parsing/validation. One of them should delegate:
+   move the loader core next to the pure parser (`src/mcp/PresetFileParser.h` is
+   engine-surface only) and let each caller format its own output.
 
 ## Deviation / process notes
 

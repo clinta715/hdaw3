@@ -23,6 +23,7 @@
 #include <vector>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include "../engine/SongStructureAudit.h"
+#include "../common/SongPlanView.h"
 
 namespace mcp {
 
@@ -620,7 +621,7 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
                     return McpToolResult::text(
                         "mix_report: no plan sections fall inside the file duration", true);
                 hasSections = true;
-                structureJson = structureAuditJson(HDAW::auditSongStructure(
+                structureJson = HDAW::structureAuditJson(HDAW::auditSongStructure(
                     e->getProjectModel().getTrackListTree(), plan, bpm));
                 hasStructure = true;
             }

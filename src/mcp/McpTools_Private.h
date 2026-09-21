@@ -5,7 +5,6 @@
 #include <QString>
 
 namespace juce { class String; class ValueTree; }
-namespace HDAW { struct SongStructureAudit; }
 class AudioEngine;
 
 namespace mcp {
@@ -57,8 +56,5 @@ void registerSettingsDomain(McpServer& s, AudioEngine* e);
 void registerTuningTools(McpServer& s, AudioEngine* e);
 void registerRaveTools(McpServer& s, AudioEngine* e);
 void registerJobTools(McpServer& s);
-
-// Structure-audit JSON builder (implemented in McpTools_SongPlan.cpp).
-QJsonObject structureAuditJson(const HDAW::SongStructureAudit& audit);
 
 } // namespace mcp

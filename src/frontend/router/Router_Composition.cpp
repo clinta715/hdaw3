@@ -9,6 +9,9 @@
 #include "../../engine/PsytranceMarkovGenerator.h"
 #include "../../engine/CorpusArranger.h"
 #include "../../common/ProjectCommands.h"
+#include "../../common/SongPlanView.h"
+#include "../../model/ProjectModel.h"
+#include "../../engine/SongStructureAudit.h"
 #include "../../common/AudioGraphCommands.h"
 #include "../../engine/PatternLibrary.h"
 #include "../../engine/MidiAnalyzer.h"
@@ -236,6 +239,70 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (js.empty()) return makeError(-32602, "clip not found");
         auto doc = QJsonDocument::fromJson(QString::fromStdString(js).toUtf8());
         return { false, doc.object() };
+    }
+    if (m == "setCellRecipes") {
+        // BATCH variant of setCellRecipe — ONE command call, one undo unit and one
+        // message-loop tick for the whole set (AGENTS.md performance rule: a 9-role
+        // x 10-section track is 55 cells). A failing recipe is reported and does not
+        // abort the batch; nothing is written for it. Payload mirrors the MCP tool
+        // set_cells exactly (parity by construction).
+        const QJsonArray cells = o.value("cells").toArray();
+        if (cells.isEmpty()) return makeError(-32602, "cells array required");
+        std::vector<ProjectCommands::CellRecipe> recipes;
+        std::vector<QString> sections, roles;
+        recipes.reserve(static_cast<size_t>(cells.size()));
+        for (const auto& cv : cells) {
+            const auto co = cv.toObject();
+            ProjectCommands::CellRecipe rec;
+            rec.section = co.value("section").toString().toStdString();
+            rec.role = co.value("role").toString().toStdString();
+            rec.trackId = co.value("trackId").toInt(-1);
+            rec.sourceKind = co.value("source").toString().toStdString();
+            rec.paramsJson = cellParamsString(co.value("params")).toStdString();
+            rec.seed = (uint64_t) (long long) co.value("seed").toDouble(0);
+            rec.locked = co.value("locked").toBool(false);
+            recipes.push_back(rec);
+            sections.push_back(co.value("section").toString());
+            roles.push_back(co.value("role").toString());
+        }
+        std::vector<std::string> errors;
+        const int okCount = c.setCellRecipes(recipes, &errors);
+        QJsonArray results;
+        int failed = 0;
+        for (size_t i = 0; i < recipes.size(); ++i) {
+            QJsonObject r{ { "section", sections[i] }, { "role", roles[i] } };
+            if (i < errors.size() && !errors[i].empty()) {
+                r["ok"] = false;
+                r["error"] = QString::fromStdString(errors[i]);
+                ++failed;
+            } else r["ok"] = true;
+            results.append(r);
+        }
+        return { false, QJsonObject{ { "ok", failed == 0 }, { "count", okCount },
+                                     { "failed", failed }, { "cells", results } } };
+    }
+    if (m == "getLayerHandoffs") {
+        // The layer-handoff ledger (read back what setLayerHandoff / clearLayerHandoff
+        // in project.* write). READ-ONLY. Lives here rather than in project.* because
+        // reading needs the track tree (engine), while those writes need only commands
+        // — a documented asymmetry (docs/plans/2026-09-21-rpc-parity-retrofit.md).
+        // trackIndex omitted => every track; entries carry hasHandoff=false when empty.
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        const bool all = !o.contains("trackIndex");
+        const int trackIndex = all ? -1 : o.value("trackIndex").toInt(-1);
+        if (!all && (trackIndex < 0 || trackIndex >= trackList.getNumChildren()))
+            return makeError(-32602, "trackIndex out of range");
+        return { false, HDAW::layerHandoffsJson(trackList, trackIndex) };
+    }
+    if (m == "auditSongStructure") {
+        // READ-ONLY arrangement-variety audit (Mix Verifier boredom/static-span gates).
+        // Same payload as the MCP tool audit_song_structure via the shared
+        // HDAW::structureAuditJson — no render, no mutation.
+        const auto plan = c.getSongPlan();
+        const double bpm = engine.getProjectModel().getTree().getProperty(IDs::tempo, 0.0);
+        const auto audit = HDAW::auditSongStructure(
+            engine.getProjectModel().getTrackListTree(), plan, bpm);
+        return { false, HDAW::structureAuditJson(audit) };
     }
     if (m == "generateChoppedBreak") {
         int trackId, clipId;
