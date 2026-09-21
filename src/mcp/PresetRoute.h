@@ -299,15 +299,20 @@ inline McpToolResult runNordBankFile(AudioEngine& e, int ti, int si,
 }
 
 /// load_je8086_preset: Roland JP-8080 DT1 bank (.syx / .mid) -> validated dumps
-/// for ONE patch unit -> sendFxMidi (+ optional CC0 USER + PC recall).
+/// for ONE patch unit -> sendFxMidi.
 ///
 /// Per-patch by design: a 64-patch bank is 128 DT1 messages, while
 /// FxMidiParams carries at most 64 events and the proxy forwards SysEx over a
 /// single lane (a busy lane DROPS, it does not queue) - so a whole-bank burst
 /// would be both over the cap and lossy. One patch = 2 messages.
+///
+/// The dump is sent with its original UserPatch address; the JE8086 wrapper
+/// retargets it to the sounding temp performance (Controller parse path, same
+/// transform as the plugin's own patch browser) - see the comment at the
+/// sendFxMidi call for why no program-change recall is appended.
 inline McpToolResult runJe8086PatchFile(AudioEngine& e, int ti, int si,
                                         const QString& path, int presetIndex,
-                                        bool recallUserPatch, bool captureToTree)
+                                        bool captureToTree)
 {
     const juce::File f(juce::String::fromUTF8(path.toUtf8()));
     if (!f.existsAsFile())
@@ -387,22 +392,18 @@ inline McpToolResult runJe8086PatchFile(AudioEngine& e, int ti, int si,
         ev.sysex = d->raw;
         p.events.push_back(std::move(ev));
     }
-    if (recallUserPatch && unit.area == 2)
-    {
-        // JP-8080 recall: CC0=1 selects the USER bank, then PC selects the
-        // patch (PC 0..127 spans banks A+B, 64 patches each).
-        ProjectCommands::FxMidiEvent cc;
-        cc.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;
-        cc.channel = 1;
-        cc.data1 = 0;
-        cc.data2 = 1;
-        p.events.push_back(std::move(cc));
-        ProjectCommands::FxMidiEvent pc;
-        pc.kind = ProjectCommands::FxMidiEvent::Kind::ProgramChange;
-        pc.channel = 1;
-        pc.data1 = juce::jlimit(0, 127, unit.bank * 64 + unit.slot - 1);
-        p.events.push_back(std::move(pc));
-    }
+    // NO program-change recall. The wrapper retargets each UserPatch DT1 to
+    // PerformanceTemp | PatchUpper (controller parse path), which is what makes
+    // the file's patch sound. A JP-8080 program change does not just select a
+    // patch, it LOADS the bank program into the current patch, so appending
+    // CC0=1 (USER) + PC overwrites the dump with whatever the emulator's bank
+    // holds. Device probe, run6 (docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md):
+    // the recall alone changes the sound (rms 0.0043 -> 0.0133), and a recall
+    // after the retargeted dump lands back on that recall-only sound
+    // (delta vs the retargeted patch 0.00765, delta vs recall-only 0.0000245),
+    // discarding the imported patch. `load_je8086_preset` used to send it "so
+    // it sounds immediately"; the retarget now provides that.
+
     if (p.events.size() > 64)
         return McpToolResult::text("too many MIDI events for one injection", true);
 
@@ -410,12 +411,11 @@ inline McpToolResult runJe8086PatchFile(AudioEngine& e, int ti, int si,
     if (!r.ok)
         return McpToolResult::text("sendFxMidi failed: " + QString::fromStdString(r.error), true);
 
-    return McpToolResult::text(QString("queued %1 DT1 message(s) for %2 bank %3 slot %4 (patch %5 of %6)%7 capturedToTree=%8")
+    return McpToolResult::text(QString("queued %1 DT1 message(s) for %2 bank %3 slot %4 (patch %5 of %6) capturedToTree=%7")
                                    .arg(static_cast<int>(selected.size()))
                                    .arg(unit.area == 2 ? "patch-user" : "performance")
                                    .arg(unit.bank).arg(unit.slot)
                                    .arg(presetIndex).arg(static_cast<int>(units.size()))
-                                   .arg(recallUserPatch && unit.area == 2 ? " + CC0(USER)+PC recall" : QString())
                                    .arg(r.capturedToTree ? 1 : 0));
 }
 

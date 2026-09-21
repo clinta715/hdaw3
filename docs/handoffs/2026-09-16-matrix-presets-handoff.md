@@ -80,7 +80,11 @@ undo, save/load and an existing apply path for the no-param devices. **Caveat to
 engine:** a state only round-trips if the plugin's `getStateInformation` carries the patch —
 measured: the JP-8080's 233-byte state does **not** (hear != export), the Nord's bank load
 does. Use the D-lite methodology to check: apply → diff the captured state → render A/B
-(peak identical to 16 digits means the state is a no-op).
+(peak identical to 16 digits means the state is a no-op). *(Superseded for JE8086
+2026-09-20/21: its dumps now persist via the `IDs::presetSysex` replay and exports
+reproduce the patch — see `docs/handoffs/2026-09-20-je8086-userpatch-dt1-fix.md`. The
+general rule stands: prefer the dump-replay persistence wherever `getStateInformation`
+does not carry the change.)*
 
 ## Deliverables
 
@@ -129,12 +133,17 @@ does. Use the D-lite methodology to check: apply → diff the captured state →
 1. **4 of the 5 engines publish no host parameters** (OsTIrus and Vavra both measured at
    `{"params":[]}`). Parameter-level application is JE8086-only; the other engines need
    snapshot/CC/patch/SysEx paths.
-2. **JP-8080 DT1 patch dumps are never applied** by the emulation (its patch State is not on
-   the live MIDI path); parameter writes are.
+2. ~~**JP-8080 DT1 patch dumps are never applied** by the emulation (its patch State is not on
+   the live MIDI path); parameter writes are.~~ **SUPERSEDED 2026-09-20:** the root cause was
+   the empty `case AddressArea::UserPatch`; the wrapper now retargets host DT1s to the temp
+   performance, so dumps apply (see `docs/handoffs/2026-09-20-je8086-userpatch-dt1-fix.md`).
 3. **Map by NAME, never by dump offset** for JE8086 (the plugin's 461-param list is not the
    SysEx patch layout).
-4. **hear != export** for JE8086 (its state does not carry the patch). Verify by audition, and
-   do not promise a rendered result from a curated JE8086 patch.
+4. ~~**hear != export** for JE8086 (its state does not carry the patch). Verify by audition, and
+   do not promise a rendered result from a curated JE8086 patch.~~ **SUPERSEDED 2026-09-20/21:**
+   exports do carry the patch — the raw DT1 dumps persist in `IDs::presetSysex` and are replayed
+   into fresh children (a rebuilt child reproduces the patch to `|Δrms| 5.8e-08`). Audition-only
+   verification is no longer required.
 5. **A state capture that merely echoes the boot state is no longer persisted** (D-lite), and
    the deferred capture reports `captureStatus="unchanged"` — read that field before assuming a
    capture happened.

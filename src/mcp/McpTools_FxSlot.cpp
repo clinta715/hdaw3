@@ -451,12 +451,11 @@ s.registerTool({"load_nord_bank",
             a.value("captureToTree").toBool(true));
     }});
 s.registerTool({"load_je8086_preset",
-    "Load ONE Roland JP-8080 patch from a bank file (.syx raw DT1 SysEx, or .mid SMF wrapping DT1 SysEx) into a JE8086 plugin slot via injected MIDI SysEx, then recall it (CC0=1 USER + program change) so it sounds immediately. preset is the 1-based patch unit in file order (default 1) - use the je8086 sidecar survey roleShortlist refs (perf016/part2, bank0/slot25) to choose one. ATOMIC: every DT1 message is validated (F0 41 10 00 06 12 header, F7-terminated, Roland checksum, <=32768B) BEFORE anything is queued, so a corrupt bank never half-loads. Per-patch by design: a 64-patch bank is 128 DT1 messages while the injection carries at most 64 events and the proxy forwards SysEx over a single lane that DROPS when busy rather than queueing. Realtime mutation: not undoable; capture via project save.",
+    "Load ONE Roland JP-8080 patch from a bank file (.syx raw DT1 SysEx, or .mid SMF wrapping DT1 SysEx) into a JE8086 plugin slot via injected MIDI SysEx. preset is the 1-based patch unit in file order (default 1) - use the je8086 sidecar survey roleShortlist refs (perf016/part2, bank0/slot25) to choose one. ATOMIC: every DT1 message is validated (F0 41 10 00 06 12 header, F7-terminated, Roland checksum, <=32768B) BEFORE anything is queued, so a corrupt bank never half-loads. The dump keeps its UserPatch bank address; the JE8086 wrapper retargets it onto the sounding temp-performance patch (same transform as the plugin's own patch browser), so it sounds immediately. No CC0+program-change recall is sent - a JP-8080 PC loads the emulator's bank program into the current patch and would overwrite the applied dump. Per-patch by design: a 64-patch bank is 128 DT1 messages while the injection carries at most 64 events and the proxy forwards SysEx over a single lane that DROPS when busy rather than queueing. Realtime mutation: not undoable; capture via project save.",
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
               {"filePath", QJsonObject{{"type","string"}}},
-              {"preset",   QJsonObject{{"type","integer"}}},
-              {"recall",   QJsonObject{{"type","boolean"}}}},
+              {"preset",   QJsonObject{{"type","integer"}}}},
               {"trackId","slotIndex","filePath"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
@@ -464,7 +463,6 @@ s.registerTool({"load_je8086_preset",
             a.value("trackId").toInt(), a.value("slotIndex").toInt(),
             a.value("filePath").toString(),
             a.value("preset").toInt(1),
-            a.value("recall").toBool(true),
             a.value("captureToTree").toBool(true));
     }});
 s.registerTool({"set_master_fx_param",
@@ -761,7 +759,7 @@ s.registerTool({"apply_preset",
                 // program doubles as the 1-based patch unit for JP-8080 files
                 const int unit = a.contains("program") ? a.value("program").toInt(1) : 1;
                 return runJe8086PatchFile(*e, ti, si, path,
-                    unit > 0 ? unit : 1, true, capture);
+                    unit > 0 ? unit : 1, capture);
             }
             case PresetRouteKind::WaldorfSysex:
                 return runWaldorfSysexFile(*e, ti, si, path, pluginId, capture);

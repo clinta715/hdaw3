@@ -10,7 +10,7 @@ Pipeline: DSP descriptors -> CLAP captions + AudioSet tags -> Qwen2.5-3B prose.
 | `virus_patch.py` | `sub_synth` | Virus patch library | `<patch>.virus.json` | mapped onto the internal sub_synth |
 | `virus_fx_pages.py` | (enriches `sub_synth`) | Virus patch library | `<patch>.virus.json` rev 2 | FX/mod-matrix page decode; byte-match stop-gate; `harvest_matrix_presets` clusters it |
 | `nl2x_patch.py` | `nodalred2x` | `D:\pdf\NL2x Banks` | `<patch>.nl2x.json` | 6841 sidecars; `load_nord_bank` verified |
-| `je8086_patch.py` | `je8086` | `D:\pdf\je8086` | `<bank>.je8086.json` | + exploded per-patch tree; DT1 dumps do not apply |
+| `je8086_patch.py` | `je8086` | `D:\pdf\je8086` | `<bank>.je8086.json` | + exploded per-patch tree; DT1 dumps apply since 2026-09-20 (wrapper retarget) |
 | `microq_patch.py` | `vavra` | `D:\pdf\rhythm-lab.com_waldorf_micro_q` | `<patch>.vavra.json` | categories from the dump; no host params |
 | `microwave_patch.py` | `xenia` | `D:\pdf\microwave` | `<bank>.xenia.json` | .usb bank images (256x256 B) + SMF SingleDumps; 1791 patches; no host params |
 

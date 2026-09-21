@@ -316,11 +316,15 @@ emulations (any slow-booting child captured early has the same hazard).
    2674. Fixed in commit 814f898 (retry with one byte stripped), regression test
    added, survey + 46 sidecars regenerated.
 
-- (b) `load_je8086_preset {trackId, slotIndex, filePath, preset?, recall?}` —
-  DT1 bank → validated atomically → ONE patch unit injected into a JE8086 slot +
-  CC0(USER)+PC recall — commits `a9d2807` (loader) and `4573d0f` (MCP-surface
-  test). Per-patch by design (a 64-patch bank is 128 messages vs the 64-event
-  cap and a drop-on-busy sysex lane). Remaining live verification: inject → save
-  → export → measure against a real JE8086 instance, following the env-gated
-  `FxMidiInjection` probe pattern.
+- (b) `load_je8086_preset {trackId, slotIndex, filePath, preset?}` —
+  DT1 bank → validated atomically → ONE patch unit injected into a JE8086 slot —
+  commits `a9d2807` (loader) and `4573d0f` (MCP-surface test). Per-patch by design
+  (a 64-patch bank is 128 messages vs the 64-event cap and a drop-on-busy sysex
+  lane).
+  **SUPERSEDED 2026-09-20:** the original `CC0(USER)+PC` recall was removed — a
+  JP-8080 PC *loads* the bank program into the current patch and overwrote the dump
+  — and the DT1 dumps now actually apply (the wrapper retargets UserPatch →
+  `PerformanceTemp|PatchUpper`). Live verification DONE (gate
+  `FxMidiInjection.Je8086UserPatchDumpChangesOfflineRender`); evidence + fixes:
+  `docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md`, `docs/hardware-va-suite.md` §9.
 

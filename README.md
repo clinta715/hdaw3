@@ -33,7 +33,8 @@ pass `Debug` for breakpoint debugging.
   Register a bank folder as a **patch** library and `search_library` finds individual
   patches (`patchEngine`, `roleVerdict`, `category:` tags).
 - `load_je8086_preset` injects one JP-8080 patch into a JE8086 slot (atomic DT1
-  validation, CC0+PC recall); `load_nord_bank` loads Clavia banks (verified to change
+  validation; the wrapper retargets the dump onto the sounding temp performance so it
+  applies); `load_nord_bank` loads Clavia banks (verified to change
   the render); Virus ROM presets via `load_virus_preset` (CC0+PC); CC/PC injection for
   all via `send_fx_midi`.
 - Capability matrix, per-device modulation maps, transitional-effect recipes and the
