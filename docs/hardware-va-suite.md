@@ -356,9 +356,9 @@ name resolution for their vocabulary, so they were relabelled `set_fx_param`
 and the tool now resolves sheet names against the LIVE slot's own params.
 A/B (gate `FxMidiInjection.MatrixPresetAudibilityVirusVavra`, noise-floor aware):
 virus preset0 **66/66 params applied**, render delta **0.00152** (measured noise
-0); vavra preset0 **86/363 applied**, delta **0.00088** (noise 2.14e-05). The
-vavra remainder is the un-published slice of its 363-param patch — the FX/sound
-subset that is public drives the sound.
+0); vavra preset0 now takes the **device-native dump route** (below) and applies
+**363/363 values** with delta **0.00940** — ~10x the 0.00088 the host-param route
+managed, and 94x the threshold.
 
 ### File format
 
@@ -631,6 +631,48 @@ settled (non-`pending`, non-`failed`) receipt, and the offline-render delta
 `FxMidiInjection.MatrixPresetAudibilityVirusVavra` was added (2026-09-21).
 Note: run alone, the audibility test can still stall — several heavy TI children
 plus the real-time-paced warmup saturate the CPU.
+
+### Vavra matrix presets — the device-native dump route (2026-09-21)
+
+**Why host-param publishing does not work for the microQ FX block.** The vavra
+sheet carries the device's own patch vocabulary (363 values: 86 named + 277 raw
+`off_<N>` dump offsets). 91 of its FX-related params were *not* public, so
+flipping them to `isPublic` and rebuilding looked like the fix — measured, it
+adds **no** host parameter (live count unchanged at 7557 across a verified
+re-embed). The reason is in the wrapper: `jucePluginLib/controller.cpp`
+**collapses params that share an `(index, part)` into one host parameter with
+*derived* children**, and the microQ's FX sub-parameters deliberately share
+indexes 146-155 (`Fx2ChorusSpeed` / `Fx2FlangerSpeed` / `Fx2PhaserSpeed` are all
+index 146 — their meaning is set by `Fx2Type`). Publishing them can never create
+a new host param; the type-level params (`FX1Type`/`FX2Type`/`FX1Mix`/`FX2Mix`)
+are already public and remain the automatable surface. The change was reverted.
+
+**The route that works: sheet → 392-byte single dump → Waldorf SysEx.**
+`timbre-lib/vavra_matrix_sysex.py` stamps every vavra preset with a complete,
+ready-to-inject dump:
+
+* **parent** = the preset's first corpus example, resolved by the patch name
+  **embedded in the dump** (bytes 370-385) — library *filenames* carry a category
+  suffix (`Acid bender   CJ Arp.syx`) while the corpus names the patch
+  (`Acid bender   CJ`); 40/40 examples match that way, 511 dumps indexed;
+* **overrides** = the preset's params mapped to byte offsets via
+  `vavra_offset_map.json` for named keys and taken raw for `off_<N>`, then applied
+  by `vavra_dump.build_dump` (392 bytes, `F0 3E 10 00 10 …`);
+* the dump is stored on the preset as `sysex` (392 ints) with `appliesVia:
+  waldorf_dump`, `baseSyx` and `sysexOverrides` recorded.
+
+Result: **40/40 presets stamped, 363/363 parameter bytes verified byte-exact
+(0 mismatches)**. `apply_matrix_preset` gained a preset-level dump branch that
+injects it through the same validated SysEx path as the morph steps (checked:
+F0/F7 framing), so `apply_matrix_preset {engine: vavra, id: …}` now applies the
+whole patch natively — the emulated OS does the work, exactly like a real patch
+transfer. The branch is inert for the other sheets (only `vavra.json` carries
+preset-level `sysex`; je8086/virus stay on `set_fx_param`, nodalred2x/xenia
+unchanged).
+
+**Gate:** `FxMidiInjection.MatrixPresetAudibilityVirusVavra` — vavra
+`route=device_dump bytes=392 base=Technodoodah  CJ Arp.syx` with render delta
+**0.00936** (noise-floor threshold 1e-4); virus unchanged at 66/66.
 
 ## 6. Pipeline commands (one line each)
 

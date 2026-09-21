@@ -2015,6 +2015,43 @@ TEST(FxMidiInjection, MatrixPresetAudibilityVirusVavra)
         const auto sheet = juce::JSON::parse(sheetText);
         const auto* presets = sheet.getProperty("presets", juce::var()).getArray();
         ASSERT_TRUE(presets != nullptr && !presets->isEmpty()) << en.id << ": sheet has no presets";
+
+        // Device-native dump route: when the sheet carries a complete dump for
+        // the preset (vavra - built offline from the same params by
+        // timbre-lib/vavra_matrix_sysex.py), inject it. Those values ARE the
+        // device's patch vocabulary, and its FX sub-parameters cannot become
+        // host params at all (they share indexes, so the wrapper collapses them
+        // into single host params with derived children). The emulated OS
+        // applies the dump natively, exactly like a real patch transfer.
+        const auto dumpVar = (*presets)[0].getProperty("sysex", juce::var());
+        if (const auto* dumpArr = dumpVar.getArray(); dumpArr != nullptr && !dumpArr->isEmpty())
+        {
+            ProjectCommands::FxMidiParams dp;
+            dp.trackIndex = a1.trackIndex;
+            dp.slotIndex = a1.slotIndex;
+            dp.captureToTree = true;
+            ProjectCommands::FxMidiEvent dev;
+            dev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
+            for (const auto& b : *dumpArr)
+                dev.sysex.push_back(static_cast<uint8_t>(static_cast<int>(b) & 0xFF));
+            dp.events.push_back(std::move(dev));
+            const auto dr = cmds.sendFxMidi(dp);
+            ASSERT_TRUE(dr.ok) << en.id << ": dump injection failed: " << dr.error;
+            if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+                mm->runDispatchLoopUntil(4000);
+            auto rd = render();
+            ASSERT_TRUE(rd.ok) << en.id << ": post-dump render failed: " << rd.error;
+            const float ddelta = std::abs(rd.rms - a1.rms);
+            const float dfloor = (std::max)(1e-4f, 3.0f * noise);
+            std::cout << "[MatrixAB] " << en.id << " route=device_dump bytes=" << dumpArr->size()
+                      << " base=" << (*presets)[0].getProperty("baseSyx", "").toString().toStdString()
+                      << " rms=" << rd.rms << " delta=" << ddelta
+                      << " threshold=" << dfloor << "\n";
+            EXPECT_GT(ddelta, dfloor)
+                << en.id << ": injected device dump did not change the offline render";
+            continue;
+        }
+
         const auto params = (*presets)[0].getProperty("params", juce::var());
         const auto* obj = params.getDynamicObject();
         ASSERT_TRUE(obj != nullptr) << en.id << ": preset 0 has no params";

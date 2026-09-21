@@ -601,6 +601,45 @@ void registerMatrixTools(McpServer& s, AudioEngine* e)
             if (!preset.isEmpty())
             {
                 const QString via = preset.value("appliesVia").toString();
+
+                // 0) Device-native dump route. The sheet may carry a complete,
+                //    ready-to-inject SysEx dump per preset (built offline from
+                //    the same harvested params by
+                //    timbre-lib/vavra_matrix_sysex.py via <engine>_offset_map.json).
+                //    This is the only route for values the host-parameter model
+                //    cannot express: the microQ's FX sub-parameters share indexes
+                //    (their meaning is set by Fx2Type), so the wrapper folds them
+                //    into single host params with derived children and publishing
+                //    them adds no host parameter at all.
+                const QJsonArray presetDump = preset.value("sysex").toArray();
+                if (!presetDump.isEmpty())
+                {
+                    if (presetDump.size() < 7
+                        || presetDump.first().toInt() != 0xF0
+                        || presetDump.last().toInt() != 0xF7)
+                        return McpToolResult::text(
+                            QString("preset '%1' carries a malformed SysEx dump").arg(id), true);
+                    ProjectCommands::FxMidiParams dp;
+                    dp.trackIndex = ti;
+                    dp.slotIndex = si;
+                    dp.captureToTree = a.value("captureToTree").toBool(true);
+                    ProjectCommands::FxMidiEvent dev;
+                    dev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
+                    for (const auto& b : presetDump)
+                        dev.sysex.push_back(static_cast<uint8_t>(b.toInt() & 0xFF));
+                    dp.events.push_back(std::move(dev));
+                    const auto dr = e->getProjectCommands().sendFxMidi(dp);
+                    if (!dr.ok)
+                        return McpToolResult::text(QString::fromStdString(dr.error), true);
+                    return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject {
+                        { "queued", dr.queued },
+                        { "route", "device_dump" },
+                        { "bytes", presetDump.size() },
+                        { "baseSyx", preset.value("baseSyx").toString() },
+                        { "captureDeferred", true }
+                    }).toJson(QJsonDocument::Compact)));
+                }
+
                 if (!via.isEmpty() && via != "set_fx_param")
                     return McpToolResult::text(
                         QString("preset '%1' appliesVia '%2' has no parameter-level apply path"
