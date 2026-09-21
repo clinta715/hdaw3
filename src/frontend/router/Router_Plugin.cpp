@@ -6,6 +6,8 @@
 #include "../../common/PluginService.h"
 #include "../../common/PluginParamService.h"
 #include "../../common/SettingsKeys.h"
+#include "../../engine/AudioEngine.h"
+#include "../../model/ProjectModel.h"
 
 #include <QEventLoop>
 #include <QJsonArray>
@@ -131,12 +133,36 @@ DispatchResult dispatchPlugin(PluginService& s, const QString& m, const QJsonVal
     return makeError(-32601, "unknown plugin method: " + m);
 }
 
-DispatchResult dispatchPluginParam(PluginParamService& s, const QString& m, const QJsonValue& params) {
+namespace {
+// Live slot index for `pluginID` on `trackIndex` (the FX chain's plugin slots
+// are addressed by id on the pluginParam surface). -1 when the slot is not in
+// the ReadModel projection.
+int findPluginSlotIndex(AudioEngine& engine, int trackIndex, const std::string& pluginId) {
+    const auto fxSlots = engine.getReadModel().getFxSlots(trackIndex);
+    for (int si = 0; si < static_cast<int>(fxSlots.size()); ++si)
+        if (fxSlots[si].pluginId == pluginId) return si;
+    return -1;
+}
+} // namespace
+
+DispatchResult dispatchPluginParam(AudioEngine& engine, const QString& m, const QJsonValue& params) {
+    auto& s = engine.getPluginParamService();
     const auto o = paramsObject(params);
     if (m == "getParams") {
         int i; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "trackIndex and pluginID required");
+        // Persisted offline-replay overrides for this slot: an index present in
+        // the ledger will also be replayed into every tree-copy render
+        // (export_audio / audition_plugin / verify_part). Lets a client — and an
+        // agent — tell live-only state from state that survives a render.
+        const int slotIndex = findPluginSlotIndex(engine, i, id);
+        std::vector<std::pair<int, float>> overrides;
+        if (slotIndex >= 0)
+            overrides = engine.getProjectCommands().getPluginParamOverrides(i, slotIndex);
         QJsonArray arr;
         for (const auto& p : s.getParams(i, id)) {
+            bool overridden = false;
+            for (const auto& ov : overrides)
+                if (ov.first == p.index) { overridden = true; break; }
             arr.append(QJsonObject{
                 // Field name is `paramIndex` (not `index`) for consistency
                 // with the write side (pluginParam.setParam's paramIndex),
@@ -148,6 +174,7 @@ DispatchResult dispatchPluginParam(PluginParamService& s, const QString& m, cons
                 { "text",        QString::fromStdString(p.text) },
                 { "label",       QString::fromStdString(p.label) },
                 { "automatable", p.automatable },
+                { "overridden",  overridden },
             });
         }
         return { false, arr };
@@ -162,6 +189,17 @@ DispatchResult dispatchPluginParam(PluginParamService& s, const QString& m, cons
         int i, pi; std::string id; float v;
         if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "paramIndex", pi, nullptr) || !requireFloat(o, "normalizedValue", v, nullptr))
             return makeError(-32602, "trackIndex, pluginID, paramIndex, normalizedValue required");
+        // Route through the shared command layer (same path as MCP
+        // set_fx_param) so the write is ALSO persisted into the slot's
+        // offline-replay ledger: a bare PluginParamService::setParam reaches
+        // the live child only, and no tree-copy render (export_audio /
+        // audition_plugin / verify_part) or save/load would see it.
+        // See docs/plans/2026-09-21-vavra-live-param-delivery.md.
+        const int slotIndex = findPluginSlotIndex(engine, i, id);
+        if (slotIndex >= 0) {
+            const int overrides = engine.getProjectCommands().setPluginParam(i, slotIndex, pi, v);
+            return { false, QJsonObject{ { "overrides", overrides } } };
+        }
         s.setParam(i, id, pi, v); return { false, QJsonValue::Null };
     }
     if (m == "getProgramCount")  { int i; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "trackIndex and pluginID required"); return { false, s.getProgramCount(i, id) }; }

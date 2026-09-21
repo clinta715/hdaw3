@@ -15,7 +15,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.36.0** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.37.0** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -56,12 +56,12 @@ classes, files, calls, docs) in `graphify-out/` — `graph.json` (queryable),
 Use it as the FIRST tool for blast-radius analysis, dependency tracing, and code
 discovery — it answers structural questions faster than grep.
 
-**Available as pi tools:** `graphify_query` (BFS natural-language traversal),
-`graphify_path` (shortest path between two nodes), `graphify_explain` (node
-explanation), `graphify_build` / `graphify_update` (rebuild), plus the
-`/graphify` skill / CLI. Kept current automatically: a `post-commit` hook
-rebuilds after each commit and a `--watch` background process (auto-started by
-the `.pi/extensions/graphify-watch.ts` pi extension) rebuilds on file changes.
+**Available through the project-local Graphify MCP:** `query_graph`, `get_node`,
+`get_neighbors`, `get_community`, `god_nodes`, `graph_stats`, and
+`shortest_path`. CLI fallbacks are `graphify query`, `graphify path`,
+`graphify explain`, and `graphify update`. Kept current automatically: a
+`post-commit` hook rebuilds after each commit and a `--watch` background process
+rebuilds on file changes.
 
 ### Workflow
 
@@ -82,9 +82,10 @@ the `.pi/extensions/graphify-watch.ts` pi extension) rebuilds on file changes.
 
 ### Rules
 
-- **Query, don't rebuild.** `graphify_query` / `graphify_path` /
-  `graphify_explain` never modify the repo; only `graphify_update` /
-  `graphify_build` write `graphify-out/` (and only when the graph is stale).
+- **Query, don't rebuild.** The project-local MCP query tools and the
+  `graphify query` / `graphify path` / `graphify explain` CLI fallbacks never
+  modify the repo; `graphify update` writes `graphify-out/` and should run only
+  when the graph is stale.
 - **Never invent an edge.** If the graph shows no connection, verify with
   grep/read before assuming.
 - **The graph is a snapshot.** Code added since the last build is missing —
@@ -496,6 +497,37 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     which makes the host push its stale cached edit buffer over a just-selected
     ROM program — re-assert selections with the selection-only path.
 
+27. **Every audit render is an export of a TREE COPY into a FRESH child — a
+    live-only write is never part of its input, and a parent-local param-cache
+    readback is NOT evidence that the child applied anything.** Both halves of this
+    produced false conclusions on 2026-09-21 (see
+    `docs/plans/2026-09-21-plugin-param-persistence.md`): (a) "Vavra host params do
+    not move the render, so the live write path is broken" — every render
+    (`audition_plugin`, `verify_part`, `export_audio`) is
+    `renderTrackWindow` → `ExportManager::startExport` on a **copy** of the tree in
+    a **fresh child**, so a write that only reached the live child was never in
+    that child's input; the trace shows it arriving and applying
+    (`P1 stageParam` → `P3F FLUSHED` → `C1 SET` → `C1 DRAINED`); (b) the old
+    "`|Δ|>1e-5` proves the param is audible" gates — `ProxiedParameter::setValue`
+    calls `setCache()` **before** `stageParam()`, so a
+    `PluginParamService::getParams` readback is a parent-local echo of the host's
+    own write and proves nothing about the child. The fixed contracts: plugin param
+    writes are **durable** via `IDs::appliedParamOverrides` (replayed into every
+    fresh child by `ExportManager::replayAppliedParamOverrides`); a live-**only**
+    write is visible through the opt-in `liveParamState` probe
+    (`AuditionParams::liveParamState` / `AuditionResult::usedLiveParamState`,
+    default OFF so the default probe keeps matching `export_audio`);
+    `clear_fx_param_overrides` drops the ledger; `appliedParamOverrides` writes
+    trigger **no** graph rebuild (the FX_SLOT listener early-returns) — keep it so.
+    **Rules:** (a) never judge a live-only write against a tree-derived render;
+    (b) never present a render A/B as audibility proof unless the separation beats
+    the harness's own variance — measured same-input spreads are 4.1e-07 (Vavra) up
+    to 0.0056 on ~0.05 RMS (Xenia), and one Xenia render moved ~17% between runs, so
+    only multi-x separations count (NodalRed2x 3.1-8.2x, Vavra ledger 2.4x, Vavra
+    live probe 8.4x); (c) when a gate's claim and its assertion disagree, fix the
+    claim — four headers here had drifted into asserting what their bodies could not
+    measure.
+
 ## Performance rules: batch RPCs, walk the tree incrementally
 
 Standing rules for any code that mutates or reads the project. These are what
@@ -733,6 +765,16 @@ safe). It shards small suites whole and large ones per test.
   emulations, so the longest shard dominates).
 - `run_fast_tests.bat` remains the fast iteration tier (excludes the
   render/recipe/spawn-heavy suites).
+- **Sharded runs can collide on the render temp file (found 2026-09-21).**
+  `renderTrackWindow` writes `%TEMP%\hdaw_render_<trackIndex>_<counter>.wav` and
+  the counter restarts per process, so two concurrent shards rendering the same
+  track index can pick the same path; one export then fails with
+  `export failed: Could not create output file`. Observed as exactly 1 spurious
+  failure in a 4-shard `FxMidiInjection` real-plugin run (22/23; the same test
+  passes solo in 25 s). Until the name is made process-unique (a pid in the name —
+  render-path change, needs sign-off), read that error in a sharded run as
+  contention, confirm by re-running the test serially, and prefer serial runs for
+  render-heavy sweeps.
 - **Pre-build time sync (WSL/Windows clock drift):** before ANY build/compile
   in this repo (`cmake --build`, `build-fast.bat`, `frontend\build.bat`, bare
   `ninja`, `npm run build`), invoke `skill: "pre-build-time-sync"` — it snaps
@@ -793,11 +835,12 @@ for a fix marker) before trusting the package.
 
 - **C++ engine tests (gtest):** `build/hdaw_tests.exe` (flat Ninja RelWithDebInfo layout — there is no `build/Debug/`; `build-fast.bat test` builds it, `build-fast.bat all` also builds `hdaw_plugin_host.exe` which the PluginIsolation/CrashRecovery suites require)
   - Filter: `--gtest_filter=SuiteName.*`
-  - Full suite: ~1328 tests, ~13 min. Fast iteration tier: `run_fast_tests.bat` (~3.3 min; excludes the render/recipe/spawn-heavy suites — run the full suite before delivery).
-  - Current baseline (2026-09-02, post DISABLED-test rewrite pass): 0 failed; 4 RealtimeSafety detector tests SKIP in release configs (`BufferCheck` is `#if JUCE_DEBUG`-only by design); 0 DISABLED — every formerly `DISABLED_` test is either re-enabled against current contracts (PluginIsolation ×4, ExportVolumeBypass.RealProjectVolumeSensitivity, TrackFXSlotShowEditor — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md`) or re-enabled after its fix (`ExportAudioWithMultipleIsolatedInstances`, commit abf8a3d).
+  - Full suite: **1755 tests / 261 suites, ~44 min** (measured 2026-09-21 — the suite has grown ~30% from the 1328/216 of the 2026-09-02 note below; budget accordingly and prefer the focused tiers or the sharded runner for iteration). Fast iteration tier: `run_fast_tests.bat` (~3.3 min; excludes the render/recipe/spawn-heavy suites — run the full suite before delivery).
+  - Current baseline (2026-09-21, full serial run): **1755 tests / 261 suites -> 1716 passed, 39 skipped, 0 failed** (the skips are real-plugin gates without `HDAW_REAL_PLUGIN_TESTS`). The real-plugin `FxMidiInjection.*` suite was verified separately: 22/23 sharded, and the single failure (`XeniaEditBufferDumpChangesOfflineRender`, `Could not create output file`) was the cross-shard temp-file collision documented above and passes solo in 25 s.
+  - Previous baseline (2026-09-02, post DISABLED-test rewrite pass): 0 failed; 4 RealtimeSafety detector tests SKIP in release configs (`BufferCheck` is `#if JUCE_DEBUG`-only by design); 0 DISABLED — every formerly `DISABLED_` test is either re-enabled against current contracts (PluginIsolation ×4, ExportVolumeBypass.RealProjectVolumeSensitivity, TrackFXSlotShowEditor — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md`) or re-enabled after its fix (`ExportAudioWithMultipleIsolatedInstances`, commit abf8a3d).
   - Build sequentially: two concurrent `build-fast` invocations on the same `build/` dir overwrite each other's `.ninja_log`, and the next build re-runs as near-full. One build at a time.
   - WSL-side edits must be synced for the Windows compiler (drvfs/9p attribute cache shows stale content/mtimes for minutes): after editing from WSL, `cp <file> /mnt/c/temp/sync_tmp.cpp`, then from Windows `Copy-Item C:\temp\sync_tmp.cpp -> <D: path> -Force`, then touch `(Get-Item <path>).LastWriteTime = Get-Date`, and verify with PowerShell `Select-String`/`Get-Content` (never findstr through bash→cmd quoting). Symptom if skipped: ninja rebuilds "succeed" against stale sources. Verified recipe — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md` outcome.
-  - 1015→1328 tests across 182→216 suites: MCP tools/server, transport, tracks, clips,
+  - 1015→1755 tests across 182→261 suites: MCP tools/server, transport, tracks, clips,
     notes, FX, automation, undo, save/load, phrase generation, slicing, merge,
     ripple delete, ghost clips, stretch, markers, error conditions, batch ops,
     plugin isolation, audio pool, streaming, arranger, session, library,

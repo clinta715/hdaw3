@@ -27,6 +27,7 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
+#include "../common/ParamOverrideLedger.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -467,12 +468,14 @@ void writeAppliedParamOverrides(AudioEngine& e, int ti, int si,
     // Plain "idx=val;idx=val" ledger — deliberately NOT juce::var/JSON: the
     // var(DynamicObject*) -> JSON::toString round-trip produced an empty object
     // in this JUCE build (measured 2026-09-18: stored ledger was just "{").
+    // Grammar owned by src/common/ParamOverrideLedger.h (shared with
+    // AudioEngineCommands::setPluginParam — parity by construction).
     juce::String ledger;
     for (auto it = r.overrides.begin(); it != r.overrides.end(); ++it)
     {
-        const double v = it.value().toDouble();
         ledger += (ledger.isEmpty() ? juce::String() : juce::String(";"))
-                + juce::String(it.key().toStdString()) + "=" + juce::String(v, 6);
+                + HDAW::formatParamOverride(it.key().toInt(),
+                                            static_cast<float>(it.value().toDouble()));
     }
     if (!ledger.isEmpty())
         slotTree.setProperty(IDs::appliedParamOverrides, ledger, nullptr);

@@ -29,6 +29,7 @@ add_executable(hdaw_tests
     integration/mcp/engine_tools_test.cpp
     integration/mcp/workflow_pack_test.cpp
     integration/mcp/matrix_presets_test.cpp
+    integration/mcp/plugin_param_persist_test.cpp
     integration/mcp/device_params_test.cpp
     unit/proxy/common_test.cpp
     unit/proxy/pipe_test.cpp
@@ -161,6 +162,7 @@ add_executable(hdaw_tests
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
     unit/common/message_pump_test.cpp
+    unit/common/param_override_ledger_test.cpp
     unit/model/project_model_test.cpp
     unit/model/clip_slicing_test.cpp
     unit/frontend/frontend_server_test.cpp

@@ -746,6 +746,11 @@ TEST(FrontendServer, AuditionPluginRpc) {
     QJsonObject params{
         { "pluginId", "test.plugin.id" },
         { "windowSeconds", 1.0 },
+        // G8 parity: the opt-in live-state probe argument is accepted on the RPC
+        // surface. A fixture plugin id has no live host-written cache, so the
+        // honest answer stays false — the flag reports what happened, not what
+        // was requested.
+        { "liveParamState", true },
     };
     auto resp = client.call(1, "composition.auditionPlugin", params, 20000);
     ASSERT_FALSE(resp.isEmpty()) << "no response";
@@ -756,6 +761,9 @@ TEST(FrontendServer, AuditionPluginRpc) {
     EXPECT_TRUE(result.value("peak").isDouble());
     EXPECT_TRUE(result.value("rms").isDouble());
     EXPECT_TRUE(result.value("numPrograms").isDouble());
+    EXPECT_TRUE(result.contains("usedLiveParamState"));
+    EXPECT_FALSE(result.value("usedLiveParamState").toBool(true))
+        << "no live host-written params exist, so the probe cannot have used any";
 
     // The probe track was cleaned up (temp-probe contract).
     EXPECT_EQ(s.engine.getReadModel().getTrackCount(), before);

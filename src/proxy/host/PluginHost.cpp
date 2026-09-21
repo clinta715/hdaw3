@@ -1597,24 +1597,33 @@ void PluginHost::audioLoop()
                 auto& params = plugin->getParameters();
                 n = params.size();
                 struct SettledParam { uint32_t index; float value; };
-                SettledParam settled[256];
-                uint32_t setCalls = 0;
+                // Drain in bounded chunks. The read position must NEVER advance
+                // past an entry that was not applied: a bulk write larger than
+                // one chunk (a matrix-preset replay ledger, JE8086's 461 params)
+                // used to lose every entry past the first 256 while still
+                // advancing paramSetReadPos past them (silent truncation).
+                constexpr uint32_t kMaxPerChunk = 256;
+                SettledParam settled[kMaxPerChunk];
+                uint32_t totalCalls = 0;
                 while (pr != pw) {
-                    uint64_t packed = paramRing[pr & (proxy::PARAM_RING_SIZE - 1)]
-                                          .load(std::memory_order_relaxed);
-                    uint32_t idx = static_cast<uint32_t>(packed >> 32);
-                    uint32_t bits = static_cast<uint32_t>(packed & 0xFFFFFFFFull);
-                    float value;
-                    std::memcpy(&value, &bits, sizeof(float));
-                    if (idx < static_cast<uint32_t>(n) && setCalls < 256)
-                        settled[setCalls++] = { idx, value };
-                    ++pr;
-                    if (setCalls <= 4)
-                        PARAM_TRACE("C1 SET idx=%u v=%.6f", idx, (double)value);
-                    else if (setCalls == 5)
-                        PARAM_TRACE("C1 SET ... (%u more)", setCalls);
-                }
-                if (setCalls > 0) {
+                    uint32_t chunk = 0;
+                    while (pr != pw && chunk < kMaxPerChunk) {
+                        uint64_t packed = paramRing[pr & (proxy::PARAM_RING_SIZE - 1)]
+                                              .load(std::memory_order_relaxed);
+                        uint32_t idx = static_cast<uint32_t>(packed >> 32);
+                        uint32_t bits = static_cast<uint32_t>(packed & 0xFFFFFFFFull);
+                        float value;
+                        std::memcpy(&value, &bits, sizeof(float));
+                        if (idx < static_cast<uint32_t>(n)) {
+                            settled[chunk] = { idx, value };
+                            ++chunk;
+                            if (totalCalls + chunk <= 5)
+                                PARAM_TRACE("C1 SET idx=%u v=%.6f", idx, (double)value);
+                        }
+                        ++pr;
+                    }
+                    if (chunk == 0)
+                        break;  // every entry in this chunk was out of range
                     // Apply only after the first clock: pre-param warm boot.
                     if (!pluginWarmed) {
                         pluginWarmed = true;
@@ -1647,11 +1656,14 @@ void PluginHost::audioLoop()
                         }
                         PARAM_TRACE("C1 WARM done blocks=%d", kIdleWarmBlocks);
                     }
-                    for (uint32_t i = 0; i < setCalls; ++i)
+                    for (uint32_t i = 0; i < chunk; ++i)
                         params[static_cast<int>(settled[i].index)]->setValue(settled[i].value);
-                    PARAM_TRACE("C1 DRAINED calls=%u pr=%u pw=%u", setCalls, pr, pw);
+                    totalCalls += chunk;
+                }
+                if (totalCalls > 0) {
+                    PARAM_TRACE("C1 DRAINED calls=%u pr=%u pw=%u", totalCalls, pr, pw);
                     idleClockRequested = true;  // applied: plugin needs clocking to bake them
-                    PARAM_TRACE("C1 IDLE arm calls=%u", setCalls);
+                    PARAM_TRACE("C1 IDLE arm calls=%u", totalCalls);
                 }
                 hdr->paramSetReadPos.store(pr, std::memory_order_release);
             }

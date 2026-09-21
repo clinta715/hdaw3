@@ -574,6 +574,21 @@ public:
                    && paramIndex < static_cast<int>(getParamDefsForType(slotType).size());
     }
 
+    // Host-written live plugin params (isolated proxies only): every index the
+    // host drove via PluginParamService::setParam / automation, with its cached
+    // normalized value. Used by the opt-in `liveParamState` render probe to
+    // reflect "what you currently hear" — distinct from the persisted
+    // appliedParamOverrides ledger, which is what a real export uses.
+    // Message-thread read of parent-local atomics; empty for internal FX and
+    // in-process plugins.
+    std::vector<std::pair<int, float>> getLiveHostWrittenPluginParams() const
+    {
+        if (!isExternal || !pluginInstance) return {};
+        if (auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get()))
+            return proxySlot->getHostWrittenParams();
+        return {};
+    }
+
     // Set an FX parameter by normalized value (0..1).
     // For external plugins: stores in the atomic param cache for
     // applyAutomation() to push to the plugin.

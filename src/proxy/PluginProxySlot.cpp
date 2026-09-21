@@ -149,6 +149,18 @@ void PluginProxySlot::stageParam(uint32_t index, float value) {
     PARAM_TRACE("P1 stageParam idx=%u cache=%u staged=%d STORE=1", index, paramCacheSize_, 1);
     stagedParams_[index].store(value, std::memory_order_relaxed);
     paramDirty_[index].store(1, std::memory_order_relaxed);
+    if (hostWritten_) hostWritten_[index].store(1, std::memory_order_relaxed);
+}
+
+std::vector<std::pair<int, float>> PluginProxySlot::getHostWrittenParams() const {
+    std::vector<std::pair<int, float>> out;
+    if (!hostWritten_ || !stagedParams_) return out;
+    for (uint32_t i = 0; i < paramCacheSize_; ++i) {
+        if (hostWritten_[i].load(std::memory_order_relaxed) == 0) continue;
+        out.emplace_back(static_cast<int>(i),
+                         stagedParams_[i].load(std::memory_order_relaxed));
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,9 +214,11 @@ void PluginProxySlot::fetchParamMetadata() {
 
     stagedParams_ = std::unique_ptr<std::atomic<float>[]>(new std::atomic<float>[n]);
     paramDirty_ = std::unique_ptr<std::atomic<uint32_t>[]>(new std::atomic<uint32_t>[n]);
+    hostWritten_ = std::unique_ptr<std::atomic<uint8_t>[]>(new std::atomic<uint8_t>[n]);
     for (uint32_t i = 0; i < n; ++i) {
         stagedParams_[i].store(0.f, std::memory_order_relaxed);
         paramDirty_[i].store(0, std::memory_order_relaxed);
+        hostWritten_[i].store(0, std::memory_order_relaxed);
     }
     paramCacheSize_ = n;
     PARAM_TRACE("P2 ok n=%u", n);

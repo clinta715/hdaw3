@@ -189,7 +189,7 @@ s.registerTool({"auto_gain_to_target",
         }});
 
 s.registerTool({"audition_plugin",
-        "Solo-render a plugin or internal FX (fm_synth/sampler) — on a temp probe track (trackIndex < 0) or an existing slot — over a short window and report peak/rms/audible so silent-at-default plugins stop being a blocker. programIndex -1 reports the current program. Calls the same engine command as the composition.auditionPlugin RPC.",
+        "Solo-render a plugin or internal FX (fm_synth/sampler) — on a temp probe track (trackIndex < 0) or an existing slot — over a short window and report peak/rms/audible so silent-at-default plugins stop being a blocker. programIndex -1 reports the current program. Opt-in liveParamState=true makes the window reflect UNPERSISTED live host-param writes (what you currently hear); the default stays tree-derived and matches export_audio, and the result reports usedLiveParamState so the two modes can never be confused. Calls the same engine command as the composition.auditionPlugin RPC.",
         objSchema({{"pluginId",     QJsonObject{{"type","string"}}},
                   {"programIndex",  QJsonObject{{"type","integer"},{"minimum",-1}}},
                   {"trackIndex",    QJsonObject{{"type","integer"},{"minimum",-1}}},
@@ -204,7 +204,8 @@ s.registerTool({"audition_plugin",
                   {"maxVelocity",   QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"seed",          QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"windowSeconds", QJsonObject{{"type","number"},{"minimum",0.1}}},
-                   {"keepTrack",     QJsonObject{{"type","boolean"}}}}),
+                   {"keepTrack",     QJsonObject{{"type","boolean"}}},
+                   {"liveParamState", QJsonObject{{"type","boolean"}}}}),
         "composition",
         [e](const QJsonObject& a) -> McpToolResult {
             ProjectCommands::AuditionParams p;
@@ -223,13 +224,15 @@ s.registerTool({"audition_plugin",
             p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
             p.windowSeconds = a.value("windowSeconds").toDouble(4.0);
             p.keepTrack = a.contains("keepTrack") ? a.value("keepTrack").toBool() : false;
+            p.liveParamState = a.contains("liveParamState") ? a.value("liveParamState").toBool() : false;
             auto r = e->getProjectCommands().auditionPlugin(p);
             if (!r.error.empty())
                 return McpToolResult::text(QString::fromStdString(r.error), true);
-            return McpToolResult::text(QString("ok=%1 trackIndex=%2 slotIndex=%3 program=%4 name=%5 numPrograms=%6 rms=%7 peak=%8 duration=%9 audible=%10")
+            return McpToolResult::text(QString("ok=%1 trackIndex=%2 slotIndex=%3 program=%4 name=%5 numPrograms=%6 rms=%7 peak=%8 duration=%9 audible=%10 usedLiveParamState=%11")
                 .arg(r.ok).arg(r.trackIndex).arg(r.slotIndex).arg(r.programIndex)
                 .arg(QString::fromStdString(r.programName)).arg(r.numPrograms)
-                .arg(r.rms).arg(r.peak).arg(r.durationSeconds).arg(r.audible));
+                .arg(r.rms).arg(r.peak).arg(r.durationSeconds).arg(r.audible)
+                .arg(r.usedLiveParamState));
         }});
 
 s.registerTool({"verify_part",

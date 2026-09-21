@@ -252,3 +252,54 @@ TEST(Audition, InternalSamplerSlotAudible)
     EXPECT_TRUE(r.ok) << "error: " << r.error;
     EXPECT_FALSE(r.audible);
 }
+
+// G8 (fast tier — docs/plans/2026-09-21-plugin-param-persistence.md §B): the
+// opt-in live-state probe must report what ACTUALLY happened, never what was
+// requested. A slot whose plugin has no live instance (the fixture ids these
+// tests use resolve to no live processor, so the live host-written cache is
+// empty) cannot have been seeded: even liveParamState=true must report
+// usedLiveParamState=false, because a caller reading "live" out of the request
+// is exactly the mistake this plan exists to prevent.
+// The real-plugin proof that the flag flips to true — and that the rendered
+// audio really changes — is
+// FxMidiInjection.LiveParamStateProbeReflectsUnpersistedWrite (HDAW_REAL_PLUGIN_TESTS).
+TEST(Audition, LiveParamStateFlagReportsRealityNotRequest)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // keepTrack probe with a fixture plugin id: leaves a live plugin-typed slot
+    // behind, with no live instance and therefore no live host-written cache.
+    ProjectCommands::AuditionParams p;
+    p.pluginId = "test.plugin.id";
+    p.lengthBeats = 2.0;
+    p.windowSeconds = 1.0;
+    p.seed = 7;
+    p.keepTrack = true;
+    auto probe = cmds.auditionPlugin(p);
+    ASSERT_TRUE(probe.ok) << probe.error;
+    ASSERT_GE(probe.trackIndex, 0);
+    EXPECT_FALSE(probe.usedLiveParamState)
+        << "the default probe is tree-derived and must say so";
+
+    // Same slot, opt-in live state. Nothing live exists to absorb, so the honest
+    // answer stays false.
+    ProjectCommands::AuditionParams live = p;
+    live.trackIndex = probe.trackIndex;
+    live.slotIndex = probe.slotIndex;
+    live.keepTrack = false;
+    live.liveParamState = true;
+    auto r = cmds.auditionPlugin(live);
+    ASSERT_TRUE(r.ok) << r.error;
+    EXPECT_FALSE(r.usedLiveParamState)
+        << "no live host-written params exist, so the render cannot have absorbed any";
+
+    // The probe seeds the tree COPY only: the live tree must stay untouched.
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+                        .getChild(probe.trackIndex).getChildWithName(IDs::FX_CHAIN)
+                        .getChild(probe.slotIndex);
+    ASSERT_TRUE(slotTree.isValid());
+    EXPECT_FALSE(slotTree.hasProperty(IDs::appliedParamOverrides))
+        << "a live-state render must never persist itself into the live tree";
+}

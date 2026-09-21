@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 #include <juce_core/juce_core.h>
 #include "../engine/EnvelopeGenerator.h"
@@ -246,6 +247,37 @@ public:
     // out-of-range index) return the input value unchanged.
     virtual float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                                  float value) = 0;
+
+    // ── Plugin-slot host-param persistence (2026-09-21) ──────────────────────
+    // A plugin slot's host param write reaches the LIVE isolated child only;
+    // it is never persisted into the tree, so tree-copy renders (export_audio,
+    // audition_plugin, verify_part) and save/load cannot see it. These three
+    // commands own the durable channel — the slot's offline-replay ledger
+    // (IDs::appliedParamOverrides, replayed by
+    // ExportManager::replayAppliedParamOverrides into every fresh export child).
+    // Grammar: src/common/ParamOverrideLedger.h.
+    // Root cause: docs/plans/2026-09-21-vavra-live-param-delivery.md
+    // Design:     docs/plans/2026-09-21-plugin-param-persistence.md
+    //
+    // setPluginParam: writes the param live AND merges ONE ledger entry
+    // (unlike apply_matrix_preset, which REPLACES the whole ledger — one
+    // preset per render). `normalizedValue` is clamped to 0..1. Returns the
+    // ledger entry count after the merge, or -1 when the slot is missing /
+    // not a plugin slot / the index is out of the live cache's range.
+    virtual int setPluginParam(int trackIndex, int slotIndex, int paramIndex,
+                               float normalizedValue) = 0;
+
+    // clearPluginParamOverrides: drops every persisted override for one slot
+    // (removes the property). Returns the number of entries removed, or -1
+    // when the slot is missing.
+    virtual int clearPluginParamOverrides(int trackIndex, int slotIndex) = 0;
+
+    // getPluginParamOverrides: the slot's persisted (liveParamIndex, value)
+    // overrides — empty when the slot has none. Reporting seam for
+    // list_fx_params / plugin.getParams (`overridden` flag) and for `clear`.
+    virtual std::vector<std::pair<int, float>>
+    getPluginParamOverrides(int trackIndex, int slotIndex) const = 0;
+
     // Apply a named factory preset to a sub_synth slot's modulation params
     // (27..32: LFO wave/rate/cutoff/pitch/amp/FM amounts) in ONE undoable,
     // clamped batch. All other params are untouched. Returns false (with
@@ -794,6 +826,14 @@ public:
         uint64_t seed = 0;
         double windowSeconds = 4.0;
         bool keepTrack = false;
+        // Opt-in live-state probe (default OFF — plan 2026-09-21 §B): seed the
+        // windowed render's tree copy from the LIVE host-written plugin params
+        // (isolated slots only) so the window reflects "what you currently
+        // hear", including writes that were never persisted into
+        // appliedParamOverrides (e.g. a bare PluginParamService::setParam).
+        // Default OFF keeps the probe tree-derived so it keeps matching a real
+        // export_audio; the result reports which mode actually ran.
+        bool liveParamState = false;
     };
     struct AuditionResult {
         bool ok = false;
@@ -806,6 +846,13 @@ public:
         float peak = 0.0f;
         double durationSeconds = 0.0;
         bool audible = false;
+        // true iff this render's tree copy actually absorbed >= 1 live-only
+        // host-written plugin param — i.e. liveParamState was requested AND the
+        // live host-written cache was non-empty. false => the render is
+        // tree-derived and matches export_audio. Never infer the probe mode from
+        // the request alone: liveParamState=true with an empty live cache (or
+        // internal / in-process FX) reports false.
+        bool usedLiveParamState = false;
         std::string error;
     };
 

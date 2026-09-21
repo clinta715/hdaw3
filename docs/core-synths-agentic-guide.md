@@ -61,10 +61,10 @@ wrapper's `parameterDescriptions_*.json` and rebuilt):
 | Device | Params | Proof gate |
 | --- | --- | --- |
 | JE8086 | 461 | `list_fx_params` (measured) |
-| Vavra | 7557 | `VavraHostParamsLiveReachability` (live write lands; **render does NOT move**) + `VavraHostParamOfflineReplayAffectsExport` (offline replay DOES move it) |
-| Xenia | 2151 | `XeniaHostParamsChangeRender` |
+| Vavra | 7557 | `VavraHostParamPersistedWriteAffectsExport` (durable ledger replay: AmpVolume 0 -> 0.00357, 1 -> 0.00842 rms, monotonic) + `LiveParamStateProbeReflectsUnpersistedWrite` (opt-in live probe: 0.0034411 -> 0.0289078 rms) + `VavraHostParamsLiveReachability` (host-side staging + flush evidence; asserts nothing about renders) |
+| Xenia | 2151 | `XeniaHostParamsChangeRender` (exposure + host-side staging + durable round trip; the render effect is **not resolvable** — the same-input spread exceeded the separation) |
 | Osirus / OsTIrus | 3086 / 6939 | `OsirusPresetChangeReflectsInRender` (phase 2) |
-| NodalRed2x | 362 | `NodalRed2xHostParamsChangeRender` |
+| NodalRed2x | 362 | `NodalRed2xHostParamsChangeRender` (Cutoff effect asserted at 3.1-8.2x separation via the durable channel) |
 
 ### Three structural limits (learned 2026-09-21 — do not fight them)
 
@@ -80,18 +80,24 @@ wrapper's `parameterDescriptions_*.json` and rebuilt):
    `Fx2Type`), so they **cannot** become separate host parameters — publishing them
    was measured to change nothing (live param count stayed 7557). Automate the
    *type-level* parameters instead, or apply a whole dump.
-3. **Vavra live host-param writes are inaudible (2026-09-21).** The 7557 microQ
-   host params reach the plugin and land in the cache, but a live
-   `set_fx_param`/automation write does **not** move the render
-   (`VavraHostParamsLiveReachability`; the old "Δ>1e-5" gate was under the child's
-   own ~8e-3 mode-flip noise — Xenia/NodalRed2x move on the same harness, so the
-   null is Vavra-specific). The same params **do** move a replayed/offline render
-   (`VavraHostParamOfflineReplayAffectsExport`, monotonic). So for live movement
-   put it in the patch and `waldorf_dump`; for a param override that must render,
-   rely on the `appliedParamOverrides` replay. The wrapper source is structurally
-   correct (`mqLib/mqstate.cpp` SingleParameterChange → 0x20 edit buffer, packet
-   indices match), so this is a **live-path** gap (patchable), not a missing
-   feature.
+3. **A live-only param write is not part of a tree-derived render — by
+   construction, not by a delivery bug (corrected 2026-09-21).** Every render the
+   audit surface uses (`audition_plugin`, `verify_part`, `export_audio`) is an
+   offline export of a **TREE COPY** into a **fresh child**, so a write that only
+   ever reached the live child was never part of that child's input. The old
+   framing — "Vavra live host-param writes are inaudible / a live-path gap" — was a
+   harness artifact, and the "same-child ~2x mode flip" behind it did not reproduce
+   (two consecutive no-write renders agreed to 4e-07). Durability is a separate,
+   explicit channel:
+   * `set_fx_param` (and RPC `pluginParam.setParam`) persist into
+     `IDs::appliedParamOverrides`, which is replayed into every fresh export child
+     — so the write **does** reach renders (`VavraHostParamPersistedWriteAffectsExport`);
+   * unpersisted live-only state is visible through the **opt-in**
+     `liveParamState` render probe (`audition_plugin`, default OFF);
+   * `clear_fx_param_overrides` drops the ledger.
+   Budget `set_fx_param` automation for movement again; use `waldorf_dump` when the
+   change belongs in the patch itself (it then survives reload as patch state rather
+   than as a ledger entry).
 
 ### The automatable FX surface, per device
 

@@ -2,6 +2,7 @@
 #include "PluginManager.h"
 #include "../proxy/PluginProxySlot.h"
 #include "../common/DebugLog.h"
+#include "../common/ParamOverrideLedger.h"
 #include <cstdlib>
 #include <thread>
 
@@ -169,24 +170,13 @@ uint32_t ExportManager::computeBakeWaitMs(const juce::ValueTree& projectTree)
 std::vector<std::pair<int, float>>
 ExportManager::parseAppliedParamOverrides(const juce::ValueTree& slotTree)
 {
-    std::vector<std::pair<int, float>> pairs;
+    // One ledger grammar, shared with every writer (parity by construction):
+    // McpTools_Matrix (matrix presets) and AudioEngineCommands::setPluginParam
+    // (plain plugin-param persistence). See src/common/ParamOverrideLedger.h.
     if (!slotTree.isValid())
-        return pairs;
-    // Ledger format written by McpTools_Matrix: "idx=val;idx=val" (normalized 0..1).
-    const juce::String ledgerStr = slotTree.getProperty(IDs::appliedParamOverrides, "").toString();
-    if (ledgerStr.isEmpty())
-        return pairs;
-    for (const auto& tok : juce::StringArray::fromTokens(ledgerStr, ";", ""))
-    {
-        const int eq = tok.indexOf("=");
-        if (eq <= 0)
-            continue; // malformed token — the writer only emits idx=val pairs
-        const int index = tok.upToFirstOccurrenceOf("=", false, false).getIntValue();
-        if (index < 0)
-            continue;
-        pairs.emplace_back(index, static_cast<float>(tok.fromFirstOccurrenceOf("=", false, false).getDoubleValue()));
-    }
-    return pairs;
+        return {};
+    return HDAW::parseParamOverrides(
+        slotTree.getProperty(IDs::appliedParamOverrides, "").toString());
 }
 
 ExportManager::ParamReplayStats

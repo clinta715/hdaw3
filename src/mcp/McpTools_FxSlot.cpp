@@ -234,6 +234,11 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
             {
                 auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
                 auto& paramSvc = e->getPluginParamService();
+                // Persisted offline-replay overrides (IDs::appliedParamOverrides).
+                // An `overridden` index survives into tree-copy renders
+                // (export_audio / audition_plugin / verify_part) and save/load;
+                // a non-overridden index is LIVE-MONITORING ONLY.
+                const auto overrides = e->getProjectCommands().getPluginParamOverrides(ti, si);
                 for (const auto& pi : params) {
                     QJsonObject o;
                     o["index"] = pi.index;
@@ -241,6 +246,8 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                     o["automatable"] = pi.automatable;
                     o["value"] = static_cast<double>(pi.value);
                     o["text"] = QString::fromStdString(pi.text);
+                    for (const auto& ov : overrides)
+                        if (ov.first == pi.index) { o["overridden"] = true; break; }
                     o["hasRange"] = pi.hasRange;
                     if (pi.hasRange)
                     {
@@ -290,7 +297,7 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
-s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex or paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth).",
+s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex or paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth). For PLUGIN slots the write is live AND persisted as a slot-level offline-replay override (returned as 'ok overrides=N'), so it also reaches export_audio / audition_plugin / verify_part renders and save/load; list_fx_params marks such params 'overridden', clear_fx_param_overrides removes them. For INTERNAL FX the ValueTree param_N property is the durable source.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
@@ -325,9 +332,22 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by 
                     if (pi < 0)
                         return McpToolResult::text("unknown paramName: " + wantName, true);
                 }
-                if (pi < 0 || pi >= static_cast<int>(params.size()))
+                // Bounds: the live param list is authoritative when the instance
+                // resolves. An EMPTY list means no live instance (deviceless, or
+                // not settled yet): the write is then persisted for the offline
+                // replay without a range check — the replay reports out-of-range
+                // entries as skippedBeyondCache rather than dropping silently.
+                if (pi < 0 || (!params.empty() && pi >= static_cast<int>(params.size())))
                     return McpToolResult::text("param index out of range", true);
-                e->getPluginParamService().setParam(ti, fxSlots[si].pluginId, pi, v);
+                // Shared command layer: live write + durable ledger so
+                // tree-copy renders and save/load see it. A bare
+                // PluginParamService::setParam reaches the LIVE child only.
+                // See docs/plans/2026-09-21-vavra-live-param-delivery.md.
+                const int overrides = e->getProjectCommands().setPluginParam(ti, si, pi, v);
+                if (overrides < 0)
+                    return McpToolResult::text("slot is not a plugin slot", true);
+                return McpToolResult::text(
+                    "ok overrides=" + QString::number(overrides));
             }
             else
             {
@@ -349,6 +369,25 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by 
             }
             return McpToolResult::text("ok");
         }});
+
+s.registerTool({"clear_fx_param_overrides",
+    "Drop every persisted plugin-parameter override for ONE FX slot (the offline-replay ledger written by set_fx_param on plugin slots). Use it to return a slot to 'what the plugin state itself says' before an export/audition — without it, a param set once keeps being replayed into every later tree-copy render. Returns {removed:N}. No effect on internal FX (their param_N properties are the source of truth).",
+    objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+              {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+    "fx",
+    [e](const QJsonObject& a) -> McpToolResult {
+        const int ti = a.value("trackId").toInt();
+        const int si = a.value("slotIndex").toInt();
+        auto fxSlots = e->getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= static_cast<int>(fxSlots.size()))
+            return McpToolResult::text("slot not found", true);
+        const int removed = e->getProjectCommands().clearPluginParamOverrides(ti, si);
+        if (removed < 0)
+            return McpToolResult::text("slot not found", true);
+        return McpToolResult::text(
+            QString::fromUtf8(QJsonDocument(QJsonObject{{"removed", removed}})
+                .toJson(QJsonDocument::Compact)));
+    }});
 
 s.registerTool({"send_fx_midi",
     "Queue short MIDI messages (programChange/controlChange/noteOn/noteOff/sysEx) into a plugin FX slot's NEXT processed block of the LIVE plugin instance. Loads MIDI-selectable presets â€” e.g. gearmulator Virus plugins: controlChange controller=0 value=bank (0-7 = banks A-H singles) then programChange program=patch. DX7 voices: use fm_synth_import_sysex into an fm_synth slot (plugin slots ignore injected SysEx). Realtime mutation: not undoable. The changed preset reaches offline exports once captured via project save.",

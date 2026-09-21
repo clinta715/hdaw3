@@ -358,6 +358,24 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "removeFxSlot")        { int i, s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)) return makeError(-32602, "trackIndex and slotIndex required"); c.removeFxSlot(i, s); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotBypassed")   { int i, s; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotParam")      { int i, s, p; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireInt(o, "paramIndex", p, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, slotIndex, paramIndex, value required"); c.setFxSlotParam(i, s, p, v); return { false, QJsonValue::Null }; }
+    if (m == "clearPluginParamOverrides") {
+        int i, s;
+        if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        const int removed = c.clearPluginParamOverrides(i, s);
+        if (removed < 0) return makeError(-32602, "slot not found");
+        return { false, QJsonObject{ { "removed", removed } } };
+    }
+    if (m == "getPluginParamOverrides") {
+        int i, s;
+        if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        QJsonArray arr;
+        for (const auto& ov : c.getPluginParamOverrides(i, s))
+            arr.append(QJsonObject{ { "paramIndex", ov.first },
+                                    { "value", static_cast<double>(ov.second) } });
+        return { false, QJsonObject{ { "overrides", arr } } };
+    }
     if (m == "applySubSynthModPreset") {
         int i, s; std::string presetId;
         if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)

@@ -79,7 +79,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
         return dispatchRead(engine.getReadModel(), m, params);
     }
     else if (ns == method::Plugin)      return dispatchPlugin(engine.getPluginService(), m, params, server);
-    else if (ns == method::PluginParam) return dispatchPluginParam(engine.getPluginParamService(), m, params);
+    else if (ns == method::PluginParam) return dispatchPluginParam(engine, m, params);
     else if (ns == method::Audio)       return dispatchAudio(engine, m, params);
     else if (ns == method::Midi)        return dispatchMidi(engine.getMidiService(), m, params);
     else if (ns == method::Export)      return dispatchExport(engine, m, params, server);

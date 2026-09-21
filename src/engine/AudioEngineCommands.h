@@ -209,6 +209,12 @@ public:
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                          float value) override;
+    // ── Plugin-slot host-param persistence (see ProjectCommands.h) ──
+    int setPluginParam(int trackIndex, int slotIndex, int paramIndex,
+                       float normalizedValue) override;
+    int clearPluginParamOverrides(int trackIndex, int slotIndex) override;
+    std::vector<std::pair<int, float>>
+    getPluginParamOverrides(int trackIndex, int slotIndex) const override;
     /// Matrix-only factory presets for the sub_synth modulation LFO (params
     /// 27..32), applied as one undo transaction through the clamped
     /// setFxSlotParam path. Returns false + `error` on invalid slot/type/id.

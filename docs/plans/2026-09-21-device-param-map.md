@@ -197,14 +197,17 @@ build\hdaw_tests.exe --gtest_filter=DeviceParamsTest.*:DeviceParamsRpcTest.*
   refreshed after the structural change.
 - **Incidental finding (not slice 1) — RESOLVED 2026-09-21.** `FxMidiInjection.VavraHostParamsChangeRender`
   failed the full-suite re-run on a threshold margin (`|Δrms| = 9.99868e-06` vs a `1e-5` threshold).
-  Investigation superseded the threshold framing: Vavra's live child renders in two modes
-  (~0.0169 / ~0.0086 rms) with NO param change, so the old threshold sat inside the noise — it was a
-  **false pass**. Controls: the same live harness moves Xenia `|Δ|=6.1e-3` and NodalRed2x `|Δ|=2.7e-4`,
-  so the harness is sound and the null is Vavra-specific. Rewritten as two honest gates:
-  `VavraHostParamsLiveReachability` (the write lands in the cache + the slot still renders; live
-  audibility is NOT asserted) and `VavraHostParamOfflineReplayAffectsExport` (**the params are not
-  dead** — replayed from the `appliedParamOverrides` ledger into a fresh export child, base export rms
-  0.00631 vs `Ch N AmpVolume`→0 = 0.0023, →1 = 0.0086, monotonic). Wrapper source verified structurally
-  correct (`mqLib/mqstate.cpp` SingleParameterChange → 0x20 edit buffer; packet indices match), so the
-  gap is the **live write path** — an incidental finding, not a regression from slice 1, and not an engine change.
+  Investigation superseded the threshold framing — but the story it was replaced WITH was also wrong
+  (corrected 2026-09-21, `docs/plans/2026-09-21-vavra-live-param-delivery.md`): there is no "live child
+  rendering in two modes", because every render in this harness is an offline export of a TREE COPY into
+  a FRESH child. The old threshold was still a **false pass** (1e-5 sat inside the harness's own
+  variation — measured same-input spread 4.1e-07 for Vavra, and one Xenia render moved ~17% between
+  runs), and the sibling "controls" were artifacts (Xenia's claimed 6.1e-3 does not reproduce,
+  NodalRed2x's 2.7e-4 is not resolvable, Osirus's 0→0.047 is the ROM boot-patch fix). What IS true:
+  the params are not dead, and the durable channel carries them —
+  `VavraHostParamPersistedWriteAffectsExport` persists the write via `appliedParamOverrides` and replays
+  it into every fresh export child (monotonic), while `VavraHostParamsLiveReachability` now asserts only
+  host-side staging + the parent-side flush trace (`P1 stageParam` -> `P3F FLUSHED`) and claims nothing
+  about renders. So there is **no live-path gap** — the earlier reading was a measurement artifact, not a
+  regression from slice 1, and not an engine change.
 

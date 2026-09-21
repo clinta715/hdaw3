@@ -1600,6 +1600,9 @@ TEST(McpServer, AuditionPluginTool) {
     QString txt = textOf(r);
     EXPECT_TRUE(txt.contains("ok=1")) << "got: [" << txt.toStdString() << "]";
     EXPECT_TRUE(txt.contains("audible=0")) << "got: [" << txt.toStdString() << "]";
+    // G8: the probe mode is reported on the MCP surface too, and the default is
+    // tree-derived (this also pins the %11 placeholder mapping in the tool text).
+    EXPECT_TRUE(txt.contains("usedLiveParamState=0")) << "got: [" << txt.toStdString() << "]";
 
     // The probe track was cleaned up.
     EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
@@ -1621,7 +1624,7 @@ TEST(McpServer, AuditionPluginExplicitProbeTrackIndex) {
     // (schema minimum is now -1), reach the engine tempProbe branch, and be
     // cleaned up so the project returns to its baseline track count.
     tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
-        "params":{"name":"audition_plugin","arguments":{"pluginId":"test.plugin.id","trackIndex":-1,"windowSeconds":1.0}}})"));
+        "params":{"name":"audition_plugin","arguments":{"pluginId":"test.plugin.id","trackIndex":-1,"windowSeconds":1.0,"liveParamState":true}}})"));
     QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
     auto r = parseOne(out);
     EXPECT_FALSE(r.value("error").isObject());

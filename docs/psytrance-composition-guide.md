@@ -719,7 +719,13 @@ slotIndex}` → `paramID` (formula `100 + slotIndex*100 + paramIndex`) → drive
 with `set_fx_param` (normalized 0-1, by paramName or paramIndex), automation
 (`add_automation_lane` + `automation_preset` / `apply_movement_plan`), or an
 LFO (`add_lfo` targetParamID). Pids below assume **slot 0**; recompute per slot.
-Live writes reach offline renders via the standard save snapshot.
+Plugin-slot writes **persist** into the slot's `appliedParamOverrides` ledger,
+which every fresh export child replays — so `set_fx_param` reaches `export_audio` /
+`audition_plugin` / `verify_part` and survives save/load (2026-09-21; before this a
+plugin-slot write reached the LIVE child only and no render could see it).
+`clear_fx_param_overrides` drops the ledger, `list_fx_params` flags `overridden`
+entries, and the opt-in `liveParamState` argument on `audition_plugin` renders
+unpersisted live-only writes (what you currently hear) instead of tree state.
 
 | Goal | Synth | Params (slot 0 pids) | Move it with |
 | --- | --- | --- | --- |
@@ -729,7 +735,7 @@ Live writes reach offline renders via the standard save snapshot.
 | Distortion gating | Osirus | `Ch 1 Distortion Curve`=275 (set 1-11), `Intensity`=276 | square preset on 276 per beat window |
 | Delay throw at a drop | JE8086 | `A DELAY TYPE`=184 (PANNING L->R…), TIME=185, FEEDBACK=186, LEVEL=187 (>0 enables) | delayThrow preset on 186 |
 | Vocal FX gating | JE8086 | `VOCAL MIX`=542, `EXT TO VOCAL SEND`=424 | pump on 542 |
-| FX slot switch + movement | Vavra (microQ) | type-level host params (`FX1Type`/`FX2Type`/`FX1Mix`/`FX2Mix`) — the Fx1/Fx2 chorus-phaser-delay sub-params are **bit-aliases** (derived-parameter collapse) and still cannot be set with `set_fx_param` (the full surface is 7557 host params since 2026-09-19; the old `{"params":[]}` reading is superseded). **LIVE host-param writes do NOT move the render (2026-09-21)** — only a replayed/offline render responds | bake the FX into the patch, or load a `waldorf_dump` (durable route); do not budget live param automation for movement. Sub-params also via dump; the device's remote-control SysEx (`EmuButtons`/`EmuRotaries` — a `SetParam` message is ignored) is the remaining route but is not yet driven from HDAW |
+| FX slot switch + movement | Vavra (microQ) | type-level host params (`FX1Type`/`FX2Type`/`FX1Mix`/`FX2Mix`) — the Fx1/Fx2 chorus-phaser-delay sub-params are **bit-aliases** (derived-parameter collapse) and still cannot be set with `set_fx_param` (the full surface is 7557 host params since 2026-09-19; the old `{"params":[]}` reading is superseded). **CORRECTED 2026-09-21: `set_fx_param` writes DO reach renders** — the public route persists into `appliedParamOverrides` and every fresh export child replays it (`VavraHostParamPersistedWriteAffectsExport`), while unpersisted live-only writes show up through the opt-in `liveParamState` probe (`LiveParamStateProbeReflectsUnpersistedWrite`). The earlier "LIVE host-param writes do NOT move the render" reading was a harness artifact (renders use a tree copy in a fresh child) | bake the FX into the patch or load a `waldorf_dump` when the change belongs in the patch; `set_fx_param` automation is budgetable for movement again (durable ledger route). Sub-params also via dump; the device's remote-control SysEx (`EmuButtons`/`EmuRotaries` — a `SetParam` message is ignored) is the remaining route but is not yet driven from HDAW |
 | Distortion accents | NodalRed2x | `A Distortion`=154 (0/1), `ChPrs Amount A`=444 (0-7 chor./pres.) | square/steppedGate on 154 for rhythmic grit |
 
 `list_fx_params` text gives real units (0-127, -64..+63, type enums like

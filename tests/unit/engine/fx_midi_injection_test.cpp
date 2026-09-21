@@ -11,6 +11,7 @@
 #include <map>
 #include <cstring>
 #include <cstdlib>
+#include <process.h>   // _getpid() — the parent trace file is per-pid (ParamTrace)
 #include <vector>
 
 #include "engine/AudioEngine.h"
@@ -20,6 +21,7 @@
 #include "engine/Track.h"
 #include "engine/TrackFXSlot.h"
 #include "mcp/PresetFileParser.h"
+#include "proxy/ParamTrace.h"
 #include "mcp/PresetRoute.h"
 #include "model/ProjectModel.h"
 
@@ -754,7 +756,9 @@ TEST(FxMidiInjection, XeniaEditBufferDumpChangesOfflineRender)
 // -- renders stayed identical ("NOT APPLYING", 2026-09-16). runWaldorfSysexFile
 // now retargets 392-byte dumps to 0x20/0x00 (same as mqController::sendSingle)
 // and fixes the Waldorf checksum. This gate proves the retargeted dump changes
-// the LIVE render and survives rebuild via the preset-sysex replay path.
+// the RENDER (both sides are fresh export children; the dump is captured to the
+// tree, so the change travels the persisted preset-sysex replay path — there is no
+// "live child" render anywhere in this harness) and that it survives a rebuild.
 TEST(FxMidiInjection, VavraEditBufferDumpChangesOfflineRender)
 {
     constexpr const char* kVavraClap = "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap";
@@ -823,9 +827,9 @@ TEST(FxMidiInjection, VavraEditBufferDumpChangesOfflineRender)
 
     std::cout << "[VavraAB] baseline(rms)=" << a.rms
               << " fresh-boot(rms)=" << f.rms
-              << " injected-live(rms)=" << b.rms << "\n";
+              << " dumped+replayed(rms)=" << b.rms << "\n";
     EXPECT_GT(std::abs(b.rms - f.rms), 1e-5f)
-        << "retargeted dump did not change the live Vavra render";
+        << "the retargeted dump did not change the replayed Vavra render";
 
     // Rebuild from the tree -- the fresh child must replay the persisted dump.
     {
@@ -845,12 +849,37 @@ TEST(FxMidiInjection, VavraEditBufferDumpChangesOfflineRender)
     }
 }
 
-// Xenia host-parameter exposure gate (2026-09-19): gearmulator
-// parameterDescriptions_xt.json now marks the curated sound/FX params public,
-// so the CLAP exposes them to the host (previously 0). Proves (1) the param
-// cache lists them, (2) PluginParamService::setParam reaches the live child and
-// the XT OS responds (cached value/text changes), (3) the moved param audibly
-// changes the live render vs a no-touch fresh instance.
+// Xenia host-parameter gate (2026-09-19; claims corrected 2026-09-21).
+//
+// Proves: (1) the param cache lists the curated sound/FX params (Xenia exposes
+// 2151 since parameterDescriptions_xt.json marks 66 x parts public); (2) a
+// PluginParamService::setParam write is ACCEPTED HOST-SIDE — the live slot's
+// parent-local cache holds the new value and the index is marked host-written;
+// (3) the param is EFFECTIVE through the durable channel: set_fx_param persists
+// into appliedParamOverrides, and a tree-derived window replays it into the fresh
+// export child, so the render moves.
+//
+// CORRECTED (the old claim was false): this gate used to compare two renders and
+// assert |delta| > 1e-5 as "the moved param audibly changes the live render".
+// Both renders are FRESH EXPORT CHILDREN — an offline export of a tree copy
+// (renderTrackWindow -> ExportManager::startExport) never receives a live-only
+// param write at all — and the measured delta (5.1e-4) cannot separate a param
+// effect from the harness's own variation (the previously claimed 6.1e-3 does not
+// reproduce). The write is trace-confirmed to land on the live child; it simply
+// cannot reach these renders, so a live-write A/B here is unmeasurable by design.
+//
+// The gate therefore asserts only what is measurable: exposure, host-side
+// acceptance, and the DURABLE ROUND TRIP (set_fx_param persists into
+// appliedParamOverrides -> a tree-derived window replays it into the fresh child).
+// The render EFFECT is deliberately NOT asserted: the measured separation (14%
+// on 2026-09-21) is the same order as this harness's session-level variance — one
+// render moved 17% BETWEEN runs, and the same-input spread was 0.0010 — so a
+// single-render A/B would measure noise. That is precisely the mistake the old
+// 1e-5 threshold made. Devices whose separation IS resolvable do assert it:
+// NodalRed2x Cutoff 3.1x, Vavra AmpVolume 2.4x (ledger) / 8.4x (live probe).
+// See the export-determinism fidelity item in
+// docs/plans/2026-09-21-vavra-live-param-delivery.md.
+// See docs/plans/2026-09-21-vavra-live-param-delivery.md.
 TEST(FxMidiInjection, XeniaHostParamsChangeRender)
 {
     constexpr const char* kXeniaClap = "C:\\Program Files\\Common Files\\CLAP\\Xenia.clap";
@@ -937,62 +966,123 @@ TEST(FxMidiInjection, XeniaHostParamsChangeRender)
         if (!changed && attempt % 5 == 4)
             std::cout << "[XeniaParams] ...still polling (" << (attempt + 1) << ")\n";
     }
-    EXPECT_TRUE(changed) << "setParam did not reach the live Xenia child (F1Cutoff unchanged)";
+    // (2) HOST-SIDE ACCEPTANCE (precisely labelled): `changed` reads the
+    // PARENT-local cache, which ProxiedParameter::setValue writes BEFORE staging —
+    // so this proves the host-side service accepted the write, NOT that the child
+    // applied it (the old message claimed the write "reach[ed] the live child",
+    // a child-side verdict from parent-local evidence).
+    EXPECT_TRUE(changed) << "the host-side param service did not accept the F1Cutoff write";
+    {
+        auto* mp = engine.getMainProcessor();
+        ASSERT_NE(mp, nullptr);
+        auto* trk = mp->getTrack(a.trackIndex);
+        ASSERT_NE(trk, nullptr);
+        auto& chain = trk->getFXChain();
+        ASSERT_LT(static_cast<size_t>(a.slotIndex), chain.size());
+        ASSERT_NE(chain[static_cast<size_t>(a.slotIndex)], nullptr);
+        bool marked = false;
+        for (const auto& kv : chain[static_cast<size_t>(a.slotIndex)]->getLiveHostWrittenPluginParams())
+            if (kv.first == cutoffIdx) marked = true;
+        EXPECT_TRUE(marked) << "the live slot does not report F1Cutoff as host-written";
+    }
 
-    // Same child, AFTER the set: any render difference is the param itself.
-    ProjectCommands::AuditionResult r1;
-    r1 = cmds.auditionPlugin(rp);
-    ASSERT_TRUE(r1.ok) << r1.error;
-    std::cout << "[XeniaParams] same-child rms before=" << r0.rms
-              << " after=" << r1.rms
-              << " |delta|=" << std::abs(r1.rms - r0.rms) << "\n";
-    EXPECT_GT(std::abs(r1.rms - r0.rms), 1e-5f)
-        << "closing F1Cutoff did not audibly change the live render";
+    // (3) EFFECTIVENESS, through the DURABLE channel — this is what export_audio
+    // sees: set_fx_param persists into the ledger and a TREE-DERIVED window replays
+    // it into the fresh export child. The tree-derived assumption is asserted, not
+    // assumed. (Replaces the false live-render delta assertion.)
+    std::cout << "[XeniaParams] live-child render r0=" << r0.rms
+              << " (a fresh export child — NOT the same child as any other render)\n";
+    auto renderTreeDerived = [&]() -> float
+    {
+        const auto rr = cmds.auditionPlugin(rp);
+        EXPECT_TRUE(rr.ok) << rr.error;
+        EXPECT_FALSE(rr.usedLiveParamState) << "this measurement must stay tree-derived";
+        return rr.ok ? rr.rms : 0.0f;
+    };
+
+    // Noise floor for THIS device/session: r0 and this render are two fresh
+    // children fed the SAME tree, with no override in between. The band below is
+    // judged against it — the original gate's 1e-5 threshold was the false pass
+    // this is fixing, and a magic constant could not be justified without it.
+    const float noiseB = renderTreeDerived();
+    const float noiseSpread = std::abs(noiseB - r0.rms);
+
+    EXPECT_GT(cmds.setPluginParam(a.trackIndex, a.slotIndex, cutoffIdx, 0.0f), 0)
+        << "set_fx_param did not persist F1Cutoff";
+    const float ledgerLo = renderTreeDerived();
+
+    EXPECT_GT(cmds.setPluginParam(a.trackIndex, a.slotIndex, cutoffIdx, 1.0f), 0);
+    const float ledgerHi = renderTreeDerived();
+
+    std::cout << "[XeniaParams] same-input repeat spread=" << noiseSpread
+              << " | ledger replay F1Cutoff 0.0 -> " << ledgerLo
+              << " rms, 1.0 -> " << ledgerHi
+              << " |separation|=" << std::abs(ledgerHi - ledgerLo) << "\n";
+    // Non-silent before judging a delta (lesson 25): silence masks every delta.
+    // max() because one extreme of a filter cutoff may legitimately render
+    // near-silence; what must never happen is BOTH sides being silent.
+    ASSERT_GT(std::max(ledgerLo, ledgerHi), 1e-4f)
+        << "both extremes are silent — a delta would be meaningless";
+    // NO effect assertion here, on purpose. Measured 2026-09-21: separation 14%
+    // (0.0481 vs 0.0559) BUT the direction flipped between runs (the same extremes
+    // gave 0.0577 vs 0.0476 in the previous run) and a single render moved 17%
+    // between runs — i.e. the harness's session-level variance is the same order as
+    // the effect, so a threshold here would measure noise (the old 1e-5 gate's
+    // mistake). What IS asserted: the durable round trip works and neither render
+    // is silent. The numbers are printed above as the diagnostic.
+    EXPECT_LT(noiseSpread, std::max(ledgerLo, ledgerHi))
+        << "the same-input spread is not smaller than the rendered level — the "
+           "harness is too unstable for ANY conclusion here";
+    EXPECT_EQ(cmds.clearPluginParamOverrides(a.trackIndex, a.slotIndex), 1)
+        << "the override ledger should hold exactly one entry (round trip verified)";
 }
 
-// Vavra host-parameter exposure gate (2026-09-19): parameterDescriptions_mq.json
-// now marks the curated sound/FX params public (96); same proof as the Xenia
-// gate: host exposure, setParam round trip into the microQ OS, and a same-child
-// render A/B attributable to the param.
-// Vavra (microQ) host-parameter gate — LIVE REACHABILITY ONLY (2026-09-21).
+// Vavra (microQ) host-parameter delivery + effect gate — CORRECTED 2026-09-21.
 //
-// History: this gate used to assert `|Δrms| > 1e-5` as proof that host params move
-// the render. That was a FALSE PASS — 1e-5 sits inside the noise of a live Vavra
-// child. Measured 2026-09-21 (real Vavra.clap, HDAW_REAL_PLUGIN_TESTS=1):
-//   * two renders of the UNCHANGED patch (same child) land in one of two modes:
-//     rms ~0.0169 / peak ~0.0451  OR  rms ~0.0086 / peak ~0.0316 — a ~2x swing
-//     with NO param write. Within a mode the render is near-deterministic (floor
-//     down to 5e-7); the flip is param-independent (observed on consecutive
-//     no-write renders). 1e-5 is inside that, so a live audibility threshold
-//     cannot separate a param effect from the mode flip.
-//   * writing a param to both EXTREMES and rendering each twice showed NO live
-//     param effect — F1Cutoff on all 32 matches: lo-vs-hi 8e-6..8e-5, i.e. <=
-//     the within-pair spread; likewise for a broad level/volume set.
-//   * the SAME live harness DOES move the render for sibling engines — Xenia
-//     |Δ|=6.1e-3, NodalRed2x |Δ|=2.7e-4, Osirus rms 0 -> 0.047 — so the harness
-//     is sound and the null result is Vavra-specific.
+// Asserts:
+//   1. host exposure — the param cache lists the curated sound/FX params (7557:
+//      96 public x parts);
+//   2. HOST-SIDE acceptance — the write lands in the live slot's parent-local
+//      cache and the index is marked host-written (ProxiedParameter::setValue ->
+//      setCache + stageParam). This is the PARENT half of the chain only;
+//   3. FLUSH evidence — with HDAW_TRACE_PARAM=1, THIS process's trace file must
+//      show `P1 stageParam idx=<cutoff>` then `P3F FLUSHED` (staging -> shm ring).
+//      The child-side lines (`C1 SET` -> `C1 DRAINED`) go to the CHILD's per-pid
+//      file, so they cannot be asserted from here — see the note at the assert;
+//   4. the slot still renders audibly after the write.
 //
-// IMPORTANT — the params are NOT dead. See
-// FxMidiInjection.VavraHostParamOfflineReplayAffectsExport: replayed from the
-// `appliedParamOverrides` ledger into a FRESH export child they ARE audible and
-// monotonic (baseline export rms 0.00630; every `Ch N AmpVolume` -> 0.0 gives
-// 0.00237, -> 1.0 gives 0.00674). So the gap is the LIVE write path, not the
-// parameter and not the emulation.
+// What this gate does NOT assert — and the false claims it used to carry
+// (diagnosis: docs/plans/2026-09-21-vavra-live-param-delivery.md):
 //
-// Wrapper source localization (gearmulator-git, 2026-09-21): the emulation
-// implements the path (`mqLib/mqstate.cpp` SingleParameterChange -> modifyDump
-// (Single) -> modifySingle -> getSingleParameter, targeting the single-mode EDIT
-// BUFFER the OS plays), the wrapper's `singleparameterchange` packet layout matches
-// the emulator's byte constants (`IdxBuffer=5`, index H/L=6/7, value=8; index =
-// 7 + ((page<<7)|index)), and the param names match the packet definitions. The
-// break is downstream of the encoding — delivery/apply timing of the live write
-// inside the isolated child — and is patchable, not a missing feature.
+//   * "two renders of the UNCHANGED patch (same child) land in one of two modes,
+//     a ~2x swing, so a threshold cannot separate a param effect from the flip" —
+//     FALSE twice over: (a) there is no same child — every render is an offline
+//     export of a TREE COPY into a FRESH child (renderTrackWindow ->
+//     ExportManager::startExport); (b) the swing did not reproduce — two
+//     consecutive no-write renders measured 2026-09-21 agreed to 4e-07
+//     (rms 0.0169436 vs 0.016944), and the gate now prints this spread on
+//     every run ("two fresh children, same input").
+//   * "the SAME live harness DOES move the render for sibling engines — Xenia
+//     |d|=6.1e-3, NodalRed2x |d|=2.7e-4, Osirus rms 0 -> 0.047 — so the harness is
+//     sound and the null result is Vavra-specific" — all three readings were
+//     artifacts: Xenia's 6.1e-3 does not reproduce (measured 5.1e-4), NodalRed2x's
+//     2.7e-4 is fresh-child boot noise, and Osirus's "0 -> 0.047" is the ROM
+//     boot-patch fix (lesson 25/26), not a param effect.
+//   * "the gap is the LIVE write path ... apply timing inside the isolated child,
+//     and is patchable" — no such gap was demonstrated. The trace shows the write
+//     arriving and being applied (P1 stageParam -> P3F FLUSHED -> C1 SET ->
+//     C1 WARM -> C1 DRAINED -> C1 IDLE clock). The real finding is that a
+//     LIVE-only write is invisible to these renders BY CONSTRUCTION (they render a
+//     tree copy into a fresh child) — which is what the appliedParamOverrides
+//     channel (A) fixes.
 //
-// This gate asserts only what the live harness can prove:
-//   1. the write reaches the live child (the param cache reports the new value);
-//   2. the slot still renders after the write.
-// Live audibility is not asserted (unmeasurable on this child); effectiveness is
-// asserted by the offline replay gate.
+// Effectiveness IS asserted, through the durable channel: the write persists into
+// appliedParamOverrides and ExportManager::replayAppliedParamOverrides replays it
+// into every fresh export child. Gates:
+// FxMidiInjection.VavraHostParamPersistedWriteAffectsExport (the set_fx_param
+// route: AmpVolume 0 -> 0.00357, 1 -> 0.00842, monotonic) and
+// FxMidiInjection.LiveParamStateProbeReflectsUnpersistedWrite (the opt-in
+// liveParamState probe on an UNPERSISTED write: 0.0034411 -> 0.0289078 rms).
 TEST(FxMidiInjection, VavraHostParamsLiveReachability)
 {
     constexpr const char* kVavraClap = "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap";
@@ -1102,10 +1192,22 @@ TEST(FxMidiInjection, VavraHostParamsLiveReachability)
 
     const ProjectCommands::AuditionResult r0b = cmds.auditionPlugin(rp);
     ASSERT_TRUE(r0b.ok) << r0b.error;
-    std::cout << "[VavraParams] repeat-render r0 rms=" << r0.rms << " peak=" << r0.peak
-              << " | r0b rms=" << r0b.rms << " peak=" << r0b.peak
-              << " |floor|=" << std::abs(r0b.rms - r0.rms)
-              << " (a ~8e-3 jump means a mode flip, not a param effect)\n";
+    // Two DIFFERENT fresh export children fed identical input (NOT the same
+    // child): the spread below is fresh-child boot variance, which is exactly why
+    // no live-render audibility threshold is asserted anywhere in this gate.
+    std::cout << "[VavraParams] two fresh children, same input: r0 rms=" << r0.rms
+              << " peak=" << r0.peak << " | r0b rms=" << r0b.rms << " peak=" << r0b.peak
+              << " |spread|=" << std::abs(r0b.rms - r0.rms) << "\n";
+
+    // Trace bookkeeping for the flush assertion below: the parent trace file is
+    // %TEMP%\hdaw_paramtrace_<pid>.log. Remember its current size so ONLY lines
+    // appended by this write are inspected — a stale file left by a recycled pid
+    // can then never satisfy the assertion.
+    const juce::File tracePath = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                     .getChildFile("hdaw_paramtrace_"
+                                                   + juce::String(static_cast<int>(::_getpid())) + ".log");
+    const juce::int64 traceMark = (paramtrace::paramTraceEnabled() && tracePath.existsAsFile())
+                                      ? tracePath.getSize() : 0;
 
     paramSvc.setParam(a.trackIndex, pluginId, cutoffIdx, 0.05f);
     bool changed = false;
@@ -1123,8 +1225,51 @@ TEST(FxMidiInjection, VavraHostParamsLiveReachability)
         if (!changed && attempt % 5 == 4)
             std::cout << "[VavraParams] ...still polling (" << (attempt + 1) << ")\n";
     }
-    // (1) REACHABILITY — the write lands on the live child.
-    EXPECT_TRUE(changed) << "setParam did not reach the live Vavra child (F1Cutoff unchanged)";
+    // (1) HOST-SIDE ACCEPTANCE (precisely labelled): `changed` reads the
+    // PARENT-local cache, which setValue() writes BEFORE staging — so this proves
+    // the host-side service accepted the write, NOT that the child applied it. The
+    // old message here ("did not reach the live Vavra child") turned parent-local
+    // evidence into a child-side verdict: exactly the false claim being corrected.
+    EXPECT_TRUE(changed) << "the host-side param service did not accept the F1Cutoff write";
+    {
+        auto* mp = engine.getMainProcessor();
+        ASSERT_NE(mp, nullptr);
+        auto* trk = mp->getTrack(a.trackIndex);
+        ASSERT_NE(trk, nullptr);
+        auto& chain = trk->getFXChain();
+        ASSERT_LT(static_cast<size_t>(a.slotIndex), chain.size());
+        ASSERT_NE(chain[static_cast<size_t>(a.slotIndex)], nullptr);
+        bool marked = false;
+        for (const auto& kv : chain[static_cast<size_t>(a.slotIndex)]->getLiveHostWrittenPluginParams())
+            if (kv.first == cutoffIdx) marked = true;
+        EXPECT_TRUE(marked) << "the live slot does not report F1Cutoff as host-written";
+    }
+
+    // (1b) FLUSH EVIDENCE — staging actually left the parent for the child
+    // (P1 stageParam -> P3F FLUSHED, both in THIS process's trace file). ParamTrace
+    // caches the env flag at first use, so the gate cannot enable tracing for
+    // itself; when tracing is off the child-side claim is NOT asserted rather than
+    // silently passed (a skipped gate that looks green is the trap to avoid).
+    if (paramtrace::paramTraceEnabled())
+    {
+        const juce::String appended = tracePath.existsAsFile()
+            ? tracePath.loadFileAsString().substring(static_cast<int>(traceMark))
+            : juce::String();
+        const bool stagedTrace = appended.contains("P1 stageParam idx=" + juce::String(cutoffIdx));
+        const bool flushedTrace = appended.contains("P3F FLUSHED");
+        std::cout << "[VavraParams] trace flush evidence: P1=" << stagedTrace
+                  << " P3F=" << flushedTrace << "\n";
+        EXPECT_TRUE(stagedTrace) << "trace: the parent never staged this write (P1 absent)";
+        EXPECT_TRUE(flushedTrace)
+            << "trace: the staged write was never flushed to the shm ring (P3F absent)";
+    }
+    else
+    {
+        std::cout << "[VavraParams] child-side application NOT asserted: HDAW_TRACE_PARAM was "
+                     "not set for this process (the flag is cached at first use). Re-run with "
+                     "HDAW_TRACE_PARAM=1 to assert P1 stageParam -> P3F FLUSHED here; the "
+                     "recorded child-side evidence is C1 SET -> C1 WARM -> C1 DRAINED.\n";
+    }
 
     const ProjectCommands::AuditionResult r1 = cmds.auditionPlugin(rp);
     ASSERT_TRUE(r1.ok) << r1.error;
@@ -1132,27 +1277,32 @@ TEST(FxMidiInjection, VavraHostParamsLiveReachability)
     // dead slot is ~3e-6).
     EXPECT_GT(r1.rms, 1e-4f) << "the Vavra slot went silent after the F1Cutoff write";
 
-    // Live audibility is deliberately NOT asserted here: the ~2x mode flip swamps
-    // any param effect on this child (see the header note). Effectiveness is
-    // asserted by FxMidiInjection.VavraHostParamOfflineReplayAffectsExport, where
-    // the override is applied at fresh-child build time and the measurement is
-    // clean and monotonic.
-    std::cout << "[VavraParams] live write verified: reachable + still rendering; "
-                 "effectiveness is covered by the offline replay gate\n";
+    // Live-render audibility is NOT asserted: every render here is a fresh export
+    // child, so a live-only write is not in that child's input at all. The render
+    // effect is measured by the opt-in liveParamState probe and by the persisted
+    // ledger gates (see the header).
+    std::cout << "[VavraParams] host-side staging (+flush when traced) verified; slot still "
+                 "rendering; the render effect is covered by the ledger/live-probe gates\n";
 }
 
 // Vavra host-param OFFLINE REPLAY probe (2026-09-21).
 //
-// The live gate above proves Vavra host params do not move the LIVE render. This
+// The live gate above proves the host-side write is staged (and, with tracing on,
+// flushed to the shm ring). It says NOTHING about renders: every render in this
+// harness is an offline export of a tree copy into a FRESH child, so a live-only
+// write is never part of that child's input. This
 // probe answers the durability question, and the answer REVERSES the naive "dead
 // parameter" reading: an override persisted into the slot's
 // `appliedParamOverrides` ledger and replayed into a FRESH child by
 // ExportManager::replayAppliedParamOverrides -> TrackFXSlot::setAutomationParam
 // DOES reach the microQ audio. Measured 2026-09-21: baseline export rms 0.00630,
 // and with every `Ch N AmpVolume` replayed to 0.0 the export drops to
-// 0.00076/0.00198 (~12-31% of base), while 1.0 is not quieter. So the Vavra
-// host-param gap is a LIVE-path gap, not a dead parameter: automation during
-// playback is inaudible, but a replayed/offline render is affected. Baseline
+// 0.00076/0.00198 (~12-31% of base), while 1.0 is not quieter. That is the
+// durable channel working — and NOT evidence of a "live-path gap" (corrected
+// 2026-09-21: a live-only write is not part of a tree-derived render by
+// construction, and the public set_fx_param route persists into this same ledger,
+// so it reaches renders too — see VavraHostParamPersistedWriteAffectsExport and
+// LiveParamStateProbeReflectsUnpersistedWrite). Baseline
 // non-silence is asserted first so a silent render cannot manufacture a vacuous
 // pass (lesson 25).
 TEST(FxMidiInjection, VavraHostParamOfflineReplayAffectsExport)
@@ -1282,13 +1432,293 @@ TEST(FxMidiInjection, VavraHostParamOfflineReplayAffectsExport)
     EXPECT_GT(levels1, levels0) << "offline AmpVolume replay is not monotonic";
 }
 
-// Osirus boot-patch awakening gate (2026-09-19, diagnostic): the Virus C OS
-// boots with an INIT-SILENT patch (probe: 'Ch 1 Channel Volume' def=0), which
-// explains finding F-A (bit-identical silence under all programs/dumps) better
-// than any boot-timing theory. This gate wakes the boot patch via
-// PluginParamService::setParam (Ch 1 Channel Volume -> max) and measures the
-// same-child render A/B. If the delta is audible, the fix for F-A is HDAW-side
-// (wake the boot patch at slot creation / first capture) - no emulator change.
+// END-TO-END gate for the documented `appliesVia: set_fx_param` route
+// (2026-09-21). Root cause it locks down
+// (docs/plans/2026-09-21-vavra-live-param-delivery.md):
+//   * a plugin-slot host-param write reaches the LIVE isolated child only
+//     (traced: parent P1 stageParam -> P3F flush -> child C1 SET -> WARM ->
+//     DRAINED -> IDLE clock), and
+//   * every render the audit surface uses (audition_plugin / verify_part /
+//     export_audio) is an OFFLINE EXPORT of a tree copy into a FRESH child
+//     (`renderTrackWindow` -> `ExportManager::startExport`), so a live-only
+//     write is invisible to it.
+// Fix under test: AudioEngineCommands::setPluginParam (the shared command
+// behind MCP set_fx_param AND RPC pluginParam.setParam) also merges the slot's
+// `appliedParamOverrides` ledger, which the export replay already applies.
+// The sibling VavraHostParamOfflineReplayAffectsExport writes that ledger by
+// hand; this gate drives the SAME effect through the public command.
+TEST(FxMidiInjection, VavraHostParamPersistedWriteAffectsExport)
+{
+    constexpr const char* kVavraClap = "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap";
+    if (!realPluginTestsEnabled() || !juce::File(kVavraClap).existsAsFile())
+        GTEST_SKIP() << "HDAW_REAL_PLUGIN_TESTS not set or Vavra.clap missing";
+
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    ProjectCommands::AuditionParams probe;
+    probe.pluginId = kVavraClap;
+    probe.trackIndex = -1;
+    probe.keepTrack = true;
+    probe.lengthBeats = 2.0;
+    probe.windowSeconds = 2.0;
+    probe.seed = 37;
+    auto a = cmds.auditionPlugin(probe);
+    ASSERT_TRUE(a.ok) << a.error;
+    ASSERT_GE(a.trackIndex, 0);
+
+    const auto fxSlots = engine.getReadModel().getFxSlots(a.trackIndex);
+    ASSERT_LT(static_cast<size_t>(a.slotIndex), fxSlots.size());
+    const std::string pluginId = fxSlots[static_cast<size_t>(a.slotIndex)].pluginId;
+    auto& paramSvc = engine.getPluginParamService();
+
+    auto all = paramSvc.getParams(a.trackIndex, pluginId);
+    for (int i = 0; i < 24 && all.empty(); ++i)
+    {
+        juce::Thread::sleep(500);
+        all = paramSvc.getParams(a.trackIndex, pluginId);
+    }
+    ASSERT_GT(all.size(), 20u) << "Vavra exposes no host params";
+
+    std::vector<int> levelIdxs;
+    for (const auto& p : all)
+    {
+        std::string low = p.name;
+        for (auto& ch : low) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
+        if (low.find("ampvolume") != std::string::npos)
+            levelIdxs.push_back(p.index);
+    }
+    ASSERT_FALSE(levelIdxs.empty()) << "no AmpVolume params exposed";
+
+    auto exportRms = [&](const juce::File& out) -> float
+    {
+        out.deleteFile();
+        juce::AudioFormatManager fm;
+        fm.registerBasicFormats();
+        auto* proc = engine.getMainProcessor();
+        EXPECT_NE(proc, nullptr);
+        if (proc == nullptr)
+            return 0.0f;
+        auto& em = proc->getExportManager();
+        EXPECT_FALSE(em.isExporting());
+        const double dur = std::max(4.0, HDAW::ExportManager::calculateProjectDuration(
+                                             engine.getProjectModel()));
+        EXPECT_TRUE(em.startExport(engine.getProjectModel().getTree(), fm,
+                                   &engine.getPluginManager(), out, 48000.0, 0.0,
+                                   dur, HDAW::ExportManager::WAV, 24));
+        for (int i = 0; i < 900 && em.isExporting(); ++i)
+        {
+            if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+                mm->runDispatchLoopUntil(20);
+        }
+        EXPECT_FALSE(em.isExporting()) << "offline export did not finish";
+        if (!out.existsAsFile())
+            return 0.0f;
+        juce::AudioFormatManager fm2;
+        fm2.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> rd(fm2.createReaderFor(out));
+        if (rd == nullptr)
+            return 0.0f;
+        const int n = static_cast<int>(rd->lengthInSamples);
+        juce::AudioBuffer<float> buf(2, n);
+        rd->read(&buf, 0, n, 0, true, true);
+        double acc = 0.0;
+        for (int s = 0; s < n; ++s)
+        {
+            const float v = buf.getSample(0, s);
+            acc += static_cast<double>(v) * v;
+        }
+        out.deleteFile();
+        return static_cast<float>(std::sqrt(acc / std::max(1, n)));
+    };
+
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    const float base = exportRms(dir.getChildFile("hdaw_vavra_persist_base.wav"));
+    ASSERT_GT(base, 1e-4f) << "baseline offline export is silent — cannot judge a delta";
+
+    // Drive every `Ch N AmpVolume` to 0.0 through the PUBLIC command (exactly
+    // what MCP set_fx_param / RPC pluginParam.setParam do).
+    for (const int idx : levelIdxs)
+    {
+        const int overrides = cmds.setPluginParam(a.trackIndex, a.slotIndex, idx, 0.0f);
+        ASSERT_GT(overrides, 0) << "setPluginParam did not persist param " << idx;
+    }
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+                        .getChild(a.trackIndex).getChildWithName(IDs::FX_CHAIN)
+                        .getChild(a.slotIndex);
+    ASSERT_TRUE(slotTree.isValid());
+    EXPECT_EQ(HDAW::ExportManager::parseAppliedParamOverrides(slotTree).size(),
+              levelIdxs.size());
+
+    const float levels0 = exportRms(dir.getChildFile("hdaw_vavra_persist_levels0.wav"));
+
+    for (const int idx : levelIdxs)
+        cmds.setPluginParam(a.trackIndex, a.slotIndex, idx, 1.0f);
+    const float levels1 = exportRms(dir.getChildFile("hdaw_vavra_persist_levels1.wav"));
+
+    std::cout << "[VavraPersist] set_fx_param path base=" << base << " AmpVolume=0 -> " << levels0
+              << " AmpVolume=1 -> " << levels1
+              << " (the documented appliesVia=set_fx_param route now reaches the export)\n";
+    EXPECT_LT(levels0, 0.5f * base)
+        << "set_fx_param no longer affects the export — the persistence channel regressed";
+    EXPECT_GT(levels1, levels0) << "persisted AmpVolume is not monotonic";
+
+    // Reset must drop the channel entirely.
+    EXPECT_EQ(cmds.clearPluginParamOverrides(a.trackIndex, a.slotIndex),
+              static_cast<int>(levelIdxs.size()));
+    EXPECT_FALSE(slotTree.hasProperty(IDs::appliedParamOverrides));
+}
+
+// G8 gate (2026-09-21, docs/plans/2026-09-21-plugin-param-persistence.md §B):
+// the OPT-IN live-state render probe. A raw PluginParamService::setParam write
+// reaches the LIVE isolated child only, so a tree-derived window cannot see it;
+// with liveParamState=true the window must. The two channels are made
+// distinguishable on ONE slot: the persisted ledger (Cmds::setPluginParam) is
+// driven to 0.0 (LOW) and the raw live write to 1.0 (HIGH). The default render
+// must follow the LEDGER, the live probe must follow the LIVE CACHE (merge is
+// last-write-wins, so the live value overrides the persisted one in the copy),
+// and usedLiveParamState must say which of the two actually ran.
+// Noise discipline: fresh export children vary in level on identical input, so
+// assert a non-silent baseline first (lesson 25) and then monotonicity — the
+// same noise-tolerant profile the persist gate above uses — never a single
+// small delta.
+TEST(FxMidiInjection, LiveParamStateProbeReflectsUnpersistedWrite)
+{
+    constexpr const char* kVavraClap = "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap";
+    if (!realPluginTestsEnabled() || !juce::File(kVavraClap).existsAsFile())
+        GTEST_SKIP() << "HDAW_REAL_PLUGIN_TESTS not set or Vavra.clap missing";
+
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    ProjectCommands::AuditionParams probe;
+    probe.pluginId = kVavraClap;
+    probe.trackIndex = -1;
+    probe.keepTrack = true;
+    probe.lengthBeats = 2.0;
+    probe.windowSeconds = 2.0;
+    probe.seed = 37;
+    auto a = cmds.auditionPlugin(probe);
+    ASSERT_TRUE(a.ok) << a.error;
+    ASSERT_GE(a.trackIndex, 0);
+    EXPECT_FALSE(a.usedLiveParamState) << "a plain probe is tree-derived and must say so";
+
+    const auto fxSlots = engine.getReadModel().getFxSlots(a.trackIndex);
+    ASSERT_LT(static_cast<size_t>(a.slotIndex), fxSlots.size());
+    const std::string pluginId = fxSlots[static_cast<size_t>(a.slotIndex)].pluginId;
+    auto& paramSvc = engine.getPluginParamService();
+
+    auto all = paramSvc.getParams(a.trackIndex, pluginId);
+    for (int i = 0; i < 24 && all.empty(); ++i)
+    {
+        juce::Thread::sleep(500);
+        all = paramSvc.getParams(a.trackIndex, pluginId);
+    }
+    ASSERT_GT(all.size(), 20u) << "Vavra exposes no host params";
+
+    std::vector<int> levelIdxs;
+    for (const auto& p : all)
+    {
+        std::string low = p.name;
+        for (auto& ch : low) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
+        if (low.find("ampvolume") != std::string::npos)
+            levelIdxs.push_back(p.index);
+    }
+    ASSERT_FALSE(levelIdxs.empty()) << "no AmpVolume params exposed";
+
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+                        .getChild(a.trackIndex).getChildWithName(IDs::FX_CHAIN)
+                        .getChild(a.slotIndex);
+    ASSERT_TRUE(slotTree.isValid());
+
+    // Reads the LIVE host-written cache, re-resolving the slot on every call so a
+    // rebuild (which re-creates the FX slots) can never leave a stale pointer.
+    auto liveValueFor = [&](int idx) -> float
+    {
+        auto* proc = engine.getMainProcessor();
+        auto* trk = proc != nullptr ? proc->getTrack(a.trackIndex) : nullptr;
+        if (trk == nullptr) return -2.0f;
+        auto& chain = trk->getFXChain();
+        if (a.slotIndex < 0 || static_cast<size_t>(a.slotIndex) >= chain.size()
+            || chain[static_cast<size_t>(a.slotIndex)] == nullptr)
+            return -2.0f;
+        for (const auto& kv : chain[static_cast<size_t>(a.slotIndex)]->getLiveHostWrittenPluginParams())
+            if (kv.first == idx) return kv.second;
+        return -1.0f;   // not host-written
+    };
+
+    // Channel 1 — PERSISTED ledger LOW (0.0). setPluginParam stages the same write
+    // live, so both channels currently read LOW.
+    for (const int idx : levelIdxs)
+        ASSERT_GT(cmds.setPluginParam(a.trackIndex, a.slotIndex, idx, 0.0f), 0);
+    ASSERT_EQ(HDAW::ExportManager::parseAppliedParamOverrides(slotTree).size(),
+              levelIdxs.size());
+    for (const int idx : levelIdxs)
+        EXPECT_FLOAT_EQ(liveValueFor(idx), 0.0f) << "param " << idx;
+
+    // Channel 2 — RAW live write HIGH (1.0), ledger untouched. This is exactly the
+    // "you hear it, but a render cannot see it" case the probe exists for.
+    for (const int idx : levelIdxs)
+        paramSvc.setParam(a.trackIndex, pluginId, idx, 1.0f);
+    for (const int idx : levelIdxs)
+        EXPECT_FLOAT_EQ(liveValueFor(idx), 1.0f) << "param " << idx;
+    EXPECT_EQ(HDAW::ExportManager::parseAppliedParamOverrides(slotTree).size(),
+              levelIdxs.size())
+        << "the raw live write must not have touched the persisted ledger";
+
+    ProjectCommands::AuditionParams r = probe;
+    r.trackIndex = a.trackIndex;
+    r.slotIndex = a.slotIndex;
+    r.keepTrack = false;
+
+    // Default: tree-derived -> follows the ledger (LOW).
+    auto treeDerived = cmds.auditionPlugin(r);
+    ASSERT_TRUE(treeDerived.ok) << treeDerived.error;
+    EXPECT_FALSE(treeDerived.usedLiveParamState)
+        << "live state was not requested, so the render cannot have used it";
+    ASSERT_GT(treeDerived.rms, 1e-4f)
+        << "baseline silent - cannot judge a delta (lesson 25)";
+
+    // Opt-in: follows the live cache (HIGH).
+    r.liveParamState = true;
+    auto liveState = cmds.auditionPlugin(r);
+    ASSERT_TRUE(liveState.ok) << liveState.error;
+    EXPECT_TRUE(liveState.usedLiveParamState)
+        << "the live probe must report the live-only state it absorbed";
+
+    std::cout << "[LiveParamState] ledger(AmpVolume=0) -> " << treeDerived.rms
+              << " rms, raw live(AmpVolume=1) -> " << liveState.rms
+              << " rms, usedLiveParamState " << treeDerived.usedLiveParamState << " -> "
+              << liveState.usedLiveParamState << "\n";
+    EXPECT_GT(liveState.rms, treeDerived.rms)
+        << "liveParamState=true did not pick up the unpersisted live write";
+
+    // The probe seeds the tree COPY: a live-state render must never persist itself.
+    EXPECT_EQ(HDAW::ExportManager::parseAppliedParamOverrides(slotTree).size(),
+              levelIdxs.size());
+}
+
+// Osirus boot-patch REGRESSION gate (2026-09-19; framing corrected 2026-09-21).
+//
+// The awakening is NOT a setParam effect — it is the ROM boot-patch fix. The
+// Virus C OS was booted from an edit buffer that virusLib built by
+// value-initializing 512 zero bytes, so oscillator levels, envelopes and channel
+// volume all sat at 0 and every render was exact silence (float dust ~3.09e-06)
+// regardless of program or dump. The fix loads ROM factory patch A-0 into the
+// edit buffer at boot (guarded for non-TI families). See lesson 25/26 and the
+// CORRECTION in docs/hardware-va-suite.md §9. That silence also manufactured the
+// earlier false conclusion F-A ("load_virus_preset queues but does not change
+// renders") — every A/B compared 0 against 0, so no input could ever show a delta.
+//
+// Asserts: the slot renders AUDIBLE audio on its first audition (rms > 0.001),
+// i.e. the boot-patch fix is active. Kept as a real regression guard.
+//
+// NOT asserted: any render A/B from the Ch 1 Channel Volume probe below. The old
+// text described measuring a "same-child render A/B" (there is no same child —
+// renders are fresh export children) and expected a delta from a step that is a
+// no-op on the fixed boot patch. The lookup is retained only as an exposure check.
 TEST(FxMidiInjection, OsirusBootPatchAwakening)
 {
     constexpr const char* kOsirusClap = "C:\\Program Files\\Common Files\\CLAP\\Osirus.clap";
@@ -1696,10 +2126,20 @@ TEST(FxMidiInjection, OsirusPresetChangeReflectsInRender)
     EXPECT_GT(r2.rms, 0.001f) << "post-injection render is silent (injection broke the slot)";
 }
 
-// NodalRed2x host-parameter exposure gate (2026-09-19): 33 curated sound
-// params made public in parameterDescriptions_n2x.json + rebuilt. Proves the
-// params are visible in the cache and that setParam (Cutoff) audibly changes
-// the live render.
+// NodalRed2x host-parameter gate (2026-09-19; claims corrected 2026-09-21).
+//
+// Proves: (1) the param cache lists the curated sound params (362 since 33 x 11
+// were made public in parameterDescriptions_n2x.json); (2) a
+// PluginParamService::setParam write is ACCEPTED HOST-SIDE (parent-local cache +
+// host-written mark); (3) the param is EFFECTIVE through the durable channel —
+// set_fx_param persists into appliedParamOverrides and a tree-derived window
+// replays it into the fresh export child.
+//
+// CORRECTED (the old claim was false): "setParam (Cutoff) audibly changes the
+// live render" was measured by comparing two renders and asserting |delta| > 1e-5.
+// Both renders are FRESH EXPORT CHILDREN that never receive a live-only param
+// write, and the measured delta (2.7e-4) cannot separate a param effect from the
+// harness's own variation. See docs/plans/2026-09-21-vavra-live-param-delivery.md.
 TEST(FxMidiInjection, NodalRed2xHostParamsChangeRender)
 {
     constexpr const char* kN2xClap = "C:\\Program Files\\Common Files\\CLAP\\NodalRed2x.clap";
@@ -1786,16 +2226,68 @@ TEST(FxMidiInjection, NodalRed2xHostParamsChangeRender)
                 break;
             }
     }
-    EXPECT_TRUE(changed) << "setParam did not reach the live NodalRed2x child";
+    // (2) HOST-SIDE ACCEPTANCE (precisely labelled): the parent-local cache is
+    // written by setValue() BEFORE staging, so this is the host-side half of the
+    // chain — NOT evidence that the child applied the write. The old message
+    // ("did not reach the live NodalRed2x child") claimed a child-side verdict from
+    // parent-local evidence.
+    EXPECT_TRUE(changed) << "the host-side param service did not accept the Cutoff write";
+    {
+        auto* mp = engine.getMainProcessor();
+        ASSERT_NE(mp, nullptr);
+        auto* trk = mp->getTrack(a.trackIndex);
+        ASSERT_NE(trk, nullptr);
+        auto& chain = trk->getFXChain();
+        ASSERT_LT(static_cast<size_t>(a.slotIndex), chain.size());
+        ASSERT_NE(chain[static_cast<size_t>(a.slotIndex)], nullptr);
+        bool marked = false;
+        for (const auto& kv : chain[static_cast<size_t>(a.slotIndex)]->getLiveHostWrittenPluginParams())
+            if (kv.first == cutoffIdx) marked = true;
+        EXPECT_TRUE(marked) << "the live slot does not report Cutoff as host-written";
+    }
 
-    ProjectCommands::AuditionResult r1;
-    r1 = cmds.auditionPlugin(rp);
-    ASSERT_TRUE(r1.ok) << r1.error;
-    std::cout << "[N2xParams] same-child rms before=" << r0.rms
-              << " after=" << r1.rms
-              << " |delta|=" << std::abs(r1.rms - r0.rms) << "\n";
-    EXPECT_GT(std::abs(r1.rms - r0.rms), 1e-5f)
-        << "closing Cutoff did not audibly change the live NodalRed2x render";
+    // (3) EFFECTIVENESS through the DURABLE channel (what export_audio sees):
+    // set_fx_param persists into the ledger; a TREE-DERIVED window replays it into
+    // the fresh export child. Replaces the false live-render delta assertion.
+    std::cout << "[N2xParams] live-child render r0=" << r0.rms
+              << " (a fresh export child — NOT the same child as any other render)\n";
+    auto renderTreeDerived = [&]() -> float
+    {
+        const auto rr = cmds.auditionPlugin(rp);
+        EXPECT_TRUE(rr.ok) << rr.error;
+        EXPECT_FALSE(rr.usedLiveParamState) << "this measurement must stay tree-derived";
+        return rr.ok ? rr.rms : 0.0f;
+    };
+
+    // Noise floor for THIS device/session (two fresh children, same tree, no
+    // override in between) — the band below is judged against it.
+    const float noiseB = renderTreeDerived();
+    const float noiseSpread = std::abs(noiseB - r0.rms);
+
+    EXPECT_GT(cmds.setPluginParam(a.trackIndex, a.slotIndex, cutoffIdx, 0.0f), 0)
+        << "set_fx_param did not persist Cutoff";
+    const float ledgerLo = renderTreeDerived();
+
+    EXPECT_GT(cmds.setPluginParam(a.trackIndex, a.slotIndex, cutoffIdx, 1.0f), 0);
+    const float ledgerHi = renderTreeDerived();
+
+    std::cout << "[N2xParams] same-input repeat spread=" << noiseSpread
+              << " | ledger replay Cutoff 0.0 -> " << ledgerLo
+              << " rms, 1.0 -> " << ledgerHi
+              << " |separation|=" << std::abs(ledgerHi - ledgerLo) << "\n";
+    // Non-silent before judging a delta (lesson 25): silence masks every delta.
+    // max() because one extreme of a filter cutoff may legitimately render
+    // near-silence; what must never happen is BOTH sides being silent.
+    ASSERT_GT(std::max(ledgerLo, ledgerHi), 1e-4f)
+        << "both extremes are silent — a delta would be meaningless";
+    // 5% band: far above the same-input spread printed above and far below the
+    // measured separation (66% on 2026-09-21), so it catches a broken durable
+    // channel without claiming more resolution than this harness has.
+    EXPECT_GT(std::abs(ledgerHi - ledgerLo), 0.05f * std::max(ledgerLo, ledgerHi))
+        << "the replayed Cutoff did not move the render beyond the 5% band "
+           "(same-input spread was " << noiseSpread << ")";
+    EXPECT_EQ(cmds.clearPluginParamOverrides(a.trackIndex, a.slotIndex), 1)
+        << "the override ledger should hold exactly one entry";
 }
 
 // OsTIrus render gate (2026-09-19): the TI has a different OS from the C

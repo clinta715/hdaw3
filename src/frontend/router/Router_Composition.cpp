@@ -989,6 +989,9 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         // so silent-at-default plugins stop being a blocker. Probe mode
         // (trackIndex < 0) is one self-reverting undo unit; errors return
         // in-band via the result's error field like the cases above.
+        // liveParamState (default false) is the opt-in live-state probe: the
+        // window then reflects unpersisted live host-param writes, and
+        // usedLiveParamState reports whether that actually happened.
         ProjectCommands::AuditionParams p;
         p.pluginId      = optString(o, "pluginId", "");
         p.programIndex  = optInt(o, "programIndex", -1, nullptr);
@@ -1005,6 +1008,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         p.seed          = optInt<uint64_t>(o, "seed", 0, nullptr);
         p.windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
         p.keepTrack     = optBool(o, "keepTrack", false, nullptr);
+        p.liveParamState = optBool(o, "liveParamState", false, nullptr);
 
         auto r = c.auditionPlugin(p);
         QJsonObject res{
@@ -1017,7 +1021,8 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             { "rms", static_cast<double>(r.rms) },
             { "peak", static_cast<double>(r.peak) },
             { "durationSeconds", r.durationSeconds },
-            { "audible", r.audible }
+            { "audible", r.audible },
+            { "usedLiveParamState", r.usedLiveParamState }
         };
         if (!r.error.empty())
             res.insert("error", QString::fromStdString(r.error));

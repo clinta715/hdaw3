@@ -11,6 +11,7 @@
 #include "engine/SliceDetector.h"
 #include "engine/PsyFmState.h"
 #include "engine/PsyFmModMatrix.h"
+#include "../common/ParamOverrideLedger.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <cmath>
@@ -321,6 +322,81 @@ float AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex,
     juce::String propName = "param_" + juce::String(paramIndex);
     slot.setProperty(juce::Identifier(propName), static_cast<double>(value), &um);
     return value;
+}
+
+// ── Plugin-slot host-param persistence (2026-09-21) ─────────────────────────
+// A plugin slot's host param write reaches the LIVE isolated child only
+// (PluginParamService::setParam → proxy staging → shm ring → child), so any
+// render built from a tree copy — export_audio, audition_plugin, verify_part —
+// cannot see it, and neither can save/load. Persist the same write into the
+// slot's offline-replay ledger (IDs::appliedParamOverrides), which
+// ExportManager::replayAppliedParamOverrides already replays into every fresh
+// export child. This is what makes the documented `appliesVia: set_fx_param`
+// route work end-to-end. See docs/plans/2026-09-21-vavra-live-param-delivery.md.
+int AudioEngineCommands::setPluginParam(int trackIndex, int slotIndex,
+                                        int paramIndex, float normalizedValue)
+{
+    auto slotTree = findFxSlot(trackIndex, slotIndex);
+    if (!slotTree.isValid() || paramIndex < 0)
+        return -1;
+    if (slotTree.getProperty(IDs::fxType).toString() != "plugin")
+        return -1;
+
+    const float value = juce::jlimit(0.0f, 1.0f, normalizedValue);
+
+    // The live slot's published param cache is the authority for the index
+    // bounds (same guard the offline replay uses). When no live slot exists
+    // yet (no audio device, deferred routing projection) the ledger is still
+    // written: the replay bounds-checks and reports out-of-range entries
+    // (ParamReplayStats::skippedBeyondCache) instead of silently dropping them.
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        if (auto* track = proc->getTrack(trackIndex))
+        {
+            auto& chain = track->getFXChain();
+            if (slotIndex >= 0 && slotIndex < static_cast<int>(chain.size())
+                && chain[static_cast<size_t>(slotIndex)] != nullptr
+                && chain[static_cast<size_t>(slotIndex)]->isPlugin()
+                && !chain[static_cast<size_t>(slotIndex)]->hasAutomationParam(paramIndex))
+                return -1;
+        }
+    }
+
+    const auto pluginId = slotTree.getProperty(IDs::pluginID, "").toString().toStdString();
+    if (!pluginId.empty())
+        engine_.getPluginParamService().setParam(trackIndex, pluginId, paramIndex, value);
+
+    // Durable channel. nullptr undo: same volatile-cache convention as
+    // pluginState / the matrix ledger (a param write must not spam the undo
+    // history, and a slider drag writes here once per tick).
+    const juce::String ledger =
+        slotTree.getProperty(IDs::appliedParamOverrides, "").toString();
+    const juce::String next = HDAW::mergeParamOverride(ledger, paramIndex, value);
+    if (next != ledger)
+        slotTree.setProperty(IDs::appliedParamOverrides, next, nullptr);
+    return static_cast<int>(HDAW::parseParamOverrides(next).size());
+}
+
+int AudioEngineCommands::clearPluginParamOverrides(int trackIndex, int slotIndex)
+{
+    auto slotTree = findFxSlot(trackIndex, slotIndex);
+    if (!slotTree.isValid())
+        return -1;
+    const auto entries = HDAW::parseParamOverrides(
+        slotTree.getProperty(IDs::appliedParamOverrides, "").toString());
+    if (slotTree.hasProperty(IDs::appliedParamOverrides))
+        slotTree.removeProperty(IDs::appliedParamOverrides, nullptr);
+    return static_cast<int>(entries.size());
+}
+
+std::vector<std::pair<int, float>>
+AudioEngineCommands::getPluginParamOverrides(int trackIndex, int slotIndex) const
+{
+    auto slotTree = findFxSlot(trackIndex, slotIndex);
+    if (!slotTree.isValid())
+        return {};
+    return HDAW::parseParamOverrides(
+        slotTree.getProperty(IDs::appliedParamOverrides, "").toString());
 }
 
 // NB4 capture receipt: always-fresh values (status + byte count + timestamp)

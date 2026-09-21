@@ -11,6 +11,8 @@
 #include "CorpusArranger.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
+#include "../common/ParamOverrideLedger.h"
+#include "Track.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
@@ -306,6 +308,9 @@ struct RenderWindowResult
     juce::File wavPath;   // only set on success (after measureWav); caller owns deletion
     float rms = 0.0f;
     float peak = 0.0f;
+    // true when this window's tree copy absorbed >= 1 live-only host-written
+    // plugin param (see seedLiveParams) — false means the window is tree-derived.
+    bool usedLiveParamState = false;
     double windowStart = 0.0;   // seconds — the target track's earliest clip start
     std::string error;
 };
@@ -324,13 +329,20 @@ std::atomic<int> s_renderCounter{ 0 };
 // an attenuated probe so a clipping mix's TRUE peak survives the 24-bit WAV
 // clamp (anything >= 1.0 writes as full scale and reads back exactly 1.0,
 // hiding how far over the mix is). Never mutates the live graph (Gate 12).
+// `seedLiveParams` (opt-in, default OFF) additionally merges each plugin
+// slot's LIVE host-written params into that copy, so the window reflects what
+// you currently hear; `usedLiveParamState` reports whether that really
+// happened (never just that it was requested). Precondition: no concurrent
+// graph rebuild — a rebuild re-creates the FX slots and empties the live cache.
+// The audition path rebuilds synchronously BEFORE rendering, so it satisfies it.
 // Errors are reported via `error`; the caller owns deleting `wavPath`.
 RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
                                      double windowSeconds, float fader,
                                      bool applyFader, bool soloMuteOthers = true,
                                      BandPresence* outBands = nullptr,
                                      float masterScale = 1.0f,
-                                     double windowStartOverride = -1.0)
+                                     double windowStartOverride = -1.0,
+                                     bool seedLiveParams = false)
 {
     RenderWindowResult result;
 
@@ -444,6 +456,51 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
                 }
             }
         }
+    }
+
+    // Opt-in live-state probe (2026-09-21, docs/plans/2026-09-21-plugin-param-persistence.md).
+    // Default OFF: the windowed render stays tree-derived so it matches a real
+    // export_audio (a probe that silently included live-only state would hide
+    // the very gap that the appliedParamOverrides channel fixes). When ON, seed
+    // the copy's plugin-slot overrides from the LIVE host-written param cache so
+    // the window reflects what you currently hear — including writes that were
+    // never persisted (e.g. a bare PluginParamService::setParam).
+    if (seedLiveParams)
+    {
+        int liveMerged = 0;
+        if (auto* proc = engine.getMainProcessor())
+        {
+            for (int t = 0; t < copyTrackList.getNumChildren(); ++t)
+            {
+                auto* liveTrack = proc->getTrack(t);
+                if (liveTrack == nullptr)
+                    continue;
+                auto& liveChain = liveTrack->getFXChain();
+                auto fxChain = copyTrackList.getChild(t).getChildWithName(IDs::FX_CHAIN);
+                for (int s = 0; fxChain.isValid() && s < fxChain.getNumChildren(); ++s)
+                {
+                    if (s >= static_cast<int>(liveChain.size())
+                        || liveChain[static_cast<size_t>(s)] == nullptr)
+                        continue;
+                    auto slot = fxChain.getChild(s);
+                    if (slot.getProperty(IDs::fxType).toString() != "plugin")
+                        continue;
+                    const auto live =
+                        liveChain[static_cast<size_t>(s)]->getLiveHostWrittenPluginParams();
+                    if (live.empty())
+                        continue;
+                    juce::String ledger =
+                        slot.getProperty(IDs::appliedParamOverrides, "").toString();
+                    for (const auto& kv : live)
+                        ledger = HDAW::mergeParamOverride(ledger, kv.first, kv.second);
+                    slot.setProperty(IDs::appliedParamOverrides, ledger, nullptr);
+                    ++liveMerged;
+                }
+            }
+        }
+        // Honest mode report: true only when the copy actually absorbed at least
+        // one live-only pair. Never echoes the request.
+        result.usedLiveParamState = (liveMerged > 0);
     }
 
     auto& fm = engine.getProjectPool().getFormatManager();
@@ -1288,7 +1345,14 @@ ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const Auditi
     }
 
     // Solo-render the window and report the level (audible ≈ peak > -80 dBFS).
-    auto r = renderTrackWindow(engine_, trackIndex, params.windowSeconds, 1.0f, false);
+    // Opt-in live-state probe: seedLiveParams = params.liveParamState (default
+    // false, so the probe stays tree-derived and matches a real export). The
+    // middle arguments are the explicit defaults — a positional call keeps the
+    // probe flag last without silently changing solo-mute behaviour.
+    auto r = renderTrackWindow(engine_, trackIndex, params.windowSeconds, 1.0f, false,
+                               /*soloMuteOthers*/ true, /*outBands*/ nullptr,
+                               /*masterScale*/ 1.0f, /*windowStartOverride*/ -1.0,
+                               params.liveParamState);
     if (!r.error.empty())
     {
         rollbackProbe();
@@ -1299,6 +1363,7 @@ ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const Auditi
     result.peak = r.peak;
     result.durationSeconds = params.windowSeconds;
     result.audible = (r.peak > 1e-4f);
+    result.usedLiveParamState = r.usedLiveParamState;
     r.wavPath.deleteFile();
 
     if (tempProbe && !params.keepTrack)

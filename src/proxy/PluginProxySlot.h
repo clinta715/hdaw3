@@ -151,6 +151,11 @@ public:
     // tick (flushStagedParams) — delivery is transport-independent.
     void stageParam(uint32_t index, float value);
 
+    // Host-written params since construction: (index, cached normalized value)
+    // for every index the host wrote via stageParam. Message-thread read for
+    // the `liveParamState` render probe (reads parent-local atomics only).
+    std::vector<std::pair<int, float>> getHostWrittenParams() const;
+
     // Pull pending child->parent param notifications off the local atomic
     // queue and forward them to this AudioProcessor's listeners via the
     // matching ProxiedParameter::sendValueChangedMessageToListeners.
@@ -253,6 +258,11 @@ private:
     // unique_ptr.
     std::unique_ptr<std::atomic<float>[]> stagedParams_;
     std::unique_ptr<std::atomic<uint32_t>[]> paramDirty_;
+    // Host-written history: 0/1 per index, set by stageParam and never cleared.
+    // The `liveParamState` render probe reads it to seed a tree copy with the
+    // params the host drove LIVE but never persisted into the
+    // appliedParamOverrides ledger (see docs/plans/2026-09-21-plugin-param-persistence.md).
+    std::unique_ptr<std::atomic<uint8_t>[]> hostWritten_;
     uint32_t paramCacheSize_ = 0;
     int numProgramsCached_ = 1;
     int programPollTicks_ = 0;

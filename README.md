@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.36.0
+**Current version**: 0.37.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.36.0)
+## What works today (v0.37.0)
 
 ### Hardware VA presets & patch libraries
 - Five preset pipelines decode the gearmulator synth libraries into searchable
@@ -37,6 +37,13 @@ pass `Debug` for breakpoint debugging.
   applies); `load_nord_bank` loads Clavia banks (verified to change
   the render); Virus ROM presets via `load_virus_preset` (CC0+PC); CC/PC injection for
   all via `send_fx_midi`.
+- **Plugin host-parameter writes are durable (v0.37.0)**: `set_fx_param` (and its
+  RPC twin `pluginParam.setParam`) persists into the slot's `appliedParamOverrides`
+  ledger, which every fresh export child replays — so a parameter change now reaches
+  `export_audio` / `audition_plugin` / `verify_part` and survives save-load.
+  `clear_fx_param_overrides` drops the ledger, `list_fx_params` flags `overridden`
+  entries, and the opt-in `liveParamState` argument on `audition_plugin` renders
+  what you currently *hear* (unpersisted live writes) instead of the tree.
 - Capability matrix, per-device modulation maps, transitional-effect recipes and the
   modulation-first policy: `docs/hardware-va-suite.md`.
 
