@@ -21,10 +21,12 @@ C not started" framing of the original title (kept below as the working record).
   file`) is a **cross-shard temp-file collision**, not a regression — the same test
   passes solo in 25 s. Registry/RPC sweep: **123/123**.
 
-**Two open items:** (1) `%TEMP%\hdaw_render_<trackIndex>_<counter>.wav` is not
-process-unique, so sharded runs can collide — the one-line fix (pid in the name) is in
-the render path and needs sign-off; (2) backlog #4 (RPC-parity retrofit + the inert
-`param_N` decision for RPC `project.setFxSlotParam` on plugin slots).
+**Open items:** (1) ~~render temp-file collision~~ — **FIXED** (sign-off 2026-09-21): the
+render temp target is now `%TEMP%\hdaw_render_p<pid>_<trackIndex>_<counter>.wav` and the
+identical 4-shard `FxMidiInjection` sweep is **24/24** (was 22/23); (2) backlog #4
+(RPC-parity retrofit + the inert `param_N` decision for RPC `project.setFxSlotParam` on
+plugin slots) — see `docs/plans/2026-09-21-rpc-parity-retrofit.md`, whose suggested
+domain order references `Router_Matrix` / `Router_Tuning`, neither of which exists.
 
 Written 2026-09-21. Self-contained: what the session established, what is in the
 working tree (uncommitted), what is left, and the traps.

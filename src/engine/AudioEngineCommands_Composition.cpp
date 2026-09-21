@@ -22,6 +22,11 @@
 #include <limits>
 #include <memory>
 #include <string>
+#ifdef _WIN32
+#include <process.h>   // _getpid - process-unique render temp names (see below)
+#else
+#include <unistd.h>    // getpid
+#endif
 
 namespace
 {
@@ -319,6 +324,22 @@ struct RenderWindowResult
 // (and concurrent) renders from colliding on the same filename.
 std::atomic<int> s_renderCounter{ 0 };
 
+// Process-unique tag for the temp render target. The counter above restarts at 0
+// in EVERY process, so with several HDAW instances - or the sharded test runner -
+// two processes picked the same %TEMP%\hdaw_render_<track>_<n>.wav and one export
+// died with "Could not create output file" (observed 2026-09-21: exactly one
+// spurious failure in a 4-shard FxMidiInjection real-plugin run, 22/23, while the
+// same test passed solo). A pid in the name makes the target collision-free across
+// processes; within one process the counter still does the work.
+juce::String processUniqueRenderTag()
+{
+#ifdef _WIN32
+    return juce::String(static_cast<int>(::_getpid()));
+#else
+    return juce::String(static_cast<int>(::getpid()));
+#endif
+}
+
 // The shared solo-render + measure loop (handoff #5): renders the target
 // track's clips over [windowStart, windowStart + windowSeconds) from a tree
 // copy and measures the rendered WAV. With `soloMuteOthers` (default) every
@@ -506,7 +527,8 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
     auto& fm = engine.getProjectPool().getFormatManager();
     const juce::File tempFile =
         juce::File::getSpecialLocation(juce::File::tempDirectory)
-            .getChildFile("hdaw_render_" + juce::String(trackIndex) + "_"
+            .getChildFile("hdaw_render_p" + processUniqueRenderTag() + "_"
+                          + juce::String(trackIndex) + "_"
                           + juce::String(s_renderCounter.fetch_add(1)) + ".wav");
     tempFile.deleteFile();
 

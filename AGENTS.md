@@ -765,16 +765,15 @@ safe). It shards small suites whole and large ones per test.
   emulations, so the longest shard dominates).
 - `run_fast_tests.bat` remains the fast iteration tier (excludes the
   render/recipe/spawn-heavy suites).
-- **Sharded runs can collide on the render temp file (found 2026-09-21).**
-  `renderTrackWindow` writes `%TEMP%\hdaw_render_<trackIndex>_<counter>.wav` and
-  the counter restarts per process, so two concurrent shards rendering the same
-  track index can pick the same path; one export then fails with
-  `export failed: Could not create output file`. Observed as exactly 1 spurious
-  failure in a 4-shard `FxMidiInjection` real-plugin run (22/23; the same test
-  passes solo in 25 s). Until the name is made process-unique (a pid in the name —
-  render-path change, needs sign-off), read that error in a sharded run as
-  contention, confirm by re-running the test serially, and prefer serial runs for
-  render-heavy sweeps.
+- **Render temp targets are process-unique (fixed 2026-09-21).** `renderTrackWindow`
+  now writes `%TEMP%\hdaw_render_p<pid>_<trackIndex>_<counter>.wav`. Before the pid
+  tag the counter restarted per process, so two concurrent shards rendering the same
+  track index picked the same path and one export failed with `export failed: Could
+  not create output file` (exactly 1 spurious failure in a 4-shard `FxMidiInjection`
+  real-plugin run, 22/23; the same test passed solo in 25 s). After the fix the
+  identical 4-shard sweep is **24/24**. Keep any new temp target process-unique as
+  well — `%TEMP%\hdaw_paramtrace_<pid>.log` and the proxy state files already are;
+  a per-process counter alone is not enough when one suite runs in several processes.
 - **Pre-build time sync (WSL/Windows clock drift):** before ANY build/compile
   in this repo (`cmake --build`, `build-fast.bat`, `frontend\build.bat`, bare
   `ninja`, `npm run build`), invoke `skill: "pre-build-time-sync"` — it snaps
@@ -836,7 +835,7 @@ for a fix marker) before trusting the package.
 - **C++ engine tests (gtest):** `build/hdaw_tests.exe` (flat Ninja RelWithDebInfo layout — there is no `build/Debug/`; `build-fast.bat test` builds it, `build-fast.bat all` also builds `hdaw_plugin_host.exe` which the PluginIsolation/CrashRecovery suites require)
   - Filter: `--gtest_filter=SuiteName.*`
   - Full suite: **1755 tests / 261 suites, ~44 min** (measured 2026-09-21 — the suite has grown ~30% from the 1328/216 of the 2026-09-02 note below; budget accordingly and prefer the focused tiers or the sharded runner for iteration). Fast iteration tier: `run_fast_tests.bat` (~3.3 min; excludes the render/recipe/spawn-heavy suites — run the full suite before delivery).
-  - Current baseline (2026-09-21, full serial run): **1755 tests / 261 suites -> 1716 passed, 39 skipped, 0 failed** (the skips are real-plugin gates without `HDAW_REAL_PLUGIN_TESTS`). The real-plugin `FxMidiInjection.*` suite was verified separately: 22/23 sharded, and the single failure (`XeniaEditBufferDumpChangesOfflineRender`, `Could not create output file`) was the cross-shard temp-file collision documented above and passes solo in 25 s.
+  - Current baseline (2026-09-21, full serial run): **1755 tests / 261 suites -> 1716 passed, 39 skipped, 0 failed** (the skips are real-plugin gates without `HDAW_REAL_PLUGIN_TESTS`). The real-plugin `FxMidiInjection.*` suite was verified separately: 22/23 sharded, and the single failure (`XeniaEditBufferDumpChangesOfflineRender`, `Could not create output file`) was the cross-shard temp-file collision documented above, since fixed with a pid-tagged temp name (the identical sharded sweep is 24/24 post-fix).
   - Previous baseline (2026-09-02, post DISABLED-test rewrite pass): 0 failed; 4 RealtimeSafety detector tests SKIP in release configs (`BufferCheck` is `#if JUCE_DEBUG`-only by design); 0 DISABLED — every formerly `DISABLED_` test is either re-enabled against current contracts (PluginIsolation ×4, ExportVolumeBypass.RealProjectVolumeSensitivity, TrackFXSlotShowEditor — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md`) or re-enabled after its fix (`ExportAudioWithMultipleIsolatedInstances`, commit abf8a3d).
   - Build sequentially: two concurrent `build-fast` invocations on the same `build/` dir overwrite each other's `.ninja_log`, and the next build re-runs as near-full. One build at a time.
   - WSL-side edits must be synced for the Windows compiler (drvfs/9p attribute cache shows stale content/mtimes for minutes): after editing from WSL, `cp <file> /mnt/c/temp/sync_tmp.cpp`, then from Windows `Copy-Item C:\temp\sync_tmp.cpp -> <D: path> -Force`, then touch `(Get-Item <path>).LastWriteTime = Get-Date`, and verify with PowerShell `Select-String`/`Get-Content` (never findstr through bash→cmd quoting). Symptom if skipped: ninja rebuilds "succeed" against stale sources. Verified recipe — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md` outcome.
