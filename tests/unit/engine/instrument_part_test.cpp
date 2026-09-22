@@ -801,3 +801,62 @@ TEST(InstrumentPart, ExplicitFxTypeSelectsTheInstrumentSlot)
     EXPECT_NE(badRes.error.find("unknown fxType"), std::string::npos) << badRes.error;
     EXPECT_EQ(engine.getReadModel().getTrackCount(), before);
 }
+
+// P3-1 (2026-09-21 dogfood): batch gain-staging — MANY tracks to their own targets in ONE
+// undo unit. Before this a peak-1.0 mix cost one auto_gain_to_target call AND one undo entry
+// per track, so undoing a gain pass took N undos
+// (docs/handoffs/2026-09-21-mcp-dogfood-composition.md).
+TEST(InstrumentPart, BatchGainStagingIsOneUndoUnit)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+    const int t0 = pc.addTrack("GainA");
+    const int t1 = pc.addTrack("GainB");
+    ASSERT_GE(t0, 0);
+    ASSERT_GE(t1, 0);
+    for (const int t : { t0, t1 })
+    {
+        pc.addFxSlot(t, "fm_synth", 0, "");
+        const int clip = pc.addMidiClip(t, 0.0, 4.0, "gain");
+        ASSERT_GT(clip, 0);
+        pc.addNote(clip, 60, 100, 0.0, 0.5);
+        pc.addNote(clip, 64, 100, 1.0, 0.5);
+    }
+    engine.drainPendingRoutingRebuild();
+
+    auto& um = engine.getProjectModel().getUndoManager();
+    auto volOf = [&](int t) {
+        return static_cast<double>(engine.getProjectModel().getTrackListTree()
+                                       .getChild(t).getProperty(IDs::volume, 0.0));
+    };
+    const double before0 = volOf(t0);
+    const double before1 = volOf(t1);
+
+    ProjectCommands::AutoGainTarget a;
+    a.trackId = t0; a.targetRms = 0.05f;
+    ProjectCommands::AutoGainTarget b;
+    b.trackId = t1; b.targetRms = 0.02f;   // both must ATTENUATE (a target above the track's
+                                           // raw RMS would clamp the fader at 1.0 and
+                                           // legitimately write nothing)
+    const auto r = pc.autoGainTracks({ a, b }, 1.0, /*verify=*/false, /*allowGlobalScale=*/false);
+    ASSERT_TRUE(r.error.empty()) << r.error;
+    ASSERT_EQ(r.results.size(), 2u);
+    EXPECT_EQ(r.okCount, 2) << r.results[0].error << " / " << r.results[1].error;
+    EXPECT_EQ(r.failCount, 0);
+    EXPECT_TRUE(r.ok);
+
+    // Each track hit its OWN target (unclamped, so the write is observable).
+    ASSERT_LT(r.results[0].gain.fader, 1.0f);
+    ASSERT_LT(r.results[1].gain.fader, 1.0f);
+    EXPECT_DOUBLE_EQ(volOf(t0), static_cast<double>(r.results[0].gain.fader));
+    EXPECT_DOUBLE_EQ(volOf(t1), static_cast<double>(r.results[1].gain.fader));
+    EXPECT_NE(r.results[0].gain.fader, r.results[1].gain.fader);
+    EXPECT_NE(volOf(t0), before0);
+    EXPECT_NE(volOf(t1), before1);
+
+    // ONE undo reverts BOTH writes — the whole point of the batch.
+    um.undo();
+    EXPECT_DOUBLE_EQ(volOf(t0), before0);
+    EXPECT_DOUBLE_EQ(volOf(t1), before1);
+}

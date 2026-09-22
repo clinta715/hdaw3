@@ -176,6 +176,43 @@ unflushed data, so another handle reads zeros for real audio: the trap that burn
   `McpJobs` sync/async job contract stayed green, which is what proves MCP behaviour was
   preserved by the extraction.
 
+## P3 — gain-staging batch (SHIPPED) + verdict (pending)
+
+### 9. Batch gain-staging — SHIPPED (2026-09-21)
+
+`auto_gain_tracks` (MCP) / `composition.autoGainTracks` (RPC): stage MANY tracks to their own
+target RMS in **ONE undo unit and one round trip**. The dogfood mix (peak 1.0) previously cost
+one `auto_gain_to_target` call and one undo entry per track — undoing a gain pass took N undos.
+
+It reuses the single-track path **verbatim** (measurement, clamping, the global-scale probe) and
+only suppresses its per-track undo transaction via the `gainBatchActive_` flag, so the batch and
+single paths cannot resolve to different faders (a full refactor into measure/apply halves was
+avoided for that reason). A failing target (bad index, silent track, render error) is recorded
+per row and does not abort the batch.
+
+Gate: `InstrumentPart.BatchGainStagingIsOneUndoUnit` — two tracks staged to *different* targets
+(both attenuating, so the write is observable), each fader matches its own target and its own
+track volume, then **one `undo()` reverts BOTH**. Two things it flushed out: a target *above* a
+track's raw RMS legitimately clamps the fader at 1.0 and writes nothing (the first draft of the
+test asserted a change and failed — the test now pins the unclamped case explicitly), and the
+ratchet gate `RpcParityRatchet.EveryLiveToolIsClassified` failed until the ledger was
+regenerated — i.e. the classification ratchet behaved exactly as designed.
+
+### 11. Brief alias → section kind — DONE in P1 #5
+
+The description now states that alias `drop` resolves to kind `mainB` (and that an explicit
+`kind` should be passed when it matters).
+
+### 10. A single release-readiness verdict — PENDING (design settled)
+
+`mix_verdict` over the gates that already have SHARED implementations: audible (rms > 1e-4),
+clipping, loudness (drop vs build, via the plan), structure variety (`audit_song_structure`),
+and intro blast (`MixReportAnalyzer::analyzeBlast`). The MODULATION gate is deliberately out of
+the first cut: `audit_modulation_coverage` is still implemented INLINE in the MCP layer
+(`McpTools_Modulation.cpp`) with no command-layer equivalent, so including it means extracting
+that audit to `src/common/` first. Recorded here so the verdict's name cannot over-promise,
+and so the extraction is the obvious follow-up.
+
 ## Artifacts
 
 - `compositions/mcp-dogfood-2026-09-21.wav` (render) and `.hdaw` (saved project) — gitignored

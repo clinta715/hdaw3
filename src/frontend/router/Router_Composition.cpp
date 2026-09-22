@@ -975,6 +975,46 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         return { false, res };
     }
 
+    if (m == "autoGainTracks") {
+        // BATCH variant: many tracks to their own target RMS in ONE undo unit (see
+        // ProjectCommands::autoGainTracks). A failing target is reported per row and does not
+        // abort the batch.
+        const auto arr = o.value("targets");
+        if (!arr.isArray() || arr.toArray().isEmpty())
+            return makeError(-32602, "targets array required");
+        std::vector<ProjectCommands::AutoGainTarget> targets;
+        for (const auto& tv : arr.toArray()) {
+            const auto t = tv.toObject();
+            ProjectCommands::AutoGainTarget g;
+            g.trackId = t.value("trackId").toInt(-1);
+            g.targetRms = static_cast<float>(t.value("targetRms").toDouble(0.0));
+            targets.push_back(g);
+        }
+        auto r = c.autoGainTracks(targets,
+                                  optDouble(o, "windowSeconds", 4.0, nullptr),
+                                  optBool(o, "verify", false, nullptr),
+                                  optBool(o, "allowGlobalScale", false, nullptr));
+        if (!r.error.empty())
+            return makeError(-32602, QString::fromStdString(r.error));
+        QJsonArray rows;
+        for (const auto& t : r.results) {
+            QJsonObject row{
+                { "trackId", t.trackId }, { "ok", t.ok },
+                { "fader", static_cast<double>(t.gain.fader) },
+                { "measuredRms", static_cast<double>(t.gain.measuredRms) },
+                { "peak", static_cast<double>(t.gain.peak) },
+                { "clamped", t.gain.clamped },
+                { "globalScale", static_cast<double>(t.gain.globalScale) },
+                { "masterGain", static_cast<double>(t.gain.masterGain) },
+                { "mixPeak", static_cast<double>(t.gain.mixPeak) } };
+            if (!t.error.empty())
+                row.insert("error", QString::fromStdString(t.error));
+            rows.append(row);
+        }
+        return { false, QJsonObject{ { "ok", r.ok }, { "okCount", r.okCount },
+                                     { "failCount", r.failCount }, { "targets", rows } } };
+    }
+
     if (m == "sendFxMidi") {
         // Queue short MIDI (program change / CC / note) into a plugin slot's
         // next processed block. Loads MIDI-selectable presets (Virus CC0+PC).

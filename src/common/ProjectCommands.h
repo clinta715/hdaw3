@@ -740,6 +740,33 @@ public:
                                              bool verify = false,
                                              bool allowGlobalScale = false) = 0;
 
+    // BATCH gain-staging (2026-09-21 dogfood P3-1): stage MANY tracks to their own targets in
+    // ONE undo unit and one round trip — the dogfood mix (peak 1.0) otherwise cost one
+    // auto_gain_to_target call and one undo entry per track. A failing target is reported and
+    // does not abort the batch; the successful ones keep their writes
+    // (docs/handoffs/2026-09-21-mcp-dogfood-composition.md).
+    struct AutoGainTarget {
+        int trackId = -1;
+        float targetRms = 0.0f;
+    };
+    struct AutoGainTargetResult {
+        int trackId = -1;
+        bool ok = false;
+        GainStageResult gain;
+        std::string error;
+    };
+    struct AutoGainBatchResult {
+        bool ok = false;
+        int okCount = 0;
+        int failCount = 0;
+        std::vector<AutoGainTargetResult> results;
+        std::string error;   // non-empty only for a whole-batch failure (e.g. bad arguments)
+    };
+    virtual AutoGainBatchResult autoGainTracks(const std::vector<AutoGainTarget>& targets,
+                                               double windowSeconds = 4.0,
+                                               bool verify = false,
+                                               bool allowGlobalScale = false) = 0;
+
     // ── Psytrance score generation (plan 2026-08-30, W1) ──
     // Composes the FULL psytrance score (guide §4 grammar) onto the caller's
     // palette tracks in ONE undo unit: one clip per mapped role at beat 0

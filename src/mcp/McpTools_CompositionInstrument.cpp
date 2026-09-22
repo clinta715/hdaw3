@@ -192,6 +192,52 @@ s.registerTool({"auto_gain_to_target",
                 .arg(r.globalScale).arg(r.masterGain).arg(r.mixPeak));
         }});
 
+s.registerTool({"auto_gain_tracks",
+        "BATCH gain-staging: stage MULTIPLE tracks to their own target RMS in ONE undo unit and one round trip (a peak-1.0 mix otherwise costs one auto_gain_to_target call and one undo entry per track). targets: [{trackId, targetRms}] — same semantics as auto_gain_to_target (solo-render the track's first window, set the fader clamped at 1.0; allowGlobalScale scales the master bus down when the fader clamps and the mix clips). A failing target is reported and does NOT abort the batch; the good ones keep their writes. Returns {ok, okCount, failCount, targets:[{trackId, ok, fader, measuredRms, peak, clamped, globalScale, masterGain, mixPeak, error?}]}. Calls the same engine command as the composition.autoGainTracks RPC.",
+        objSchema({{"targets", QJsonObject{{"type","array"},{"items", QJsonObject{
+                        {"type","object"},
+                        {"properties", QJsonObject{
+                            {"trackId",   QJsonObject{{"type","integer"}}},
+                            {"targetRms", QJsonObject{{"type","number"},{"minimum",0.000001}}}}},
+                        {"required", QJsonArray{"trackId","targetRms"}}}}}},
+                  {"windowSeconds",    QJsonObject{{"type","number"},{"minimum",0.1}}},
+                  {"verify",           QJsonObject{{"type","boolean"}}},
+                  {"allowGlobalScale", QJsonObject{{"type","boolean"}}}},
+                 {"targets"}),
+        "composition",
+        [e](const QJsonObject& a) -> McpToolResult {
+            std::vector<ProjectCommands::AutoGainTarget> targets;
+            for (const auto& tv : a.value("targets").toArray()) {
+                const auto t = tv.toObject();
+                ProjectCommands::AutoGainTarget g;
+                g.trackId = t.value("trackId").toInt(-1);
+                g.targetRms = static_cast<float>(t.value("targetRms").toDouble());
+                targets.push_back(g);
+            }
+            auto r = e->getProjectCommands().autoGainTracks(
+                targets, a.value("windowSeconds").toDouble(4.0),
+                a.contains("verify") ? a.value("verify").toBool() : false,
+                a.contains("allowGlobalScale") ? a.value("allowGlobalScale").toBool() : false);
+            if (!r.error.empty())
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            QJsonArray arr;
+            for (const auto& t : r.results) {
+                QJsonObject o{ { "trackId", t.trackId }, { "ok", t.ok },
+                               { "fader", static_cast<double>(t.gain.fader) },
+                               { "measuredRms", static_cast<double>(t.gain.measuredRms) },
+                               { "peak", static_cast<double>(t.gain.peak) },
+                               { "clamped", t.gain.clamped },
+                               { "globalScale", static_cast<double>(t.gain.globalScale) },
+                               { "masterGain", static_cast<double>(t.gain.masterGain) },
+                               { "mixPeak", static_cast<double>(t.gain.mixPeak) } };
+                if (!t.error.empty()) o["error"] = QString::fromStdString(t.error);
+                arr.append(o);
+            }
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
+                { "ok", r.ok }, { "okCount", r.okCount }, { "failCount", r.failCount },
+                { "targets", arr } }).toJson(QJsonDocument::Compact)));
+        }});
+
 s.registerTool({"audition_plugin",
         "Solo-render a plugin or internal FX (fm_synth/sampler) — on a temp probe track (trackIndex < 0) or an existing slot — over a short window and report peak/rms/audible so silent-at-default plugins stop being a blocker. programIndex -1 reports the current program. Opt-in liveParamState=true makes the window reflect UNPERSISTED live host-param writes (what you currently hear); the default stays tree-derived and matches export_audio, and the result reports usedLiveParamState so the two modes can never be confused. Calls the same engine command as the composition.auditionPlugin RPC.",
         objSchema({{"pluginId",     QJsonObject{{"type","string"}}},

@@ -94,6 +94,9 @@ public:
     GainStageResult autoGainToTarget(int trackIndex, float targetRms,
                                      double windowSeconds, bool verify,
                                      bool allowGlobalScale) override;
+    AutoGainBatchResult autoGainTracks(const std::vector<AutoGainTarget>& targets,
+                                       double windowSeconds, bool verify,
+                                       bool allowGlobalScale) override;
     AuditionResult auditionPlugin(const AuditionParams& params) override;
 
     /// Queue short MIDI (program change / CC / note) into a plugin FX slot's
@@ -500,6 +503,10 @@ public:
                                const std::string& propertyID, float value);
 
 private:
+    // True while autoGainTracks drives autoGainToTarget: suppresses each per-track undo
+    // transaction so the whole batch coalesces into ONE undo unit (JUCE ends the current
+    // transaction when a new one begins, so a batch cannot nest them).
+    bool gainBatchActive_ = false;
     // Find clip by ID across all tracks. Sets outTrackIndex to the
     // parent track index. Returns a valid ValueTree on success.
     juce::ValueTree findClipById(int clipId, int& outTrackIndex) const;

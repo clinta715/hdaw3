@@ -1019,11 +1019,15 @@ ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int track
     }
     result.fader = fader;
 
-    beginTransaction("Auto gain stage");
+    // A batch (autoGainTracks) wraps many of these in ONE undo unit: gainBatchActive_
+    // suppresses the per-track transaction so the writes coalesce.
+    if (!gainBatchActive_)
+        beginTransaction("Auto gain stage");
     setTrackVolume(trackIndex, fader);
     if (result.globalScale < 1.0f)
         setMasterGain(result.masterGain);
-    endTransaction();
+    if (!gainBatchActive_)
+        endTransaction();
 
     if (verify)
     {
@@ -1057,6 +1061,49 @@ ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int track
     raw.wavPath.deleteFile();
     result.ok = true;
     return result;
+}
+
+// Batch gain-staging (2026-09-21 dogfood P3-1): MANY tracks to their own target RMS in ONE
+// undo unit and one round trip. It reuses the single-track path verbatim (measurement,
+// clamping, the global-scale probe) and only suppresses its per-track transaction, so the
+// two paths cannot drift in what the fader ends up at. A failing target (bad index, silent
+// track, render error) is recorded and does not abort the batch.
+ProjectCommands::AutoGainBatchResult
+AudioEngineCommands::autoGainTracks(const std::vector<AutoGainTarget>& targets,
+                                    double windowSeconds, bool verify, bool allowGlobalScale)
+{
+    AutoGainBatchResult batch;
+    if (targets.empty())
+    {
+        batch.error = "targets array required";
+        return batch;
+    }
+
+    // RAII: reset the flag however we leave, so a later single-track call still gets its own
+    // undo unit.
+    struct BatchScope {
+        bool& flag;
+        explicit BatchScope(bool& f) : flag(f) { flag = true; }
+        ~BatchScope() { flag = false; }
+    } scope(gainBatchActive_);
+
+    beginTransaction("Auto gain stage (batch)");
+    for (const auto& t : targets)
+    {
+        AutoGainTargetResult row;
+        row.trackId = t.trackId;
+        auto gain = autoGainToTarget(t.trackId, t.targetRms, windowSeconds, verify,
+                                     allowGlobalScale);
+        row.gain = gain;
+        row.error = gain.error;
+        row.ok = gain.ok;
+        if (row.ok) ++batch.okCount; else ++batch.failCount;
+        batch.results.push_back(std::move(row));
+    }
+    endTransaction();
+
+    batch.ok = (batch.failCount == 0);
+    return batch;
 }
 
 
