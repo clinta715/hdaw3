@@ -9,49 +9,10 @@ curves, breakdown space, delay throws). You may add/remove/configure FX slots an
 write automation lanes, but you NEVER touch notes, clips, or instruments. You
 never export (Mix Verifier).
 
-## Modulation-first rule (hardware VA suite)
-
-Prefer, in order: **(1)** the device's own modulation (LFO / envelopes / mod
-matrix), **(2)** its onboard FX, **(3)** HDAW parameter automation or track LFOs,
-**(4)** HDAW internal FX, **(5)** third-party plugin FX last. Rationale: plugin FX
-add CPU, latency, isolation and state-round-trip risk — for an isolated plugin whose
-state does not round-trip its patch, the export sounds different from the audition;
-device-internal modulation costs nothing and is saved inside the patch.
-
-Encoders per device (verified where stated): JP-8080 → `set_fx_param` (461
-parameters; DT1 patch dumps apply since the 2026-09-20 wrapper retarget —
-`load_je8086_preset`), Virus → `load_virus_preset` + `set_fx_param` (6939 TI /
-3086 A/B/C host params; F-A resolved 2026-09-20 — state round-trips via the
-`stateSet` SHM ring), Nord 2x → `load_nord_bank` (verified render change; morph
-chains performable) and 362 host params, Xenia → single-dump SysEx into the edit
-buffer (verified audible) and 2151 host params, microQ/Vavra → `waldorf_dump`
-dumps apply since 2026-09-19 and 7557 host params (96 curated × 16 parts), Dexed →
-use the internal `fm_synth`. Per-engine route + durability: ask
-`list_device_params` (never re-derive it from this page). Full recipes:
-`docs/hardware-va-suite.md` §3.
-
-## Matrix presets first (step 0 of the modulation-first rule)
-
-Before inventing an FX chain or reaching for plugin FX on a core synth, look up
-`timbre-lib/matrix_presets/<engine>.json` — named FX/mod-matrix configs harvested
-from that plugin's own patch corpus (schema `hdaw.matrix.preset.v1`; 40 presets
-per engine across all five devices). The live apply/ear pass ran 2026-09-16/17;
-vavra (dump retarget) and virus (state-SHM) were fixed 2026-09-19/20 — all five
-verified live (status table below). Mechanical front door:
-`list_matrix_presets {engine}` / `apply_matrix_preset {engine, id, trackId,
-slotIndex}` — they resolve index maps and emit/inject SysEx for you. Use the
-engine's verified apply path and fall through the modulation-first order only for
-what the preset does not cover:
-
-| Engine | Apply (`appliesVia`) | Verify |
-|---|---|---|
-| je8086 | `set_fx_param` via `je8086_param_index_map.json` (the plugin publishes display names; never dump offsets) — `apply_matrix_preset` resolves this; DT1 patch dumps also apply since 2026-09-20 (`load_je8086_preset`, wrapper retarget) | **VERIFIED live + offline with custom JPAR CLAP (2026-09-18)**: 46/46 params of preset b44052f76c82a7a7, audible A/B; `list_fx_params` readback + ear; offline export/save-load now carries the parameter preset (`compositions/je8086-jpar/`). |
-| nodalred2x | `load_nord_bank` (morph chains: `nord_morphs/*.syx`) | **VERIFIED AUDIBLE live** (map 5,350 files / 353,100 values / 0 mismatches); render assertion |
-| virus | `load_virus_preset` (CC0+PC) + `set_fx_param` (6939 TI / 3086 A/B/C host params); `virus_dump.py` writer format-verified | **F-A RESOLVED 2026-09-20** — boot-patch fix (Osirus rms 0.047) + `stateSet` SHM ring make the state round-trip (gates ~0.019, VERDICT ROUND-TRIPS). Confirm a param→rebuilt-render A/B per build; the host cache / `GET_STATE` blob are NOT readbacks |
-| xenia | SysEx single-dump → **edit buffer** (bank 0x20) via `send_fx_midi` / `apply_matrix_preset` (`xenia_dump.py` emits) | **VERIFIED AUDIBLE live** (offset map 1,166,386 values / 0 mismatches); `get_fx_capture_status` stays `unchanged` — the capture reads the program, not the edit buffer |
-| vavra | `waldorf_dump` (0x20 single-mode edit-buffer retarget since 2026-09-19) + `set_fx_param` (7557 host params = 96 curated × 16 parts); FX sub-params are **bit-aliases** (use FX1Type/FX2Type/FX1Mix/FX2Mix) | **VERIFIED AUDIBLE / replay** (live rms 0.0094→0.0151, rebuilt-from-tree Δ0.0054). **Host params: `set_fx_param` writes DO reach renders since 2026-09-21** — the route persists into `appliedParamOverrides` and every fresh export child replays it (`VavraHostParamPersistedWriteAffectsExport`, monotonic), and unpersisted live-only writes are visible through the opt-in `liveParamState` probe (`LiveParamStateProbeReflectsUnpersistedWrite`). The earlier "LIVE `set_fx_param` writes do NOT move the render" reading was a harness artifact (renders use a tree copy in a fresh child). Use `clear_fx_param_overrides` to drop the ledger, and `waldorf_dump` when the change belongs in the patch |
-
-Format and Phase D checklist: `docs/hardware-va-suite.md` §9.
+## Modulation-first + matrix presets
+See `../reference.md` — prefer the device's own matrix, then HDAW automation,
+then internal FX, then third-party. `apply_matrix_preset` applies the movement;
+`param_verity` confirms it's audible.
 
 ## Surface area
 `list_device_params` (device parameter map — engines, intent vocabulary, tier,
@@ -69,30 +30,6 @@ durability; call this FIRST to pick a target), `list_fx_chains`, `load_fx_chain`
 FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
 `generate_arrangement*`, `add_instrument_part`, ...), `export_audio`/`mix_report`/
 `analyze_tuning` (Mix Verifier), sampler/instrument replacement (Sound Selector).
-
-## The hearable-automation contract (lesson from the smoke sessions)
-- **Forbidden automation targets: anything pitched.** Never automate/LFO psy_fm `OP* Ratio`,
-  sub_synth semitone/pitch, psyarp tuning, or sampler Transpose — swept pitch/ratio is heard as
-  discord (found in Neon Meridian: bass/stab LFOs pointed at pid 100 = `OP1 Ratio`). Use
-  cutoff / volume / pan / wave-morph / delay-feedback instead; static detune ≤10 cents for width.
-- Every sounding track must have modulation. Prefer audible musical movement; if
-  no appropriate target exists, add a safe subtle-to-nearly-indistinguishable
-  fallback modulation and report it.
-- Automation that isn't AUDIBLE in a 30-second listen is a bug, not a feature
-  when the lane is intended as a musical movement lane.
-- Depth targets: filter cutoff sweeps >= 24 dB equivalent (open→closed across
-  the window), volume pump 0.65↔1.0 per beat, riser S-curves across the whole
-  build section, breakdown openClose with a clear mid-point.
-- Target the instrument's OWN band (lead/arp 400 Hz–3 kHz; pump bass; sweep
-  riser) — the mix-lesson: gain and movement live in bands, not faders.
-- **Instrument LFO before lanes**: on sub_synth slots, `apply_sub_synth_mod_preset
-  {trackId, slotIndex, presetId}` sets internal-LFO character atomically per
-  section (one undo unit; patch params untouched) — slow_filter_drift for rolling
-  mains, animated_sweep for builds/risers, vibrato for lead expression, `off` to
-  clear. Use automation lanes for movement ACROSS section boundaries; never stack
-  a lane that fights the preset's own LFO.
-- After enabling a lane: `verify_part` A/B (solo rms before vs after must move)
-  proves the automation is actually driving the DSP.
 
 ## Procedure
 0. **Matrix presets first**: for a core-synth track, read

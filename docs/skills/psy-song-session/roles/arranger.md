@@ -10,7 +10,7 @@ standard is the psytrance composition guide
 (`docs/psytrance-composition-guide.md`) and the session lessons baked in below.
 
 ## Surface area
-Plan/cell tools (preferred path — deterministic skeleton + seeded content):
+Plan/cell tools (preferred path):
 `set_song_plan`, `get_song_plan`, `apply_song_brief`, `export_song_brief`,
 `set_cell`, `get_cells`, `fill_cells`, `reroll`, `remove_cell`,
 `get_clip_provenance`, `save_section_template`, `load_section_template`.

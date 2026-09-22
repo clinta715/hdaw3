@@ -82,34 +82,9 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
   clip must already contain notes, or you get audible=0 silence. It returns a
   plain-text summary `ok=1 ... rms=.. peak=.. audible=..`, not JSON.
 
-## Hardware VA suite (gearmulator CLAPs — verified 2026-09-12)
-
-**Select from the sidecar surveys, not from names.** Register each bank folder as a
-*patch* library and query `search_library`; every sidecar is `<patch>.<engine>.json`
-and reports `patchEngine` plus a role verdict, description and tags:
-
-| Library | Survey | What it tells you |
-| --- | --- | --- |
-| `D:\pdf\je8086` (46 banks) | `je8086_survey.json` | 2676 usable patches + a per-role `roleShortlist`; the psy-NAMED `.syx` banks hold only 1-2 usable patches each (`nonInitPatches` exposes it) — `Kulshan Mystical Psytrance.mid` is the real psy bank |
-| `D:\pdf\rhythm-lab.com_waldorf_micro_q` | `microq_survey.json` | 528 patches with categories from the dump (Arp 147, Pad+Atmo 122, Lead 81, Bass 79, Poly+Keys 43, FX 27) |
-| `D:\pdf\NL2x Banks` | `nl2x_survey.json` | 6841 Clavia sidecars, params named from the firmware enum |
-| Virus banks | `virus_survey.json` | mapped onto the internal `sub_synth` |
-
-Capability matrix, loader status and per-device FX recipes:
-`docs/hardware-va-suite.md`.
-OsTIrus (Virus TI), Osirus (Virus A/B/C), Vavra (microQ), Xenia (Microwave),
-JE8086 (JP-8000), Dexed (DX7), NodalRed2x — installed in
-`C:\Program Files\Common Files\CLAP\` with ROMs. Audition via
-`send_fx_midi` (CC0 bank + PC) → `save_project` → `export_audio {wait:true}`
-→ wavpeak/mix_report fingerprints. Verified audible: OsTIrus default (0.33–0.47),
-Vavra, Xenia, JE8086, Osirus post-injection (0.55), NodalRed2x (multi-port
-fix, v0.34). Nord Lead 2x banks load via `load_nord_bank {trackId, slotIndex,
-filePath, program?}` (validated Clavia SysEx dumps; optional trailing PC);
-descriptive sidecars for the bank library live next to the patches
-(`timbre-lib/nl2x_patch.py`). Patch caveat: TI bank switching via CC0+PC
-unverified (all combos hash-identical — see
-docs/plans/2026-09-12-plugin-state-durability.md). State persistence: inject →
-save captures the preset; after `load_project`, re-apply.
+## Hardware VA suite
+See `../reference.md` for per-engine loader status. Use `select_patch` for
+variety, `apply_preset` to load, `tone_verity` to confirm.
 
 ## Gates (all must hold)
 - [ ] Every role in the brief has an unmuted track with a working instrument.
