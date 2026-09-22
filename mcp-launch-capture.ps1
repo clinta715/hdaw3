@@ -13,7 +13,20 @@
 # Contract:
 #   env ENGINE                       = temp copy of HDAW_headless.exe
 #   env HDAW_CRASH_DUMP_TYPE (opt.)  = 'mini' -> -mm dump flag (default: -ma)
+#   env HDAW_CRASH_NO_KILL (opt.)    = '1'   -> do NOT kill the engine after a
+#                                              dump is written (legacy behavior;
+#                                              the 2026-09-22 heap-corruption
+#                                              session served a brain-damaged
+#                                              engine because procdump detached
+#                                              without killing)
 #   env HDAW_NO_CRASH_CAPTURE        = '1'   -> bypass handled by the bat (this script not run)
+#
+# KILL-AFTER-DUMP (2026-09-22): procdump REJECTS '-k' in ATTACH mode ("only valid
+# with AeDebug Just-in-Time support (-i)"), so the kill is implemented HERE: after
+# starting the procdump watcher, poll the capture dir for a written *.dmp and
+# Stop-Process the engine the moment one appears. Without this, a heap-corrupted
+# engine keeps serving MCP sessions in a brain-damaged state (see
+# docs/handoffs/2026-09-22-engine-heap-corruption-investigation.md).
 
 $enginePath = $env:ENGINE
 if ([string]::IsNullOrWhiteSpace($enginePath)) {
@@ -45,5 +58,15 @@ if ($pd) {
     [Console]::Error.WriteLine('[mcp-launch] crash capture ON (attach pid=' + $engine.Id + ')')
 }
 
-$engine.WaitForExit()
+# Wait loop with dump-kill. 250 ms poll is negligible next to a ~200 MB dump
+# write (~1 s); the engine's own exit still ends the loop normally.
+while (-not $engine.HasExited) {
+    if ($pd -and $env:HDAW_CRASH_NO_KILL -ne '1' -and (Test-Path (Join-Path $dir '*.dmp'))) {
+        [Console]::Error.WriteLine('[mcp-launch] dump captured -- killing corrupted engine pid=' + $engine.Id)
+        Stop-Process -Id $engine.Id -Force -ErrorAction SilentlyContinue
+        break
+    }
+    Start-Sleep -Milliseconds 250
+}
+if (-not $engine.HasExited) { $engine.WaitForExit() }
 exit $engine.ExitCode

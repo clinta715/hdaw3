@@ -51,16 +51,25 @@ analysis (page-heap/ASAN would be the next step).
 
 ## Improvement candidates (require discussion before engine work — standing rule)
 
-1. **Kill after dump = ON** for the procdump crash capture: a process with detected
-   heap corruption must not keep serving MCP sessions. This single launcher flag
-   would have converted the confusing "empty project" into a clean respawn.
-2. Proxy/launcher: treat a post-dump process as dead even when procdump detaches
-   (watch for the dump file in the capture dir).
-3. Next-step diagnostics if it recurs: page-heap (`gflags /p /enable
-   HDAW_headless_mcp.exe /full`), or an ASAN build of the test binary, then re-run
-   the fill/tiling sequence to pin the corrupting write.
+1. **~~Kill after dump~~ DONE (2026-09-22, same day)**: `mcp-launch-capture.ps1` now
+   polls the capture dir for a written `*.dmp` and `Stop-Process`es the engine the
+   moment one appears (procdump itself REJECTS `-k` in attach mode — "only valid
+   with AeDebug Just-in-Time support (-i)" — first attempt silently disabled
+   capture; caught by reading the fresh `procdump.log` after relaunch). A process
+   that hit an unhandled exception can no longer keep serving MCP sessions in a
+   corrupted state. Opt out with `HDAW_CRASH_NO_KILL=1`. Live-verified: capture
+   banner ON with the new wait loop after relaunch.
+2. **Diagnostics recipe READY**: `scripts/heap-diag.ps1` (`pageheap-on` / `pageheap-off`
+   / `status`) enables full page heap for the engine exes — the corrupting write then
+   faults AT the corrupting access and procdump (kill-after-dump) writes the dump.
+   Registry-based, survives restarts; always `pageheap-off` after the repro session.
+3. Next-step if it recurs: with page heap on, replay the fill/tiling sequence
+   (set_cells tileBeats → fill_cells → tone_verity); analyze the new dump with
+   `cdb -z <dump> -c "!analyze -v; kv 40; q"` — the stack will point AT the
+   corrupting write this time.
 4. Review the incremental-routing end-of-batch rebuild against the pump-park
    idiom (lesson 12) for the heavier command payloads the tiled cells now produce.
+   **Wide blast radius — discuss before touching.**
 
 ## Recovery notes
 
