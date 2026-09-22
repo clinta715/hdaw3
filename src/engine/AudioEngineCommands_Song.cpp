@@ -776,7 +776,17 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
         PhraseGenerator::PhraseParams pp;
         bool styleExplicit = false; // preset/params style pins (E2)
         pp.seed = seedUsed;
-        pp.lengthBeats = winBeats;
+        // Tiled phrase cells (2026-09-22 dogfood): a phrase cell over a LONG
+        // section generated ONE sparse pass (density-N notes across e.g. 128
+        // beats), leaving melodic layers silent for most of the arrangement
+        // while rhythm cells tile their corpus phrase. params.tileBeats opts a
+        // phrase cell into the same tiling: the phrase is generated at
+        // min(winBeats, tileBeats) and repeated across the section (identical
+        // content per tile — deterministic, provenance unchanged). Absent/0 =
+        // the legacy single pass.
+        const double tileBeats = std::max(0.0, paramD(params, "tileBeats", 0.0));
+        const double passBeats = (tileBeats > 0.0 && tileBeats < winBeats) ? tileBeats : winBeats;
+        pp.lengthBeats = passBeats;
         pp.scaleRoot = plan.keyRoot;
         pp.scaleMode = plan.scaleMode;
         if (cell.sourceKind == "pattern")
@@ -821,12 +831,18 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
             ? HDAW::SeededDefaults::padVoicingIntervals(
                   HDAW::SeededDefaults::padVoicingShape(seedUsed))
             : std::vector<int>();
-        for (const auto& n : PhraseGenerator::generatePhrase(pp))
+        const auto phraseNotes = PhraseGenerator::generatePhrase(pp);
+        for (double off = 0.0; off < winBeats - 1e-9; off += passBeats)
         {
-            addGuarded(n.noteNumber, n.velocity, n.startBeat, n.durationBeats);
-            for (int iv : padIntervals)
-                addGuarded(juce::jlimit(0, 127, n.noteNumber + iv),
-                           n.velocity, n.startBeat, n.durationBeats);
+            for (const auto& n : phraseNotes)
+            {
+                const double st = n.startBeat + off;
+                if (st >= winBeats - 1e-9) continue;
+                addGuarded(n.noteNumber, n.velocity, st, n.durationBeats);
+                for (int iv : padIntervals)
+                    addGuarded(juce::jlimit(0, 127, n.noteNumber + iv),
+                               n.velocity, st, n.durationBeats);
+            }
         }
     }
     else if (cell.sourceKind == "rhythm")

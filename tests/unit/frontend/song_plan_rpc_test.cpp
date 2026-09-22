@@ -316,6 +316,41 @@ TEST_F(SongPlanRpcTest, FillCellsFlagsNothingToDoOnRefill) {
     EXPECT_EQ(againV, mcpValue("fill_cells", QJsonObject { { "mode", "unfilled" } }));
 }
 
+TEST_F(SongPlanRpcTest, FillCellsTilesPhraseCellsWithTileBeats) {
+    // 2026-09-22 dogfood: a phrase cell over a LONG section generated ONE
+    // sparse pass. params.tileBeats opts into the same tiling rhythm cells use
+    // (phrase generated at the tile length, repeated across the window).
+    setPlan();
+    const QJsonObject cells { { "cells", QJsonArray {
+        QJsonObject { { "section", "drop" }, { "role", "bass" }, { "trackId", 1 },
+                      { "source", "phrase" },
+                      { "params", QJsonObject { { "style", "BassLine" },
+                                                 { "density", 4 },
+                                                 { "tileBeats", 16 } } },
+                      { "seed", 21 } } } } };
+    ASSERT_EQ(rpcPayload("composition.setCellRecipes", cells).toObject().value("count").toInt(), 1);
+
+    const QJsonObject filled = rpcPayload("composition.fillCells", QJsonObject { { "mode", "all" } }).toObject();
+    ASSERT_EQ(filled.value("failed").toInt(), 0);
+    // drop = 16 bars = 64 beats; a 16-beat tile repeats 4x -> the bass cell is
+    // no longer a single sparse pass (legacy behavior: ~density notes total).
+    const int noteCount = filled.value("cells").toArray().at(0).toObject().value("noteCount").toInt();
+    EXPECT_GE(noteCount, 8) << "tiled phrase cell must repeat across the window";
+
+    // Notes actually reach late tiles (clip-local startBeat >= 16).
+    const auto bassClips = engine->getProjectModel().getTrackListTree().getChild(1)
+                               .getChildWithName(IDs::CLIP_LIST);
+    ASSERT_TRUE(bassClips.isValid());
+    const auto clip = bassClips.getChild(bassClips.getNumChildren() - 1);
+    const auto notes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    ASSERT_TRUE(notes.isValid());
+    double maxStart = 0.0;
+    for (int i = 0; i < notes.getNumChildren(); ++i)
+        maxStart = std::max(maxStart,
+            static_cast<double>(notes.getChild(i).getProperty(IDs::startBeat, 0.0)));
+    EXPECT_GE(maxStart, 16.0) << "notes must land in later tiles";
+}
+
 TEST_F(SongPlanRpcTest, FillCellsRefitsReusedClipAfterBriefWindowChange) {
     setPlan();
     const QJsonObject cells { { "cells", QJsonArray {
