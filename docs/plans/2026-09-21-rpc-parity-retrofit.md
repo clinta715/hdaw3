@@ -396,6 +396,11 @@ silently assumed fine.
      `tuning.jobStatus`, with the analysis extracted to `src/common/TuningAnalysis.cpp`. The
      async decision (domain-scoped status over a generic poller) is recorded in the slice 4
      section below. This was the **last confirmed RPC gap**.
+   * **Modulation** — done (2026-09-21, after the dogfood P3 work):
+     `audit_modulation_coverage` moved out of the MCP layer into
+     `src/common/ModulationCoverage.cpp` and gained an RPC twin `modulation.coverage` (new
+     `modulation` namespace, required by the namespace gate); `mix_verdict` now includes its
+     gate, and the ledger records both new aliases.
    * **Untouched domains** (no gap found by the symbol join, no separate slice needed):
      Clip/Note/Cc/Track/Transport/Read/Settings/Automation/Modulation/Send/Envelope/
      Sampler/FmSynth/MidiFx/FxSlot/FxChain/FxPreset/Library/Session/AudioRead/Arranger/

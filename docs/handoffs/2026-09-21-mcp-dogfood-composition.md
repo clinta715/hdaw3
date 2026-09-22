@@ -221,10 +221,19 @@ The description now states that alias `drop` resolves to kind `mainB` (and that 
 `auto_gain_tracks`, then re-render"); `warnings[]` carries harness caveats (`measurementSuspicious`,
 or a gate that could not be evaluated — never silently dropped).
 
-**Deliberately excluded: MODULATION coverage.** `audit_modulation_coverage` is still inline in
-`McpTools_Modulation.cpp` with no shared equivalent, so the verdict does not claim it and the
-tool description says so. Extracting that audit is the follow-up that would complete the
-verdict.
+**Modulation coverage is now INCLUDED** (2026-09-21, same session): the audit moved out of the
+MCP layer into `src/common/ModulationCoverage.{h,cpp}`, gained an RPC twin
+(`modulation.coverage` — a new namespace, so the namespace-coverage gate now requires its
+dispatch branch) and the verdict takes its payload as the `modulation` gate: uncovered sounding
+tracks → `ok:false` plus an actionable issue pointing at `apply_movement_plan`, and an enabled
+Volume lane adds the `set_fader_authoritative` warning. Gate:
+`McpCoverageTest.ModulationCoverageMatchesRpcTwinAndFeedsTheVerdict` (identical MCP/RPC
+coverage payload, the uncovered track is flagged, the verdict carries the gate and the RPC
+verdict matches).
+
+The parity ratchet ledger now records two VERIFIED aliases found here:
+`audit_modulation_coverage → modulation.coverage` and `list_lfos → read.getModulationLfos`,
+which is what moved the review queue 101 → 99 (`node tools/rpc_parity_map.mjs`).
 
 Gate: `McpCoverageTest.MixVerdictFlagsClippingAndMatchesRpcTwin` — a full-scale render fails the
 clipping gate and produces issues while a quiet render passes it, and the RPC twin returns the

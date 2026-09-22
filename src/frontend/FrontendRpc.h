@@ -48,6 +48,7 @@ namespace method {
     inline constexpr const char* Device     = "device";
     inline constexpr const char* Matrix     = "matrix";
     inline constexpr const char* Tuning     = "tuning";
+    inline constexpr const char* Modulation = "modulation";
 } // namespace method
 
 // Every namespace prefix above, for the coverage gate that asserts each one has a
@@ -61,7 +62,7 @@ inline std::vector<const char*> allMethodNamespaces()
              method::Audio, method::Midi, method::Export, method::Preview,
              method::Composition, method::Session, method::Library, method::Sampler,
              method::Pool, method::PsyFm, method::Rave, method::Device,
-             method::Matrix, method::Tuning };
+             method::Matrix, method::Tuning, method::Modulation };
 }
 
 // Server-initiated push notifications (no client id, no response expected).

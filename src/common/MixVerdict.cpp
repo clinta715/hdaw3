@@ -28,6 +28,7 @@ MixVerdictResult buildMixVerdict(const QString& filePath,
                                  double bpm,
                                  double dropBuildRatio,
                                  const QJsonObject& structureAudit,
+                                 const QJsonObject& modulationCoverage,
                                  double introSeconds)
 {
     MixVerdictResult out;
@@ -100,7 +101,30 @@ MixVerdictResult buildMixVerdict(const QString& filePath,
         }
     }
 
-    // 5) intro blast — the recurring "big loud weird sound at the start" class.
+    // 5) modulation — the global rule (every sounding track must carry movement), when the
+    // caller supplied the audit. This is the gate the verdict used to have to exclude.
+    if (!modulationCoverage.isEmpty())
+    {
+        const auto sum = modulationCoverage.value("summary").toObject();
+        const auto attention = sum.value("attentionRequiredIds").toArray();
+        const int withClips = sum.value("tracksWithClips").toInt();
+        const bool ok = attention.isEmpty();
+        gates["modulation"] = gate(ok, QJsonObject{ { "tracksWithClips", withClips },
+                                                    { "fullyCovered", sum.value("fullyCovered") },
+                                                    { "attentionRequiredIds", attention } });
+        if (!ok)
+            issues.append(QString("modulation: %1 of %2 sounding track(s) carry no movement "
+                                  "(no enabled LFO, no enabled automation lane with >= 3 "
+                                  "points, no sub_synth internal LFO) — apply_movement_plan "
+                                  "writes movement for many tracks in one undo unit")
+                              .arg(attention.size()).arg(withClips));
+        if (!sum.value("faderOverriddenIds").toArray().isEmpty())
+            warnings.append("faderOverridden: an enabled Volume lane makes automation "
+                            "authoritative on some track(s) — call set_fader_authoritative "
+                            "before gain staging");
+    }
+
+    // 6) intro blast — the recurring "big loud weird sound at the start" class.
     if (introSeconds > 0.0)
     {
         BlastReport blast;

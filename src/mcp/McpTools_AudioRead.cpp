@@ -26,6 +26,7 @@
 #include "../common/SongPlanView.h"
 #include "../common/MixReportJson.h"
 #include "../common/MixVerdict.h"
+#include "../common/ModulationCoverage.h"
 
 namespace mcp {
 
@@ -431,13 +432,13 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"mix_verdict",
         "ONE release-readiness verdict over a rendered file (+ the song plan): composes the "
-        "audible / clipping / loudness (drop vs build) / structure-variety / intro-blast gates "
-        "into {ok, gates{...}, issues[], warnings[]} so 'did I finish?' is one call instead of "
-        "four separate verifiers with hand-written thresholds. fromPlan derives the windows AND "
-        "the structure + loudness gates from the current song plan (bpm falls back to the "
-        "plan's); without it, sections (seconds) or the whole file are measured. introSeconds > "
-        "0 (default 2) runs the intro-blast gate. MODULATION coverage is NOT part of this "
-        "verdict — audit_modulation_coverage stays its own tool. READ-ONLY: no render, no "
+        "audible / clipping / loudness (drop vs build) / structure-variety / MODULATION-coverage "
+        "/ intro-blast gates into {ok, gates{...}, issues[], warnings[]} so 'did I finish?' is one "
+        "call instead of four separate verifiers with hand-written thresholds. fromPlan derives "
+        "the windows AND the structure + loudness gates from the current song plan (bpm falls "
+        "back to the plan's); without it, sections (seconds) or the whole file are measured. "
+        "introSeconds > 0 (default 2) runs the intro-blast gate. The modulation gate uses the same "
+        "audit as modulation.coverage / audit_modulation_coverage. READ-ONLY: no render, no "
         "mutation. Calls the same engine command as the audio.mixVerdict RPC.",
         objSchema({{"filePath",        QJsonObject{{"type","string"}}},
                   {"fromPlan",        QJsonObject{{"type","boolean"}}},
@@ -496,6 +497,8 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
 
             const auto v = HDAW::buildMixVerdict(filePath, windows, planKinds, bpm, ratio,
                                                  structureJson,
+                                                 HDAW::modulationCoverageJson(
+                                                     e->getProjectModel().getTrackListTree()),
                                                  a.value("introSeconds").toDouble(2.0));
             if (!v.error.isEmpty())
                 return McpToolResult::text(v.error, true);

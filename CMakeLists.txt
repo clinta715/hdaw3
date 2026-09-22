@@ -223,6 +223,7 @@ src/engine/StretchRenderer.cpp
     src/common/TuningAnalysis.cpp
     src/common/MixReportJson.cpp
     src/common/MixVerdict.cpp
+    src/common/ModulationCoverage.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
@@ -293,6 +294,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/router/Router_Device.cpp
     src/frontend/router/Router_Matrix.cpp
     src/frontend/router/Router_Tuning.cpp
+    src/frontend/router/Router_Modulation.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
     src/frontend/TreeDeltaAccumulator.cpp

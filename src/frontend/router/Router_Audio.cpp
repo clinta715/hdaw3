@@ -7,6 +7,7 @@
 #include "../../common/ProjectCommands.h"
 #include "../../common/MixReportJson.h"
 #include "../../common/MixVerdict.h"
+#include "../../common/ModulationCoverage.h"
 #include "../../common/SongPlanView.h"
 #include "../../engine/SongStructureAudit.h"
 #include "../../common/FxCaptureStatus.h"
@@ -127,6 +128,8 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
 
         const auto v = HDAW::buildMixVerdict(QString::fromStdString(filePath), windows, planKinds,
                                              bpm, ratio, structureJson,
+                                             HDAW::modulationCoverageJson(
+                                                 engine.getProjectModel().getTrackListTree()),
                                              o.value("introSeconds").toDouble(2.0));
         if (!v.error.isEmpty())
             return makeError(-32603, v.error);

@@ -2286,6 +2286,63 @@ TEST_F(McpCoverageTest, MixVerdictFlagsClippingAndMatchesRpcTwin) {
     EXPECT_TRUE(vq.value("gates").toObject().value("clipping").toObject().value("ok").toBool());
 }
 
+// P3-4 (2026-09-21 dogfood follow-up): the modulation-coverage audit moved to
+// src/common/ModulationCoverage.cpp, gained an RPC twin (modulation.coverage) — it was MCP-only
+// — and mix_verdict can now INCLUDE its gate (it previously had to exclude it).
+TEST_F(McpCoverageTest, ModulationCoverageMatchesRpcTwinAndFeedsTheVerdict) {
+    // A sounding track with no LFO, no movable automation lane and no sub_synth internal LFO
+    // must need attention (the global modulation rule).
+    const int t = engine->getProjectCommands().addTrack("Mod");
+    ASSERT_GE(t, 0);
+    const int clip = engine->getProjectCommands().addMidiClip(t, 0.0, 4.0, "mod");
+    ASSERT_GT(clip, 0);
+    engine->getProjectCommands().addNote(clip, 60, 100, 0.0, 0.5);
+
+    auto r = call("audit_modulation_coverage", {});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    const auto viaMcp = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    ASSERT_FALSE(viaMcp.isEmpty());
+
+    // RPC twin: identical payload (both call HDAW::modulationCoverageJson).
+    auto rpc = frontend::dispatch(*engine, "modulation.coverage", QJsonObject{});
+    ASSERT_FALSE(rpc.isError) << rpc.payload.toObject().value("message").toString().toStdString();
+    EXPECT_EQ(rpc.payload.toObject(), viaMcp);
+    EXPECT_FALSE(viaMcp.value("summary").toObject().value("attentionRequiredIds").toArray().isEmpty())
+        << "the uncovered track must be flagged";
+
+    // ... and the verdict now carries that gate (it used to have to exclude it).
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wavPath = dir.filePath("verdict.wav");
+    {
+        juce::File f(wavPath.toStdString());
+        auto os = f.createOutputStream();
+        juce::WavAudioFormat fmt;
+        std::unique_ptr<juce::AudioFormatWriter> w(
+            fmt.createWriterFor(os.get(), 44100.0, 1, 16, {}, 0));
+        os.release();
+        juce::AudioBuffer<float> buf(1, 44100 * 2);
+        for (int i = 0; i < 44100 * 2; ++i)
+            buf.setSample(0, i, 0.2f * std::sin(2.0 * 3.14159265 * 220.0 * i / 44100.0));
+        w->writeFromAudioSampleBuffer(buf, 0, 44100 * 2);
+    }
+    auto v = call("mix_verdict", QJsonObject{ { "filePath", wavPath }, { "bpm", 120.0 },
+                                               { "introSeconds", 0.0 } });
+    ASSERT_FALSE(isError(v)) << text(v).toStdString();
+    const auto verdict = QJsonDocument::fromJson(text(v).toUtf8()).object();
+    const auto gates = verdict.value("gates").toObject();
+    ASSERT_TRUE(gates.contains("modulation")) << text(v).toStdString();
+    EXPECT_FALSE(gates.value("modulation").toObject().value("ok").toBool());
+    EXPECT_FALSE(verdict.value("ok").toBool());
+
+    // The RPC verdict agrees (same inputs, same gates).
+    auto rpcVerdict = frontend::dispatch(*engine, "audio.mixVerdict",
+                                         QJsonObject{ { "filePath", wavPath }, { "bpm", 120.0 },
+                                                      { "introSeconds", 0.0 } });
+    ASSERT_FALSE(rpcVerdict.isError);
+    EXPECT_EQ(rpcVerdict.payload.toObject(), verdict);
+}
+
 TEST_F(McpCoverageTest, MixReportFromPlanClampsToFileDuration) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());

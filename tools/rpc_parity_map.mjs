@@ -129,6 +129,11 @@ const ALIASES = {
   load_section_template: 'composition.loadSectionTemplate',
   list_section_templates: 'composition.listSectionTemplates',
   list_device_params: 'device.listParams',
+  // Verified while completing the verdict (2026-09-21): the audit moved to
+  // src/common/ModulationCoverage.cpp and gained this RPC twin; list_lfos' own description says
+  // it mirrors read.getModulationLfos.
+  audit_modulation_coverage: 'modulation.coverage',
+  list_lfos: 'read.getModulationLfos',
 };
 
 // Prefix rules: a tool family that maps onto a namespace, remainder camelCased. Verified
@@ -172,7 +177,7 @@ const rpcToks = rpcNames.map(r => ({ r, t: new Set(sig(r.split('.')[1])) }));
 
 const rows = [];
 for (const { tool } of tools) {
-  if (ALIASES[tool] && rpc.has(ALIASES[tool])) { rows.push([tool, 'mapped', ALIASES[tool], 'alias (verified in the slice 0-4 audit)']); continue; }
+  if (ALIASES[tool] && rpc.has(ALIASES[tool])) { rows.push([tool, 'mapped', ALIASES[tool], 'alias (verified; see the ledger notes)']); continue; }
   const c = camel(tool);
   if (methodToNs.has(c)) {
     const ns = methodToNs.get(c)[0];

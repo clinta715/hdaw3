@@ -27,6 +27,7 @@
 #include "router/Router_Device.h"
 #include "router/Router_Matrix.h"
 #include "router/Router_Tuning.h"
+#include "router/Router_Modulation.h"
 
 using namespace frontend::router_helpers;
 
@@ -96,6 +97,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     else if (ns == method::Device)      return dispatchDevice(engine, m, params);
     else if (ns == method::Matrix)      return dispatchMatrix(engine, m, params);
     else if (ns == method::Tuning)      return dispatchTuning(engine, m, params);
+    else if (ns == method::Modulation)  return dispatchModulation(engine, m, params);
 
     return makeError(-32601, "unknown method namespace: " + ns);
 }
