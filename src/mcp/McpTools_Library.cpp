@@ -280,6 +280,57 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
         return ids;
     };
 
+    s.registerTool({"select_patch",
+        "VARIETY-AWARE PATCH SELECTION (2026-09-22): pick ONE patch from patch libraries "
+        "without repeating the same deterministic top hit. Cluster-stratified: clusters the "
+        "libraries, keeps clusters whose member tags/names match the role (e.g. bass/lead/"
+        "arp/pad), drops excluded paths plus the per-role recently-used ledger (agent-facing "
+        "calls should leave useLedger=true), then picks ONE member with a seeded RNG. seed 0 "
+        "= time-seeded (non-deterministic). Repeated calls never repeat a patch until the "
+        "role pool is exhausted (the ledger for that role then resets and the cycle "
+        "restarts). Returns {path, name, libraryId, clusterId, poolSize, usedCount, seed, "
+        "tags} — apply with apply_preset and verify with tone_verity.",
+        objSchema({{"libraryIds", QJsonObject{{"type","array"},
+                    {"items", QJsonObject{{"type","string"}}}}},
+                   {"role",     QJsonObject{{"type","string"}}},
+                   {"seed",     QJsonObject{{"type","integer"}}},
+                   {"exclude",  QJsonObject{{"type","array"},
+                    {"items", QJsonObject{{"type","string"}}}}},
+                   {"useLedger",QJsonObject{{"type","boolean"}}},
+                   {"method",   QJsonObject{{"type","string"},
+                    {"enum", QJsonArray{"hybrid","text","dsp"}}}}}),
+        "library",
+        [lib, idsFrom = libraryIdsFrom](const QJsonObject& a) -> McpToolResult {
+            juce::String error;
+            juce::StringArray exclude;
+            if (a.contains("exclude") && a.value("exclude").isArray())
+                for (const auto& v : a.value("exclude").toArray())
+                    exclude.add(juce::String(v.toString().toUtf8().constData()));
+            auto r = lib->selectPatch(
+                idsFrom(a),
+                juce::String(a.value("role").toString().toUtf8().constData()),
+                a.contains("seed") ? a.value("seed").toInt() : 0,
+                exclude,
+                a.contains("useLedger") ? a.value("useLedger").toBool() : true,
+                juce::String(a.value("method").toString("hybrid").toUtf8().constData()),
+                error);
+            if (error.isNotEmpty() || !r.ok)
+                return McpToolResult::text(QString::fromUtf8(
+                    (error.isNotEmpty() ? error : juce::String("selection failed")).toRawUTF8()), true);
+            QJsonObject root;
+            root["ok"] = true;
+            root["path"] = jstr(r.path);
+            root["name"] = jstr(r.name);
+            root["libraryId"] = jstr(r.libraryId);
+            root["clusterId"] = jstr(r.clusterId);
+            root["poolSize"] = r.poolSize;
+            root["usedCount"] = r.usedCount;
+            root["seed"] = r.seed;
+            root["tags"] = jstr(r.tags);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
+        }});
+
     s.registerTool({"cluster_library",
         "Cluster entries from one or more audio or patch libraries into k groups by "
         "timbre (text tags/description + numeric dsp features from TimbreLib "

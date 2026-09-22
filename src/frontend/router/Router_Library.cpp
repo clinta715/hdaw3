@@ -178,6 +178,45 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
         return { false, obj };
     }
 
+    if (m == "selectPatch") {
+        // Variety-aware patch selection (2026-09-22): the RPC twin of the MCP
+        // `select_patch` tool — same FileLibraryManager::selectPatch call, same
+        // argument names as the MCP surface.
+        const auto idsFrom = [&o]() {
+            juce::StringArray ids;
+            const auto v = o.value("libraryIds");
+            if (v.isArray())
+                for (const auto& x : v.toArray())
+                    ids.add(juce::String(v.toString().toStdString()));
+            return ids;
+        };
+        juce::StringArray exclude;
+        if (o.contains("exclude") && o.value("exclude").isArray())
+            for (const auto& x : o.value("exclude").toArray())
+                exclude.add(juce::String(x.toString().toStdString()));
+        juce::String error;
+        auto r = lib.selectPatch(
+            idsFrom(),
+            std::string(o.value("role").toString().toStdString()),
+            o.contains("seed") ? o.value("seed").toInt() : 0,
+            exclude,
+            o.contains("useLedger") ? o.value("useLedger").toBool() : true,
+            std::string(o.value("method").toString("hybrid").toStdString()),
+            error);
+        if (error.isNotEmpty() || !r.ok)
+            return makeError(-32602, qstr(error.isNotEmpty() ? error : juce::String("selection failed")));
+        return { false, QJsonObject{
+            { "ok", true },
+            { "path", qstr(r.path) },
+            { "name", qstr(r.name) },
+            { "libraryId", qstr(r.libraryId) },
+            { "clusterId", qstr(r.clusterId) },
+            { "poolSize", r.poolSize },
+            { "usedCount", r.usedCount },
+            { "seed", r.seed },
+            { "tags", qstr(r.tags) } } };
+    }
+
     if (m == "cluster") {
         // library.cluster — same params/shape as the MCP cluster_library tool
         // (saveAs/clusterId passthrough: save the result as a named preset).

@@ -130,6 +130,30 @@ public:
                                  const juce::String& filePath, const juce::String& query,
                                  int limit, const juce::String& method, juce::String& error) const;
 
+    // ── variety-aware patch selection (2026-09-22) ──────────────────────────
+    // Cluster-stratified, seeded, exclusion-aware pick from patch libraries.
+    // relatedSamples is a deterministic ranking — the same query always
+    // returns the same top hit, so agents kept selecting the same patch.
+    // This flow instead: clusters the libraries, keeps clusters whose member
+    // tags/names match the role, drops excluded paths plus the per-role
+    // recently-used ledger, then picks ONE member with a seeded RNG. The pick
+    // is appended to the ledger so repeated calls never repeat a patch until
+    // the role pool is exhausted (the ledger for that role then resets and
+    // the cycle restarts). seed 0 = time-seeded (non-deterministic).
+    struct PatchSelection {
+        bool ok = false;
+        juce::String error;
+        juce::String path, name, libraryId, clusterId, tags;
+        int poolSize = 0;   // role-matched candidates before exclusions
+        int usedCount = 0;  // ledger entries for this role after the pick
+        int seed = 0;       // effective seed (time-seeded when input seed was 0)
+    };
+    PatchSelection selectPatch(const juce::StringArray& libraryIds,
+                               const juce::String& role, int seed,
+                               const juce::StringArray& excludePaths,
+                               bool useLedger, const juce::String& method,
+                               juce::String& error);
+
     // ── cluster presets (docs/plans/2026-08-25-cluster-presets.md) ──────────
     // All disk IO happens under the existing mutex (results are copied out);
     // unknown ids come back as errors, never exceptions.

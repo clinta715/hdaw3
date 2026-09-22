@@ -121,6 +121,31 @@ ENGINES = {
         "import_meta_fields": ("name", "bank", "program", "mappedCount",
                                "unmapped"),
     },
+
+    # 2026-09-22: isolated-plugin mode for the gearmulator CLAP cores: the
+    # probe track hosts the REAL plugin (add_track_with_fx {pluginId});
+    # patches load through apply_preset (the agentic front door -- for
+    # Vavra/microQ: F0 3E Waldorf edit-buffer dumps), renders run through
+    # the isolated child, and sidecars merge with the existing .vavra.json
+    # metadata (category/pack preserved, dsp vector added).
+    "vavra_plugin": {
+        "fx_type": None,
+        "plugin_id": "Vavra.clap",
+        "import_tool": "apply_preset",
+        "voice_key": None,
+        "voice_name_field": None,
+        "default_dir": "D:\\pdf\\rhythm-lab.com_waldorf_micro_q",
+        "default_pattern": "*.syx",
+        "extensions": (".syx",),
+        "probe_extensionless": False,
+        "probe_track_name": "Vavra Probe",
+        "probe_setup": "add_track_plugin",
+        "sidecar_suffix": ".vavra.json",
+        "sidecar_engine": "vavra",
+        "sidecar_format": "vavra",
+        "sidecar_schema": "hdaw.vavra.patch.v1",
+        "import_meta_fields": (),
+    },
 }
 
 ACCESS_VIRUS_HEADER = b"\xf0\x00\x20\x33\x01"  # first 5 bytes of a Virus SysEx
@@ -759,7 +784,16 @@ async def sweep(args, patches, notes, cfg):
     probe_created = False
     entries = []
     try:
-        if cfg["probe_setup"] == "add_track_with_fx":
+        if cfg["probe_setup"] == "add_track_plugin":
+            r = await client.tool("add_track_with_fx",
+                                  {"name": cfg["probe_track_name"],
+                                   "pluginId": cfg["plugin_id"]})
+            data = parse_int_fields(r)
+            args.probe_track_id = data.get("trackId")
+            if args.probe_track_id is None:
+                raise McpToolError("add_track_with_fx",
+                                   f"unexpected result: {r}")
+        elif cfg["probe_setup"] == "add_track_with_fx":
             r = await client.tool("add_track_with_fx",
                                   {"name": cfg["probe_track_name"],
                                    "fxType": cfg["fx_type"]})
@@ -1086,7 +1120,7 @@ def build_parser():
                     help="mode (overrides positional)")
     ap.add_argument("--analyze-only", action="store_true",
                     help="alias for mode=analyze-only")
-    ap.add_argument("--engine", choices=["fm_synth", "sub_synth"],
+    ap.add_argument("--engine", choices=["fm_synth", "sub_synth", "vavra_plugin"],
                     default="fm_synth",
                     help="synthesis engine to sweep: fm_synth (DX7 .syx, "
                          "default) or sub_synth (Access Virus patches)")

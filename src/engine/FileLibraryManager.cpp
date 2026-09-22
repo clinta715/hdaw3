@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <random>
 #include <set>
 
 namespace HDAW {
@@ -1515,6 +1516,170 @@ RelatedResult FileLibraryManager::relatedSamples(const juce::StringArray& librar
         if (it != pathToLibrary.end()) h.libraryId = it->second;
     }
     return r;
+}
+
+// ── variety-aware patch selection (2026-09-22) ──────────────────────────────
+// See FileLibraryManager.h for the contract. The ledger lives next to the
+// library registry (AppData/HDAW/libraries/patch_selection_ledger.json) and is
+// keyed by "<role>|<libraryIds joined by ,>".
+FileLibraryManager::PatchSelection FileLibraryManager::selectPatch(
+    const juce::StringArray& libraryIds, const juce::String& role, int seed,
+    const juce::StringArray& excludePaths, bool useLedger,
+    const juce::String& method, juce::String& error)
+{
+    PatchSelection out;
+    const juce::String roleLc = role.trim().toLowerCase();
+    if (roleLc.isEmpty()) { error = "role is required"; return out; }
+
+    // NOTE: no outer mutex — collectClusterEntries locks internally (the same
+    // pattern clusterLibrary uses). The ledger below guards itself with a
+    // dedicated static mutex (non-recursive class mutex would deadlock).
+    static std::mutex ledgerMutex;
+
+    // 1. Collect + dedupe entries (mirror clusterLibrary).
+    std::vector<LibraryEntry> entries;
+    std::vector<juce::String> entryLibraryIds;
+    {
+        juce::String collectErr;
+        if (!collectClusterEntries(libraryIds, entries, collectErr, &entryLibraryIds))
+        { error = collectErr; return out; }
+        std::set<juce::String> seen;
+        std::vector<LibraryEntry> deduped;
+        std::vector<juce::String> dedupedLibs;
+        for (size_t i = 0; i < entries.size(); ++i)
+            if (seen.insert(normalizedEntryKey(entries[i].path)).second)
+            {
+                deduped.push_back(std::move(entries[i]));
+                dedupedLibs.push_back(entryLibraryIds[i]);
+            }
+        entries.swap(deduped);
+        entryLibraryIds.swap(dedupedLibs);
+    }
+    if (entries.empty()) { error = "no entries in the selected libraries"; return out; }
+
+    // 2. Cluster (auto k) — same pipeline as cluster_library.
+    ClusterMethod methodEnum = ClusterMethod::Hybrid;
+    {
+        juce::String mErr;
+        parseClusterMethod(method, methodEnum, mErr); // falls back to Hybrid
+    }
+    auto outcome = cluster(toClusterItems(entries), 0, methodEnum);
+
+    // 3. Role-matched pool: union of members from clusters whose members match
+    // the role (tags or name contain it, case-insensitive). Fallback when no
+    // cluster matched: flat role filter over all entries.
+    std::vector<LibraryEntry> pool;
+    std::vector<juce::String> poolLibs, poolCluster;
+    auto memberMatchesRole = [&roleLc](const juce::String& tags, const juce::String& name) {
+        return tags.toLowerCase().contains(roleLc) || name.toLowerCase().contains(roleLc);
+    };
+    for (const auto& cl : outcome.clusters)
+    {
+        bool any = false;
+        for (const auto& m : cl.members)
+            if (memberMatchesRole(m.tags, m.name)) { any = true; break; }
+        if (!any) continue;
+        for (const auto& m : cl.members)
+        {
+            if (!memberMatchesRole(m.tags, m.name)) continue;
+            for (size_t i = 0; i < entries.size(); ++i)
+                if (entries[i].path == m.path)
+                {
+                    pool.push_back(entries[i]);
+                    poolLibs.push_back(entryLibraryIds[i]);
+                    poolCluster.push_back(cl.id);
+                    break;
+                }
+        }
+    }
+    if (pool.empty())
+        for (size_t i = 0; i < entries.size(); ++i)
+            if (memberMatchesRole(entries[i].tags, entries[i].name))
+            {
+                pool.push_back(entries[i]);
+                poolLibs.push_back(entryLibraryIds[i]);
+                poolCluster.push_back("");
+            }
+    out.poolSize = static_cast<int>(pool.size());
+    if (pool.empty()) { error = "no entries match role '" + role + "'"; return out; }
+
+    // 4. Exclusions: explicit caller list + the per-role recently-used ledger.
+    auto ledgerFile = librariesDir.getChildFile("patch_selection_ledger.json");
+    const juce::String ledgerKey = roleLc + "|" + libraryIds.joinIntoString(",");
+
+    juce::StringArray recent;
+    {
+        std::lock_guard<std::mutex> ledgerLock(ledgerMutex);
+        juce::var ledgerVar = juce::JSON::parse(ledgerFile);
+        if (!ledgerVar.isObject()) ledgerVar = juce::var(new juce::DynamicObject());
+        auto* entryObj = ledgerVar.getDynamicObject()->getProperty(ledgerKey).getDynamicObject();
+        if (entryObj != nullptr)
+        {
+            auto recentVar = entryObj->getProperty("recent");
+            if (auto* arr = recentVar.getArray())
+                for (const auto& v : *arr) recent.add(v.toString());
+        }
+    }
+
+    juce::StringArray excluded;
+    for (const auto& e : excludePaths) if (e.isNotEmpty()) excluded.addIfNotAlreadyThere(e);
+    for (const auto& e : recent) excluded.addIfNotAlreadyThere(e);
+
+    std::vector<size_t> candidates;
+    bool poolExhausted = false;
+    for (size_t i = 0; i < pool.size(); ++i)
+        if (!excluded.contains(pool[i].path)) candidates.push_back(i);
+    if (candidates.empty())
+    {
+        // Role pool exhausted under the ledger: clear it (in the atomic write
+        // below) and start a fresh cycle over the full pool.
+        poolExhausted = true;
+        for (size_t i = 0; i < pool.size(); ++i) candidates.push_back(i);
+    }
+
+    // 5. Seeded pick.
+    const int effectiveSeed = seed != 0 ? seed : static_cast<int>(juce::Time::currentTimeMillis());
+    std::mt19937_64 rng(static_cast<uint64_t>(effectiveSeed));
+    std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
+    const size_t pickIdx = candidates[dist(rng)];
+    const auto& picked = pool[pickIdx];
+
+    // 6. Ledger append (keep the last 32 per role) — atomic under ledgerMutex:
+    // re-read, exclude the just-picked path from OTHER recorded cycles, append.
+    if (useLedger)
+    {
+        std::lock_guard<std::mutex> ledgerLock(ledgerMutex);
+        juce::var ledgerVar = juce::JSON::parse(ledgerFile);
+        if (!ledgerVar.isObject()) ledgerVar = juce::var(new juce::DynamicObject());
+        if (poolExhausted)
+            ledgerVar.getDynamicObject()->setProperty(ledgerKey, juce::var(new juce::DynamicObject()));
+        auto* entryObj = ledgerVar.getDynamicObject()->getProperty(ledgerKey).getDynamicObject();
+        if (entryObj == nullptr)
+        {
+            auto fresh = new juce::DynamicObject();
+            fresh->setProperty("recent", juce::var(juce::Array<juce::var>()));
+            ledgerVar.getDynamicObject()->setProperty(ledgerKey, juce::var(fresh));
+            entryObj = ledgerVar.getDynamicObject()->getProperty(ledgerKey).getDynamicObject();
+        }
+        auto recentVar = entryObj->getProperty("recent");
+        juce::Array<juce::var> arr = recentVar.isArray() ? *recentVar.getArray() : juce::Array<juce::var>();
+        arr.add(picked.path);
+        while (arr.size() > 32) arr.remove(0);
+        entryObj->setProperty("recent", arr);
+        entryObj->setProperty("updatedAt", juce::Time::getCurrentTime().toISO8601(true));
+        ledgerFile.getParentDirectory().createDirectory();
+        ledgerFile.replaceWithText(juce::JSON::toString(ledgerVar, true));
+        out.usedCount = arr.size();
+    }
+
+    out.ok = true;
+    out.path = picked.path;
+    out.name = picked.name;
+    out.libraryId = poolLibs[pickIdx];
+    out.clusterId = poolCluster[pickIdx];
+    out.tags = picked.tags;
+    out.seed = effectiveSeed;
+    return out;
 }
 
 // ── cluster presets (docs/plans/2026-08-25-cluster-presets.md) ───────────

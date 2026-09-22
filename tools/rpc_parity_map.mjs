@@ -132,6 +132,7 @@ const ALIASES = {
   param_verity: 'composition.verifyParamSweep',
   param_verity_corpus: 'composition.verifyParamCorpus',
   tone_verity: 'audio.verifyTone',
+  select_patch: 'library.selectPatch',
   // Verified while completing the verdict (2026-09-21): the audit moved to
   // src/common/ModulationCoverage.cpp and gained this RPC twin; list_lfos' own description says
   // it mirrors read.getModulationLfos.
