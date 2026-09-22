@@ -401,8 +401,9 @@ juce::String firstFreeLaneName(const juce::ValueTree& autoList, const juce::Stri
 
 // ─── applyMovementPlan (FX & Automation choreography) ─────────────
 // Batch section-aware movement across tracks in ONE undo unit: per event,
-// resolve-or-create the lane (reuse the lane already bound to paramID — never
-// stack two lanes on the same parameter), then write the named preset across
+// resolve-or-create the lane (reuse the lane already bound to paramID — even
+// when an agent supplied a new window-specific laneName — never stack two lanes
+// on the same parameter), then write the named preset across
 // the beat window via the shared preset-writer (clear=true replaces points
 // inside the window and enables the lane). Partial failure keeps the good
 // events; each event reports ok/error. Deterministic per-event seed.
@@ -450,13 +451,25 @@ AudioEngineCommands::MovementPlanResult AudioEngineCommands::applyMovementPlan(
             lane = findAutomationLane(ev.trackIndex, laneName);
             if (!lane.isValid())
             {
-                if (!addAutomationLane(ev.trackIndex, laneName, paramID))
+                // Agent callers often name each movement window separately. If
+                // the requested parameter already has a lane, reuse that lane
+                // instead of failing with a duplicate-param create conflict.
+                if (paramID != 0)
                 {
-                    fail("lane create conflict: " + laneName);
-                    result.events.push_back(res); ++result.failCount;
-                    continue;
+                    lane = findLaneByParamID(autoList, paramID);
+                    if (lane.isValid())
+                        laneName = lane.getProperty(IDs::name, "").toString().toStdString();
                 }
-                lane = findAutomationLane(ev.trackIndex, laneName);
+                if (!lane.isValid())
+                {
+                    if (!addAutomationLane(ev.trackIndex, laneName, paramID))
+                    {
+                        fail("lane create conflict: " + laneName);
+                        result.events.push_back(res); ++result.failCount;
+                        continue;
+                    }
+                    lane = findAutomationLane(ev.trackIndex, laneName);
+                }
             }
             else
             {

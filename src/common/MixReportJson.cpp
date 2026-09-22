@@ -156,7 +156,6 @@ void applyDropVsBuildGate(QJsonObject& root, const QJsonObject& planKinds, doubl
     const auto isDrop = [](const QString& k) {
         return k.compare("mainA", Qt::CaseInsensitive) == 0
             || k.compare("mainB", Qt::CaseInsensitive) == 0
-            || k.compare("finale", Qt::CaseInsensitive) == 0
             || k.compare("drop", Qt::CaseInsensitive) == 0; };
     QJsonArray rows, issues;
     QString buildName; double buildRms = 0.0; bool haveBuild = false;

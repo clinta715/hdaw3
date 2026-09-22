@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include "engine/AudioEngine.h"
+#include "engine/AudioEngineCommands_Helpers.h"
 #include "frontend/FrontendRouter.h"
 #include "mcp/McpJsonRpc.h"
 #include "mcp/McpServer.h"
@@ -313,6 +314,52 @@ TEST_F(SongPlanRpcTest, FillCellsFlagsNothingToDoOnRefill) {
         << QJsonDocument(again).toJson(QJsonDocument::Compact).constData();
     EXPECT_TRUE(again.contains("warning"));
     EXPECT_EQ(againV, mcpValue("fill_cells", QJsonObject { { "mode", "unfilled" } }));
+}
+
+TEST_F(SongPlanRpcTest, FillCellsRefitsReusedClipAfterBriefWindowChange) {
+    setPlan();
+    const QJsonObject cells { { "cells", QJsonArray {
+        QJsonObject { { "section", "drop" }, { "role", "bass" }, { "trackId", 1 },
+                      { "source", "rhythm" }, { "seed", 11 } } } } };
+    ASSERT_EQ(rpcPayload("composition.setCellRecipes", cells).toObject().value("count").toInt(), 1);
+
+    const QJsonObject first = rpcPayload("composition.fillCells", QJsonObject { { "mode", "all" } }).toObject();
+    const int clipId = first.value("cells").toArray().at(0).toObject().value("clipId").toInt();
+    ASSERT_GT(clipId, 0);
+
+    ProjectCommands::SongPlanData longer;
+    longer.bpm = 138.0;
+    longer.keyRoot = 5;
+    longer.scaleMode = 7;
+    longer.style = "full-on-refit";
+    longer.seed = 778;
+    longer.totalBars = 72;
+    longer.sections = { { "intro", "intro", 16 },
+                        { "build", "build", 24 },
+                        { "drop", "mainA", 32 } };
+    const auto planResult = engine->getProjectCommands().setSongPlan(longer);
+    ASSERT_TRUE(planResult.ok) << planResult.error;
+
+    const QJsonObject refilled = rpcPayload("composition.fillCells", QJsonObject { { "mode", "all" } }).toObject();
+    ASSERT_EQ(refilled.value("failed").toInt(), 0)
+        << QJsonDocument(refilled).toJson(QJsonDocument::Compact).constData();
+    ASSERT_EQ(refilled.value("cells").toArray().at(0).toObject().value("clipId").toInt(), clipId)
+        << "re-fill should reuse the generated clip, but retarget its window";
+
+    const auto bassClips = engine->getProjectModel().getTrackListTree().getChild(1)
+                               .getChildWithName(IDs::CLIP_LIST);
+    ASSERT_TRUE(bassClips.isValid());
+    juce::ValueTree clip;
+    for (int i = 0; i < bassClips.getNumChildren(); ++i)
+        if (static_cast<int>(bassClips.getChild(i).getProperty(IDs::clipID, 0)) == clipId)
+            clip = bassClips.getChild(i);
+    ASSERT_TRUE(clip.isValid());
+
+    const double bpm = engine->getTransportManager().getBPM();
+    EXPECT_NEAR(HDAW::secondsToBeats(static_cast<double>(clip.getProperty(IDs::startTime)), bpm),
+                160.0, 1e-6);
+    EXPECT_NEAR(HDAW::secondsToBeats(static_cast<double>(clip.getProperty(IDs::duration)), bpm),
+                128.0, 1e-6);
 }
 
 } // namespace

@@ -1,4 +1,5 @@
 #include "AudioEngineCommands.h"
+#include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
 #include "PsytranceGenerator.h"
 #include "PhraseGenerator.h"
@@ -754,6 +755,12 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
     }
     else
     {
+        // The same cell can survive a Song Brief replacement.  Re-filling must
+        // retarget the generated clip to the CURRENT section window, not keep
+        // the stale placement from the previous plan (2026-09-22 dogfood).
+        const double bpm = engine_.getTransportManager().getBPM();
+        clipNode.setProperty(IDs::startTime, HDAW::beatsToSeconds(sec->startBeat, bpm), &um);
+        clipNode.setProperty(IDs::duration, HDAW::beatsToSeconds(winBeats, bpm), &um);
         clearNotes(clipId);
     }
     res.clipId = clipId;

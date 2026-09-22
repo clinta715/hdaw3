@@ -124,6 +124,32 @@ TEST(MovementPlan, ReusesLaneByParamIDInsteadOfStacking)
     EXPECT_TRUE(laneExists(engine, 0, "Pan"));
 }
 
+TEST(MovementPlan, ExplicitNewLaneNameReusesExistingParamLane)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Bass");
+
+    auto a = makeEv(0, "openClose", 0.0, 8.0, 103);
+    a.laneName = "build-open-p103";
+    auto b = makeEv(0, "phaseSweep", 8.0, 16.0, 103);
+    b.laneName = "build2-phase-p103";
+
+    auto res = cmds.applyMovementPlan({ a, b });
+    ASSERT_EQ(res.events.size(), 2u);
+    EXPECT_EQ(res.okCount, 2);
+    EXPECT_EQ(res.failCount, 0);
+    EXPECT_TRUE(res.events[0].ok) << res.events[0].error;
+    EXPECT_TRUE(res.events[1].ok) << res.events[1].error;
+    EXPECT_EQ(res.events[0].laneName, "build-open-p103");
+    EXPECT_EQ(res.events[1].laneName, "build-open-p103");
+    EXPECT_EQ(laneCountForParam(engine, 0, 103), 1);
+    EXPECT_TRUE(laneExists(engine, 0, "build-open-p103"));
+    EXPECT_FALSE(laneExists(engine, 0, "build2-phase-p103"));
+    EXPECT_GT(lanePointCount(engine, 0, "build-open-p103"), 0);
+}
+
 TEST(MovementPlan, PartialFailureKeepsGoodEvents)
 {
     AudioEngine engine;

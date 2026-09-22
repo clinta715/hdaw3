@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "engine/MixReport.h"
+#include "common/MixReportJson.h"
 #include <juce_core/juce_core.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <cmath>
@@ -284,6 +285,34 @@ TEST(MixReportTest, BoundaryPeakProbesSectionStart)
     EXPECT_LE(rep.sections[0].boundaryPeak, rep.sections[0].peak + 1e-9);
     EXPECT_LE(rep.sections[1].boundaryPeak, rep.sections[1].peak + 1e-9);
     f.deleteFile();
+}
+
+TEST(MixReportTest, DropVsBuildGateIgnoresFinaleOutro)
+{
+    QJsonObject root;
+    root["sections"] = QJsonArray{
+        QJsonObject{ { "name", "build" }, { "rms", 0.8 } },
+        QJsonObject{ { "name", "outro" }, { "rms", 0.2 } }
+    };
+    HDAW::applyDropVsBuildGate(root, QJsonObject{
+        { "build", "build" },
+        { "outro", "finale" }
+    }, 0.85);
+    EXPECT_FALSE(root.contains("loudnessGates"))
+        << "finale/outro should not be judged as a drop payoff";
+
+    root["sections"] = QJsonArray{
+        QJsonObject{ { "name", "build" }, { "rms", 0.8 } },
+        QJsonObject{ { "name", "drop" }, { "rms", 0.2 } }
+    };
+    HDAW::applyDropVsBuildGate(root, QJsonObject{
+        { "build", "build" },
+        { "drop", "mainB" }
+    }, 0.85);
+    ASSERT_TRUE(root.contains("loudnessGates"));
+    const auto gates = root.value("loudnessGates").toObject();
+    EXPECT_FALSE(gates.value("ok").toBool(true));
+    EXPECT_EQ(gates.value("dropVsBuild").toArray().size(), 1);
 }
 
 TEST(MixReportTest, DegenerateAndOutOfFileSectionsError)
