@@ -143,6 +143,39 @@ load. Both were re-run solo: the `FrontendServer.AddInstrumentPart*` bind failur
 (221/187 ms), and the deviceless ones reproduce solo (so they are not mine). Every
 P1-specific gate passed inside that sweep.
 
+## P2 — status (2026-09-21)
+
+| # | Item | Status |
+| --- | --- | --- |
+| 6 | Gateway double-wraps every result | **UPSTREAM** — the `hdaw` gateway (v2.7.4) is not on this filesystem: nothing in this repo references `hdaw_invoke_command` (only this doc and the session log do). The engine emits ONE envelope; the gateway nests that envelope as a STRING inside its own, so any JSON consumer needs two unwraps. Client-side workaround (what the dogfood script did): unwrap `content[0].text` twice. Ask: return the downstream result structurally, or document the nesting in the gateway's tool descriptions. |
+| 7 | `describe` flattens array-typed params | **UPSTREAM (gateway)** — the ENGINE is not the culprit: `McpServer` serializes `t.inputSchema` verbatim (`McpServer.cpp`, tools/list) and the tool registrations DO declare nested `items` (e.g. `set_cells.cells` has a full item schema with `required`). The flattening happens in the gateway's `hdaw_describe_commands`, so the richest argument in the batch workflow is invisible from the schema. Ask: pass item schemas through. |
+| 8 | Enum drift between siblings (`add_track_with_fx` missing `sub_synth`) | **FIXED in P1** — its `fxType` enum now matches `add_fx`. |
+| — | **`mix_report` had two builders, and they had drifted** (found while doing P1) | **FIXED — see below.** |
+
+### mix_report: one builder for both surfaces (SHIPPED)
+
+The two payloads differed in **shape** (`bands` object vs array + `bandLabels`; sections with
+`boundaryPeak` + a band-energy object vs neither) and in **content** — the RPC lacked the
+file-visibility guard entirely (a just-finished export's writer can hold the file with
+unflushed data, so another handle reads zeros for real audio: the trap that burned the
+2026-09-15 session, surfaced here as `measurementSuspicious`). The RPC's own comment claimed
+"Same JSON shape as the MCP mix_report tool".
+
+- **`src/common/MixReportJson.{h,cpp}`** (new) is now the single builder:
+  `buildMixReportPayload(filePath, windows, bpm)` (file-visibility guard + retry, window
+  clamping/dropping with `clampedSections`, the one payload shape incl. `clipping`) and
+  `applyDropVsBuildGate(...)` (was MCP-local).
+- The MCP tool delegates (its local `applyDropVsBuildGate` and ~92-line analyzer are gone —
+  the file shrank by 136 lines); the RPC router delegates AND now gets the guard, the
+  clamping, and the same plan-derived `structure` + `loudnessGates` extras, so `fromPlan`
+  payloads match too.
+- **Gate:** `McpCoverageTest.MixReportPayloadMatchesRpcTwin` — asserts the two payloads are
+  **equal** for explicit windows and for `fromPlan`, plus the shared shape (`bands` is an
+  object, sections carry `boundaryPeak`, both carry `clipping`), with `structure` and
+  `loudnessGates` present on both. The four pre-existing `MixReport*` shape tests and the
+  `McpJobs` sync/async job contract stayed green, which is what proves MCP behaviour was
+  preserved by the extraction.
+
 ## Artifacts
 
 - `compositions/mcp-dogfood-2026-09-21.wav` (render) and `.hdaw` (saved project) — gitignored

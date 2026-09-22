@@ -5,6 +5,9 @@
 #include "../../engine/Dx7SysexImport.h"
 #include "../../engine/MixReport.h"
 #include "../../common/ProjectCommands.h"
+#include "../../common/MixReportJson.h"
+#include "../../common/SongPlanView.h"
+#include "../../engine/SongStructureAudit.h"
 #include "../../common/FxCaptureStatus.h"
 #include "../../common/SettingsKeys.h"
 
@@ -26,23 +29,34 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
     const auto o = paramsObject(params);
 
     if (m == "mixReport") {
-        // Offline mix analysis of a rendered file — same contract as the MCP
-        // mix_report tool (HDAW::MixReportAnalyzer, windows in SECONDS).
-        // fromPlan derives the section windows from the song plan (beats ->
-        // seconds via bpm; bpm 0 falls back to the plan bpm).
+        // Offline mix analysis of a rendered file. The payload comes from the SHARED builder
+        // (src/common/MixReportJson.cpp) that the MCP mix_report tool also uses, so the two
+        // surfaces cannot drift — they had before 2026-09-21 (this one lacked the
+        // file-visibility guard and emitted a different bands/sections shape, while claiming
+        // "Same JSON shape as the MCP mix_report tool").
+        // fromPlan derives the windows from the song plan (beats -> seconds via bpm; bpm 0
+        // falls back to the plan bpm) and adds the same structure + loudness-gate extras the
+        // MCP tool reports, so the payloads match for the same inputs.
         std::string filePath;
         if (!requireString(o, "filePath", filePath, nullptr))
             return makeError(-32602, "filePath required");
         double bpm = o.value("bpm").toDouble(0.0);
+        if (bpm < 0.0)
+            return makeError(-32602, "bpm must be >= 0");
+
+        const bool fromPlan = o.value("fromPlan").toBool(false);
+        auto plan = engine.getProjectCommands().getSongPlan();
         std::vector<HDAW::SectionWindow> windows;
-        if (o.value("fromPlan").toBool(false)) {
-            const auto plan = engine.getProjectCommands().getSongPlan();
+        QJsonObject planKinds;   // section name -> plan kind (for the loudness gate)
+        if (fromPlan) {
             if (plan.sections.empty())
                 return makeError(-32602, "no song plan set (fromPlan)");
             if (bpm <= 0.0) bpm = plan.bpm;
             const double spb = (bpm > 0.0) ? 60.0 / bpm : 0.5;
-            for (const auto& s : plan.sections)
+            for (const auto& s : plan.sections) {
                 windows.push_back(HDAW::SectionWindow{ s.name, s.startBeat * spb, s.endBeat * spb });
+                planKinds.insert(QString::fromStdString(s.name), QString::fromStdString(s.kind));
+            }
         } else {
             const auto secs = o.value("sections");
             if (secs.isArray()) {
@@ -54,34 +68,21 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
                 }
             }
         }
-        if (bpm < 0.0)
-            return makeError(-32602, "bpm must be >= 0");
-        HDAW::MixReport rep;
-        juce::String err;
-        if (!HDAW::MixReportAnalyzer::analyze(juce::File(juce::String(filePath.c_str())),
-                                              windows, bpm, rep, err))
-            return makeError(-32603, QString::fromUtf8(err.toRawUTF8()));
-        // Same JSON shape as the MCP mix_report tool.
-        QJsonObject root{ { "duration", rep.duration }, { "sampleRate", rep.sampleRate },
-                          { "peak", rep.peak }, { "rms", rep.rms },
-                          { "bands", QJsonArray{ rep.bands[0], rep.bands[1],
-                                                 rep.bands[2], rep.bands[3] } },
-                          { "bandLabels", QJsonArray{ "sub", "bass", "body", "high" } },
-                          { "kickProminence", rep.kickProminence },
-                          // Clipping verdict, derived from peak with the engine's documented
-                          // blast threshold (MixReport.h: `any bin peak >= 0.999`) — the same
-                          // field the MCP mix_report tool emits.
-                          { "clipping", rep.peak >= 0.999 } };
-        if (rep.hasPumpDepth)
-            root["pumpDepth"] = rep.pumpDepth;
-        QJsonArray sections;
-        for (const auto& s : rep.sections)
-            sections.append(QJsonObject{ { "name", QString::fromUtf8(s.name.toRawUTF8()) },
-                                         { "start", s.start }, { "end", s.end },
-                                         { "rms", s.rms }, { "peak", s.peak },
-                                         { "bandEnergy", QJsonArray{ s.bandEnergy[0], s.bandEnergy[1],
-                                                                    s.bandEnergy[2], s.bandEnergy[3] } } });
-        root["sections"] = sections;
+
+        auto built = HDAW::buildMixReportPayload(QString::fromStdString(filePath), windows, bpm);
+        if (!built.error.isEmpty())
+            return makeError(-32603, built.error);
+        if (built.allWindowsDropped)
+            return makeError(-32602, "no plan sections fall inside the file duration");
+
+        QJsonObject root = built.payload;
+        if (fromPlan && !planKinds.isEmpty()) {
+            root["structure"] = HDAW::structureAuditJson(HDAW::auditSongStructure(
+                engine.getProjectModel().getTrackListTree(), plan, bpm));
+            double ratio = o.value("dropBuildRatio").toDouble(0.9);
+            if (ratio <= 0.0 || ratio > 1.5) ratio = 0.9;
+            HDAW::applyDropVsBuildGate(root, planKinds, ratio);
+        }
         return { false, root };
     }
 

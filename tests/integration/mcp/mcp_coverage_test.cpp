@@ -5,6 +5,7 @@
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
 #include "mcp/McpTransportLoopback.h"
+#include "frontend/FrontendRouter.h"
 #include "mcp/McpJsonRpc.h"
 #include <juce_core/juce_core.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -2159,6 +2160,83 @@ TEST_F(McpCoverageTest, DiagnoseIntroBlastBinsSummaryCapsLongScans) {
     EXPECT_GE(s2.value("totalBins").toInt(), 120);
     EXPECT_LE(o2.value("bins").toArray().size(), 200);
     EXPECT_LE(s2.value("emittedBins").toInt(), 200);
+}
+
+// P2 (2026-09-21 dogfood follow-up): mix_report had TWO payload builders and they had drifted
+// — the MCP emitted `bands` as an object and sections with boundaryPeak + a band-energy
+// object, the RPC emitted `bands` as an array plus `bandLabels` and no boundaryPeak, and the
+// RPC lacked the file-visibility guard that sets `measurementSuspicious` — while the RPC's own
+// comment claimed "Same JSON shape as the MCP mix_report tool". Both now use
+// src/common/MixReportJson.cpp, so this gate compares the two payloads for the same inputs.
+TEST_F(McpCoverageTest, MixReportPayloadMatchesRpcTwin) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wavPath = dir.filePath("parity.wav");
+    {
+        juce::File wavFile(wavPath.toStdString());
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release();
+        juce::AudioBuffer<float> buffer(1, 44100 * 5);
+        for (int i = 0; i < 44100 * 5; ++i)
+            buffer.setSample(0, i,
+                static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 220.0 * i / 44100.0)));
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100 * 5);
+        writer.reset();
+    }
+
+    // Explicit windows: the core payload must be byte-identical across the two surfaces.
+    {
+        const QJsonObject args{ { "filePath", wavPath }, { "bpm", 120.0 } };
+        auto r = call("mix_report", args);
+        ASSERT_FALSE(isError(r)) << text(r).toStdString();
+        const auto viaMcp = QJsonDocument::fromJson(text(r).toUtf8()).object();
+        ASSERT_FALSE(viaMcp.isEmpty());
+
+        auto rpc = frontend::dispatch(*engine, "audio.mixReport", args);
+        ASSERT_FALSE(rpc.isError)
+            << rpc.payload.toObject().value("message").toString().toStdString();
+        const QJsonObject viaRpc = rpc.payload.toObject();
+
+        EXPECT_EQ(viaRpc, viaMcp) << "the two surfaces must return the same mix_report payload";
+        // The shared shape: bands as an OBJECT, sections carrying boundaryPeak (the RPC used an
+        // array + bandLabels before), and the P1 clipping verdict on both sides.
+        EXPECT_TRUE(viaRpc.value("bands").isObject());
+        ASSERT_FALSE(viaRpc.value("sections").toArray().isEmpty());
+        EXPECT_TRUE(viaRpc.value("sections").toArray().at(0).toObject().contains("boundaryPeak"));
+        EXPECT_TRUE(viaRpc.contains("clipping"));
+        EXPECT_TRUE(viaMcp.contains("clipping"));
+    }
+
+    // fromPlan: the plan-derived extras (structure + the drop-vs-build loudness gate) must
+    // also match, which is what makes the RPC twin usable for the compose/verify loop.
+    {
+        auto sp = call("set_song_plan", QJsonObject{
+            { "bpm", 120.0 }, { "keyRoot", 0 }, { "scaleMode", 1 },
+            { "style", "test" }, { "seed", 1 }, { "totalBars", 2 },
+            { "sections", QJsonArray{
+                QJsonObject{ { "name", "build" }, { "kind", "build" }, { "bars", 1 } },
+                QJsonObject{ { "name", "drop" }, { "kind", "mainA" }, { "bars", 1 } } } } });
+        ASSERT_FALSE(isError(sp)) << text(sp).toStdString();
+
+        const QJsonObject args{ { "filePath", wavPath }, { "fromPlan", true }, { "wait", true } };
+        auto r = call("mix_report", args);
+        ASSERT_FALSE(isError(r)) << text(r).toStdString();
+        const auto viaMcp = QJsonDocument::fromJson(text(r).toUtf8()).object();
+
+        auto rpc = frontend::dispatch(*engine, "audio.mixReport", args);
+        ASSERT_FALSE(rpc.isError)
+            << rpc.payload.toObject().value("message").toString().toStdString();
+        const QJsonObject viaRpc = rpc.payload.toObject();
+
+        EXPECT_EQ(viaRpc, viaMcp) << "fromPlan payloads must match too";
+        EXPECT_TRUE(viaRpc.contains("structure"));
+        EXPECT_TRUE(viaRpc.contains("loudnessGates"));
+    }
 }
 
 TEST_F(McpCoverageTest, MixReportFromPlanClampsToFileDuration) {
