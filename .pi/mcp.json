@@ -2,6 +2,11 @@
   "mcpServers": {
     "qt-docs": {
       "disabled": true
+    },
+    "codebase-memory": {
+      "command": "npx",
+      "args": ["-y", "codebase-memory-mcp@0.11.0"],
+      "disabled": false
     }
   }
 }
