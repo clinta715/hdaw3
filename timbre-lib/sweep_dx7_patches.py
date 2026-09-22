@@ -717,6 +717,27 @@ async def process_patch(client, args, patch, i, n, cfg):
             # not JSON — only the structured import tools parse here.
             if cfg["import_tool"] == "apply_preset":
                 entry["_patch_meta"] = {}
+                # apply_preset routes SysEx dumps into the LIVE child; the
+                # plugin-state capture that makes the patch visible to the
+                # offline export child is DEFERRED (~800ms). Exporting
+                # immediately races the capture: every render then boots the
+                # INIT patch and all patches measure identically (the
+                # 2026-09-22 vavra_demo bug). Poll the capture receipt first.
+                for _ in range(40):
+                    raw = await client.tool("get_fx_capture_status",
+                        {"trackId": args.probe_track_id, "slotIndex": 0})
+                    # prose format: "status=ok stateBytes=N capturedAtMs=..."
+                    fields = {}
+                    for kv in raw.replace(chr(10), " ").split():
+                        if "=" in kv:
+                            k2, v2 = kv.split("=", 1)
+                            fields[k2] = v2
+                    status = fields.get("status", "")
+                    if status in ("ok", "unchanged", "failed"):
+                        entry["capture_status"] = status
+                        entry["capture_bytes"] = int(fields.get("stateBytes", 0))
+                        break
+                    await asyncio.sleep(0.25)
             else:
                 imp = json.loads(r)
                 voice_name = imp.get(cfg["voice_name_field"]) or None
