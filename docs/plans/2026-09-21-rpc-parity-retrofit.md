@@ -1,10 +1,12 @@
 # MCP ↔ RPC parity retrofit (2026-09-21)
 
-**Status:** audit complete — **every confirmed gap is closed**. Shipped: slice 0
-(`device`, `src/common/DeviceParamMap`), slice 1 (`psy_fm`), slice 2 (`matrix`,
-`MatrixPresetService`) + the namespace-coverage gate, slice 3 (song plan / cells + fx
-capture receipt, `SongPlanView` + `FxCaptureStatus`), slice 4 (`tuning`,
-`TuningAnalysis`). Remaining: the ratchet (item 3) and the follow-ups (items 4–6).
+**Status:** audit complete — **every confirmed gap is closed**. Shipped: slice 0 (`device`,
+`src/common/DeviceParamMap`), slice 1 (`psy_fm`), slice 2 (`matrix`, `MatrixPresetService`) + the
+namespace-coverage gate, slice 3 (song plan / cells + fx capture receipt, `SongPlanView` +
+`FxCaptureStatus`), slice 4 (`tuning`, `TuningAnalysis`), slice 5 (the ratchet:
+`tools/rpc_parity_map.mjs` + `RpcParityRatchet`), slice 6 (`modulation` —
+`ModulationCoverage` shared + `modulation.coverage`, which also completed `mix_verdict`), slice 7
+(the nord loader de-duplicated into `src/common/NordBankLoader`). Remaining: items 5–7.
 **Owner:** agent session 2026-09-21. **Risk:** low (no engine/DSP/render/playback code).
 **Related:** `docs/plans/2026-09-21-device-param-map.md` (same parity rule, worked
 example `src/common/DeviceParamMap.cpp`).
@@ -416,12 +418,19 @@ silently assumed fine.
    to be classified, every mapped target to resolve on the live dispatch surface, and every
    unmapped row to carry a reason. It does not prove semantic equivalence — the 101
    `unresolved` rows are the explicit review queue.
-4. **De-duplicate the nord `.syx` file loader.** Slice 2 re-implemented the
-   validate-then-queue sequence inside `MatrixPresetService` (the matrix tool's file route
-   needed a structured payload), while `mcp::runNordBankFile` (`PresetRoute.h`) still
-   serves `load_nord_bank` with the same parsing/validation. One of them should delegate:
-   move the loader core next to the pure parser (`src/mcp/PresetFileParser.h` is
-   engine-surface only) and let each caller format its own output.
+4. ~~**De-duplicate the nord `.syx` file loader.**~~ **DONE (slice 7).**
+   `src/common/NordBankLoader.{h,cpp}` is now the ONE loader (parse .syx/.mid → validate every dump
+   → queue dumps + optional PC + the trailing CC125, exact error strings and an error CLASS for the
+   RPC surface). `mcp::runNordBankFile` and `MatrixPresetService::applyNordSyxFile` are thin
+   adapters that format their own output (unchanged prose / unchanged JSON payload). Gate:
+   `NordBankLoaderTest.SharedLoaderQueuesAndClassifiesErrors` plus the pre-existing
+   `ApplyPresetToolTest.NordRouteValidatesDumpsBeforeQueueing`,
+   `MatrixPresetsTest.MorphSysexAndFileDispatch` and `MatrixRpcParityTest.EnvironmentFailureClassAndPath`
+   (46 tests were green around the swap).
+7. **`load_nord_bank` has no RPC twin** (a ledger `unresolved` row). Slice 7 made this cheap: a
+   `settings.loadNordBank` / `plugin.loadNordBank` handler that calls the shared loader and returns
+   `{queued, bytes, program, capturedToTree}` is ~15 lines. Worth doing with the next parity slice
+   (it is the last preset-loading tool without a route).
 5. **`audio.mixReport` has no async route** (found in slice 4): the RPC method is
    synchronous while the MCP `mix_report` tool supports `wait:false` + `poll_job`. Either
    add `wait`/`audio.jobStatus` (mirroring `tuning.jobStatus`) or document the asymmetry.

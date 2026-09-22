@@ -224,6 +224,7 @@ src/engine/StretchRenderer.cpp
     src/common/MixReportJson.cpp
     src/common/MixVerdict.cpp
     src/common/ModulationCoverage.cpp
+    src/common/NordBankLoader.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp

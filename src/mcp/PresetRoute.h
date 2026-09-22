@@ -15,6 +15,7 @@
 
 #include "McpToolDef.h"
 #include "PresetFileParser.h"
+#include "../common/NordBankLoader.h"
 #include "../common/ProjectCommands.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -210,91 +211,15 @@ inline McpToolResult runNordBankFile(AudioEngine& e, int ti, int si,
                                      const QString& path, int program,
                                      bool captureToTree)
 {
-    const juce::File f(juce::String::fromUTF8(path.toUtf8()));
-    if (!f.existsAsFile())
-        return McpToolResult::text("file not found: " + path, true);
-    juce::MemoryBlock block;
-    if (!f.loadFileAsData(block))
-        return McpToolResult::text("failed to read file", true);
-    const auto suffix = f.getFileExtension().toLowerCase();
-    // Normalize to complete F0..F7 dumps (payload coordinates differ
-    // between containers; see PresetFileParser.h for the wire format).
-    std::vector<std::vector<uint8_t>> dumps;
-    if (suffix == ".syx") {
-        const auto* b = static_cast<const uint8_t*>(block.getData());
-        if (mcp::splitNordSyx(b, block.getSize(), dumps) < 0)
-            return McpToolResult::text("truncated SysEx (missing F7)", true);
-    } else if (suffix == ".mid") {
-        juce::MemoryInputStream in(block, false);
-        juce::MidiFile mf;
-        if (!mf.readFrom(in))
-            return McpToolResult::text("invalid .mid file", true);
-        for (int t = 0; t < mf.getNumTracks(); ++t)
-        {
-            const auto* seq = mf.getTrack(t);
-            for (int ev = 0; ev < seq->getNumEvents(); ++ev)
-            {
-                const auto metadata = seq->getEventPointer(ev);
-                if (!metadata->message.isSysEx())
-                    continue;
-                const auto* raw = metadata->message.getRawData();
-                dumps.emplace_back(raw, raw + metadata->message.getRawDataSize());
-            }
-        }
-    } else return McpToolResult::text("unsupported file type (use .syx or .mid)", true);
-    if (dumps.empty())
-        return McpToolResult::text("no sysex data found in file", true);
-    // Validate EVERY dump before queueing anything (no partial bank loads).
-    size_t totalBytes = 0;
-    for (const auto& d : dumps)
-    {
-        if (auto err = mcp::validateNordDump(d.data(), d.size()); !err.isEmpty())
-            return McpToolResult::text(
-                "invalid Nord dump: " + QString::fromStdString(
-                    err.toStdString()), true);
-        totalBytes += d.size();
-    }
-    if (program > 127 || program < -1)
-        return McpToolResult::text("program must be 0..127", true);
-    ProjectCommands::FxMidiParams p;
-    p.trackIndex = ti;
-    p.slotIndex = si;
-    p.captureToTree = captureToTree;
-    for (const auto& d : dumps) {
-        ProjectCommands::FxMidiEvent ev;
-        ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
-        ev.sysex = d;
-        p.events.push_back(std::move(ev));
-    }
-    if (program >= 0)
-    {
-        // Voice selection AFTER the bank dumps land (BUG-7 plan step 4).
-        ProjectCommands::FxMidiEvent pc;
-        pc.kind = ProjectCommands::FxMidiEvent::Kind::ProgramChange;
-        pc.channel = 1;
-        pc.data1 = program;
-        p.events.push_back(std::move(pc));
-    }
-    // Capture-race protocol: append a harmless CC125 (undefined on the
-    // NL2x) at the END of the batch so the trailing slot state is inert.
-    // Delivery is paced by the slot drain (<=1 SysEx per block, order
-    // preserved) and the deferred state capture is delayed ~30ms per queued
-    // SysEx (see sendFxMidi), then confirmed via get_fx_capture_status.
-    {
-        ProjectCommands::FxMidiEvent cc;
-        cc.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;
-        cc.channel = 1;
-        cc.data1 = 125; // undefined on the NL2x — the firmware ignores it
-        cc.data2 = 0;
-        p.events.push_back(std::move(cc));
-    }
-    auto r = e.getProjectCommands().sendFxMidi(p);
+    // Delegates to the ONE shared loader (src/common/NordBankLoader.cpp) so this path and the
+    // matrix tool's loose .syx route cannot drift; the prose output is unchanged.
+    const auto r = HDAW::loadNordBankFile(e, ti, si, path, program, captureToTree);
     if (!r.ok)
-        return McpToolResult::text(QString::fromStdString(r.error), true);
+        return McpToolResult::text(r.error, true);
     return McpToolResult::text(QString("queued %1 sysex dumps (%2 bytes)%3 capturedToTree=%4")
         .arg(r.queued)
-        .arg(static_cast<int>(totalBytes))
-        .arg(program >= 0 ? QString(" program=%1").arg(program) : QString())
+        .arg(r.totalBytes)
+        .arg(r.program >= 0 ? QString(" program=%1").arg(r.program) : QString())
         .arg(r.capturedToTree ? 1 : 0));
 }
 

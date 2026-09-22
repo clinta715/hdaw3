@@ -11,6 +11,9 @@
 //      (queueing itself is safe without a live plugin instance).
 //   3. Backwards compat: the five individual tools remain registered.
 #include <gtest/gtest.h>
+
+#include "common/NordBankLoader.h"
+#include "engine/AudioEngine.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -327,6 +330,60 @@ TEST_F(ApplyPresetToolTest, VirusRomRouteQueuesCc0AndProgramChange)
     EXPECT_FALSE(resultIsError(r)) << resultText(r).toStdString();
     EXPECT_TRUE(resultText(r).contains("queued bank=2 program=40"))
         << resultText(r).toStdString();
+}
+
+// The dedupe (retrofit backlog item 4): ONE loader behind both nord paths — the MCP tools
+// (load_nord_bank, apply_preset's NordRoute) and the matrix tool's loose .syx step route. This
+// pins the SHARED core directly: what gets queued and the error CLASS the RPC surface maps, so a
+// later edit to either adapter cannot silently change the queued batch.
+TEST(NordBankLoaderTest, SharedLoaderQueuesAndClassifiesErrors) {
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+    const int t = pc.addTrack("Nord");
+    ASSERT_GE(t, 0);
+    pc.addFxSlot(t, "plugin", 0, "NodalRed2xFake.clap");
+
+    // Clavia dump: F0 33 <dev> 04 01 <spec> + 132 payload bytes + F7 = 139 bytes.
+    const auto makeDump = [](uint8_t spec) {
+        std::vector<uint8_t> d { 0xF0, 0x33, 0x0F, 0x04, 0x01, spec };
+        for (int i = 0; i < 132; ++i) d.push_back(static_cast<uint8_t>(i % 128));
+        d.push_back(0xF7);
+        return d;
+    };
+    const auto dumpA = makeDump(0), dumpB = makeDump(1);
+    std::vector<uint8_t> bank;
+    bank.insert(bank.end(), dumpA.begin(), dumpA.end());
+    bank.insert(bank.end(), dumpB.begin(), dumpB.end());
+    const juce::File bankFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                    .getChildFile("hdaw_nord_loader_bank.syx");
+    bankFile.replaceWithData(bank.data(), static_cast<int>(bank.size()));
+    const QString bankPath = QString::fromStdString(bankFile.getFullPathName().toStdString());
+
+    const auto ok = HDAW::loadNordBankFile(engine, t, 0, bankPath, -1, /*captureToTree=*/true);
+    ASSERT_TRUE(ok.ok) << ok.error.toStdString();
+    EXPECT_EQ(ok.queued, 3);            // 2 bank dumps + the trailing CC125
+    EXPECT_EQ(ok.totalBytes, 2 * 139);  // 2 x 139 SysEx bytes
+    EXPECT_EQ(ok.program, -1);
+    EXPECT_TRUE(ok.error.isEmpty());
+
+    // A missing file is an ENVIRONMENT failure (the RPC maps it to -32603).
+    const auto missing = HDAW::loadNordBankFile(engine, t, 0,
+                                                "Z:/definitely/missing.syx", -1, true);
+    EXPECT_FALSE(missing.ok);
+    EXPECT_TRUE(missing.environmentFailure);
+    EXPECT_TRUE(missing.error.contains("file not found")) << missing.error.toStdString();
+
+    // An unsupported container is an INVALID-PARAMS failure (-32602).
+    const juce::File txt = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("hdaw_nord_loader_bad.txt");
+    txt.replaceWithText("not sysex at all");
+    const auto bad = HDAW::loadNordBankFile(engine, t, 0,
+                                            QString::fromStdString(txt.getFullPathName().toStdString()),
+                                            -1, true);
+    EXPECT_FALSE(bad.ok);
+    EXPECT_FALSE(bad.environmentFailure);
+    EXPECT_TRUE(bad.error.contains("unsupported file type")) << bad.error.toStdString();
 }
 
 TEST_F(ApplyPresetToolTest, NordRouteValidatesDumpsBeforeQueueing)

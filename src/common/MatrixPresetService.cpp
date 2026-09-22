@@ -4,7 +4,8 @@
 #include "../model/ProjectModel.h"
 #include "../common/ProjectCommands.h"
 #include "../common/ParamOverrideLedger.h"
-#include "../mcp/PresetFileParser.h"   // pure Nord .syx parsing (juce_core only)
+#include "../mcp/PresetFileParser.h"
+#include "NordBankLoader.h"   // pure Nord .syx parsing (juce_core only)
 
 #include <QCoreApplication>
 #include <QDir>
@@ -476,107 +477,20 @@ void writeAppliedParamOverrides(AudioEngine& e, int ti, int si,
         slotTree.setProperty(IDs::appliedParamOverrides, ledger, nullptr);
 }
 
-// Loose .syx / .mid step-file route (the load_nord_bank wire format): validate
-// EVERY dump before queueing anything (no partial bank loads), then queue the dumps
-// (+ optional program change) and a trailing CC125 so the deferred state capture
-// sees inert trailing state.
-//
-// The parsing/validation helpers come from the pure parser (src/mcp/
-// PresetFileParser.h — juce_core only, no MCP server/tool types), which is the
-// shared authority for the Nord wire format.
+// Loose .syx / .mid step-file route — delegates to the ONE shared Nord loader
+// (src/common/NordBankLoader.cpp), which both this and the MCP load_nord_bank path use. The
+// payload below is this surface's own shape (retrofit backlog item 4 removed the duplicate).
 MatrixOpResult applyNordSyxFile(AudioEngine& e, int ti, int si, const QString& path,
                                 int program, bool captureToTree)
 {
-    const juce::File f(juce::String::fromUTF8(path.toUtf8()));
-    if (!f.existsAsFile())
-        return failEnv("file not found: " + path);
-    juce::MemoryBlock block;
-    if (!f.loadFileAsData(block))
-        return failEnv("failed to read file");
-    const auto suffix = f.getFileExtension().toLowerCase();
-    // Normalize to complete F0..F7 dumps (payload coordinates differ between
-    // containers; see PresetFileParser.h for the wire format).
-    std::vector<std::vector<uint8_t>> dumps;
-    if (suffix == ".syx")
-    {
-        const auto* b = static_cast<const uint8_t*>(block.getData());
-        if (mcp::splitNordSyx(b, block.getSize(), dumps) < 0)
-            return failEnv("truncated SysEx (missing F7)");
-    }
-    else if (suffix == ".mid")
-    {
-        juce::MemoryInputStream in(block, false);
-        juce::MidiFile mf;
-        if (!mf.readFrom(in))
-            return failEnv("invalid .mid file");
-        for (int t = 0; t < mf.getNumTracks(); ++t)
-        {
-            const auto* seq = mf.getTrack(t);
-            for (int ev = 0; ev < seq->getNumEvents(); ++ev)
-            {
-                const auto metadata = seq->getEventPointer(ev);
-                if (!metadata->message.isSysEx())
-                    continue;
-                const auto* raw = metadata->message.getRawData();
-                dumps.emplace_back(raw, raw + metadata->message.getRawDataSize());
-            }
-        }
-    }
-    else return fail("unsupported file type (use .syx or .mid)");
-    if (dumps.empty())
-        return failEnv("no sysex data found in file");
-
-    size_t totalBytes = 0;
-    for (const auto& d : dumps)
-    {
-        if (auto err = mcp::validateNordDump(d.data(), d.size()); !err.isEmpty())
-            return failEnv("invalid Nord dump: " + QString::fromStdString(err.toStdString()));
-        totalBytes += d.size();
-    }
-    if (program > 127 || program < -1)
-        return fail("program must be 0..127");
-
-    ProjectCommands::FxMidiParams p;
-    p.trackIndex = ti;
-    p.slotIndex = si;
-    p.captureToTree = captureToTree;
-    for (const auto& d : dumps)
-    {
-        ProjectCommands::FxMidiEvent ev;
-        ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
-        ev.sysex = d;
-        p.events.push_back(std::move(ev));
-    }
-    if (program >= 0)
-    {
-        // Voice selection AFTER the bank dumps land (BUG-7 plan step 4).
-        ProjectCommands::FxMidiEvent pc;
-        pc.kind = ProjectCommands::FxMidiEvent::Kind::ProgramChange;
-        pc.channel = 1;
-        pc.data1 = program;
-        p.events.push_back(std::move(pc));
-    }
-    {
-        // Capture-race protocol: append a harmless CC125 (undefined on the NL2x) at
-        // the END of the batch so the trailing slot state is inert. Delivery is
-        // paced by the slot drain (<=1 SysEx per block, order preserved) and the
-        // deferred state capture is delayed ~30ms per queued SysEx (see sendFxMidi),
-        // then confirmed via get_fx_capture_status.
-        ProjectCommands::FxMidiEvent cc;
-        cc.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;
-        cc.channel = 1;
-        cc.data1 = 125;
-        cc.data2 = 0;
-        p.events.push_back(std::move(cc));
-    }
-    const auto r = e.getProjectCommands().sendFxMidi(p);
+    const auto r = HDAW::loadNordBankFile(e, ti, si, path, program, captureToTree);
     if (!r.ok)
-        return failEnv(QString::fromStdString(r.error));
+        return r.environmentFailure ? failEnv(r.error) : fail(r.error);
     return succeed(QJsonObject {
         { "queued", r.queued },
         { "route", "file" },
-        { "bytes", static_cast<int>(totalBytes) },
-        { "program", program },
+        { "bytes", r.totalBytes },
+        { "program", r.program },
         { "capturedToTree", r.capturedToTree },
         { "captureDeferred", true } });
 }
