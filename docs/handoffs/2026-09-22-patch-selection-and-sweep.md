@@ -15,6 +15,38 @@
    `apply_preset` (F0 3E Waldorf dumps), sidecars `.vavra.json` merge (category
    preserved + dsp vector added). Syntax verified.
 
+## RESOLVED: sweep engine spawn (the lesson-9 class again)
+
+`_wait_ready` gated on a NON-EMPTY stable track list — but v0.34+ default
+projects ship ZERO tracks. The sweep waited 120 s for tracks that never exist.
+Fixed: stability across two polls is the contract (empty allowed); the sweep
+creates its own probe track.
+
+## RESOLVED: apply_preset prose response
+
+`apply_preset` answers with prose ("queued N sysex dumps..."), not JSON — the
+sweep's json.loads choked. Now branch on import tool.
+
+## OPEN (NEW ENGINE BUG): only the FIRST MIDI note reaches isolated children
+during offline export
+
+Sweep evidence (Bass__Acid_bass_Bass__v0.wav, 3 s render):
+- The wav contains ONE ~35 ms Vavra blip at t=0.025-0.059 s (63 Hz — the patch
+  SOUNDS through the isolated child ✓) followed by digital silence.
+- Probe phrase = 8 notes at 0.5-beat spacing; internal-synth tracks render all
+  notes fine through the same export path.
+- The isolated child received note 1 only — notes 2-8 never played.
+- Analyzer consequence: whole-file centroid ≈ 0 (99.7% silence) → roleCheck
+  "centroid 0Hz" fail verdicts on ALL swept patches, despite real audio.
+
+Debug order: ExportManager's MIDI scheduling into the isolated child's shm ring
+for multi-event phrases (lesson-14 family: fixed-size ring messages, drops when
+busy — "the SysEx lane DROPS when busy" is documented for SysEx; the NOTE lane
+may share that drop behavior). Compare: internal-synth MIDI delivery (works)
+vs plugin-child MIDI delivery (first note only). A repro test:
+build track with isolated JE8086 + 8-note clip → export → assert all 8 note
+onsets have audio energy.
+
 ## OPEN: sweep engine spawn fails
 
 `sweep_dx7_patches.py --engine vavra_plugin ...` fails with

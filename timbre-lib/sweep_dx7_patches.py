@@ -426,7 +426,12 @@ class EngineSession:
             try:
                 r = await self.client.tool("list_tracks", {}, timeout=20)
                 data = json.loads(r)
-                if isinstance(data, list) and data:
+                # v0.34+ default projects ship ZERO tracks (lesson 9) — the
+                # old `and data` gate waited 120 s for tracks that never
+                # exist, so every sweep died with "did not become ready".
+                # Stability across two polls is the actual contract; the
+                # sweep creates its own probe track afterward.
+                if isinstance(data, list):
                     ids = tuple(t["id"] for t in data)
                     # Require the track list to be stable across two polls so
                     # the engine has finished creating its default project
@@ -708,12 +713,17 @@ async def process_patch(client, args, patch, i, n, cfg):
             if patch["voice_index"]:
                 imp_args[cfg["voice_key"]] = patch["voice_index"]
             r = await client.tool(cfg["import_tool"], imp_args)
-            imp = json.loads(r)
-            voice_name = imp.get(cfg["voice_name_field"]) or None
-            entry["voice_name"] = voice_name
-            entry["_patch_meta"] = {
-                f: imp.get(f) for f in cfg["import_meta_fields"]
-            }
+            # apply_preset answers with prose ("queued N sysex dumps..."),
+            # not JSON — only the structured import tools parse here.
+            if cfg["import_tool"] == "apply_preset":
+                entry["_patch_meta"] = {}
+            else:
+                imp = json.loads(r)
+                voice_name = imp.get(cfg["voice_name_field"]) or None
+                entry["voice_name"] = voice_name
+                entry["_patch_meta"] = {
+                    f: imp.get(f) for f in cfg["import_meta_fields"]
+                }
         except Exception as e:
             entry["error"] = f"import failed: {e}"
             print(f"[{i}/{n}] {patch['name']} -> error ({entry['error']})")
