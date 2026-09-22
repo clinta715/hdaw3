@@ -59,7 +59,7 @@ void registerReadTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"list_tracks",
-        "List all tracks (id, name, color, volume, pan, mute, solo, clipCount).",
+        "List all tracks (id, name, color, volume, pan, mute, solo, clipCount). Returns a BARE JSON array of track objects (there is no {\"tracks\":[...]} wrapper).",
         QJsonObject{{"type","object"}},
         "project",
         [e](const QJsonObject&) {
@@ -82,7 +82,7 @@ void registerReadTools(McpServer& s, AudioEngine* e)
                 QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});
 
-    s.registerTool({"list_clips", "List clips (optionally on a single trackId).",
+    s.registerTool({"list_clips", "List clips (optionally on a single trackId). Returns a BARE JSON array of clip objects {id, name, type, trackId, start, duration, gain, muted, looping, fadeIn, fadeOut} (no wrapper object).",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}),
         "project",
         [e](const QJsonObject& a) {

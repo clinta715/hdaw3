@@ -40,4 +40,14 @@ QJsonArray layerHandoffsJson(const juce::ValueTree& trackList, int trackId);
 // "no song plan set" note when the audit found no plan.
 QJsonObject structureAuditJson(const SongStructureAudit& audit);
 
+// Cell-fill batch payload — shared by the MCP `fill_cells` / `reroll` tools and the RPC
+// `composition.fillCells` / `composition.rerollCells`, so the surfaces cannot disagree.
+// `definedCells` is ProjectCommands::getCells().size() for this call: when it is 0 the
+// payload is flagged (`noCells` + `warning`), because "ok:true, filled:0" is otherwise
+// indistinguishable from the state a FAILED set_cells leaves behind — the silent no-op
+// found in the 2026-09-21 dogfood run (docs/handoffs/2026-09-21-mcp-dogfood-composition.md).
+// It also flags the benign-but-confusing case where nothing matched (filter/section empty).
+QJsonObject cellFillBatchJson(const ProjectCommands::CellFillBatchResult& batch,
+                              int definedCells);
+
 } // namespace HDAW

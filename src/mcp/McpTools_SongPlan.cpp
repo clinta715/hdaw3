@@ -181,7 +181,11 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
     s.registerTool({ "apply_song_brief",
         "Apply a psy-song-session Song Brief (JSON object or string) as the song plan: "
         "bpm/keyRoot/scaleMode/style/seed/totalBars/sections[{name,type,bars}]. Brief type aliases "
-        "(peak/outro/drop) map onto canonical kinds. One atomic undoable step.",
+        "(peak/outro/drop) map onto canonical kinds — alias 'drop' resolves to kind mainB, so pass "
+        "an explicit kind when the exact section kind matters. Argument: `brief` (object or JSON string). "
+        "Returns the resolved plan {ok, briefApplied, bpm, keyRoot, scaleMode, seed, style, totalBars, "
+        "regionsCreated, regionsUpdated, warnings[], sections:[{name, kind, startBeat, endBeat, bars}]}. "
+        "One atomic undoable step.",
         objSchema({ { "brief", QJsonObject{ { "type", "object" } } } }, { "brief" }),
         "composition",
         [e](const QJsonObject& a) -> McpToolResult {
@@ -335,49 +339,35 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
         } });
 
     s.registerTool({ "fill_cells",
-        "Execute cell recipes: each fill writes a MIDI clip spanning EXACTLY its section window (clip reused on re-fill) and records provenance + the used seed. mode: all (every unlocked cell) | unfilled (never-filled only). ONE undo transaction for the whole batch. Returns per-cell {clipId, noteCount, seedUsed, ok, error}.",
+        "Execute cell recipes: each fill writes a MIDI clip spanning EXACTLY its section window (clip reused on re-fill) and records provenance + the used seed. mode: all (every unlocked cell) | unfilled (never-filled only). ONE undo transaction for the whole batch. Returns {ok, filled, skippedLocked, failed, cells:[{ok, section, role, trackId, clipId, noteCount, seedUsed, error?}]}. A no-op is FLAGGED: `noCells:true` + warning when no cell recipes are defined at all (the state a FAILED set_cells leaves behind — nothing was written), or `nothingToDo:true` + warning when this call matched nothing.",
         objSchema({ { "mode", QJsonObject{ { "type", "string" }, { "enum", QJsonArray{ "all", "unfilled" } } } } }, {}),
         "composition",
         [e](const QJsonObject& a) -> McpToolResult {
-            auto b = e->getProjectCommands().fillCells(a.value("mode").toString("all").toStdString());
+            auto& cmds = e->getProjectCommands();
+            // getCells() BEFORE the fill: a zero count means set_cells never landed, which
+            // the shared payload now flags instead of reporting a plain ok:true/filled:0.
+            const int definedCells = static_cast<int>(cmds.getCells().size());
+            auto b = cmds.fillCells(a.value("mode").toString("all").toStdString());
             if (!b.ok && !b.error.empty())
                 return McpToolResult::text(QString::fromStdString(b.error), true);
-            QJsonArray cells;
-            for (const auto& c : b.cells)
-            {
-                QJsonObject o{ { "ok", c.ok }, { "section", QString::fromStdString(c.section) },
-                               { "role", QString::fromStdString(c.role) }, { "clipId", c.clipId },
-                               { "noteCount", c.noteCount }, { "seedUsed", (double) (long long) c.seedUsed } };
-                if (!c.error.empty()) o["error"] = QString::fromStdString(c.error);
-                cells.append(o);
-            }
-            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
-                { "ok", b.ok }, { "filled", b.filled }, { "skippedLocked", b.skippedLocked },
-                { "failed", b.failed }, { "cells", cells } }).toJson(QJsonDocument::Compact)));
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(
+                HDAW::cellFillBatchJson(b, definedCells)).toJson(QJsonDocument::Compact)));
         } });
 
     s.registerTool({ "reroll",
-        "Re-roll cell seeds: matching unlocked cells get seed = lastSeed+1 (deterministic variation) and re-fill. Empty section/role = match all. One undo transaction.",
+        "Re-roll cell seeds: matching unlocked cells get seed = lastSeed+1 (deterministic variation) and re-fill. Empty section/role = match all. One undo transaction. Returns the same batch payload as fill_cells, including its noCells/nothingToDo guards.",
         objSchema({ { "section", QJsonObject{ { "type", "string" } } },
                     { "role", QJsonObject{ { "type", "string" } } } }, {}),
         "composition",
         [e](const QJsonObject& a) -> McpToolResult {
-            auto b = e->getProjectCommands().rerollCells(
+            auto& cmds = e->getProjectCommands();
+            const int definedCells = static_cast<int>(cmds.getCells().size());
+            auto b = cmds.rerollCells(
                 a.value("section").toString().toStdString(), a.value("role").toString().toStdString());
             if (!b.ok && !b.error.empty())
                 return McpToolResult::text(QString::fromStdString(b.error), true);
-            QJsonArray cells;
-            for (const auto& c : b.cells)
-            {
-                QJsonObject o{ { "ok", c.ok }, { "section", QString::fromStdString(c.section) },
-                               { "role", QString::fromStdString(c.role) }, { "clipId", c.clipId },
-                               { "noteCount", c.noteCount }, { "seedUsed", (double) (long long) c.seedUsed } };
-                if (!c.error.empty()) o["error"] = QString::fromStdString(c.error);
-                cells.append(o);
-            }
-            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
-                { "ok", b.ok }, { "filled", b.filled }, { "skippedLocked", b.skippedLocked },
-                { "failed", b.failed }, { "cells", cells } }).toJson(QJsonDocument::Compact)));
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(
+                HDAW::cellFillBatchJson(b, definedCells)).toJson(QJsonDocument::Compact)));
         } });
 
     s.registerTool({ "get_clip_provenance",

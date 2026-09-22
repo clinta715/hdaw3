@@ -2196,6 +2196,11 @@ TEST_F(McpCoverageTest, MixReportFromPlanClampsToFileDuration) {
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
     auto o = QJsonDocument::fromJson(text(r).toUtf8()).object();
     EXPECT_TRUE(o.contains("clampedSections")) << text(r).toStdString();
+    // P1 surface fix (2026-09-21 dogfood): the payload carries an explicit clipping verdict
+    // (peak against the engine's 0.999 threshold), so a slamming mix is FLAGGED rather than
+    // merely measured — before this an agent had to interpret `peak` itself.
+    EXPECT_TRUE(o.contains("clipping")) << text(r).toStdString();
+    EXPECT_TRUE(o.value("clipping").isBool());
     EXPECT_TRUE(o.value("clampedSections").toArray().contains(QString("intro")));
     auto secs = o.value("sections").toArray();
     ASSERT_EQ(secs.size(), 1);

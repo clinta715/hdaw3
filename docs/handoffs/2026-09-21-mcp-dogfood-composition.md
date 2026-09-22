@@ -107,6 +107,42 @@ the way.
 - **Offline render worked in a deviceless session**, and `analyze_tuning` returned a
   pass/fail plus a reason — both keep the loop usable on a headless box.
 
+## P1 — SHIPPED (2026-09-21, same session)
+
+| # | Fix | Where | Gate |
+| --- | --- | --- | --- |
+| 1 | A fill that wrote nothing now says so: `noCells:true` + warning when no cell recipes exist (the state a FAILED `set_cells` leaves), `nothingToDo:true` + warning when the call matched nothing | the fill/reroll payload was extracted into `src/common/SongPlanView.cpp` (`cellFillBatchJson`), replacing two hand-written builders — MCP `fill_cells`/`reroll` and RPC `composition.fillCells`/`rerollCells` now share it | `SongPlanRpcTest.FillCellsFlagsNoCellsWhenNoneDefined` + `...NothingToDoOnRefill` (each also asserts the MCP and RPC payloads are identical) |
+| 2 | `mix_report` carries an explicit `clipping` verdict (derived from `peak` with the engine's documented 0.999 blast threshold — `HDAW::MixReport` itself has no clipping member, only `BlastReport` does) | both builders: `McpTools_AudioRead.cpp` + `Router_Audio.cpp` | `McpCoverageTest.MixReport*` (field present and a bool) |
+| 3 | `add_track_with_fx` returns compact JSON `{trackId, routed, fxType}` like `add_track` (was a text line), and its `fxType` enum now includes `sub_synth` (it disagreed with `add_fx`) | `src/mcp/McpTools_Track.cpp` | `McpCoverageTest.AddTrackWithFx` + the three plugin-diagnostic regexes migrated to the JSON shape |
+| 4 | `add_instrument_part` can choose the internal instrument: new `fxType` param (fm_synth default; psy_fm / growl_bass / psyarp / sampler / sub_synth), validated BEFORE any mutation | `ProjectCommands::InstrumentPartParams::fxType`, `AudioEngineCommands::addInstrumentPart` (slot creation), MCP tool + RPC parse | `InstrumentPart.ExplicitFxTypeSelectsTheInstrumentSlot` (selects psy_fm; an unknown type errors **and creates no track**) |
+| 5 | Output shapes documented in the descriptions that cost round trips: `list_tracks` (bare array), `list_clips` (bare array), `apply_song_brief` (argument name, returns, and the `drop`→`mainB` alias), `fill_cells`/`reroll` (full per-cell shape + the guards), `add_track_with_fx` | `McpTools_Read.cpp`, `McpTools_SongPlan.cpp`, `McpTools_Track.cpp`, `McpTools_CompositionInstrument.cpp` | descriptions only (no schema change) |
+
+### New findings from implementing P1
+
+- **`mix_report`'s two JSON builders have drifted — and the code claims otherwise.**
+  `Router_Audio.cpp` carries the comment "Same JSON shape as the MCP mix_report tool", but the
+  RPC payload adds `bandLabels` while the MCP adds `measurementSuspicious` (+ richer per-section
+  fields: `boundaryPeak`, a band-energy object). `clipping` was added to both as the interim
+  fix; the real fix is ONE shared builder in `src/common/` — a slice of its own, which also
+  closes the parity hole for `audio.mixReport`.
+- **`fill_cells`'s guards are layered, and that is worth knowing:** with NO song plan at all it
+  already refuses (`"no song plan set"`), so the new `noCells` signal is specifically the
+  *plan present, no cells defined* state — exactly what the failed `set_cells` produced in this
+  run. Both layers are pinned in the test.
+- **The new gate caught a real ordering bug in my own first cut:** the `fxType` validation
+  originally sat AFTER `addTrack(...)`, so a rejected call left a track behind (breaking the
+  command's "nothing is written on failure" contract). It now validates in the pre-mutation
+  block and the test asserts the track count is unchanged — keep that assertion.
+
+### Verification caveat for this session
+
+The wider sweep (213 tests / 10 suites) reported 26 failures, all **environmental**, of two
+characterised classes: the deviceless pattern (`getTrack()/tr == nullptr`, lessons 9/17 — this
+box currently has no usable audio route) and transient `server->start(0)` bind failures under
+load. Both were re-run solo: the `FrontendServer.AddInstrumentPart*` bind failures pass solo
+(221/187 ms), and the deviceless ones reproduce solo (so they are not mine). Every
+P1-specific gate passed inside that sweep.
+
 ## Artifacts
 
 - `compositions/mcp-dogfood-2026-09-21.wav` (render) and `.hdaw` (saved project) — gitignored

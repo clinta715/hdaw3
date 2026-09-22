@@ -687,6 +687,11 @@ public:
         std::string trackName;
         std::string style;              // PhraseGenerator style name
         std::string pluginId;           // empty = internal "fm_synth"
+        // Internal instrument slot type when no pluginId is given: "" = fm_synth.
+        // e.g. psy_fm / growl_bass / psyarp / sampler / sub_synth. Ignored when pluginId is set
+        // (the slot becomes "plugin"). Validated against the type's param defs at the command
+        // boundary, so a typo fails instead of creating a silent empty instrument.
+        std::string fxType;
         int programIndex = -1;          // -1 = default program; >=0 requires pluginId
         double lengthBeats = 4.0;
         std::string placement = "region"; // "wholeSong" | "region"

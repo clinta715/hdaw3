@@ -1941,7 +1941,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
         auto r = parseResponse(out);
         QString text = textOf(r);
         ASSERT_TRUE(text.contains("trackId")) << "Failed to add track: " << text.toStdString();
-        QRegularExpression re("trackId=(\\d+)");
+        QRegularExpression re("\"trackId\":(\\d+)");   // add_track_with_fx returns compact JSON
         auto match = re.match(text);
         ASSERT_TRUE(match.hasMatch()) << "Could not parse trackId from: " << text.toStdString();
         trackId = match.captured(1).toInt();
@@ -2064,7 +2064,7 @@ TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
         auto r = parseResponse(out);
         QString text = textOf(r);
         ASSERT_TRUE(text.contains("trackId")) << "Failed to add track: " << text.toStdString();
-        QRegularExpression re("trackId=(\\d+)");
+        QRegularExpression re("\"trackId\":(\\d+)");   // add_track_with_fx returns compact JSON
         auto match = re.match(text);
         ASSERT_TRUE(match.hasMatch()) << "Could not parse trackId from: " << text.toStdString();
         trackIds.append(match.captured(1).toInt());
@@ -2351,7 +2351,7 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
                                   .arg(QString::fromStdString(r.name), plId);
             QString addText = run(baseId + 2, "add_track_with_fx", addArgs);
             r.phaseNote += "add=" + addText.toStdString() + "; ";
-            QRegularExpression re("trackId=(\\d+)");
+            QRegularExpression re("\"trackId\":(\\d+)");   // add_track_with_fx returns compact JSON
             auto m = re.match(addText);
             if (m.hasMatch())
             {

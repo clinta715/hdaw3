@@ -67,7 +67,11 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
                           { "bands", QJsonArray{ rep.bands[0], rep.bands[1],
                                                  rep.bands[2], rep.bands[3] } },
                           { "bandLabels", QJsonArray{ "sub", "bass", "body", "high" } },
-                          { "kickProminence", rep.kickProminence } };
+                          { "kickProminence", rep.kickProminence },
+                          // Clipping verdict, derived from peak with the engine's documented
+                          // blast threshold (MixReport.h: `any bin peak >= 0.999`) — the same
+                          // field the MCP mix_report tool emits.
+                          { "clipping", rep.peak >= 0.999 } };
         if (rep.hasPumpDepth)
             root["pumpDepth"] = rep.pumpDepth;
         QJsonArray sections;

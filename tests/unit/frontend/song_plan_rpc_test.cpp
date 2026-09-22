@@ -272,4 +272,47 @@ TEST_F(SongPlanRpcTest, ErrorClasses) {
     EXPECT_TRUE(rpcMsg.contains("out of range")) << rpcMsg.toStdString();
 }
 
+// G6 (P1 surface fix from the 2026-09-21 dogfood run): a fill that wrote nothing MUST say
+// so. "ok:true, filled:0" used to be returned both for a legitimate no-op re-fill AND for
+// the state a FAILED set_cells leaves behind (no cells at all) — which silently produced an
+// empty song in the dogfood run (docs/handoffs/2026-09-21-mcp-dogfood-composition.md).
+TEST_F(SongPlanRpcTest, FillCellsFlagsNoCellsWhenNoneDefined) {
+    // With no plan at all a stricter guard already refuses — pinned here so the noCells
+    // guard below is understood to be the plan-present case.
+    EXPECT_TRUE(rpcError("composition.fillCells", QJsonObject { { "mode", "all" } })
+                    .value("message").toString().contains("no song plan"));
+
+    // Plan present, NO cells defined — exactly the state a FAILED set_cells leaves behind,
+    // which is what silently produced an empty song in the dogfood run.
+    setPlan();
+    const QJsonValue viaRpcV = rpcPayload("composition.fillCells", QJsonObject { { "mode", "all" } });
+    const QJsonObject viaRpc = viaRpcV.toObject();
+    EXPECT_TRUE(viaRpc.value("noCells").toBool())
+        << QJsonDocument(viaRpc).toJson(QJsonDocument::Compact).constData();
+    EXPECT_FALSE(viaRpc.value("warning").toString().isEmpty());
+    EXPECT_EQ(viaRpc.value("filled").toInt(), 0);
+    // The MCP twin reports the identical payload (shared builder).
+    EXPECT_EQ(viaRpcV, mcpValue("fill_cells", QJsonObject { { "mode", "all" } }));
+}
+
+TEST_F(SongPlanRpcTest, FillCellsFlagsNothingToDoOnRefill) {
+    setPlan();
+    const QJsonObject cells { { "cells", QJsonArray {
+        QJsonObject { { "section", "drop" }, { "role", "bass" }, { "trackId", 1 },
+                      { "source", "rhythm" }, { "seed", 11 } } } } };
+    ASSERT_EQ(rpcPayload("composition.setCellRecipes", cells).toObject().value("count").toInt(), 1);
+
+    const QJsonObject first = rpcPayload("composition.fillCells", QJsonObject { { "mode", "all" } }).toObject();
+    EXPECT_EQ(first.value("filled").toInt(), 1);
+    EXPECT_FALSE(first.contains("noCells"));
+    EXPECT_FALSE(first.contains("nothingToDo"));
+
+    const QJsonValue againV = rpcPayload("composition.fillCells", QJsonObject { { "mode", "unfilled" } });
+    const QJsonObject again = againV.toObject();
+    EXPECT_TRUE(again.value("nothingToDo").toBool())
+        << QJsonDocument(again).toJson(QJsonDocument::Compact).constData();
+    EXPECT_TRUE(again.contains("warning"));
+    EXPECT_EQ(againV, mcpValue("fill_cells", QJsonObject { { "mode", "unfilled" } }));
+}
+
 } // namespace

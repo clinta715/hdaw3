@@ -159,10 +159,10 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"add_track_with_fx",
-        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm}, or provide pluginId for a VST3/CLAP plugin.",
+        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, or provide pluginId for a VST3/CLAP plugin. Returns compact JSON {trackId, routed, fxType} (same shape as add_track).",
         objSchema({{"name",     QJsonObject{{"type","string"}}},
                    {"fxType",   QJsonObject{{"type","string"},
-                       {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm"}}}},
+                       {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth"}}}},
                    {"pluginId", QJsonObject{{"type","string"}}},
                    {"color",    QJsonObject{{"type","integer"}}},
                    {"parentBus",QJsonObject{{"type","integer"}}}}, {"name"}),
@@ -194,10 +194,12 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
                 m.addFxSlot(idx, fxType, -1, pluginId);
 
             bool routingOk = idx >= 0 && idx < e->getProjectModel().getTrackListTree().getNumChildren();
-            return McpToolResult::text(
-                QString("trackId=%1 routed=%2 fxType=%3").arg(idx)
-                    .arg(routingOk ? "1" : "0")
-                    .arg(QString::fromStdString(fxType)));
+            // Compact JSON like add_track (the P3-2 convention — a text return forces every
+            // caller to parse a string). fxType is echoed because it is inferred from
+            // pluginId when only that was given.
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
+                { "trackId", idx }, { "routed", routingOk ? 1 : 0 },
+                { "fxType", QString::fromStdString(fxType) } }).toJson(QJsonDocument::Compact)));
         }});
 }
 

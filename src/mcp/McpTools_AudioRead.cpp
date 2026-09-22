@@ -133,6 +133,12 @@ static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, con
             {"body", rep.bands[2]},
             {"high", rep.bands[3]}}},
         {"kickProminence", rep.kickProminence},
+        // Clipping verdict. HDAW::MixReport carries no clipping member (BlastReport does), so
+        // derive it from peak with the SAME threshold the engine's blast classifier documents
+        // (`any bin peak >= 0.999`, MixReport.h): the payload used to report peak alone, so an
+        // agent had to interpret a float to notice a slamming mix (2026-09-21 dogfood:
+        // peak 1.0, no verdict — docs/handoffs/2026-09-21-mcp-dogfood-composition.md).
+        {"clipping", rep.peak >= 0.999},
         {"measurementSuspicious", rep.measurementSuspicious}
     };
     if (rep.hasPumpDepth)

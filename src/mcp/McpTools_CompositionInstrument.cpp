@@ -97,6 +97,9 @@ s.registerTool({"add_instrument_part",
                       {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion","TrapHiHat","DrillBass","Counterpoint","WalkingBass","SwingComping","MarkovMelody","EvolvingTexture","Aleatoric","ScalarRun","ChordToneSeq","CallResponse","PhaseShift","AdditiveRhythm","MinimalistLoop","Layered"}}}},
                   {"role",         QJsonObject{{"type","string"},{"description","Part template: bass | lead | chords | drums (case-insensitive). When provided, fills unset phrase params with role defaults; explicit params always win."}}},
                   {"pluginId",     QJsonObject{{"type","string"}}},
+                  {"fxType",       QJsonObject{{"type","string"},
+                      {"enum", QJsonArray{"fm_synth","psy_fm","growl_bass","psyarp","sampler","sub_synth"}},
+                      {"description","Internal instrument slot type (default fm_synth). Ignored when pluginId is given."}}},
                   {"programIndex", QJsonObject{{"type","integer"},{"minimum",-1}}},
                   {"lengthBeats",  QJsonObject{{"type","number"},{"minimum",0.25}}},
                   {"placement",    QJsonObject{{"type","string"},
@@ -124,6 +127,7 @@ s.registerTool({"add_instrument_part",
             p.style = a.contains("style") ? a.value("style").toString().toStdString() : std::string();
             p.role = a.contains("role") ? a.value("role").toString().toStdString() : std::string();
             p.pluginId = a.contains("pluginId") ? a.value("pluginId").toString().toStdString() : std::string();
+            p.fxType = a.contains("fxType") ? a.value("fxType").toString().toStdString() : std::string();
             p.programIndex = a.contains("programIndex") ? a.value("programIndex").toInt() : -1;
             p.lengthBeats = a.value("lengthBeats").toDouble(4.0);
             p.placement = a.contains("placement") ? a.value("placement").toString().toStdString() : "region";

@@ -765,3 +765,39 @@ TEST(InstrumentPartRole, EmptyRoleLegacyBehavior)
         EXPECT_EQ(legacyNotes[i].velocity, explicitNotes[i].velocity);
     }
 }
+
+// P1 surface fix (2026-09-21 dogfood): add_instrument_part can now choose the INTERNAL
+// instrument slot. Before this the only lever was pluginId, so the one-command-per-part path
+// could not select psy_fm / growl_bass / psyarp / sampler / sub_synth at all, and the fm_synth
+// default was undocumented (docs/handoffs/2026-09-21-mcp-dogfood-composition.md).
+TEST(InstrumentPart, ExplicitFxTypeSelectsTheInstrumentSlot)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    const int baseline = engine.getReadModel().getTrackCount();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Pad";
+    params.style = "Pad";
+    params.fxType = "psy_fm";
+    params.lengthBeats = 4.0;
+    params.count = 1;
+    params.seed = 3;
+    auto res = cmds.addInstrumentPart(params);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+    ASSERT_EQ(res.trackIndex, baseline);
+
+    auto fx = engine.getReadModel().getFxSlots(res.trackIndex);
+    ASSERT_FALSE(fx.empty());
+    EXPECT_EQ(fx[0].fxType, "psy_fm");
+
+    // An unknown internal type fails loudly (Gate 9) instead of minting an empty slot.
+    ProjectCommands::InstrumentPartParams bad = params;
+    bad.fxType = "not_a_synth";
+    const int before = engine.getReadModel().getTrackCount();
+    const auto badRes = cmds.addInstrumentPart(bad);
+    EXPECT_FALSE(badRes.error.empty());
+    EXPECT_NE(badRes.error.find("unknown fxType"), std::string::npos) << badRes.error;
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), before);
+}

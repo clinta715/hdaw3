@@ -136,4 +136,39 @@ QJsonObject structureAuditJson(const SongStructureAudit& audit)
         { "spans", spans } };
 }
 
+QJsonObject cellFillBatchJson(const ProjectCommands::CellFillBatchResult& b, int definedCells)
+{
+    QJsonArray cells;
+    for (const auto& c : b.cells)
+    {
+        QJsonObject o{ { "ok", c.ok }, { "section", QString::fromStdString(c.section) },
+                       { "role", QString::fromStdString(c.role) }, { "trackId", c.trackId },
+                       { "clipId", c.clipId },
+                       { "noteCount", c.noteCount },
+                       { "seedUsed", static_cast<double>(static_cast<long long>(c.seedUsed)) } };
+        if (!c.error.empty()) o["error"] = QString::fromStdString(c.error);
+        cells.append(o);
+    }
+    QJsonObject o{ { "ok", b.ok }, { "filled", b.filled },
+                   { "skippedLocked", b.skippedLocked }, { "failed", b.failed },
+                   { "cells", cells } };
+    if (!b.error.empty()) o["error"] = QString::fromStdString(b.error);
+
+    // Guards: distinguish "nothing to do" from "done". Without these, a project whose
+    // set_cells failed reports the same ok:true/filled:0 as a legitimate no-op re-fill.
+    if (definedCells <= 0)
+    {
+        o["noCells"] = true;
+        o["warning"] = "no cell recipes are defined — nothing was written (did set_cells "
+                       "fail? check its per-cell results)";
+    }
+    else if (b.filled == 0 && b.failed == 0 && b.skippedLocked == 0)
+    {
+        o["nothingToDo"] = true;
+        o["warning"] = "no cell matched this call (already filled, or the section/role "
+                       "filter matched nothing) — nothing was written";
+    }
+    return o;
+}
+
 } // namespace HDAW

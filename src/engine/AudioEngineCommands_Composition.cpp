@@ -787,6 +787,16 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
         result.error = "programIndex requires a pluginId";
         return result;
     }
+    // Optional internal instrument choice (Gate 9 — validated BEFORE any mutation so a bad
+    // fxType leaves the project untouched, like every other validation here). "plugin"/"none"
+    // carry no param defs and are only meaningful with a pluginId, so they are rejected too.
+    if (!p.fxType.empty() && p.pluginId.empty()
+        && HDAW::TrackFXSlot::getParamDefsForType(p.fxType).empty())
+    {
+        result.error = "unknown fxType: " + p.fxType
+                     + " (internal instruments: fm_synth, psy_fm, growl_bass, psyarp, sampler, sub_synth)";
+        return result;
+    }
 
     auto& model = engine_.getProjectModel();
     const double bpm = engine_.getTransportManager().getBPM();
@@ -801,11 +811,12 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
         return result;
     }
 
-    // Instrument FX slot (internal fm_synth by default, or a hosted plugin).
-    // addFxSlotInternal builds the slot tree without a per-op rebuild; the
-    // single rebuildRoutingGraph at the end covers it (lesson 6).
-    addFxSlotInternal(trackIndex, p.pluginId.empty() ? "fm_synth" : "plugin",
-                      -1, p.pluginId);
+    // Instrument FX slot: an explicit fxType wins, else internal fm_synth by default, else the
+    // hosted plugin (fxType was validated above, before any mutation).
+    const std::string instrumentType = !p.fxType.empty()
+                                           ? p.fxType
+                                           : (p.pluginId.empty() ? "fm_synth" : "plugin");
+    addFxSlotInternal(trackIndex, instrumentType, -1, p.pluginId);
 
     const int scaleRoot = (p.scaleRoot >= 0) ? p.scaleRoot : model.getScaleRoot();
     const int scaleMode = (p.scaleMode >= 0) ? p.scaleMode : model.getScaleMode();

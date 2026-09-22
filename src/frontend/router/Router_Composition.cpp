@@ -57,30 +57,6 @@ static QJsonObject cellRecipeJson(const ProjectCommands::CellRecipe& r)
     return o;
 }
 
-static QJsonObject cellFillJson(const ProjectCommands::CellFillResult& r)
-{
-    QJsonObject o{ { "ok", r.ok },
-                   { "section", QString::fromStdString(r.section) },
-                   { "role", QString::fromStdString(r.role) },
-                   { "trackId", r.trackId },
-                   { "clipId", r.clipId },
-                   { "noteCount", r.noteCount },
-                   { "seedUsed", (double) (long long) r.seedUsed } };
-    if (!r.error.empty()) o["error"] = QString::fromStdString(r.error);
-    return o;
-}
-
-static QJsonObject cellBatchJson(const ProjectCommands::CellFillBatchResult& b)
-{
-    QJsonArray cells;
-    for (const auto& c : b.cells) cells.append(cellFillJson(c));
-    QJsonObject o{ { "ok", b.ok }, { "filled", b.filled },
-                   { "skippedLocked", b.skippedLocked }, { "failed", b.failed },
-                   { "cells", cells } };
-    if (!b.error.empty()) o["error"] = QString::fromStdString(b.error);
-    return o;
-}
-
 } // namespace
 
 DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const QJsonValue& params) {
@@ -222,15 +198,17 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         return { false, QJsonObject{ { "ok", c.removeCellRecipe(section, role) } } };
     }
     if (m == "fillCells") {
+        const int definedCells = static_cast<int>(c.getCells().size());
         auto b = c.fillCells(o.value("mode").toString("all").toStdString());
         if (!b.ok && !b.error.empty()) return makeError(-32602, QString::fromStdString(b.error));
-        return { false, cellBatchJson(b) };
+        return { false, HDAW::cellFillBatchJson(b, definedCells) };
     }
     if (m == "rerollCells") {
+        const int definedCells = static_cast<int>(c.getCells().size());
         auto b = c.rerollCells(o.value("section").toString().toStdString(),
                                o.value("role").toString().toStdString());
         if (!b.ok && !b.error.empty()) return makeError(-32602, QString::fromStdString(b.error));
-        return { false, cellBatchJson(b) };
+        return { false, HDAW::cellFillBatchJson(b, definedCells) };
     }
     if (m == "getClipProvenance") {
         int clipId;
@@ -911,6 +889,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (p.style.empty() && p.role.empty())
             return makeError(-32602, "style required (or provide role)");
         p.pluginId      = optString(o, "pluginId", "");
+        p.fxType        = optString(o, "fxType", "");   // internal instrument slot (default fm_synth)
         p.programIndex  = optInt(o, "programIndex", -1, nullptr);
         p.lengthBeats   = optDouble(o, "lengthBeats", 4.0, nullptr);
         p.placement     = optString(o, "placement", "region");
