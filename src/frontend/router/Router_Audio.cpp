@@ -7,11 +7,14 @@
 #include "../../common/ProjectCommands.h"
 #include "../../common/MixReportJson.h"
 #include "../../common/MixVerdict.h"
+#include "../../mcp/McpJobs.h"
 #include "../../common/ModulationCoverage.h"
 #include "../../common/SongPlanView.h"
 #include "../../engine/SongStructureAudit.h"
 #include "../../common/FxCaptureStatus.h"
 #include "../../common/SettingsKeys.h"
+
+#include <stdexcept>
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -71,21 +74,61 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
             }
         }
 
-        auto built = HDAW::buildMixReportPayload(QString::fromStdString(filePath), windows, bpm);
-        if (!built.error.isEmpty())
-            return makeError(-32603, built.error);
-        if (built.allWindowsDropped)
-            return makeError(-32602, "no plan sections fall inside the file duration");
+        // Build the payload ONCE for the sync path, or on the job worker for wait=false.
+        // Captured BY VALUE: a queued job must never touch the engine.
+        const double ratio = [&] {
+            double r = o.value("dropBuildRatio").toDouble(0.9);
+            return (r <= 0.0 || r > 1.5) ? 0.9 : r;
+        }();
+        const QJsonObject structureJson = (fromPlan && !planKinds.isEmpty())
+            ? HDAW::structureAuditJson(HDAW::auditSongStructure(
+                  engine.getProjectModel().getTrackListTree(), plan, bpm))
+            : QJsonObject{};
 
-        QJsonObject root = built.payload;
-        if (fromPlan && !planKinds.isEmpty()) {
-            root["structure"] = HDAW::structureAuditJson(HDAW::auditSongStructure(
-                engine.getProjectModel().getTrackListTree(), plan, bpm));
-            double ratio = o.value("dropBuildRatio").toDouble(0.9);
-            if (ratio <= 0.0 || ratio > 1.5) ratio = 0.9;
-            HDAW::applyDropVsBuildGate(root, planKinds, ratio);
+        // Error codes travel with the failure (a message-string test would be fragile):
+        // -32602 for the caller's windows, -32603 for everything the harness/file did.
+        struct MixReportError : std::runtime_error {
+            int code;
+            MixReportError(int c, const std::string& w) : std::runtime_error(w), code(c) {}
+        };
+        auto buildPayload = [filePath, windows, planKinds, bpm, ratio, structureJson]() -> QJsonObject {
+            auto built = HDAW::buildMixReportPayload(QString::fromStdString(filePath), windows, bpm);
+            if (!built.error.isEmpty())
+                throw MixReportError(-32603, built.error.toStdString());
+            if (built.allWindowsDropped)
+                throw MixReportError(-32602, "no plan sections fall inside the file duration");
+            QJsonObject root = built.payload;
+            if (!structureJson.isEmpty()) root["structure"] = structureJson;
+            if (!planKinds.isEmpty()) HDAW::applyDropVsBuildGate(root, planKinds, ratio);
+            return root;
+        };
+
+        // wait=false mirrors the MCP mix_report tool: submit to the process-wide job registry and
+        // poll it through audio.jobStatus (the per-domain status convention used by
+        // tuning.jobStatus / rave.jobStatus — all read the same registry).
+        if (!o.value("wait").toBool(true)) {
+            const int id = mcp::McpJobs::instance().submit("mix_report", buildPayload);
+            return { false, QJsonObject{ { "jobId", id }, { "state", "running" },
+                                         { "pollWith", "audio.jobStatus" } } };
         }
-        return { false, root };
+        try {
+            return { false, buildPayload() };
+        } catch (const MixReportError& ex) {
+            return makeError(ex.code, QString::fromUtf8(ex.what()));
+        } catch (const std::exception& ex) {
+            return makeError(-32603, QString::fromUtf8(ex.what()));
+        }
+    }
+
+    if (m == "jobStatus") {
+        // Poll an async analysis job (mix_report today; the registry is process-wide, so rave and
+        // tuning jobs are readable here too — the status routes are thin views of one registry).
+        int jobId = 0;
+        if (!requireInt(o, "jobId", jobId, nullptr))
+            return makeError(-32602, "missing or non-numeric param: jobId");
+        const auto status = mcp::McpJobs::instance().status(jobId);
+        if (status.isEmpty()) return makeError(-32602, "unknown jobId");
+        return { false, status };
     }
 
     if (m == "mixVerdict") {

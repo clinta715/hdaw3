@@ -6,6 +6,7 @@
 #include "../../common/PluginService.h"
 #include "../../common/PluginParamService.h"
 #include "../../common/SettingsKeys.h"
+#include "../../common/NordBankLoader.h"
 #include "../../engine/AudioEngine.h"
 #include "../../model/ProjectModel.h"
 
@@ -23,7 +24,8 @@ using namespace frontend::router_helpers;
 
 namespace frontend {
 
-DispatchResult dispatchPlugin(PluginService& s, const QString& m, const QJsonValue& params,
+DispatchResult dispatchPlugin(PluginService& s, AudioEngine& engine, const QString& m,
+                              const QJsonValue& params,
                               FrontendServer* server) {
     const auto o = paramsObject(params);
     auto pluginInfoToJson = [](const PluginInfo& p) {
@@ -88,6 +90,36 @@ DispatchResult dispatchPlugin(PluginService& s, const QString& m, const QJsonVal
     if (m == "blacklistPlugin")    { std::string id; if (!requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "pluginID required"); s.blacklistPlugin(id); return { false, QJsonValue::Null }; }
     if (m == "unblacklistPlugin")  { std::string id; if (!requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "pluginID required"); s.unblacklistPlugin(id); return { false, QJsonValue::Null }; }
     if (m == "getBlacklistReason") { std::string id; if (!requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "pluginID required"); return { false, QString::fromStdString(s.getBlacklistReason(id)) }; }
+    if (m == "loadNordBank") {
+        // Clavia Nord bank into a plugin slot — the RPC twin of the MCP `load_nord_bank` tool,
+        // sharing HDAW::loadNordBankFile (src/common/NordBankLoader.cpp) with it so what gets
+        // queued cannot drift (retrofit backlog item 7: it was the last preset-loading tool with
+        // no RPC route). Validation happens before anything is queued, and the error CLASS comes
+        // from the loader: -32603 environment/artifact, -32602 invalid params.
+        // Parameter names mirror the MCP tool EXACTLY (trackId, NOT trackIndex): a surface that
+        // renames an argument is not a parity twin. The first draft of this route read
+        // `trackIndex`, and the twin test caught it (the MCP rejected the arg as an unknown
+        // property while the RPC reported a loader error) — keep the schema and the check in sync.
+        int ti = 0, si = 0;
+        std::string filePath;
+        if (!requireInt(o, "trackId", ti, nullptr))
+            return makeError(-32602, "trackId required");
+        if (!requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "slotIndex required");
+        if (!requireString(o, "filePath", filePath, nullptr))
+            return makeError(-32602, "filePath required");
+        const int program = optInt(o, "program", -1, nullptr);
+        if (o.contains("program") && program < 0)
+            return makeError(-32602, "program must be 0..127");
+        const bool capture = optBool(o, "captureToTree", true, nullptr);
+        const auto r = HDAW::loadNordBankFile(engine, ti, si, QString::fromStdString(filePath),
+                                              program, capture);
+        if (!r.ok)
+            return makeError(r.environmentFailure ? -32603 : -32602, r.error);
+        return { false, QJsonObject{ { "queued", r.queued }, { "bytes", r.totalBytes },
+                                     { "program", r.program },
+                                     { "capturedToTree", r.capturedToTree } } };
+    }
     if (m == "getIsolationEnabled") { QSettings qs; return { false, qs.value(SettingsKeys::kKeyPluginIsolation, true).toBool() }; }
     if (m == "setIsolationEnabled") { bool v; if (!requireBool(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings qs; qs.setValue(SettingsKeys::kKeyPluginIsolation, v); return { false, QJsonValue::Null }; }
     if (m == "getWatchPlugins") { QSettings qs; return { false, qs.value(SettingsKeys::kKeyWatchPlugins, true).toBool() }; }

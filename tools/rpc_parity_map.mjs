@@ -175,8 +175,17 @@ const words = s => s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(
 const sig = s => words(s).filter(w => !STOP.has(w));
 const rpcToks = rpcNames.map(r => ({ r, t: new Set(sig(r.split('.')[1])) }));
 
+// Tools the name heuristic maps WRONG: a name-derived match that is a semantically DIFFERENT
+// capability. Emitted as unresolved (review queue) with the reason, so the ledger never reads as a
+// verified mapping. The live-probe gate cannot catch this class — both routes exist.
+const FORCE_REVIEW = {
+  apply_preset: 'name-derived match to matrix.applyPreset is WRONG (matrix presets are a different '
+    + 'family) — this preset front door needs its own route',
+};
+
 const rows = [];
 for (const { tool } of tools) {
+  if (FORCE_REVIEW[tool]) { rows.push([tool, 'unresolved', '-', FORCE_REVIEW[tool]]); continue; }
   if (ALIASES[tool] && rpc.has(ALIASES[tool])) { rows.push([tool, 'mapped', ALIASES[tool], 'alias (verified; see the ledger notes)']); continue; }
   const c = camel(tool);
   if (methodToNs.has(c)) {

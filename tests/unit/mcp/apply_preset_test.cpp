@@ -14,6 +14,7 @@
 
 #include "common/NordBankLoader.h"
 #include "engine/AudioEngine.h"
+#include "frontend/FrontendRouter.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -235,6 +236,35 @@ TEST_F(ApplyPresetToolTest, AllFiveToolsRegistered)
     EXPECT_TRUE(server->tools().contains("fm_synth_import_sysex"));
     EXPECT_TRUE(server->tools().contains("sub_synth_import_sysex"));
     EXPECT_TRUE(server->tools().contains("load_plugin_preset_file"));
+}
+
+// Retrofit backlog item 7: load_nord_bank was the last preset-loading MCP tool with no RPC route.
+// The route (plugin.loadNordBank) delegates to the same HDAW::loadNordBankFile, so a bad path must
+// fail with the same loader message on both surfaces — and neither may queue anything.
+TEST_F(ApplyPresetToolTest, LoadNordBankRpcTwinSharesLoaderFailure)
+{
+    ASSERT_FALSE(resultIsError(callTool(*server, 1, "add_track",
+        QJsonObject{{ "name", "NordHost" }})));
+    // Same parameter NAMES as the MCP tool (trackId) — a renamed argument is not a parity twin.
+    const QJsonObject args{ { "trackId", 0 }, { "slotIndex", 0 },
+                            { "filePath", "Z:/definitely/missing.nl2x" } };
+
+    const auto mcpRes = callTool(*server, 2, "load_nord_bank", args);
+    EXPECT_TRUE(resultIsError(mcpRes)) << resultText(mcpRes).toStdString();
+    const QString mcpMsg = resultText(mcpRes);
+
+    const auto rpc = frontend::dispatch(*engine, "plugin.loadNordBank", args);
+    ASSERT_TRUE(rpc.isError) << QJsonDocument(rpc.payload.toObject()).toJson().constData();
+    const QString rpcMsg = rpc.payload.toObject().value("message").toString();
+    EXPECT_FALSE(rpcMsg.isEmpty());
+    EXPECT_TRUE(rpcMsg.contains(mcpMsg) || mcpMsg.contains(rpcMsg))
+        << "both surfaces must report the loader's message; mcp='"
+        << mcpMsg.toStdString() << "' rpc='" << rpcMsg.toStdString() << "'";
+
+    // Nothing was queued into the (non-existent) slot by either attempt.
+    const auto chain = engine->getProjectModel().getTrackListTree()
+        .getChild(0).getChildWithName(IDs::FX_CHAIN);
+    EXPECT_EQ(chain.getNumChildren(), 0);
 }
 
 TEST_F(ApplyPresetToolTest, FmSysexRouteWritesFmPatchData)

@@ -167,13 +167,19 @@ TEST_F(TuningRpcTest, AnalyzePayloadMatchesMcp) {
     const QJsonObject all { { "wavPath", wav } };
     const QJsonObject allRpc = rpcPayload("tuning.analyze", all);
     EXPECT_EQ(allRpc, mcpObject("analyze_tuning", all));
-    // Shape note: with NO role the Python sidecar emits {wav, descriptors, summary} while
-    // the C++ fallback adds per-role `checks` — a PRE-EXISTING difference between the two
-    // analysis paths (measured 2026-09-21), which the shared function preserves verbatim
-    // rather than papering over. Assert the invariant both paths share (the surfaces
-    // agreeing is asserted above).
+    // Both analysis paths now emit the SAME no-role shape (retrofit item 6): per-role `checks`
+    // synthesized from the reported descriptors plus the `loop` note, so a caller can rely on it
+    // whichever path ran (the Python sidecar used to omit both).
     EXPECT_TRUE(allRpc.value("descriptors").isObject()) << QJsonDocument(allRpc)
         .toJson(QJsonDocument::Compact).constData();
+    EXPECT_TRUE(allRpc.value("checks").isObject()) << QJsonDocument(allRpc)
+        .toJson(QJsonDocument::Compact).constData();
+    EXPECT_TRUE(allRpc.value("loop").isObject());
+    const auto allChecks = allRpc.value("checks").toObject();
+    EXPECT_FALSE(allChecks.isEmpty());
+    for (auto it = allChecks.begin(); it != allChecks.end(); ++it)
+        EXPECT_TRUE(it.value().toObject().contains("pass"))
+            << "check for " << it.key().toStdString() << " must carry a verdict";
 
     juce::File(wav.toStdString()).deleteFile();
 }

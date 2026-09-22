@@ -208,6 +208,42 @@ QJsonObject checkRole(const QString& roleIn, const Descriptors& d)
     return out;
 }
 
+// Make the payload shape INDEPENDENT of which analysis path ran (2026-09-21 dogfood item 6): the
+// Python sidecar emits `checks` only with --role-map and `loop` only with --role+--loop, so the
+// no-role form used to differ between the two paths ({wav, descriptors, summary} from Python vs
+// +checks+loop from the C++ fallback). Both paths now run this, and the raw JSON is re-serialized
+// from the unified object, so a caller sees one shape and a deterministic key order.
+void unifyTuningShape(QJsonObject& out)
+{
+    const QJsonObject d = out.value("descriptors").toObject();
+    if (!out.contains("loop"))
+        out["loop"] = QJsonObject{ { "note", "offline loop: analysis + suggestion only; "
+                                             "re-render via export then re-analyze until pass "
+                                             "or max 3" } };
+    // The no-role form reports per-role checks for EVERY target, computed from the reported
+    // descriptors — identical to the C++ fallback's checks, whatever produced the descriptors.
+    if (!out.contains("check") && !out.contains("checks"))
+    {
+        Descriptors desc;
+        desc.centroid = d.value("centroid").toDouble();
+        desc.bandwidth = d.value("bandwidth").toDouble();
+        desc.rolloff85 = d.value("rolloff85").toDouble();
+        desc.rolloff95 = d.value("rolloff95").toDouble();
+        desc.melLow = d.value("mel_low").toDouble();
+        desc.melMid = d.value("mel_mid").toDouble();
+        desc.melHigh = d.value("mel_high").toDouble();
+        desc.rms = d.value("rms").toDouble();
+        desc.peak = d.value("peak").toDouble();
+        desc.duration = d.value("duration_s").toDouble();
+        desc.sampleRate = d.value("sampleRate").toDouble(48000.0);
+        QJsonObject checks;
+        const auto targets = roleTargets();
+        for (auto it = targets.begin(); it != targets.end(); ++it)
+            checks[it.key()] = checkRole(it.key(), desc);
+        out["checks"] = checks;
+    }
+}
+
 // The analysis proper: Python sidecar first, then the C++ fallback. Returns the payload
 // object AND the exact JSON text produced (so the MCP tool's pretty-printed output is
 // preserved byte-for-byte while the RPC returns the structured object).
@@ -252,8 +288,10 @@ TuningAnalysisResult runAnalysis(const QString& wavPath, const QString& role)
             if (out.contains("centroid") && out.contains("{")) {
                 // valid JSON from python
                 TuningAnalysisResult res;
-                res.rawJson = ensureSidecarSkippedFlag(out);
-                res.object = QJsonDocument::fromJson(res.rawJson.toUtf8()).object();
+                res.object = QJsonDocument::fromJson(ensureSidecarSkippedFlag(out).toUtf8()).object();
+                unifyTuningShape(res.object);
+                res.rawJson = QString::fromUtf8(
+                    QJsonDocument(res.object).toJson(QJsonDocument::Indented));
                 return res;
             }
         }
@@ -281,8 +319,11 @@ TuningAnalysisResult runAnalysis(const QString& wavPath, const QString& role)
                 QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
                 if (out.contains("centroid") && out.contains("{")) {
                     TuningAnalysisResult res;
-                    res.rawJson = ensureSidecarSkippedFlag(out);
-                    res.object = QJsonDocument::fromJson(res.rawJson.toUtf8()).object();
+                    res.object = QJsonDocument::fromJson(
+                        ensureSidecarSkippedFlag(out).toUtf8()).object();
+                    unifyTuningShape(res.object);
+                    res.rawJson = QString::fromUtf8(
+                        QJsonDocument(res.object).toJson(QJsonDocument::Indented));
                     return res;
                 }
             }

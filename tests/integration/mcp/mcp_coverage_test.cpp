@@ -2237,6 +2237,46 @@ TEST_F(McpCoverageTest, MixReportPayloadMatchesRpcTwin) {
         EXPECT_TRUE(viaRpc.contains("structure"));
         EXPECT_TRUE(viaRpc.contains("loudnessGates"));
     }
+
+    // wait:false — the async path (retrofit item 5: mixReport was sync-only on the RPC surface
+    // while the MCP tool already took wait/poll_job) must hand back a job handle whose result
+    // equals the sync payload. The job runs on a worker thread with every input captured BY
+    // VALUE, so finishing without a crash is also the evidence for that discipline.
+    {
+        const QJsonObject asyncArgs{ { "filePath", wavPath }, { "bpm", 120.0 },
+                                     { "wait", false } };
+        auto started = frontend::dispatch(*engine, "audio.mixReport", asyncArgs);
+        ASSERT_FALSE(started.isError)
+            << started.payload.toObject().value("message").toString().toStdString();
+        const auto handle = started.payload.toObject();
+        EXPECT_EQ(handle.value("state").toString(), QString("running"));
+        EXPECT_EQ(handle.value("pollWith").toString(), QString("audio.jobStatus"));
+        const int jobId = handle.value("jobId").toInt(0);
+        ASSERT_GT(jobId, 0);
+
+        QJsonObject status;
+        for (int i = 0; i < 600; ++i) {   // bounded: the fixture is 5 s of audio
+            auto st = frontend::dispatch(*engine, "audio.jobStatus",
+                                         QJsonObject{ { "jobId", jobId } });
+            ASSERT_FALSE(st.isError)
+                << st.payload.toObject().value("message").toString().toStdString();
+            status = st.payload.toObject();
+            if (status.value("state").toString() != "running") break;
+            QThread::msleep(100);
+        }
+        ASSERT_EQ(status.value("state").toString(), QString("finished"))
+            << QJsonDocument(status).toJson().constData();
+
+        auto sync = frontend::dispatch(*engine, "audio.mixReport",
+                                       QJsonObject{ { "filePath", wavPath }, { "bpm", 120.0 } });
+        ASSERT_FALSE(sync.isError);
+        EXPECT_EQ(status.value("result").toObject(), sync.payload.toObject())
+            << "wait:false must change only WHEN the answer arrives, not what it is";
+
+        auto bogus = frontend::dispatch(*engine, "audio.jobStatus",
+                                        QJsonObject{ { "jobId", 987654321 } });
+        EXPECT_TRUE(bogus.isError) << "an unknown jobId must be an error, not an empty result";
+    }
 }
 
 // P3-3 (2026-09-21 dogfood): mix_verdict composes the release-readiness gates (audible /

@@ -427,16 +427,74 @@ silently assumed fine.
    `ApplyPresetToolTest.NordRouteValidatesDumpsBeforeQueueing`,
    `MatrixPresetsTest.MorphSysexAndFileDispatch` and `MatrixRpcParityTest.EnvironmentFailureClassAndPath`
    (46 tests were green around the swap).
-7. **`load_nord_bank` has no RPC twin** (a ledger `unresolved` row). Slice 7 made this cheap: a
-   `settings.loadNordBank` / `plugin.loadNordBank` handler that calls the shared loader and returns
-   `{queued, bytes, program, capturedToTree}` is ~15 lines. Worth doing with the next parity slice
-   (it is the last preset-loading tool without a route).
-5. **`audio.mixReport` has no async route** (found in slice 4): the RPC method is
-   synchronous while the MCP `mix_report` tool supports `wait:false` + `poll_job`. Either
-   add `wait`/`audio.jobStatus` (mirroring `tuning.jobStatus`) or document the asymmetry.
-6. **Unify the tuning no-role shapes** (found in slice 4): the Python sidecar returns
-   `{wav, descriptors, summary}` for the no-role form while the C++ fallback adds
-   `checks` + `loop`.
+5. ~~**`audio.mixReport` has no async route.**~~ **DONE (slice 6).** `audio.mixReport` takes
+   `wait` (default true); `wait:false` returns `{jobId, state:"running", pollWith:"audio.jobStatus"}`
+   from the shared job registry, with the payload built on the worker thread from inputs captured
+   BY VALUE, and `audio.jobStatus` polls it. The sync payload is byte-identical to before (same
+   builder; the error classes -32602/-32603 travel on a code-carrying exception instead of being
+   reconstructed from a message string).
+6. ~~**Unify the tuning no-role shapes.**~~ **DONE (slice 6).** `unifyTuningShape()` in
+   `src/common/TuningAnalysis.cpp` now runs on BOTH analysis paths — per-role `checks` computed
+   from the reported descriptors plus the `loop` note — and the raw JSON is re-serialized from the
+   unified object, so a caller sees one **top-level** shape (and a deterministic key order)
+   whichever path answered. Residual asymmetry (measured, not fixed): the `descriptors` MAPS still
+   differ by one additive key each — the Python sidecar reports `f0_hz`, the C++ fallback reports
+   `sampleRate` — but every key `unifyTuningShape()` consumes exists in both, so the synthesized
+   `checks` are correct on either path.
+7. ~~**`load_nord_bank` has no RPC twin.**~~ **DONE (slice 6).** `plugin.loadNordBank` calls the
+   shared `HDAW::loadNordBankFile` and returns `{queued, bytes, program, capturedToTree}`.
+   `dispatchPlugin` now also takes the engine (it had no callers outside `FrontendRouter`),
+   because preset routes go through the shared command layer.
+
+## Slice 6 — backlog items 5–7 closed (2026-09-21)
+
+The three rows left open at the end of the retrofit (async `mixReport`, tuning shape drift, the
+last preset-loading tool without a route), finished in one pass.
+
+### Implementation
+
+| backlog | change | files |
+| --- | --- | --- |
+| 5 | `wait`/`wait:false` + `audio.jobStatus` (the per-domain status convention of slice 4) | `src/frontend/router/Router_Audio.cpp` |
+| 6 | `unifyTuningShape()` applied to both analysis paths | `src/common/TuningAnalysis.cpp` |
+| 7 | `plugin.loadNordBank` → shared loader; `dispatchPlugin` gains the engine | `src/frontend/router/Router_Plugin.{h,cpp}`, `src/frontend/FrontendRouter.cpp` |
+| — | `FORCE_REVIEW` correction for a name-derived false mapping | `tools/rpc_parity_map.mjs` (+ regenerated `.inc`) |
+
+### Success gates
+
+`ApplyPresetToolTest.*`, `TuningRpcTest.*`, `McpCoverageTest.MixReportPayloadMatchesRpcTwin`,
+`McpCoverageTest.MixVerdictFlagsClippingAndMatchesRpcTwin`, `*RpcParity*`, `*Ratchet*`:
+**26 tests, 24 pass** (the 2 failures are the no-audio-device family recorded below — both are
+pre-existing tests that need a LIVE track processor). New coverage:
+
+- `ApplyPresetToolTest.LoadNordBankRpcTwinSharesLoaderFailure` — same loader message on both surfaces, nothing queued.
+- `TuningRpcTest.AnalyzePayloadMatchesMcp` (tightened) — the no-role form must carry `checks` (with a verdict per role) and `loop` on whichever path ran.
+- `McpCoverageTest.MixReportPayloadMatchesRpcTwin` (extended) — `wait:false` returns a job handle; polling `audio.jobStatus` yields a `result` EQUAL to the sync payload; an unknown `jobId` is an error.
+- `RpcParityRatchet.*` — `plugin.loadNordBank` resolves on the live dispatch surface; `apply_preset` is now an `unresolved` row (184 mapped / 9 mcp-only / 99 unresolved).
+
+### Findings recorded while doing this (not fixed here)
+
+1. **A renamed argument is not a parity twin — and only a twin test can see it.** The first
+   `plugin.loadNordBank` draft read `trackIndex` while the MCP tool's schema says `trackId`; the new
+   test failed with `mcp='invalid params: trackIndex: unknown property'` vs
+   `rpc='file not found: …'`. Fixed by mirroring the MCP property names word for word (`trackId`,
+   `slotIndex`, `filePath`, `program`, `captureToTree`) including its `program must be 0..127` check.
+   **Blind spot:** the ratchet probes every mapped route with garbage args and accepts ANY validation
+   error, so it cannot detect this class — one twin test per route (as here) is the honest mitigation.
+2. **Name-derived ratchet rows can be semantically WRONG.** `apply_preset` matched
+   `matrix.applyPreset` by camelCase, but they are different preset families (matrix sheets vs the
+   preset front door); the existence probe passed, so the ledger read as a verified mapping. The
+   generator now carries a `FORCE_REVIEW` exclusion list and emits it as `unresolved` with the
+   reason. Any future name-derived row should be checked semantically before it is trusted.
+3. **This session cannot exercise live processors: the machine has no audio device.** The
+   pid-tagged `hdaw_debug.log` shows `default device init failed: … retrying output-only` followed
+   by `output-only device init failed: Error opening Primary Sound Driver: "No driver"` →
+   `routingManager` null → `getTrack()` null (lesson 17). Untouched tests in the same family fail
+   identically (`TrackMixerState.RestoredAfterRoutingGraphRebuild`, the lesson-10 gate), while
+   `AudioGraphSurface.RebuildRoutingGraphDoesNotCrash` passes — so this is environmental, not a
+   regression. Affected here: `ApplyPresetToolTest.VirusRomRouteQueuesCc0AndProgramChange` and
+   `…NordRouteValidatesDumpsBeforeQueueing` ("track not found: 0" = null LIVE track), plus the five
+   `McpCoverageTest` FX-slot tests. Re-run them where an audio endpoint exists before claiming green.
 
 ## Deviation / process notes
 

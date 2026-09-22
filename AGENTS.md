@@ -593,6 +593,13 @@ and `src/frontend/router/Router_Device.cpp` (`device.listParams`) both delegate 
 `src/common/DeviceParamMap.{h,cpp}`, so identical payload + identical filters are
 **parity by construction, not by discipline**. A duplicated loader will drift.
 
+**Argument names are part of the contract.** A twin that renames an argument is not a twin: the
+first `plugin.loadNordBank` draft read `trackIndex` while the MCP tool's schema says `trackId`, and
+the twin test caught it (MCP: `invalid params: trackIndex: unknown property`; RPC: a loader error).
+Mirror the MCP tool's property names word for word, plus its range checks. The parity ratchet
+cannot see this class — it probes mapped routes with garbage args and accepts any validation error
+— so give each route a twin test asserting the same failure on both surfaces.
+
 **GUI parity is NOT required.** Not every RPC/MCP capability needs a UI control —
 do not block a feature on frontend work. Where a UI control does exist it should
 go through the RPC path, and a genuinely user-facing capability still wants one
