@@ -1013,6 +1013,9 @@ ProjectCommands::CellFillBatchResult AudioEngineCommands::fillCells(const std::s
     CellFillBatchResult batch;
     if (mode != "all" && mode != "unfilled")
     { batch.error = "mode must be all|unfilled"; return batch; }
+    if (fillRunning_.exchange(true))
+    { batch.error = "fill already in progress (a previous fill_cells/reroll is still running on the engine; poll get_cells instead of retrying)"; return batch; }
+    struct Guard { std::atomic<bool>& f; ~Guard() { f = false; } } guard{ fillRunning_ };
     const auto plan = getSongPlan();
     if (plan.sections.empty())
     { batch.error = "no song plan set"; return batch; }
@@ -1039,6 +1042,9 @@ ProjectCommands::CellFillBatchResult AudioEngineCommands::rerollCells(const std:
                                                                       const std::string& role)
 {
     CellFillBatchResult batch;
+    if (fillRunning_.exchange(true))
+    { batch.error = "fill already in progress (a previous fill_cells/reroll is still running on the engine; poll get_cells instead of retrying)"; return batch; }
+    struct Guard { std::atomic<bool>& f; ~Guard() { f = false; } } guard{ fillRunning_ };
     const auto plan = getSongPlan();
     if (plan.sections.empty())
     { batch.error = "no song plan set"; return batch; }

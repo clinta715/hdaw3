@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -510,6 +511,11 @@ private:
     // transaction so the whole batch coalesces into ONE undo unit (JUCE ends the current
     // transaction when a new one begins, so a batch cannot nest them).
     bool gainBatchActive_ = false;
+    // Fill re-entry guard (2026-09-22): a fill_cells/reroll_cells call that outlives
+    // its client-side timeout tempts the agent into a blind retry — a second queued
+    // fill then doubles the tree work on huge re-filled clips. Reject re-entry with
+    // an explicit error instead (agents poll get_cells to observe progress).
+    std::atomic<bool> fillRunning_{ false };
     // Find clip by ID across all tracks. Sets outTrackIndex to the
     // parent track index. Returns a valid ValueTree on success.
     juce::ValueTree findClipById(int clipId, int& outTrackIndex) const;

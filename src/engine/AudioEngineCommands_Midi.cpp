@@ -214,8 +214,19 @@ void AudioEngineCommands::clearNotes(int clipId)
     if (!clip.isValid()) return;
 
     auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
-    if (noteList.isValid())
-        noteList.removeAllChildren(&um);
+    if (!noteList.isValid()) return;
+
+    // 2026-09-22 (fill-death investigation): removeAllChildren fires the tree
+    // listener PER NOTE — for a re-filled tiled clip that is 2000+ individual
+    // rebuildMidiClipCache + ghost-scan + undo-record cycles, and the engine
+    // died mid-loop. Swap the whole list node instead: the listener sees ONE
+    // removal (of the list, which it does not treat as a note removal), and
+    // the undo manager records a single swap instead of N child records.
+    auto& umRef = um;
+    auto parent = noteList.getParent();
+    const int index = parent.indexOf(noteList);
+    parent.removeChild(noteList, &umRef);
+    parent.addChild(juce::ValueTree(IDs::MIDI_NOTE_LIST), index, &umRef);
 }
 
 void AudioEngineCommands::addCcPoint(int clipId, int controllerNumber, double beat, int value)
