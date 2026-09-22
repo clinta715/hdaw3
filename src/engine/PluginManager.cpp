@@ -823,8 +823,15 @@ juce::PluginDescription PluginManager::resolveIdentifierToPath(
 {
     auto resolved = desc;
     auto lower = resolved.fileOrIdentifier.toLowerCase();
-    if (!lower.endsWith(".clap") && !lower.endsWith(".vst3"))
-    {
+    const bool isClapOrVst3 = lower.endsWith(".clap") || lower.endsWith(".vst3");
+    const bool isAbsolute = juce::File::isAbsolutePath(resolved.fileOrIdentifier);
+
+    // 2026-09-22 (silent-children fix): a BARE plugin file name ('Vavra.clap')
+    // used to skip resolution entirely — the .clap/.vst3 suffix read as "already
+    // a real path". The isolated child then resolved the bare name against its
+    // OWN cwd, found nothing, and silently fell back to a passthrough (0 params
+    // + silence). Bare names must resolve against the scan database too.
+    auto resolveFromKnownList = [&]() -> bool {
         for (const auto& kd : knownList.getTypes())
         {
             if (kd.matchesIdentifierString(resolved.fileOrIdentifier))
@@ -832,7 +839,8 @@ juce::PluginDescription PluginManager::resolveIdentifierToPath(
                 // Return the full known entry, not a stitched copy of desc:
                 // JUCE's VST3 module matching requires the scanned
                 // uniqueId/deprecatedUid, which the input desc lacks (they stay 0).
-                return kd;
+                resolved = kd;
+                return true;
             }
         }
 
@@ -843,10 +851,44 @@ juce::PluginDescription PluginManager::resolveIdentifierToPath(
             if (kd.pluginFormatName == resolved.pluginFormatName
                 && kd.name == resolved.name)
             {
-                return kd;
+                resolved = kd;
+                return true;
             }
         }
+        return false;
+    };
+
+    auto resolveByFileNameTail = [&]() -> bool {
+        for (const auto& kd : knownList.getTypes())
+        {
+            const auto f = kd.fileOrIdentifier.toLowerCase();
+            if (f.length() >= lower.length()
+                && f.endsWith(lower)
+                && (f.length() == lower.length()
+                    || f[f.length() - lower.length() - 1] == '\\'
+                    || f[f.length() - lower.length() - 1] == '/'))
+            {
+                resolved = kd;
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (!isClapOrVst3)
+    {
+        resolveFromKnownList();
+        return resolved;
     }
+
+    // .clap/.vst3 suffix: a full absolute path is spawnable as-is; a BARE name
+    // (or relative path) must be resolved against the scan database.
+    if (isAbsolute)
+        return resolved;
+
+    if (resolveFromKnownList())
+        return resolved;
+    resolveByFileNameTail();
     return resolved;
 }
 
@@ -860,7 +902,13 @@ juce::String PluginManager::resolveRespawnPath(
     // Real file paths and "__"-prefixed test sentinels (e.g. "__passthrough__")
     // are spawnable as-is.
     auto lower = path.toLowerCase();
-    if (lower.endsWith(".vst3") || lower.endsWith(".clap") || path.startsWith("__"))
+    if (path.startsWith("__"))
+        return path;
+    // 2026-09-22 (silent-children fix): a BARE plugin file name ('Vavra.clap')
+    // is not spawnable — the child resolves it against its own cwd and falls
+    // back to passthrough. Absolute paths pass; bare names re-resolve below.
+    if ((lower.endsWith(".vst3") || lower.endsWith(".clap"))
+        && juce::File::isAbsolutePath(path))
         return path;
 
     // An identifier string: re-resolve against the scan results, mirroring
@@ -870,6 +918,17 @@ juce::String PluginManager::resolveRespawnPath(
     for (const auto& kd : knownList.getTypes())
     {
         if (kd.matchesIdentifierString(path))
+            return kd.fileOrIdentifier;
+    }
+    // Bare plugin file names ('Vavra.clap') also resolve by filename tail.
+    for (const auto& kd : knownList.getTypes())
+    {
+        const auto f = kd.fileOrIdentifier.toLowerCase();
+        if (f.length() >= lower.length()
+            && f.endsWith(lower)
+            && (f.length() == lower.length()
+                || f[f.length() - lower.length() - 1] == '\\'
+                || f[f.length() - lower.length() - 1] == '/'))
             return kd.fileOrIdentifier;
     }
     return {};

@@ -285,3 +285,86 @@ TEST_F(PluginManagerScan, ParseScanOutputEmptyIsNull)
     auto json = HDAW::PluginManager::parseScanOutput("");
     EXPECT_EQ(json.getDynamicObject(), nullptr);
 }
+// ── 2026-09-22 silent-children fix: bare plugin file names must resolve ──
+
+namespace {
+juce::PluginDescription makeKnownEntry(const char* name, const char* file)
+{
+    juce::PluginDescription d;
+    d.name = name;
+    d.descriptiveName = name;
+    d.pluginFormatName = "CLAP";
+    d.fileOrIdentifier = file;
+    d.uniqueId = static_cast<int>(std::hash<juce::String>{}(juce::String(name)) & 0x7fffffff);
+    return d;
+}
+
+void makeCoreSynthDb(juce::KnownPluginList& list)
+{
+    list.addType(makeKnownEntry("JE8086", "C:\\Program Files\\Common Files\\CLAP\\JE8086.clap"));
+    list.addType(makeKnownEntry("Vavra", "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap"));
+}
+} // namespace
+
+TEST(PluginPathResolution, BareClapNameResolvesToScannedAbsolutePath)
+{
+    juce::KnownPluginList db;
+    makeCoreSynthDb(db);
+    juce::PluginDescription desc;
+    desc.fileOrIdentifier = "JE8086.clap";
+    const auto resolved = HDAW::PluginManager::resolveIdentifierToPath(desc, db);
+    EXPECT_EQ(resolved.fileOrIdentifier, juce::String("C:\\Program Files\\Common Files\\CLAP\\JE8086.clap"));
+}
+
+TEST(PluginPathResolution, BareNameCaseInsensitiveFileNameTailMatch)
+{
+    juce::KnownPluginList db;
+    makeCoreSynthDb(db);
+    juce::PluginDescription desc;
+    desc.fileOrIdentifier = "vavra.clap";
+    const auto resolved = HDAW::PluginManager::resolveIdentifierToPath(desc, db);
+    EXPECT_EQ(resolved.fileOrIdentifier, juce::String("C:\\Program Files\\Common Files\\CLAP\\Vavra.clap"));
+}
+
+TEST(PluginPathResolution, AbsolutePathPassesThroughUnchanged)
+{
+    juce::KnownPluginList db;
+    makeCoreSynthDb(db);
+    juce::PluginDescription desc;
+    desc.fileOrIdentifier = "C:\\Program Files\\Common Files\\CLAP\\JE8086.clap";
+    const auto resolved = HDAW::PluginManager::resolveIdentifierToPath(desc, db);
+    EXPECT_EQ(resolved.fileOrIdentifier, juce::String("C:\\Program Files\\Common Files\\CLAP\\JE8086.clap"));
+}
+
+TEST(PluginPathResolution, UnknownBareNameStaysUnresolvedButReported)
+{
+    juce::KnownPluginList db;
+    makeCoreSynthDb(db);
+    juce::PluginDescription desc;
+    desc.fileOrIdentifier = "Unknown.clap";
+    const auto resolved = HDAW::PluginManager::resolveIdentifierToPath(desc, db);
+    EXPECT_EQ(resolved.fileOrIdentifier, juce::String("Unknown.clap"));
+}
+
+TEST(PluginPathResolution, RespawnPathBareNameResolves)
+{
+    juce::KnownPluginList db;
+    makeCoreSynthDb(db);
+    const auto resolved = HDAW::PluginManager::resolveRespawnPath("Vavra.clap", db);
+    EXPECT_EQ(resolved, juce::String("C:\\Program Files\\Common Files\\CLAP\\Vavra.clap"));
+}
+
+TEST(PluginPathResolution, RespawnPathUnresolvableReturnsEmpty)
+{
+    juce::KnownPluginList db;
+    makeCoreSynthDb(db);
+    EXPECT_EQ(HDAW::PluginManager::resolveRespawnPath("Unknown.clap", db), juce::String());
+}
+
+TEST(PluginPathResolution, RespawnPathAbsolutePathPassesThrough)
+{
+    juce::KnownPluginList db;
+    makeCoreSynthDb(db);
+    const auto p = juce::String("C:\\Program Files\\Common Files\\CLAP\\JE8086.clap");
+    EXPECT_EQ(HDAW::PluginManager::resolveRespawnPath(p, db), p);
+}

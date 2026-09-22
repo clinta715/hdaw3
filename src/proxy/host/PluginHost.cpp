@@ -2091,6 +2091,13 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
             typeCount = types.size();
         }
 
+        // 2026-09-22: the failure branch was completely silent — a child whose
+        // plugin could not be resolved fell back to passthrough with no trace
+        // of WHY (the 'silent isolated children' incident). Log every step.
+        HDAW_LOG("plugin_host", "loadPluginByPath path='" + path.toStdString()
+            + "' fmt=" + fmt->getName().toStdString()
+            + " mightContain=" + (mightContain ? "1" : "0")
+            + " typeCount=" + std::to_string(typeCount));
         if (!mightContain)
             continue;
 
@@ -2100,11 +2107,16 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
             plugin = formatManager.createPluginInstance(*desc, 44100.0, 512, error);
             if (plugin) {
                 pluginLoaded.store(true);
+                HDAW_LOG("plugin_host", "loadPluginByPath OK desc='" + desc->name.toStdString()
+                    + "' file='" + desc->fileOrIdentifier.toStdString() + "'");
                 return true;
             }
+            HDAW_LOG("plugin_host", "loadPluginByPath createPluginInstance FAILED desc='"
+                + desc->name.toStdString() + "' error='" + error.toStdString() + "'");
         }
     }
 
+    HDAW_LOG("plugin_host", "loadPluginByPath FAILED for path='" + path.toStdString() + "'");
     return false;
 }
 
