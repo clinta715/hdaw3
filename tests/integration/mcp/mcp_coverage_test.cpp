@@ -2239,6 +2239,53 @@ TEST_F(McpCoverageTest, MixReportPayloadMatchesRpcTwin) {
     }
 }
 
+// P3-3 (2026-09-21 dogfood): mix_verdict composes the release-readiness gates (audible /
+// clipping / loudness / structure / intro blast) into ONE call, and its RPC twin returns the
+// same verdict. Modulation coverage is deliberately NOT part of it (see the tool description).
+TEST_F(McpCoverageTest, MixVerdictFlagsClippingAndMatchesRpcTwin) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString loudPath = dir.filePath("loud.wav");
+    const QString quietPath = dir.filePath("quiet.wav");
+    const auto writeTone = [](const QString& path, float amp) {
+        juce::File f(path.toStdString());
+        auto os = f.createOutputStream();
+        juce::WavAudioFormat fmt;
+        std::unique_ptr<juce::AudioFormatWriter> w(
+            fmt.createWriterFor(os.get(), 44100.0, 1, 16, {}, 0));
+        os.release();
+        juce::AudioBuffer<float> buf(1, 44100 * 2);
+        for (int i = 0; i < 44100 * 2; ++i)
+            buf.setSample(0, i, amp * std::sin(2.0 * 3.14159265 * 220.0 * i / 44100.0));
+        w->writeFromAudioSampleBuffer(buf, 0, 44100 * 2);
+    };
+    writeTone(loudPath, 1.0f);    // full scale -> clips the 16-bit WAV
+    writeTone(quietPath, 0.2f);
+
+    const QJsonObject loudArgs{ { "filePath", loudPath }, { "bpm", 120.0 }, { "introSeconds", 0.5 } };
+    auto r = call("mix_verdict", loudArgs);
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    const auto v = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    ASSERT_FALSE(v.isEmpty());
+    EXPECT_FALSE(v.value("ok").toBool());
+    EXPECT_TRUE(v.value("gates").toObject().value("audible").toObject().value("ok").toBool());
+    EXPECT_FALSE(v.value("gates").toObject().value("clipping").toObject().value("ok").toBool());
+    EXPECT_FALSE(v.value("issues").toArray().isEmpty());
+    EXPECT_TRUE(v.contains("warnings"));
+
+    // RPC twin returns the identical verdict for the same inputs.
+    auto rpc = frontend::dispatch(*engine, "audio.mixVerdict", loudArgs);
+    ASSERT_FALSE(rpc.isError) << rpc.payload.toObject().value("message").toString().toStdString();
+    EXPECT_EQ(rpc.payload.toObject(), v);
+
+    // A quiet render passes the clipping gate — the verdict is not a rubber stamp.
+    const QJsonObject quietArgs{ { "filePath", quietPath }, { "bpm", 120.0 } };
+    auto rq = call("mix_verdict", quietArgs);
+    ASSERT_FALSE(isError(rq)) << text(rq).toStdString();
+    const auto vq = QJsonDocument::fromJson(text(rq).toUtf8()).object();
+    EXPECT_TRUE(vq.value("gates").toObject().value("clipping").toObject().value("ok").toBool());
+}
+
 TEST_F(McpCoverageTest, MixReportFromPlanClampsToFileDuration) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());

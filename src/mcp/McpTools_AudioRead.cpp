@@ -25,6 +25,7 @@
 #include "../engine/SongStructureAudit.h"
 #include "../common/SongPlanView.h"
 #include "../common/MixReportJson.h"
+#include "../common/MixVerdict.h"
 
 namespace mcp {
 
@@ -426,6 +427,80 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
             int takeIndex = a.value("takeIndex").toInt();
             e->getAudioGraphCommands().switchClipTakeToIndex(clipId, takeIndex);
             return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"mix_verdict",
+        "ONE release-readiness verdict over a rendered file (+ the song plan): composes the "
+        "audible / clipping / loudness (drop vs build) / structure-variety / intro-blast gates "
+        "into {ok, gates{...}, issues[], warnings[]} so 'did I finish?' is one call instead of "
+        "four separate verifiers with hand-written thresholds. fromPlan derives the windows AND "
+        "the structure + loudness gates from the current song plan (bpm falls back to the "
+        "plan's); without it, sections (seconds) or the whole file are measured. introSeconds > "
+        "0 (default 2) runs the intro-blast gate. MODULATION coverage is NOT part of this "
+        "verdict — audit_modulation_coverage stays its own tool. READ-ONLY: no render, no "
+        "mutation. Calls the same engine command as the audio.mixVerdict RPC.",
+        objSchema({{"filePath",        QJsonObject{{"type","string"}}},
+                  {"fromPlan",        QJsonObject{{"type","boolean"}}},
+                  {"bpm",             QJsonObject{{"type","number"}}},
+                  {"dropBuildRatio",  QJsonObject{{"type","number"}}},
+                  {"introSeconds",    QJsonObject{{"type","number"}}},
+                  {"sections", QJsonObject{{"type","array"},{"items", QJsonObject{
+                        {"type","object"},
+                        {"properties", QJsonObject{
+                            {"name",  QJsonObject{{"type","string"}}},
+                            {"start", QJsonObject{{"type","number"}}},
+                            {"end",   QJsonObject{{"type","number"}}}}},
+                        {"required", QJsonArray{"name","start","end"}}}}}}},
+                 {"filePath"}),
+        "audio",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const QString filePath = a.value("filePath").toString();
+            if (filePath.isEmpty())
+                return McpToolResult::text("filePath is required", true);
+            double bpm = a.value("bpm").toDouble(0.0);
+            double ratio = a.value("dropBuildRatio").toDouble(0.9);
+            if (ratio <= 0.0 || ratio > 1.5) ratio = 0.9;
+
+            std::vector<HDAW::SectionWindow> windows;
+            QJsonObject planKinds;
+            QJsonObject structureJson;
+            if (a.value("fromPlan").toBool(false))
+            {
+                if (!e)
+                    return McpToolResult::text("mix_verdict: engine unavailable", true);
+                const auto plan = e->getProjectCommands().getSongPlan();
+                if (plan.sections.empty())
+                    return McpToolResult::text("mix_verdict: no song plan set (fromPlan)", true);
+                if (bpm <= 0.0) bpm = plan.bpm;
+                const double spb = (bpm > 0.0) ? 60.0 / bpm : 0.5;
+                for (const auto& s : plan.sections)
+                {
+                    windows.push_back(HDAW::SectionWindow{ s.name, s.startBeat * spb,
+                                                          s.endBeat * spb });
+                    planKinds.insert(QString::fromStdString(s.name),
+                                     QString::fromStdString(s.kind));
+                }
+                structureJson = HDAW::structureAuditJson(HDAW::auditSongStructure(
+                    e->getProjectModel().getTrackListTree(), plan, bpm));
+            }
+            else
+            {
+                for (const auto& v : a.value("sections").toArray())
+                {
+                    const auto so = v.toObject();
+                    windows.push_back(HDAW::SectionWindow{ so.value("name").toString().toStdString(),
+                                                           so.value("start").toDouble(),
+                                                           so.value("end").toDouble() });
+                }
+            }
+
+            const auto v = HDAW::buildMixVerdict(filePath, windows, planKinds, bpm, ratio,
+                                                 structureJson,
+                                                 a.value("introSeconds").toDouble(2.0));
+            if (!v.error.isEmpty())
+                return McpToolResult::text(v.error, true);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(v.verdict).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"mix_report",

@@ -203,15 +203,33 @@ regenerated — i.e. the classification ratchet behaved exactly as designed.
 The description now states that alias `drop` resolves to kind `mainB` (and that an explicit
 `kind` should be passed when it matters).
 
-### 10. A single release-readiness verdict — PENDING (design settled)
+### 10. A single release-readiness verdict — SHIPPED (2026-09-21)
 
-`mix_verdict` over the gates that already have SHARED implementations: audible (rms > 1e-4),
-clipping, loudness (drop vs build, via the plan), structure variety (`audit_song_structure`),
-and intro blast (`MixReportAnalyzer::analyzeBlast`). The MODULATION gate is deliberately out of
-the first cut: `audit_modulation_coverage` is still implemented INLINE in the MCP layer
-(`McpTools_Modulation.cpp`) with no command-layer equivalent, so including it means extracting
-that audit to `src/common/` first. Recorded here so the verdict's name cannot over-promise,
-and so the extraction is the obvious follow-up.
+`mix_verdict` (MCP) / `audio.mixVerdict` (RPC) returns ONE verdict —
+`{ok, file, gates{...}, issues[], warnings[]}` — over a rendered file:
+
+| gate | source (every one already shared) |
+| --- | --- |
+| `audible` | `rms > 1e-4` (silence masks every other gate — lesson 25) |
+| `clipping` | the `clipping` verdict the mix_report payload now carries (P1) |
+| `loudness` | `applyDropVsBuildGate` over the plan's sections (only with `fromPlan`) |
+| `structure` | `audit_song_structure`'s gates (boredom spans, drop backbeats, first-drop motif, drop-vs-build load) |
+| `introBlast` | `MixReportAnalyzer::analyzeBlast` over the first `introSeconds` (default 2) |
+
+`fromPlan: true` derives the windows AND the structure + loudness gates from the current plan;
+`issues[]` carries actionable text (e.g. "clipping: peak reaches full scale — run
+`auto_gain_tracks`, then re-render"); `warnings[]` carries harness caveats (`measurementSuspicious`,
+or a gate that could not be evaluated — never silently dropped).
+
+**Deliberately excluded: MODULATION coverage.** `audit_modulation_coverage` is still inline in
+`McpTools_Modulation.cpp` with no shared equivalent, so the verdict does not claim it and the
+tool description says so. Extracting that audit is the follow-up that would complete the
+verdict.
+
+Gate: `McpCoverageTest.MixVerdictFlagsClippingAndMatchesRpcTwin` — a full-scale render fails the
+clipping gate and produces issues while a quiet render passes it, and the RPC twin returns the
+IDENTICAL verdict. `src/common/MixVerdict.{h,cpp}` composes only existing shared pieces (no new
+analysis maths).
 
 ## Artifacts
 

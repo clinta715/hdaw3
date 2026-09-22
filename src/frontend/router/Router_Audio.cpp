@@ -6,6 +6,7 @@
 #include "../../engine/MixReport.h"
 #include "../../common/ProjectCommands.h"
 #include "../../common/MixReportJson.h"
+#include "../../common/MixVerdict.h"
 #include "../../common/SongPlanView.h"
 #include "../../engine/SongStructureAudit.h"
 #include "../../common/FxCaptureStatus.h"
@@ -84,6 +85,52 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
             HDAW::applyDropVsBuildGate(root, planKinds, ratio);
         }
         return { false, root };
+    }
+
+    if (m == "mixVerdict") {
+        // ONE release-readiness verdict (audible / clipping / loudness / structure / intro
+        // blast) — composable from the same shared pieces as mix_report; the MCP twin is
+        // mix_verdict. MODULATION coverage stays audit_modulation_coverage's job.
+        std::string filePath;
+        if (!requireString(o, "filePath", filePath, nullptr))
+            return makeError(-32602, "filePath required");
+        double bpm = o.value("bpm").toDouble(0.0);
+        double ratio = o.value("dropBuildRatio").toDouble(0.9);
+        if (ratio <= 0.0 || ratio > 1.5) ratio = 0.9;
+
+        std::vector<HDAW::SectionWindow> windows;
+        QJsonObject planKinds;
+        QJsonObject structureJson;
+        if (o.value("fromPlan").toBool(false)) {
+            const auto plan = engine.getProjectCommands().getSongPlan();
+            if (plan.sections.empty())
+                return makeError(-32602, "no song plan set (fromPlan)");
+            if (bpm <= 0.0) bpm = plan.bpm;
+            const double spb = (bpm > 0.0) ? 60.0 / bpm : 0.5;
+            for (const auto& s : plan.sections) {
+                windows.push_back(HDAW::SectionWindow{ s.name, s.startBeat * spb, s.endBeat * spb });
+                planKinds.insert(QString::fromStdString(s.name), QString::fromStdString(s.kind));
+            }
+            structureJson = HDAW::structureAuditJson(HDAW::auditSongStructure(
+                engine.getProjectModel().getTrackListTree(), plan, bpm));
+        } else {
+            const auto secs = o.value("sections");
+            if (secs.isArray()) {
+                for (const auto& v : secs.toArray()) {
+                    const auto so = v.toObject();
+                    windows.push_back(HDAW::SectionWindow{ so.value("name").toString().toStdString(),
+                                                           so.value("start").toDouble(),
+                                                           so.value("end").toDouble() });
+                }
+            }
+        }
+
+        const auto v = HDAW::buildMixVerdict(QString::fromStdString(filePath), windows, planKinds,
+                                             bpm, ratio, structureJson,
+                                             o.value("introSeconds").toDouble(2.0));
+        if (!v.error.isEmpty())
+            return makeError(-32603, v.error);
+        return { false, v.verdict };
     }
 
     if (m == "getDeviceTypes") {

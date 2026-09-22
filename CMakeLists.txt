@@ -222,6 +222,7 @@ src/engine/StretchRenderer.cpp
     src/common/FxCaptureStatus.cpp
     src/common/TuningAnalysis.cpp
     src/common/MixReportJson.cpp
+    src/common/MixVerdict.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
