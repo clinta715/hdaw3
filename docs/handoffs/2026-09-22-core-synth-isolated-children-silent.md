@@ -66,3 +66,21 @@ both tested gearmulator engines render SILENCE through the live engine:
 - Pre-revoice fallback: `mcp-dogfood-2026-09-22-5min-remix-restored.hdaw`
   (auto-backup 07:59) and `compositions/auto-backups/...`.
 - The v3/v4 renders remain the last known-good audio.
+
+
+## UPDATE 2026-09-22 (later): the 'silent deaths' were exit-42 timeout restarts
+
+Forensics via `scripts/crash-diag.ps1 report`: every engine death after 09:20 exited
+with **code 0x0000002A = 42 = the intentional engine_restart exit code**. These were
+NOT crashes: the MCP wrapper's 10-second call timeout fired on long operations
+(batched fills, library scans, auditions), and the wrapper restarted the engine on
+timeout — wiping unsaved state ("empty project" incidents).
+
+- Only ONE genuine engine crash occurred today: 07:58, heap corruption C0000374
+  (dumped + analyzed separately).
+- Mitigations: keep mutating calls under 10 s (batch small, save immediately);
+  fills/exports/scans return immediately when async; `scripts/crash-diag.ps1`
+  + WER LocalDumps (full dumps, engine + plugin host) are armed so any REAL crash
+  now lands a dump in `%TEMP%\hdaw_crash_captures\wer\` automatically.
+- The bare-name resolution fix (commit 9f813c2) resolved the actual silent-children
+  bug: track-1 Vavra 7557 params, audible audition, bass tone_verity PASS.

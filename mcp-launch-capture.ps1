@@ -34,6 +34,7 @@ if ([string]::IsNullOrWhiteSpace($enginePath)) {
     exit 1
 }
 
+
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $enginePath
 $psi.Arguments = '--mcp-stdio'
