@@ -10,6 +10,7 @@
 #include "../engine/MainAudioProcessor.h"
 #include "../engine/ProjectPool.h"
 #include "../engine/TrackFXSlot.h"
+#include "../common/ToneVerity.h"
 #include "../engine/Dx7SysexImport.h"
 #include "../engine/MidiFx.h"
 #include "../engine/MixReport.h"
@@ -598,6 +599,47 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
                 return McpToolResult::text(QString::fromUtf8(ex.what()), true);
             }
         }});
+
+    s.registerTool({"tone_verity",
+    "TONE VERIFICATION (ToneVerity, Phase 2): does this track's render SOUND as intended? Solo-renders the track window once (same offline path as verify_part/param_verity) and measures: envelope (attackMs 10%->90% of peak, sustainRatio, trailingSilenceSeconds, binned RMS trace), amplitude-modulation rate (modRateHz + modProminence — verifies LFO/tremolo/pump rates), spectral-centroid trajectory (centroidStart/End — verifies filter sweeps), and a HPS pitch estimate (f0Hz, f0Midi). Optional expectations: attackMsMin/Max, sustainRatioMin, modRateHz (+modRateTolPct, default 10%), centroidRiseMin (end/start), f0Hz (+f0CentsMax, default 50 cents). Returns {pass, expectationsChecked, expectations:[{name,pass,measured,expected,note}], measurements...}. A SILENT render errors (lesson 25). Deterministic verdicts only.",
+    objSchema({{"trackId",       QJsonObject{{"type","integer"}}},
+              {"windowSeconds",QJsonObject{{"type","number"}}},
+              {"startBeat",    QJsonObject{{"type","number"}}},
+              {"binSeconds",   QJsonObject{{"type","number"}}},
+              {"attackMsMin",  QJsonObject{{"type","number"}}},
+              {"attackMsMax",  QJsonObject{{"type","number"}}},
+              {"sustainRatioMin", QJsonObject{{"type","number"}}},
+              {"modRateHz",    QJsonObject{{"type","number"}}},
+              {"modRateTolPct",QJsonObject{{"type","number"}}},
+              {"centroidRiseMin", QJsonObject{{"type","number"}}},
+              {"f0Hz",         QJsonObject{{"type","number"}}},
+              {"f0CentsMax",   QJsonObject{{"type","number"}}}}, {"trackId"}),
+    "audio",
+    [e](const QJsonObject& a) -> McpToolResult {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const auto num = [&](const char* k) {
+            return a.contains(k) && a.value(k).isDouble()
+                ? a.value(k).toDouble() : nan;
+        };
+        ProjectCommands::ToneVerityParams p;
+        p.trackIndex = a.value("trackId").toInt();
+        p.windowSeconds = a.contains("windowSeconds") ? a.value("windowSeconds").toDouble() : 4.0;
+        p.startBeat = num("startBeat"); if (std::isnan(p.startBeat)) p.startBeat = -1.0;
+        if (a.contains("binSeconds")) p.binSeconds = a.value("binSeconds").toDouble();
+        p.attackMsMin = num("attackMsMin");
+        p.attackMsMax = num("attackMsMax");
+        p.sustainRatioMin = num("sustainRatioMin");
+        p.modRateHz = num("modRateHz");
+        if (a.contains("modRateTolPct")) p.modRateTolPct = a.value("modRateTolPct").toDouble();
+        p.centroidRiseMin = num("centroidRiseMin");
+        p.f0Hz = num("f0Hz");
+        if (a.contains("f0CentsMax")) p.f0CentsMax = a.value("f0CentsMax").toDouble();
+        const auto r = e->getProjectCommands().verifyTone(p);
+        if (!r.ok && r.envelopeRms.empty() && !r.error.empty())
+            return McpToolResult::text(QString::fromStdString(r.error), true);
+        return McpToolResult::text(QString::fromUtf8(
+            QJsonDocument(HDAW::buildToneVerityPayload(r)).toJson(QJsonDocument::Compact)));
+    }});
 
     s.registerTool({"mix_diff",
         "Compare two rendered WAVs per-band (render A/B verification): measures both with the mix_report analyzer, then reports rmsDb (rmsA - rmsB in dB), peakRatio (peakA / peakB), per-band energy deltas (linear power, bandA - bandB). Optional sections (seconds, same format as mix_report) add per-section deltas {name,start,end,rmsDb,peakRatio,bandEnergy}. Same band cutoffs as mix_report: sub 40-110, bass 90-300, body 300-2000, high >6000 Hz.",

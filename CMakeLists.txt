@@ -222,6 +222,8 @@ src/engine/StretchRenderer.cpp
     src/common/FxCaptureStatus.cpp
     src/common/TuningAnalysis.cpp
     src/common/MixReportJson.cpp
+    src/common/ParamVerity.cpp
+    src/common/ToneVerity.cpp
     src/common/MixVerdict.cpp
     src/common/ModulationCoverage.cpp
     src/common/NordBankLoader.cpp

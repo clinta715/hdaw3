@@ -6,6 +6,7 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../common/MasterFxDefs.h"
+#include "../common/ParamVerity.h"
 #include "../common/FxCaptureStatus.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -370,6 +371,99 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by 
             }
             return McpToolResult::text("ok");
         }});
+
+s.registerTool({"param_verity",
+    "AUDIBILITY VERIFICATION (ParamVerity): does this FX parameter actually change the render? Solo-renders the SAME tree-copy window N times at the param's current value (baseline spread = the harness's own same-input variance), then once per swept value; a step is 'audible' only when its RMS separates by >= 3x the spread (NodalRed2x lesson-27 precedent, floor 1e-4). A SILENT baseline reports inconclusive — never 'no effect' (lesson 25). Steps are normalized 0..1 (internal FX are denormalized through the param defs; plugin slots go through the durable appliedParamOverrides ledger, exactly the set_fx_param channel, so renders match export_audio). The param is RESTORED afterwards (restored:true). Returns {ok, baselineRms, spread, threshold, inconclusive, restored, anyAudible, steps:[{value, rms, rmsDelta, band, bandDelta, audible}]}. Use anyAudible to answer 'does this knob do anything', and per-step deltas for 'how much'. Deterministic verdicts only — no LLM in this path.",
+    objSchema({{"trackId",      QJsonObject{{"type","integer"}}},
+              {"slotIndex",    QJsonObject{{"type","integer"}}},
+              {"paramIndex",   QJsonObject{{"type","integer"}}},
+              {"paramName",    QJsonObject{{"type","string"}}},
+              {"steps",        QJsonObject{{"type","array"}, {"items", QJsonObject{{"type","number"}}}}},
+              {"baselineRuns", QJsonObject{{"type","integer"}}},
+              {"windowSeconds",QJsonObject{{"type","number"}}},
+              {"startBeat",    QJsonObject{{"type","number"}}}}, {"trackId","slotIndex"}),
+    "fx",
+    [e](const QJsonObject& a) -> McpToolResult {
+        const int ti = a.value("trackId").toInt();
+        const int si = a.value("slotIndex").toInt();
+        auto fxSlots = e->getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= (int)fxSlots.size())
+            return McpToolResult::text("slot not found", true);
+        if (fxSlots[si].fxType == "none")
+            return McpToolResult::text("slot is empty", true);
+        const bool hasName = a.contains("paramName") && !a.value("paramName").toString().isEmpty();
+        if (!hasName && !a.contains("paramIndex"))
+            return McpToolResult::text("paramIndex or paramName required", true);
+        int pi = a.value("paramIndex").toInt();
+        if (hasName)
+        {
+            pi = -1;
+            const QString wantName = a.value("paramName").toString();
+            if (fxSlots[si].fxType == "plugin")
+            {
+                for (const auto& prm : e->getPluginParamService().getParams(ti, fxSlots[si].pluginId))
+                    if (QString::fromStdString(prm.name).compare(wantName, Qt::CaseInsensitive) == 0)
+                        { pi = prm.index; break; }
+            }
+            else
+            {
+                pi = HDAW::paramIndexByName(
+                    HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType), wantName);
+            }
+            if (pi < 0)
+                return McpToolResult::text("unknown paramName: " + wantName, true);
+        }
+        ProjectCommands::ParamVerityParams p;
+        p.trackIndex = ti;
+        p.slotIndex = si;
+        p.paramIndex = pi;
+        if (a.contains("steps") && a.value("steps").isArray())
+            for (const auto& s : a.value("steps").toArray())
+                p.steps.push_back(static_cast<float>(s.toDouble()));
+        p.baselineRuns = a.contains("baselineRuns") ? a.value("baselineRuns").toInt() : 2;
+        p.windowSeconds = a.contains("windowSeconds") ? a.value("windowSeconds").toDouble() : 2.0;
+        p.startBeat = a.contains("startBeat") ? a.value("startBeat").toDouble() : -1.0;
+        const auto r = e->getProjectCommands().verifyParamSweep(p);
+        if (!r.ok && r.steps.empty() && !r.error.empty())
+            return McpToolResult::text(QString::fromStdString(r.error), true);
+        return McpToolResult::text(QString::fromUtf8(
+            QJsonDocument(HDAW::buildParamVerityPayload(r)).toJson(QJsonDocument::Compact)));
+    }});
+
+s.registerTool({"param_verity_corpus",
+    "PARAM AUDIBILITY CORPUS (ParamVerity Phase 3): sweep MANY parameters of ONE slot in a single call. Each param runs the full param_verity sweep (baseline same-input spread + steps + durable restore). Enumeration: explicit paramIndexes array wins; internal FX default to ALL param defs; plugin slots take the first maxParams (default 16, cap 128) from the live host-param cache — a deviceless plugin slot with no cache is an ERROR, pass paramIndexes. outPath (optional) writes the full sidecar JSON (schema hdaw.param.verity.corpus.v1) for per-device audit loops. Returns {ok, ran, audibleCount, results:[{paramIndex, paramName, ok, anyAudible, baselineRms, spread, maxAbsRmsDelta, error?}]}. Use to answer 'which knobs on this device actually do anything'. Deterministic verdicts only.",
+    objSchema({{"trackId",       QJsonObject{{"type","integer"}}},
+              {"slotIndex",    QJsonObject{{"type","integer"}}},
+              {"paramIndexes", QJsonObject{{"type","array"}, {"items", QJsonObject{{"type","integer"}}}}},
+              {"maxParams",    QJsonObject{{"type","integer"}}},
+              {"steps",        QJsonObject{{"type","array"}, {"items", QJsonObject{{"type","number"}}}}},
+              {"baselineRuns", QJsonObject{{"type","integer"}}},
+              {"windowSeconds",QJsonObject{{"type","number"}}},
+              {"startBeat",    QJsonObject{{"type","number"}}},
+              {"outPath",      QJsonObject{{"type","string"}}}}, {"trackId","slotIndex"}),
+    "fx",
+    [e](const QJsonObject& a) -> McpToolResult {
+        ProjectCommands::ParamCorpusParams p;
+        p.trackIndex = a.value("trackId").toInt();
+        p.slotIndex = a.value("slotIndex").toInt();
+        if (a.contains("paramIndexes") && a.value("paramIndexes").isArray())
+            for (const auto& v : a.value("paramIndexes").toArray())
+                p.paramIndexes.push_back(v.toInt());
+        if (a.contains("maxParams")) p.maxParams = a.value("maxParams").toInt();
+        if (a.contains("steps") && a.value("steps").isArray())
+            for (const auto& v : a.value("steps").toArray())
+                p.steps.push_back(static_cast<float>(v.toDouble()));
+        p.baselineRuns = a.contains("baselineRuns") ? a.value("baselineRuns").toInt() : 2;
+        p.windowSeconds = a.contains("windowSeconds") ? a.value("windowSeconds").toDouble() : 2.0;
+        p.startBeat = a.contains("startBeat") ? a.value("startBeat").toDouble() : -1.0;
+        if (a.contains("outPath") && !a.value("outPath").toString().isEmpty())
+            p.outPath = a.value("outPath").toString().toStdString();
+        const auto r = e->getProjectCommands().verifyParamCorpus(p);
+        if (!r.ok && r.results.empty() && !r.error.empty())
+            return McpToolResult::text(QString::fromStdString(r.error), true);
+        return McpToolResult::text(QString::fromUtf8(
+            QJsonDocument(HDAW::buildParamCorpusPayload(r)).toJson(QJsonDocument::Compact)));
+    }});
 
 s.registerTool({"clear_fx_param_overrides",
     "Drop every persisted plugin-parameter override for ONE FX slot (the offline-replay ledger written by set_fx_param on plugin slots). Use it to return a slot to 'what the plugin state itself says' before an export/audition — without it, a param set once keeps being replayed into every later tree-copy render. Returns {removed:N}. No effect on internal FX (their param_N properties are the source of truth).",

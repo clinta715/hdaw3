@@ -13,6 +13,11 @@
 #include "../common/DebugLog.h"
 #include "../common/ParamOverrideLedger.h"
 #include "Track.h"
+#include "TrackFXSlot.h"
+#include "MixReport.h"
+#include "../common/ParamVerity.h"
+#include "../common/ToneVerity.h"
+#include <QJsonDocument>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
@@ -1550,6 +1555,405 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
 
     solo.wavPath.deleteFile();
     mix.wavPath.deleteFile();
+    return result;
+}
+
+// ── ParamVerity (2026-09-22, docs/plans/2026-09-22-param-verity-pipeline.md) ──
+// Per-(slot, param) audibility sweep. Renders the SAME tree-copy window N times
+// at the param's current value (baseline spread = the harness's own variance,
+// lesson 27), then once per swept value; a step is audible only when its RMS
+// separates by >= kVeritySeparationFactor x spread. A silent baseline reports
+// inconclusive (lesson 25 — silence masks every delta). The param is RESTORED
+// to its original durable value afterwards. Writes go through the SAME paths
+// as set_fx_param (setFxSlotParam real-units clamped for internal FX;
+// setPluginParam durable ledger for plugin slots) so every render input is
+// exactly what export_audio would see. No DSP/graph touches beyond those
+// existing command paths (Gate 3).
+ProjectCommands::ParamVerityResult AudioEngineCommands::verifyParamSweep(const ParamVerityParams& p)
+{
+    ParamVerityResult result;
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (p.trackIndex < 0 || p.trackIndex >= trackList.getNumChildren())
+    {
+        result.error = "trackIndex out of range";
+        return result;
+    }
+    if (!(p.windowSeconds > 0.0) || p.windowSeconds > 30.0)
+    {
+        result.error = "windowSeconds must be in (0, 30]";
+        return result;
+    }
+    if (p.paramIndex < 0)
+    {
+        result.error = "paramIndex required";
+        return result;
+    }
+    const int runs = std::clamp(p.baselineRuns, 1, 4);
+
+    auto slotTree = findFxSlot(p.trackIndex, p.slotIndex);
+    if (!slotTree.isValid() || slotTree.getProperty(IDs::fxType, "").toString() == juce::String("none"))
+    {
+        result.error = "slot not found";
+        return result;
+    }
+    const juce::String fxType = slotTree.getProperty(IDs::fxType, "").toString();
+    const bool isPlugin = (fxType == juce::String("plugin"));
+    result.trackIndex = p.trackIndex;
+    result.slotIndex = p.slotIndex;
+    result.paramIndex = p.paramIndex;
+    result.fxType = fxType.toStdString();
+
+    // Param bounds + original value, per flavor. Internal FX: real units in
+    // the ValueTree (param_<index>), defs from TrackFXSlot. Plugin slots:
+    // normalized 0..1 via the durable ledger (the same channel set_fx_param
+    // uses, replayed into every tree-copy render child).
+    const juce::String propName = "param_" + juce::String(p.paramIndex);
+    float originalNorm = 0.5f;            // normalized 0..1 (both flavors)
+    bool hadOriginal = false;
+    HDAW::TrackFXSlot::InternalParamDef def{};
+    if (isPlugin)
+    {
+        for (const auto& [idx, val] : getPluginParamOverrides(p.trackIndex, p.slotIndex))
+            if (idx == p.paramIndex) { originalNorm = val; hadOriginal = true; }
+        result.paramName = "plugin param " + std::to_string(p.paramIndex);
+    }
+    else
+    {
+        auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxType);
+        if (p.paramIndex >= static_cast<int>(defs.size()))
+        {
+            result.error = "param index out of range";
+            return result;
+        }
+        def = defs[static_cast<size_t>(p.paramIndex)];
+        result.paramName = def.name.toStdString();
+        originalNorm = (def.maxValue != def.minValue)
+            ? (static_cast<float>(slotTree.getProperty(propName, (double) def.defaultValue))
+               - def.minValue) / (def.maxValue - def.minValue)
+            : 0.0f;
+        originalNorm = juce::jlimit(0.0f, 1.0f, originalNorm);
+        hadOriginal = true;
+    }
+
+    auto writeNorm = [&](float norm) {
+        if (isPlugin)
+            setPluginParam(p.trackIndex, p.slotIndex, p.paramIndex, norm);
+        else
+            setFxSlotParam(p.trackIndex, p.slotIndex, p.paramIndex,
+                           def.minValue + norm * (def.maxValue - def.minValue));
+    };
+
+    // Render once at the CURRENT param value and measure RMS/peak/4 bands.
+    // Reuses the verify_part render machinery (tree copy, never mutates the
+    // live graph) + the offline MixReport analyzer for band energies.
+    const double bpm = engine_.getTransportManager().getBPM();
+    const double winStartSec = (p.startBeat >= 0.0)
+        ? HDAW::beatsToSeconds(p.startBeat, bpm) : -1.0;
+    auto renderOnce = [&](double& rms, double& peak, double (&band)[4]) -> std::string {
+        auto r = renderTrackWindow(engine_, p.trackIndex, p.windowSeconds, 1.0f,
+                                   /*applyFader*/ false, /*soloMuteOthers*/ true,
+                                   /*outBands*/ nullptr, /*masterScale*/ 1.0f,
+                                   winStartSec);
+        if (!r.error.empty())
+            return r.error;
+        HDAW::MixReport rep;
+        juce::String err;
+        if (!HDAW::MixReportAnalyzer::analyze(r.wavPath, {}, 0.0, rep, err))
+        {
+            r.wavPath.deleteFile();
+            return "analysis failed: " + err.toStdString();
+        }
+        rms = rep.rms;
+        peak = rep.peak;
+        for (int i = 0; i < HDAW::kMixNumBands; ++i) band[i] = rep.bands[i];
+        r.wavPath.deleteFile();
+        return {};
+    };
+
+    // Baseline: N same-input renders at the ORIGINAL value (lesson 27).
+    writeNorm(originalNorm);
+    std::vector<double> baseRuns;
+    double bandSum[HDAW::kMixNumBands] = {};
+    for (int i = 0; i < runs; ++i)
+    {
+        double rms = 0.0, peak = 0.0, band[HDAW::kMixNumBands] = {};
+        if (const std::string err = renderOnce(rms, peak, band); !err.empty())
+        {
+            result.error = err;
+            return result;
+        }
+        baseRuns.push_back(rms);
+        result.baselinePeak = std::max(result.baselinePeak, peak);
+        for (int b = 0; b < HDAW::kMixNumBands; ++b) bandSum[b] += band[b];
+    }
+    result.baselineRuns = runs;
+    result.baselineRms = std::accumulate(baseRuns.begin(), baseRuns.end(), 0.0)
+                       / static_cast<double>(baseRuns.size());
+    for (int b = 0; b < HDAW::kMixNumBands; ++b)
+        result.band[b] = bandSum[b] / static_cast<double>(runs);
+    result.baselineAudible = (result.baselinePeak > 1e-4);
+    result.spread = HDAW::veritySpread(baseRuns, result.baselineRms);
+    result.threshold = HDAW::verityThreshold(result.spread);
+    result.inconclusive = !result.baselineAudible;
+
+    // Sweep: default steps {0, 0.5, 1} (normalized), caller-overridable.
+    std::vector<float> steps = p.steps;
+    if (steps.empty()) steps = { 0.0f, 0.5f, 1.0f };
+    for (const float v : steps)
+    {
+        ParamVerityStep step;
+        step.value = juce::jlimit(0.0f, 1.0f, v);
+        writeNorm(step.value);
+        double band[HDAW::kMixNumBands] = {};
+        if (const std::string err = renderOnce(step.rms, step.peak, band); !err.empty())
+        {
+            result.error = err;
+            break;
+        }
+        for (int b = 0; b < HDAW::kMixNumBands; ++b)
+        {
+            step.band[b] = band[b];
+            step.bandDelta[b] = band[b] - result.band[b];
+        }
+        step.rmsDelta = step.rms - result.baselineRms;
+        step.audible = HDAW::verityAudible(result.baselineAudible, step.rms,
+                                           result.baselineRms, result.threshold);
+        result.anyAudible = result.anyAudible || step.audible;
+        result.steps.push_back(step);
+    }
+
+    // Restore the original value through the SAME durable channel (Gate G4).
+    if (isPlugin && !hadOriginal)
+    {
+        // The ledger had no entry for this param: remove the probe's write so
+        // the slot returns to 'what the plugin state itself says'.
+        auto slotAgain = findFxSlot(p.trackIndex, p.slotIndex);
+        const juce::String ledger =
+            slotAgain.getProperty(IDs::appliedParamOverrides, "").toString();
+        const juce::String next = HDAW::removeParamOverride(ledger, p.paramIndex);
+        if (next != ledger)
+            slotAgain.setProperty(IDs::appliedParamOverrides, next, nullptr);
+        result.restored = true;   // absence of the entry IS the original state
+    }
+    else
+    {
+        writeNorm(originalNorm);
+        if (isPlugin)
+        {
+            for (const auto& [idx, val] : getPluginParamOverrides(p.trackIndex, p.slotIndex))
+                if (idx == p.paramIndex)
+                { result.restored = (std::abs((double) val - (double) originalNorm) < 1e-6); break; }
+        }
+        else
+        {
+            auto slotAgain = findFxSlot(p.trackIndex, p.slotIndex);
+            const double now = static_cast<double>(
+                slotAgain.getProperty(propName, (double) def.defaultValue));
+            const float nowNorm = (def.maxValue != def.minValue)
+                ? static_cast<float>((now - def.minValue) / (def.maxValue - def.minValue))
+                : 0.0f;
+            result.restored = (std::abs(nowNorm - originalNorm) < 1e-4);
+        }
+    }
+
+    if (result.error.empty())
+        result.ok = true;
+    return result;
+}
+
+// ── ToneVerity (Phase 2, docs/plans/2026-09-22-param-verity-pipeline.md) ──────
+// Tone-level verification of ONE offline solo render: envelope, AM rate,
+// centroid trajectory, HPS pitch — plus optional expectation checks. Same
+// render path as verifyPart/verifyParamSweep (tree copy, never mutates the
+// live graph); analysis shared in src/common/ToneVerity.cpp.
+ProjectCommands::ToneVerityResult AudioEngineCommands::verifyTone(const ToneVerityParams& p)
+{
+    ToneVerityResult result;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (p.trackIndex < 0 || p.trackIndex >= trackList.getNumChildren())
+    {
+        result.error = "trackIndex out of range";
+        return result;
+    }
+    if (!(p.windowSeconds > 0.0) || p.windowSeconds > 30.0)
+    {
+        result.error = "windowSeconds must be in (0, 30]";
+        return result;
+    }
+    auto clipList = trackList.getChild(p.trackIndex).getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid() || clipList.getNumChildren() == 0)
+    {
+        result.error = "track has no clips";
+        return result;
+    }
+
+    const double bpm = engine_.getTransportManager().getBPM();
+    const double winStartSec = (p.startBeat >= 0.0)
+        ? HDAW::beatsToSeconds(p.startBeat, bpm) : -1.0;
+    auto r = renderTrackWindow(engine_, p.trackIndex, p.windowSeconds, 1.0f,
+                               /*applyFader*/ false, /*soloMuteOthers*/ true,
+                               /*outBands*/ nullptr, /*masterScale*/ 1.0f,
+                               winStartSec);
+    if (!r.error.empty())
+    {
+        result.error = r.error;
+        return result;
+    }
+
+    const auto a = HDAW::analyzeToneWav(r.wavPath, p.binSeconds);
+    r.wavPath.deleteFile();
+    if (!a.ok)
+    {
+        result.error = a.error;
+        return result;
+    }
+
+    result.trackIndex = p.trackIndex;
+    result.windowSeconds = p.windowSeconds;
+    result.duration = a.duration;
+    result.sampleRate = a.sampleRate;
+    result.samplePeak = a.samplePeak;
+    result.binSeconds = a.binSeconds;
+    result.envelopeRms = a.envelopeRms;
+    result.envelopeDecimated = a.envelopeDecimated;
+    result.attackMs = a.attackMs;
+    result.peakRms = a.peakRms;
+    result.sustainRatio = a.sustainRatio;
+    result.trailingSilenceSeconds = a.trailingSilenceSeconds;
+    result.amDepth = a.amDepth;
+    result.modRateHz = a.modRateHz;
+    result.modProminence = a.modProminence;
+    result.modCycles = a.modCycles;
+    result.centroidStart = a.centroidStart;
+    result.centroidEnd = a.centroidEnd;
+    result.centroidMean = a.centroidMean;
+    result.f0Hz = a.f0Hz;
+    result.f0Confidence = a.f0Confidence;
+    result.f0Midi = a.f0Midi;
+    result.baselineAudible = (a.samplePeak > 1e-4);
+    if (!result.baselineAudible)
+        result.error = "render is silent — tone verdicts are void (lesson 25)";
+
+    HDAW::evaluateToneExpectations(p, result);
+    result.ok = result.error.empty();
+    return result;
+}
+
+// ── ParamVerity corpus (Phase 3, docs/plans/2026-09-22-param-verity-pipeline.md) ──
+// Sweep MANY parameters of ONE slot in one call. Each param runs the full
+// Phase-1 sweep (baseline spread + steps + restore). Enumeration: explicit
+// paramIndexes win; internal FX default to ALL defs; plugin slots take the
+// first maxParams from the live host-param cache (deviceless plugin slots have
+// no cache — pass paramIndexes or the corpus is rejected, never guessed).
+ProjectCommands::ParamCorpusResult AudioEngineCommands::verifyParamCorpus(const ParamCorpusParams& p)
+{
+    ParamCorpusResult result;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (p.trackIndex < 0 || p.trackIndex >= trackList.getNumChildren())
+    {
+        result.error = "trackIndex out of range";
+        return result;
+    }
+    auto slotTree = findFxSlot(p.trackIndex, p.slotIndex);
+    if (!slotTree.isValid() || slotTree.getProperty(IDs::fxType, "").toString() == juce::String("none"))
+    {
+        result.error = "slot not found";
+        return result;
+    }
+    const juce::String fxType = slotTree.getProperty(IDs::fxType, "").toString();
+    result.trackIndex = p.trackIndex;
+    result.slotIndex = p.slotIndex;
+    result.fxType = fxType.toStdString();
+
+    // Enumerate the param list.
+    std::vector<int> indexes = p.paramIndexes;
+    if (indexes.empty())
+    {
+        if (fxType == juce::String("plugin"))
+        {
+            const auto pluginId = slotTree.getProperty(IDs::pluginID, "").toString().toStdString();
+            const auto cached = engine_.getPluginParamService().getParams(p.trackIndex, pluginId);
+            const int cap = std::clamp(p.maxParams, 1, 128);
+            for (const auto& prm : cached)
+            {
+                if ((int) indexes.size() >= cap) break;
+                indexes.push_back(prm.index);
+            }
+            if (indexes.empty())
+            {
+                result.error = "no live plugin param cache (deviceless or not settled): pass paramIndexes";
+                return result;
+            }
+        }
+        else
+        {
+            auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxType);
+            const int cap = std::clamp(p.maxParams, 1, 128);
+            for (const auto& d : defs)
+            {
+                if ((int) indexes.size() >= cap) break;
+                indexes.push_back(d.index);
+            }
+        }
+    }
+    if (indexes.empty())
+    {
+        result.error = "no parameters to sweep";
+        return result;
+    }
+
+    // Shared sweep args.
+    ParamVerityParams sweep;
+    sweep.trackIndex = p.trackIndex;
+    sweep.slotIndex = p.slotIndex;
+    sweep.steps = p.steps;
+    sweep.baselineRuns = p.baselineRuns;
+    sweep.windowSeconds = p.windowSeconds;
+    sweep.startBeat = p.startBeat;
+
+    for (const int idx : indexes)
+    {
+        sweep.paramIndex = idx;
+        auto r = verifyParamSweep(sweep);
+        ParamCorpusEntry e;
+        e.paramIndex = idx;
+        e.paramName = r.paramName;
+        e.ok = r.ok;
+        e.anyAudible = r.anyAudible;
+        e.baselineRms = r.baselineRms;
+        e.spread = r.spread;
+        for (const auto& s : r.steps)
+            e.maxAbsRmsDelta = std::max(e.maxAbsRmsDelta, std::abs(s.rmsDelta));
+        e.error = r.error;
+        result.results.push_back(e);
+        if (r.ok)
+        {
+            ++result.ran;
+            if (r.anyAudible) ++result.audibleCount;
+        }
+    }
+
+    // Optional sidecar: the full payload, written by the engine (bounded by the
+    // same process-unique render discipline; a corpus is offline-only).
+    if (!p.outPath.empty())
+    {
+        const juce::File f(juce::String(p.outPath));
+        const auto payload = HDAW::buildParamCorpusPayload(result);
+        const auto json = QJsonDocument(payload).toJson(QJsonDocument::Indented);
+        if (f.getParentDirectory().createDirectory().wasOk()
+            && f.replaceWithText(juce::String(json.constData(), (int) json.size())))
+        {
+            result.sidecarWritten = true;
+            result.outPath = p.outPath;
+        }
+        else
+        {
+            result.error = "sidecar write failed: " + p.outPath;
+        }
+    }
+
+    result.ok = (result.error.empty() || result.sidecarWritten) && result.ran > 0;
     return result;
 }
 

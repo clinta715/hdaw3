@@ -98,6 +98,9 @@ public:
                                        double windowSeconds, bool verify,
                                        bool allowGlobalScale) override;
     AuditionResult auditionPlugin(const AuditionParams& params) override;
+    ParamVerityResult verifyParamSweep(const ParamVerityParams& params) override;
+    ToneVerityResult verifyTone(const ToneVerityParams& params) override;
+    ParamCorpusResult verifyParamCorpus(const ParamCorpusParams& params) override;
 
     /// Queue short MIDI (program change / CC / note) into a plugin FX slot's
     /// next processed block (TrackFXSlot::queueMidiForNextBlock). Realtime

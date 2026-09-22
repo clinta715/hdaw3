@@ -7,6 +7,7 @@
 #include "../../common/ProjectCommands.h"
 #include "../../common/MixReportJson.h"
 #include "../../common/MixVerdict.h"
+#include "../../common/ToneVerity.h"
 #include "../../mcp/McpJobs.h"
 #include "../../common/ModulationCoverage.h"
 #include "../../common/SongPlanView.h"
@@ -14,6 +15,8 @@
 #include "../../common/FxCaptureStatus.h"
 #include "../../common/SettingsKeys.h"
 
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 
 #include <QJsonArray>
@@ -32,6 +35,33 @@ namespace frontend {
 DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonValue& params) {
     auto& dm = engine.getDeviceManager();
     const auto o = paramsObject(params);
+
+    if (m == "verifyTone") {
+        // ToneVerity (Phase 2): the RPC twin of the MCP `tone_verity` tool —
+        // SAME builder (buildToneVerityPayload) so the surfaces cannot drift.
+        int trackIndex;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const auto num = [&](const char* k) {
+            return o.contains(k) && o.value(k).isDouble() ? o.value(k).toDouble() : nan;
+        };
+        ProjectCommands::ToneVerityParams p;
+        p.trackIndex = trackIndex;
+        p.windowSeconds = o.contains("windowSeconds") ? o.value("windowSeconds").toDouble() : 4.0;
+        p.startBeat = num("startBeat"); if (std::isnan(p.startBeat)) p.startBeat = -1.0;
+        if (o.contains("binSeconds")) p.binSeconds = o.value("binSeconds").toDouble();
+        p.attackMsMin = num("attackMsMin");
+        p.attackMsMax = num("attackMsMax");
+        p.sustainRatioMin = num("sustainRatioMin");
+        p.modRateHz = num("modRateHz");
+        if (o.contains("modRateTolPct")) p.modRateTolPct = o.value("modRateTolPct").toDouble();
+        p.centroidRiseMin = num("centroidRiseMin");
+        p.f0Hz = num("f0Hz");
+        if (o.contains("f0CentsMax")) p.f0CentsMax = o.value("f0CentsMax").toDouble();
+        auto r = engine.getProjectCommands().verifyTone(p);
+        return { false, HDAW::buildToneVerityPayload(r) };
+    }
 
     if (m == "mixReport") {
         // Offline mix analysis of a rendered file. The payload comes from the SHARED builder

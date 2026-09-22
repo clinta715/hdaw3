@@ -10,6 +10,7 @@
 #include "../../engine/CorpusArranger.h"
 #include "../../common/ProjectCommands.h"
 #include "../../common/SongPlanView.h"
+#include "../../common/ParamVerity.h"
 #include "../../model/ProjectModel.h"
 #include "../../engine/SongStructureAudit.h"
 #include "../../common/AudioGraphCommands.h"
@@ -1113,6 +1114,79 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!r.error.empty())
             res.insert("error", QString::fromStdString(r.error));
         return { false, res };
+    }
+
+    if (m == "verifyParamSweep") {
+        // ParamVerity: per-(slot, param) audibility sweep — the RPC twin of the
+        // MCP `param_verity` tool. SAME builder (buildParamVerityPayload) so the
+        // two surfaces are identical by construction (MixReportJson contract).
+        int trackIndex;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        const int slotIndex = optInt(o, "slotIndex", 0, nullptr);
+        const bool hasName = o.contains("paramName") && !o.value("paramName").toString().isEmpty();
+        if (!hasName && !o.contains("paramIndex"))
+            return makeError(-32602, "paramIndex or paramName required");
+
+        ProjectCommands::ParamVerityParams p;
+        p.trackIndex = trackIndex;
+        p.slotIndex = slotIndex;
+        if (hasName) {
+            // Resolve the name against the shared defs/plugin params, exactly
+            // like the MCP tool, so argument semantics match word for word.
+            const QString wantName = o.value("paramName").toString();
+            const auto fxSlots = engine.getReadModel().getFxSlots(trackIndex);
+            if (slotIndex < 0 || slotIndex >= (int) fxSlots.size())
+                return makeError(-32602, "slot not found");
+            int pi = -1;
+            if (fxSlots[slotIndex].fxType == "plugin") {
+                for (const auto& prm : engine.getPluginParamService().getParams(trackIndex, fxSlots[slotIndex].pluginId))
+                    if (QString::fromStdString(prm.name).compare(wantName, Qt::CaseInsensitive) == 0)
+                        { pi = prm.index; break; }
+            } else {
+                pi = HDAW::paramIndexByName(
+                    HDAW::TrackFXSlot::getParamDefsForType(fxSlots[slotIndex].fxType), wantName);
+            }
+            if (pi < 0)
+                return makeError(-32602, "unknown paramName: " + wantName);
+            p.paramIndex = pi;
+        } else {
+            p.paramIndex = optInt(o, "paramIndex", -1, nullptr);
+        }
+        if (o.contains("steps") && o.value("steps").isArray())
+            for (const auto& s : o.value("steps").toArray())
+                p.steps.push_back(static_cast<float>(s.toDouble()));
+        p.baselineRuns = optInt(o, "baselineRuns", 2, nullptr);
+        p.windowSeconds = optDouble(o, "windowSeconds", 2.0, nullptr);
+        p.startBeat = optDouble(o, "startBeat", -1.0, nullptr);
+
+        auto r = c.verifyParamSweep(p);
+        return { false, HDAW::buildParamVerityPayload(r) };
+    }
+
+    if (m == "verifyParamCorpus") {
+        // ParamVerity corpus (Phase 3): the RPC twin of the MCP
+        // `param_verity_corpus` tool — SAME builder, identical payload.
+        int trackIndex;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        ProjectCommands::ParamCorpusParams p;
+        p.trackIndex = trackIndex;
+        p.slotIndex = optInt(o, "slotIndex", 0, nullptr);
+        if (o.contains("paramIndexes") && o.value("paramIndexes").isArray())
+            for (const auto& v : o.value("paramIndexes").toArray())
+                p.paramIndexes.push_back(v.toInt());
+        if (o.contains("maxParams")) p.maxParams = o.value("maxParams").toInt();
+        if (o.contains("steps") && o.value("steps").isArray())
+            for (const auto& v : o.value("steps").toArray())
+                p.steps.push_back(static_cast<float>(v.toDouble()));
+        p.baselineRuns = optInt(o, "baselineRuns", 2, nullptr);
+        p.windowSeconds = optDouble(o, "windowSeconds", 2.0, nullptr);
+        p.startBeat = optDouble(o, "startBeat", -1.0, nullptr);
+        if (o.contains("outPath"))
+            p.outPath = o.value("outPath").toString().toStdString();
+        auto r = engine.getProjectCommands().verifyParamCorpus(p);
+        return { false, HDAW::buildParamCorpusPayload(r) };
     }
 
     if (m == "verifyPart") {

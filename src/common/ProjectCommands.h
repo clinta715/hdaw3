@@ -972,6 +972,144 @@ public:
     virtual VerifyPartResult verifyPart(int trackIndex, double windowSeconds = 4.0,
                                         double startBeat = 0.0, double endBeat = 0.0) = 0;
 
+    // ── ParamVerity (2026-09-22) ──
+    // Per-(slot, param) audibility sweep: N baseline renders at the param's
+    // current value establish the harness's own same-input spread (lesson 27),
+    // then one render per swept value. A step is `audible` only when its RMS
+    // separates from the baseline by >= kVeritySeparationFactor x spread (floor
+    // kVerityMinSeparation). A silent baseline reports inconclusive (lesson 25).
+    // The parameter is RESTORED to its original (durable) value afterwards.
+    struct ParamVerityParams {
+        int trackIndex = -1;
+        int slotIndex = 0;
+        int paramIndex = -1;
+        std::vector<float> steps;       // normalized 0..1; empty => {0.0, 0.5, 1.0}
+        int baselineRuns = 2;           // same-input renders for the spread (1..4)
+        double windowSeconds = 2.0;
+        double startBeat = -1.0;        // BEATS (lesson 1); < 0 = track default window
+    };
+    struct ParamVerityStep {
+        float value = 0.0f;             // normalized 0..1 as written
+        double rms = 0.0, peak = 0.0;
+        double band[4] = {};            // sub/bass/body/high mean power (MixReport)
+        double rmsDelta = 0.0;          // rms - baselineMean
+        double bandDelta[4] = {};       // band - baselineBandMean
+        bool audible = false;
+    };
+    struct ParamVerityResult {
+        bool ok = false;
+        std::string error;
+        int trackIndex = -1, slotIndex = -1, paramIndex = -1;
+        std::string fxType, paramName;
+        int baselineRuns = 0;
+        double windowSeconds = 0.0;
+        double baselineRms = 0.0, baselinePeak = 0.0;
+        double band[4] = {};            // baseline mean band energies
+        double spread = 0.0, threshold = 0.0;
+        bool baselineAudible = false;
+        bool inconclusive = false;      // silent baseline — verdicts are void
+        bool restored = false;          // original param value re-applied durably
+        bool anyAudible = false;
+        std::vector<ParamVerityStep> steps;
+    };
+    virtual ParamVerityResult verifyParamSweep(const ParamVerityParams& params) = 0;
+
+    // ── ToneVerity (Phase 2, 2026-09-22) ──
+    // Tone-level verification of ONE offline solo render of the track window:
+    // envelope shape, AM/modulation rate, spectral-centroid trajectory, and a
+    // HPS f0 estimate — plus optional deterministic expectation checks (NaN
+    // sentinel = absent, VerifyPart convention).
+    struct ToneVerityParams {
+        int trackIndex = -1;
+        double windowSeconds = 4.0;
+        double startBeat = -1.0;          // BEATS (lesson 1); < 0 = track default window
+        double binSeconds = 0.01;         // envelope bin, [0.002, 0.05] s
+        // Optional expectations (NaN = absent):
+        double attackMsMin = std::numeric_limits<double>::quiet_NaN();
+        double attackMsMax = std::numeric_limits<double>::quiet_NaN();
+        double sustainRatioMin = std::numeric_limits<double>::quiet_NaN();
+        double modRateHz = std::numeric_limits<double>::quiet_NaN();
+        double modRateTolPct = 10.0;
+        double centroidRiseMin = std::numeric_limits<double>::quiet_NaN();
+        double f0Hz = std::numeric_limits<double>::quiet_NaN();
+        double f0CentsMax = 50.0;
+    };
+    struct ToneExpectation {
+        std::string name;
+        bool pass = false;
+        double measured = 0.0;
+        double expected = 0.0;
+        std::string note;
+    };
+    struct ToneVerityResult {
+        bool ok = false;
+        std::string error;
+        int trackIndex = -1;
+        double windowSeconds = 0.0, duration = 0.0;
+        int sampleRate = 0;
+        double samplePeak = 0.0;
+        double binSeconds = 0.0;
+        std::vector<double> envelopeRms;
+        bool envelopeDecimated = false;
+        double attackMs = std::numeric_limits<double>::quiet_NaN();
+        double peakRms = 0.0;
+        double sustainRatio = std::numeric_limits<double>::quiet_NaN();
+        double trailingSilenceSeconds = std::numeric_limits<double>::quiet_NaN();
+        double amDepth = 0.0;
+        double modRateHz = std::numeric_limits<double>::quiet_NaN();
+        double modProminence = 0.0, modCycles = 0.0;
+        double centroidStart = std::numeric_limits<double>::quiet_NaN();
+        double centroidEnd = std::numeric_limits<double>::quiet_NaN();
+        double centroidMean = std::numeric_limits<double>::quiet_NaN();
+        double f0Hz = std::numeric_limits<double>::quiet_NaN();
+        double f0Confidence = 0.0;
+        int f0Midi = -1;
+        double f0Cents = std::numeric_limits<double>::quiet_NaN();
+        bool baselineAudible = false;
+        bool pass = false;
+        int expectationsChecked = 0;
+        std::vector<ToneExpectation> expectations;
+    };
+    virtual ToneVerityResult verifyTone(const ToneVerityParams& params) = 0;
+
+    // ── ParamVerity corpus (Phase 3, 2026-09-22) ──
+    // Sweep MANY parameters of ONE slot in a single call: runs verifyParamSweep
+    // per param (explicit paramIndexes, else ALL internal defs, else the first
+    // maxParams of the live plugin param cache) and aggregates audibility
+    // verdicts. outPath (optional) writes the full per-step payload as a
+    // sidecar JSON (schema hdaw.param.verity.corpus.v1).
+    struct ParamCorpusParams {
+        int trackIndex = -1;
+        int slotIndex = 0;
+        std::vector<int> paramIndexes;    // explicit list wins when non-empty
+        int maxParams = 16;               // auto-enumeration cap (hard cap 128)
+        std::vector<float> steps;         // normalized; empty => {0.0, 0.5, 1.0}
+        int baselineRuns = 2;
+        double windowSeconds = 2.0;
+        double startBeat = -1.0;          // BEATS; < 0 = track default window
+        std::string outPath;              // optional sidecar JSON target
+    };
+    struct ParamCorpusEntry {
+        int paramIndex = -1;
+        std::string paramName;
+        bool ok = false;
+        bool anyAudible = false;
+        double baselineRms = 0.0, spread = 0.0;
+        double maxAbsRmsDelta = 0.0;
+        std::string error;
+    };
+    struct ParamCorpusResult {
+        bool ok = false;
+        std::string error;
+        int trackIndex = -1, slotIndex = -1;
+        std::string fxType;
+        int ran = 0, audibleCount = 0;
+        bool sidecarWritten = false;
+        std::string outPath;
+        std::vector<ParamCorpusEntry> results;
+    };
+    virtual ParamCorpusResult verifyParamCorpus(const ParamCorpusParams& params) = 0;
+
     // Missing source-file relinking. Searches the given directory (recursively)
     // for a file matching either (a) the exact filename, or (b) the same
     // basename with a different audio extension (wav/aiff/aif/mp3/flac/ogg).

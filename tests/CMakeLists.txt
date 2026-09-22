@@ -75,6 +75,9 @@ add_executable(hdaw_tests
     unit/engine/song_plan_test.cpp
     unit/engine/layer_handoff_test.cpp
     unit/engine/movement_plan_test.cpp
+    unit/engine/param_verity_test.cpp
+    unit/engine/tone_verity_engine_test.cpp
+    unit/engine/param_corpus_test.cpp
     unit/engine/gearmulator_params_probe_test.cpp
     unit/engine/song_structure_audit_test.cpp
     unit/engine/ves_boot_probe_test.cpp
@@ -162,6 +165,8 @@ add_executable(hdaw_tests
     unit/engine/cluster_preset_store_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
+    unit/common/param_verity_math_test.cpp
+    unit/common/tone_verity_test.cpp
     unit/common/message_pump_test.cpp
     unit/common/param_override_ledger_test.cpp
     unit/model/project_model_test.cpp
