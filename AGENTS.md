@@ -47,11 +47,13 @@ extensionless shim that does not exist (`can't open file '…\Scripts\graphify'`
 `query`/`explain`/`path` work fine in-process. Run the module directly instead:
 `python -m graphify update . --force` (the interpreter is recorded in
 `graphify-out/.graphify_python`; `--force` is required when a rebuild yields fewer
-nodes). The post-commit hook's **detached `watch` rebuild does not re-extract changed
-files** — after a hook rebuild of a tree containing new code, 0 of the new symbols were
-in the graph; the explicit `update --force` extracted all 1318 files and added them
-(20601 → 20695 nodes). Verify with `graphify explain <newSymbol>` before trusting a
-"rebuilt" log line.
+nodes). The post-commit hook's **detached `watch` rebuild is cache-driven and will not
+pick up new/changed files on its own** — after a hook rebuild of a tree containing new
+code, 0 of the new symbols were in the graph; the explicit `update --force` extracted all
+1318 files and added them (20601 → 20695 nodes). Run the explicit update once when the
+tree has new files and the cache is warm afterwards (a later hook rebuild then keeps
+them: 20873 → 20963 with `InternalDelay` intact). Verify with `graphify explain
+<newSymbol>` before trusting a "rebuilt" log line.
 
 **codebase-memory** MCP — semantic index for "where is X implemented" questions.
 

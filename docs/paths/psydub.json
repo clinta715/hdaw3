@@ -333,10 +333,10 @@
         },
         {
           "id": "return-ride",
-          "name": "Send/bus return ride (the throw as a SEND)",
-          "why": "The return exists (space/shared-return), so the throw becomes a RIDE on the send instead of a per-track delay. Setup matters: Mix 1.0 on the return (0.5 re-adds a doubled dry) and Feedback 0.6-0.7 for repeats.",
-          "recipe": { "setup": "space/shared-return (add_bus fxType delay + add_send + set_bus_fx_param Mix=1.0, Feedback=0.6-0.7)", "ride": "set_track_send_level per section window (0 in the breakdown, 1.0 at each 8-bar throw point)" },
-          "gate": { "mix_diff": "rmsDb differs measurably between the ride on and off (measured +2.85 dB at send 1.0)" },
+          "name": "Shared return + static per-section sends",
+          "why": "The return exists (space/shared-return) and its CHARACTER is now tunable + tempo-synced - but a per-phrase RIDE is NOT possible: a send level is set by set_track_send_level only, and the automatable paramID space is 1 Volume / 2 Pan / 3 Mute / >=100 track FX / >=1000 track MIDI FX. There is NO send paramID, so sends can only be set STATICALLY per section. The real throw therefore still comes from a PER-TRACK delay slot with a delayThrow lane (space/dub-throw); the shared return is what makes the whole mix sit in ONE space. Setup matters: Mix 1.0 on the return (0.5 re-adds a doubled dry) and Feedback 0.6-0.7 for repeats.",
+          "recipe": { "setup": "space/shared-return (add_bus fxType delay + add_send + set_bus_fx_param Mix=1.0, Feedback=0.6-0.7)", "static_send": "set_track_send_level once per SECTION (e.g. pads wet only in the breakdown); NOT a ride - see the why", "the_actual_throw": "per-track delay slot + automation_preset {preset: delayThrow, paramID: 100+slot*100+paramIndex}" },
+          "gate": { "mix_diff": "rmsDb differs measurably between the send at 1.0 and 0.0 (measured +2.85 dB on the send itself); applied to a whole track 2026-09-23 (aether_dub: pads->reverb 0.30, skank->delay 0.35 + reverb 0.20, Reverb bus Wet 1.0/Dry 0.0) -> rms 0.0720 -> 0.0814 and the BODY band 1998 -> 4170 (+109%) with all six mix_verdict gates still green" },
           "evidence": "measured"
         },
         {
@@ -404,6 +404,8 @@
     "export-range-is-seconds": "`export_audio`'s `start`/`end` are SECONDS, not beats (a 64..80 range produced exactly a 16.0 s file), while `verify_part` uses `startBeat`/`endBeat`. Lesson 1 (beats vs seconds) lives inside a tool signature — confirm the window from the rendered duration before trusting an A/B.",
     "legacy-send-arg-mismatch": "The legacy routes `setTrackSendLevel`/`_Mode`/`_Bypassed` take `trackIndex` on RPC but `trackId` on MCP. The new `add_send`/`remove_send` use `trackId` on BOTH surfaces (argument names are part of the contract).",
     "bus-return-mix": "A bus return's Mix defaults to 0.5, which re-adds the bus INPUT — on a SEND that is a doubled dry signal on top of the track's own dry. Set Mix 1.0 for a pure echo return (delay AND reverb). Measured 2026-09-22.",
+    "return-cannot-be-high-passed": "A bus return cannot be high-passed: the only bus fxTypes are reverb/delay/eq/compressor, and the eq is a single PEAK filter (makePeakFilter) - there is no filter bus and no HPF. The classic dub move (roll the lows off the delay/reverb return so the repeats do not muddy the bass) is therefore NOT expressible. Measured 2026-09-23: adding the returns raised the body band +109% and pushed bass:high from 14.1:1 to 15.6:1. Fix: a filter bus type (or an HPF mode on the bus eq).",
+    "send-levels-not-automatable": "A send level CANNOT be automated: setSendLevel is reachable only from set_track_send_level (the command) and the graph build, and the automatable paramID space is 1 Volume / 2 Pan / 3 Mute / >=100 track FX / >=1000 track MIDI FX - no send range. So a send can only be set STATICALLY, and a per-phrase dub throw must come from a PER-TRACK delay slot (paramID 100+slot*100+paramIndex) with automation_preset delayThrow. Found 2026-09-23 while trying to write the throw as a send ride; a send paramID range is the fix.",
     "rebuild-commands-drop-response": "Mutating commands that trigger a routing rebuild (`add_bus`, `add_send`; intermittent, not deterministic) can drop their HTTP response while COMPLETING the work. Re-read state (`list_buses` / `get_track_sends` / a save) instead of blind-retrying, and never assume the mutation failed."
   },
 
