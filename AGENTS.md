@@ -204,8 +204,15 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
 - **C++ engine (gtest):** `build/hdaw_tests.exe` (`build-fast.bat test`; `all` also
   builds `hdaw_plugin_host.exe` for the isolation suites). Filter:
   `--gtest_filter=Suite.*`. Fast tier: `run_fast_tests.bat`. Full serial baseline
-  2026-09-21: 1768 tests / 264 suites, 1 flake (`PluginIsolation.LargeStateRoundTripThroughProxy`,
-  passes solo).
+  2026-09-23: **1865 tests / 277 suites — 1825 pass, 39 skipped, 1 failure**:
+  `RespawnPath.RealPathPassesThrough`, a deterministic PRE-EXISTING red test
+  (Windows path normalisation in `tests/unit/proxy/crash_recovery_test.cpp`, an
+  untouched file — full analysis in `docs/testing-mcp.md`). Two more
+  environment-dependent hazards are documented there too:
+  `PluginIsolation.LargeStateRoundTripThroughProxy` is the historical solo-pass
+  flake, and `McpServer.HttpRoundTrip` binds a **fixed port 18765**, so it fails
+  whenever a live engine holds it (measured 2026-09-22: 4 failures with an engine
+  on the port, 2 with it free). The earlier "1 flake" note (2026-09-21) is stale.
 - **Deviceless pattern:** suites needing an audio route fail with `getTrack() ==
   nullptr` when no device — environmental, don't blame your change (lessons 9/17).
 - **Frontend (Vitest):** `cd frontend; npm test` · **E2E (Playwright):**

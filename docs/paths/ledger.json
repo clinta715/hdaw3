@@ -193,6 +193,41 @@
         "a mid-bass slot is what makes a low end read as a bassline rather than a sub (kickProm 0.386 vs 0.47-0.51 with one)",
         "one-lane-per-paramID bit again: a named lane on paramID 1 silently collides with the built-in Volume lane"
       ]
+    },
+    "aether_dub_returns": {
+      "date": "2026-09-23",
+      "tree": "docs/paths/psydub.json",
+      "seed": 2026092601,
+      "walked": "POST-HOC capability exercise, NOT a fresh walk: the return pair was added to an already-finished aether_dub, so arrangement/rhythm/palette were inherited rather than chosen. Purpose was to exercise the new machinery end to end - bus/send creation, bus FX params, the shared delay DSP, the filter bus, set_bus_target, and the re-runnable automation pass.",
+      "path": {
+        "space": "shared-return",
+        "rides": "arc-pass mechanism only (paramID-addressed + clear:true + replace:true run twice -> identical point count); return-ride and staging-pass NOT walked",
+        "inherited": "the rest from aether_dub (foundation hypno-half-time, arrangement two-drop-classic, movement gesture-lanes-only, mix window-probe)"
+      },
+      "verdict": {
+        "mix_verdict_ok": true,
+        "rms": 0.0814,
+        "peak": 0.924,
+        "gates": "all six PASS",
+        "final": "aether_dub/aether_dub_returns.wav",
+        "before_after": "rms 0.0720 -> 0.0814, body 1998 -> 4170 (+109%), bass 9926 -> 11432, bass:high 14.1:1 -> 15.6:1",
+        "hpf_evidence": "chained delay return bass 18627 -> 15505 (-17%) / sub 5645 -> 4445 (-21%); re-parented reverb return sub 4604 -> 3698 (-20%)"
+      },
+      "branch_results": {
+        "shared-return": "PROVEN - +2.85 dB on the send itself; whole track rms 0.0720 -> 0.0814 with all six gates green",
+        "filter-bus-hpf": "PROVEN - a filter bus (Mode 1, 250 Hz) behind a return removes its lows; measured both chained and re-parented",
+        "set_bus_target": "PROVEN - the default Reverb return re-parented behind an HPF; self/master/unknown/cycle all refused with specific errors"
+      },
+      "cost": {
+        "renders": 6,
+        "note": "one 300 s render plus five 16 s A/B windows"
+      },
+      "taught": [
+        "A bus return's Mix defaults to 0.5, which re-adds a doubled dry signal - set Mix 1.0 for a pure return (trap: bus-return-mix).",
+        "Send levels are NOT automatable (no paramID range), so a per-phrase throw must come from a per-track delay slot (trap: send-levels-not-automatable).",
+        "A bus created after the graph was last prepared is never prepared itself, and processing it corrupted memory until FxBusProcessor::processBlock grew a fail-safe guard.",
+        "A rebuild that connects while creating silently fell back to master for a parent later in BUS_LIST - fixed by the two-phase rebuild in set_bus_target."
+      ]
     }
   },
   "branch_stats": {
@@ -224,6 +259,7 @@
       "rolling-sub",
       "sample-led",
       "seven-layer-seeded",
+      "shared-return",
       "steppers-one-drop-hybrid",
       "sub-only",
       "three-sixteenth-rhodes-tape-echo",
