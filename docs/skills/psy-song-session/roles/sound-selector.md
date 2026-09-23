@@ -93,6 +93,11 @@ variety, `apply_preset` to load, `tone_verity` to confirm.
 ## Gates (all must hold)
 - [ ] Every role in the brief has an unmuted track with a working instrument.
 - [ ] Every instrument passed `audition_plugin`/`audition_patch` (audible=true).
+- [ ] Every **pitched** candidate passed `key_check` against the project scale (nothing
+      `conflicting` committed; `neutral`/`consonant`/`relative`/`unison` are fine) — run it
+      with no key argument so it reads `get_scale`, and give it the candidate's key the same
+      way the surface produces one (`analyze_midi_file`'s `key`, a sidecar `key`, or
+      `root`+`scaleMode`). An "unknown" candidate key is an error, not a pass.
 - [ ] All FX param writes verified in REAL units via `list_fx_params`.
 - [ ] Every sounding role has staged modulation or an explicit handoff request
       for the FX & Automation Engineer to add a named subtle fallback.

@@ -11,6 +11,7 @@
 #include "../../common/ProjectCommands.h"
 #include "../../common/SongPlanView.h"
 #include "../../common/ParamVerity.h"
+#include "../../common/KeyConflict.h"
 #include "../../model/ProjectModel.h"
 #include "../../engine/SongStructureAudit.h"
 #include "../../common/AudioGraphCommands.h"
@@ -353,6 +354,23 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!requireInt(o, "pitch", pitch, nullptr))
             return makeError(-32602, "pitch required");
         return { false, QString::fromUtf8(PhraseGenerator::noteName(pitch)) };
+    }
+
+    // --- Key conflict (palette pre-listen gate) ---
+    // The RPC twin of the MCP `key_check` tool: SAME shared resolver, SAME
+    // HDAW::checkKeyConflict theory, SAME payload builder (KeyConflict.h) —
+    // identical payloads and identical failure text by construction.
+
+    if (m == "keyCheck") {
+        auto& pm = engine.getProjectModel();
+        const auto cand = HDAW::resolveCandidateKey(o, pm.getScaleRoot(), pm.getScaleMode());
+        if (!cand.ok)
+            return makeError(-32602, QString::fromStdString(cand.error));
+        const auto verdict = HDAW::checkKeyConflict(pm.getScaleRoot(), pm.getScaleMode(),
+                                                    cand.root, cand.mode);
+        if (!verdict.ok)
+            return makeError(-32602, QString::fromStdString(verdict.error));
+        return { false, HDAW::keyCheckJson(verdict) };
     }
 
     // --- Pattern Library ---

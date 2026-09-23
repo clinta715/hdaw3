@@ -4106,6 +4106,36 @@ QString exportWait(mcp::TransportLoopback& lb, int& idRef, const QString& path,
     return content[0].toObject().value("text").toString();
 }
 
+// Raw variant of exportWait: returns the full tools/call result object so a
+// test can assert on isError as well as the text (exportWait collapses error
+// responses to an empty string). Same pump/poll budget as exportWait and
+// ExportAudioWaitBlocksUntilComplete (120 * 250ms = 30s).
+QJsonObject exportWaitRaw(mcp::TransportLoopback& lb, int& idRef, const QString& path)
+{
+    QJsonObject args{{"outputPath", path}, {"format", "wav"},
+                     {"start", 0.0}, {"end", 2.0},
+                     {"sampleRate", 44100.0}, {"bitDepth", 16}, {"wait", true}};
+    QJsonObject req;
+    req["jsonrpc"] = "2.0"; req["id"] = idRef++;
+    req["method"] = "tools/call";
+    req["params"] = QJsonObject{{"name", "export_audio"}, {"arguments", args}};
+    lb.drainOutgoing();
+    lb.pumpIncoming(QJsonDocument(req).toJson(QJsonDocument::Compact));
+    QJsonObject resp;
+    QByteArray acc;
+    for (int i = 0; i < 120 && resp.isEmpty(); ++i)
+    {
+        QByteArray out;
+        lb.waitForOutgoing(250, &out);
+        acc += out;
+        resp = firstResponse(acc);
+        if (resp.isEmpty())
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    }
+    if (resp.isEmpty()) return {};
+    return resp.value("result").toObject();
+}
+
 // rave_import_result payload contract: without samplerTrackIndex/samplerSlotIndex
 // the response JSON must carry samplerRequested=false and samplerError="not
 // requested", and the WAV must still be imported as a clip.
@@ -4221,6 +4251,60 @@ TEST_F(McpCoverageTest, ExportAudioWaitBlocksUntilComplete) {
     EXPECT_TRUE(juce::File(path.toStdString()).existsAsFile());
 
     juce::File(path.toStdString()).deleteFile();
+}
+
+// G1 — trap `export-dir-must-exist`: exporting into a directory that does not
+// exist yet must SUCCEED, because ExportManager creates the parent directory
+// before opening the output stream (house pattern, AudioRecorder.cpp:21).
+// Before the fix createOutputStream() returned null for the missing directory,
+// nothing was written, and the wait path still reported "export complete".
+TEST_F(McpCoverageTest, ExportAudioCreatesMissingOutputDirectory) {
+    const juce::File outDir = juce::File::getSpecialLocation(
+        juce::File::SpecialLocationType::tempDirectory)
+        .getNonexistentChildFile("hdaw_mcp_export_missing_dir", "", false);
+    ASSERT_FALSE(outDir.exists()) << "precondition: output directory must not exist";
+    const QString path = QString::fromUtf8(
+        outDir.getChildFile("out.wav").getFullPathName().toRawUTF8());
+
+    const QJsonObject r = exportWaitRaw(*loopback, nextId_, path);
+    ASSERT_FALSE(r.isEmpty()) << "no export_audio response within 30s";
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_TRUE(text(r).startsWith("export complete:"))
+        << "got: [" << text(r).toStdString() << "]";
+
+    const juce::File out(path.toStdString());
+    ASSERT_TRUE(out.existsAsFile())
+        << "export into a missing directory must create it and write the file";
+    // 2.0s * 44100Hz * 2ch * 16bit = 352800 bytes of sample data (+ WAV header).
+    EXPECT_GE(out.getSize(), 350000) << "expected the full 2s render on disk";
+
+    out.deleteFile();
+    outDir.deleteRecursively();
+}
+
+// G2 — the deeper half: when the output stream cannot be opened for a reason
+// the directory guard does not fix (here the output path IS an existing
+// directory), the caller must receive an ERROR — never "export complete" with
+// no bytes. Before the fix the wait path reported success unconditionally
+// after waitForIdle, which is exactly how the silent-success class recurred.
+TEST_F(McpCoverageTest, ExportAudioStreamOpenFailureIsToolError) {
+    const juce::File dirTarget = juce::File::getSpecialLocation(
+        juce::File::SpecialLocationType::tempDirectory)
+        .getNonexistentChildFile("hdaw_mcp_export_is_dir", "", false);
+    ASSERT_TRUE(dirTarget.createDirectory().wasOk());
+    const QString path = QString::fromUtf8(dirTarget.getFullPathName().toRawUTF8());
+
+    const QJsonObject r = exportWaitRaw(*loopback, nextId_, path);
+    ASSERT_FALSE(r.isEmpty()) << "no export_audio response within 30s";
+    EXPECT_TRUE(isError(r))
+        << "an unopenable output stream must surface as a tool error; got: ["
+        << text(r).toStdString() << "]";
+    EXPECT_FALSE(text(r).startsWith("export complete:"))
+        << "success text must never accompany a failed render; got: ["
+        << text(r).toStdString() << "]";
+    EXPECT_TRUE(dirTarget.isDirectory()) << "the export must not clobber the target";
+
+    dirTarget.deleteRecursively();
 }
 
 // The export_audio trackIds filter must actually restrict the render to the

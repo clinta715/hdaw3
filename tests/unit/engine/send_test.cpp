@@ -1646,8 +1646,13 @@ TEST(BusSetTarget, ReparentRewiresTheLiveGraphAndCarriesTheSubtree)
     EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, delay.busID), 0,
                                        liveBusNodeId(engine, 1), 0))
         << "re-parenting dropped the child that fed the moved bus";
-    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, hpf.busID), 0, masterNode, 0));
-    EXPECT_FALSE(liveGraphHasConnection(engine, liveBusNodeId(engine, 1), 0, masterNode, 0))
+    // Look master UP FRESH: setBusTarget rebuilt the graph above, so any NodeID
+    // cached before that rebuild now names a node that no longer exists (a
+    // stale id would make the next two assertions pass/fail vacuously).
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, hpf.busID), 0,
+                                       liveMasterNodeId(engine), 0));
+    EXPECT_FALSE(liveGraphHasConnection(engine, liveBusNodeId(engine, 1), 0,
+                                        liveMasterNodeId(engine), 0))
         << "the Reverb return is still wired straight to the master";
 
     // ...and back: the parent is an ordinary editable edge, not a one-way change.

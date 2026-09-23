@@ -15,6 +15,7 @@
 #include "../engine/MidiAnalyzer.h"
 #include "../engine/ProjectSerializer.h"
 #include "../engine/ProjectBackup.h"
+#include "../common/KeyConflict.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -26,35 +27,22 @@ namespace mcp {
 
 namespace {
 
+// Mode-name helpers, delegated to the shared KeyConflict.h implementations so
+// the MCP and RPC surfaces name and resolve scale modes identically (parity by
+// construction — one convention, not two).
+
 // Short, lowercase mode name for human key strings: "Minor (Aeolian)" ->
 // "minor", "Harmonic Minor" -> "harmonic minor". "unknown" for -1 / unknown.
 QString scaleModeShortName(int scaleType)
 {
-    if (scaleType < 0)
-        return QStringLiteral("unknown");
-    for (const auto& m : PhraseGenerator::getScaleModes()) {
-        if (m.index == scaleType) {
-            juce::String n(m.name);
-            const int paren = n.indexOf(" (");
-            if (paren > 0)
-                n = n.substring(0, paren);
-            return QString::fromStdString(n.trim().toLowerCase().toStdString());
-        }
-    }
-    return QStringLiteral("unknown");
+    return QString::fromStdString(HDAW::scaleModeShortName(scaleType));
 }
 
 // Canonical scale-mode name as listed by get_scale_modes (PhraseGenerator
 // scale table): "Minor (Aeolian)". "unknown" for -1 / unknown.
 QString scaleModeFullName(int scaleType)
 {
-    if (scaleType < 0)
-        return QStringLiteral("unknown");
-    for (const auto& m : PhraseGenerator::getScaleModes()) {
-        if (m.index == scaleType)
-            return QString::fromUtf8(m.name);
-    }
-    return QStringLiteral("unknown");
+    return QString::fromStdString(HDAW::scaleModeFullName(scaleType));
 }
 
 // Resolve a scale-mode NAME to its PhraseGenerator index (-1 if unknown).
@@ -62,19 +50,7 @@ QString scaleModeFullName(int scaleType)
 // and the parenthetical church-mode alias ("aeolian"), case-insensitively.
 int resolveScaleIndex(const QString& name)
 {
-    const QString needle = name.trimmed().toLower();
-    if (needle.isEmpty())
-        return -1;
-    for (const auto& m : PhraseGenerator::getScaleModes()) {
-        const QString full = QString::fromUtf8(m.name).toLower();   // "minor (aeolian)"
-        const int paren = full.indexOf(" (");
-        const QString shortName = paren > 0 ? full.left(paren) : full;  // "minor"
-        const QString church = paren > 0
-            ? full.mid(paren + 2, full.length() - paren - 3) : QString();  // "aeolian"
-        if (needle == full || needle == shortName || (!church.isEmpty() && needle == church))
-            return m.index;
-    }
-    return -1;
+    return HDAW::resolveScaleModeIndex(name.toStdString());
 }
 
 } // namespace
@@ -183,6 +159,40 @@ s.registerTool({"analyze_midi_file",
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
 
+
+s.registerTool({"key_check",
+        "Will this candidate key clash with the project's current key? The palette / "
+        "sound-selector step's pre-listen gate: run it before borrowing a progression or "
+        "chord that might sound sour. Compares the project scale (get_scale) against a "
+        "candidate given as a human key (\"F minor\" — note AND mode required; a modeless "
+        "key is what analyze_midi_file emits when detection failed, so it errors), or as "
+        "root (0..11 pitch class or MIDI note) + a mode via scaleMode / scaleType / "
+        "scale mode-name. Omitted candidate fields default to the project key, so no "
+        "arguments checks the project key against itself. Returns relation "
+        "(unison | relative | parallel | consonant | neutral | conflicting), "
+        "intervalSemitones (root-to-root), reason (a quotable sentence for the palette), "
+        "pitchClassOverlap (0..1 from BOTH modes' pitch-class sets), and ok. Unparsable "
+        "or \"unknown\" candidates return an error - never a confident wrong answer.",
+        objSchema({
+            {"key",       QJsonObject{{"type","string"}}},
+            {"root",      QJsonObject{{"type","integer"}}},
+            {"scaleMode", QJsonObject{{"type","integer"}}},
+            {"scaleType", QJsonObject{{"type","integer"}}},
+            {"scale",     QJsonObject{{"type","string"}}}
+        }),
+        "composition",
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& pm = e->getProjectModel();
+            const auto cand = HDAW::resolveCandidateKey(a, pm.getScaleRoot(), pm.getScaleMode());
+            if (!cand.ok)
+                return McpToolResult::text(QString::fromStdString(cand.error), true);
+            const auto verdict = HDAW::checkKeyConflict(pm.getScaleRoot(), pm.getScaleMode(),
+                                                        cand.root, cand.mode);
+            if (!verdict.ok)
+                return McpToolResult::text(QString::fromStdString(verdict.error), true);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(HDAW::keyCheckJson(verdict)).toJson(QJsonDocument::Compact)));
+        }});
 
 s.registerTool({"scale_note",
         "Map a scale degree (diatonic step, octave-wrapped) to an absolute MIDI pitch for "

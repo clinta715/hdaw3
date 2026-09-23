@@ -1,5 +1,8 @@
 #include "engine/ArrangementGenerator.h"
-#include "engine/PhraseGenerator.h"
+// scaleIntervals (the mode -> pitch-class table) now lives in common/KeyConflict.h —
+// lifted out of this file so key_check shares the ONE table. Calls below resolve to
+// HDAW::scaleIntervals.
+#include "common/KeyConflict.h"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -58,14 +61,6 @@ uint64_t resolveSeed (uint64_t seed)
     std::random_device dev;
     uint64_t s = (static_cast<uint64_t>(dev()) << 32) ^ static_cast<uint64_t>(dev());
     return s ? s : 0x9E3779B97F4A7C15ULL;
-}
-
-std::vector<int> scaleIntervals (int scaleMode)
-{
-    for (const auto& m : PhraseGenerator::getScaleModes())
-        if (m.index == scaleMode)
-            return m.intervals;
-    return { 0, 2, 3, 5, 7, 8, 10 }; // aeolian fallback
 }
 
 std::vector<Section> sectionByBar (int bars, const std::vector<std::pair<int, Section>>& map)

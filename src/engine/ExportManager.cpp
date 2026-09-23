@@ -551,10 +551,21 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                 case FLAC: audioFormat = std::make_unique<juce::FlacAudioFormat>(); break;
             }
     
+            // House pattern (AudioRecorder.cpp:21, AudioEngineCommands_Composition.cpp:1944,
+            // AudioEngineCommands_Song.cpp:354): create the parent directory BEFORE
+            // opening the stream. createOutputStream() returns null when the directory
+            // is missing — nothing is ever written (the export_audio silent-success
+            // trap `export-dir-must-exist`).
+            outputPath.getParentDirectory().createDirectory();
+
             auto* outStream = outputPath.createOutputStream().release();
-    
+
             if (outStream == nullptr)
             {
+                // Unopenable stream (missing directory, permissions, the path is a
+                // directory, a locked file): report FAILURE — the caller must never
+                // see success with zero bytes on disk.
+                success = false;
                 message = "Could not create output file.";
                 goto finish;
             }

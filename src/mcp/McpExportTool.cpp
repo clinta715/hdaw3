@@ -163,7 +163,20 @@ void registerExportTool(McpServer& s) {
                 int waitMs = a.value("waitTimeoutMs").toInt(600000);
                 waitMs = std::max(1000, std::min(waitMs, 1800000));
                 if (em.waitForIdle(waitMs))
+                {
+                    // waitForIdle only says the render FINISHED — not how it went.
+                    // Surface a failed render as an error via the same mechanism as
+                    // the failures above (McpToolResult::text(..., true)), reading
+                    // the outcome the way AudioEngineCommands::renderTrackWindow
+                    // does: the unconditional "export complete" here was the
+                    // `export-dir-must-exist` silent success.
+                    const juce::String exportMsg = em.getLastExportMessage();
+                    if (!exportMsg.startsWith("Export complete"))
+                        return McpToolResult::text(
+                            QString("export failed: %1").arg(QString::fromUtf8(exportMsg.toRawUTF8())),
+                            true);
                     return McpToolResult::text(QString("export complete: %1").arg(path));
+                }
                 return McpToolResult::text(
                     QString("export wait timeout after %1ms; render may still be running (poll notifications/exportComplete or the file)").arg(waitMs), true);
             }
@@ -176,9 +189,21 @@ void registerExportTool(McpServer& s) {
             // artifact that burned the 2026-09-15 remix session.
             const int jobId = McpJobs::instance().submit("export_audio", [&em, path]() -> QJsonObject {
                 if (em.waitForIdle(1500000))
+                {
+                    // Idle != successful — same contract as the wait path above:
+                    // a failed render must reach poll_job as success:false, never
+                    // as "export complete" with no file on disk.
+                    const juce::String exportMsg = em.getLastExportMessage();
+                    if (!exportMsg.startsWith("Export complete"))
+                        return QJsonObject{
+                            {"success", false},
+                            {"message", QStringLiteral("export failed: %1")
+                                 .arg(QString::fromUtf8(exportMsg.toRawUTF8()))},
+                            {"outputPath", path}};
                     return QJsonObject{{"success", true},
                                        {"message", QStringLiteral("export complete: %1").arg(path)},
                                        {"outputPath", path}};
+                }
                 return QJsonObject{{"success", false},
                                    {"message", QStringLiteral("export wait timeout after 1500000ms")},
                                    {"outputPath", path}};

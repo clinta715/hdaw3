@@ -308,12 +308,26 @@ were staged; only the reply was lost). So:
   had reported "export complete" was gone from disk when the save ran alongside it.
   Save between mutation groups, after the export job reports finished.
 
-### `export_audio` reports success and writes NOTHING if the output directory is missing
+### ~~`export_audio` reports success and writes NOTHING if the output directory is missing~~ — FIXED 2026-09-23
 
-The renderer creates the output **file** but not its **directory**. If the parent folder
-does not exist at submit time, `export_audio` returns `"export complete: <path>"`,
-`success: true`, and the progress/completion notifications fire — while no file is ever
-written. Verified 2026-09-22 twice, both times on a brand-new song folder:
+**Fixed in two halves.** (1) `ExportManager` now creates the output **directory** before opening
+the stream (the house pattern `AudioRecorder.cpp:21` already used), and a stream that cannot be
+opened for *any* reason (permissions, path-is-a-directory, locked file) now sets `success = false`
+instead of relying on a function-scope initializer 300 lines away. (2) The **actual root cause of
+the silent `success: true`**: `McpExportTool` reported success **unconditionally** after
+`waitForIdle()` — both the `wait:true` path and the async McpJobs path — regardless of how the
+export went. Both now read `em.getLastExportMessage()` (the same check
+`AudioEngineCommands::renderTrackWindow` uses) and surface a failure through the tool's existing
+`isError` mechanism.
+
+Regression tests: `McpCoverageTest.ExportAudioCreatesMissingOutputDirectory` (exports into a
+guaranteed-nonexistent temp subdirectory; fails pre-fix) and
+`McpCoverageTest.ExportAudioStreamOpenFailureIsToolError` (the output path IS an existing
+directory, so `createDirectory` passes but the stream cannot open it; asserts `isError == true`
+and that the target is not clobbered).
+
+Historical record of the bug as it stood — two full 300 s renders were lost to it before the
+cause was found:
 
 - `dub_embers`: the first full render reported success; `ls` showed only `brief.json`.
   Re-submitting later (after the folder existed) worked.

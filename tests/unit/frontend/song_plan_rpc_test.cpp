@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include "common/KeyConflict.h"
 #include "engine/AudioEngine.h"
 #include "engine/AudioEngineCommands_Helpers.h"
 #include "frontend/FrontendRouter.h"
@@ -395,6 +396,305 @@ TEST_F(SongPlanRpcTest, FillCellsRefitsReusedClipAfterBriefWindowChange) {
                 160.0, 1e-6);
     EXPECT_NEAR(HDAW::secondsToBeats(static_cast<double>(clip.getProperty(IDs::duration)), bpm),
                 128.0, 1e-6);
+}
+
+// ============================================================================
+// key_check — the tonality-conflict capability (docs/plans/2026-09-23-key-check.md)
+//
+// The shared theory (HDAW::checkKeyConflict) plus BOTH surfaces: the MCP
+// `key_check` tool and its name-derived RPC twin `composition.keyCheck`.
+// Expected values below are computed from PhraseGenerator's scale table:
+//   A minor (root 9, aeolian) pcs = {9,11,0,2,4,5,7}
+//   C major (root 0, ionian)  pcs = {0,2,4,5,7,9,11}  (identical -> relative)
+// ============================================================================
+
+// G1: the theory returns the EXPECTED relation, interval, and overlap — the
+// verdict comes from both modes' pitch-class sets, not the root interval alone.
+TEST(KeyConflictTheory, ExpectedRelations)
+{
+    // Same key -> unison.
+    const auto u = HDAW::checkKeyConflict(9, 1, 9, 1);
+    ASSERT_TRUE(u.ok) << u.error;
+    EXPECT_EQ(u.relation, "unison");
+    EXPECT_EQ(u.intervalSemitones, 0);
+    EXPECT_NEAR(u.pitchClassOverlap, 1.0, 1e-6);
+    EXPECT_NE(u.reason.find("A minor"), std::string::npos);
+
+    // A minor <-> C major -> relative (compatible), in BOTH directions.
+    const auto rel = HDAW::checkKeyConflict(9, 1, 0, 0);
+    ASSERT_TRUE(rel.ok) << rel.error;
+    EXPECT_EQ(rel.relation, "relative");
+    EXPECT_EQ(rel.intervalSemitones, 3);
+    EXPECT_NEAR(rel.pitchClassOverlap, 1.0, 1e-6);
+    const auto relRev = HDAW::checkKeyConflict(0, 0, 9, 1);
+    ASSERT_TRUE(relRev.ok) << relRev.error;
+    EXPECT_EQ(relRev.relation, "relative");
+    EXPECT_EQ(relRev.intervalSemitones, 9);
+    EXPECT_NEAR(relRev.pitchClassOverlap, 1.0, 1e-6);
+
+    // Parallel: same root, different mode (C major vs C minor).
+    const auto par = HDAW::checkKeyConflict(0, 0, 0, 1);
+    ASSERT_TRUE(par.ok) << par.error;
+    EXPECT_EQ(par.relation, "parallel");
+    EXPECT_EQ(par.intervalSemitones, 0);
+    EXPECT_NEAR(par.pitchClassOverlap, 4.0 / 7.0, 1e-6); // {0,2,5,7} shared: C, D, F, G
+
+    // Tritone roots -> conflicting (C major vs F# major, 2 of 12 shared).
+    const auto tri = HDAW::checkKeyConflict(0, 0, 6, 0);
+    ASSERT_TRUE(tri.ok) << tri.error;
+    EXPECT_EQ(tri.relation, "conflicting");
+    EXPECT_EQ(tri.intervalSemitones, 6);
+    EXPECT_NEAR(tri.pitchClassOverlap, 2.0 / 7.0, 1e-6);
+
+    // One semitone apart -> conflicting.
+    const auto semi = HDAW::checkKeyConflict(0, 0, 1, 0);
+    ASSERT_TRUE(semi.ok) << semi.error;
+    EXPECT_EQ(semi.relation, "conflicting");
+    EXPECT_EQ(semi.intervalSemitones, 1);
+    EXPECT_NEAR(semi.pitchClassOverlap, 2.0 / 7.0, 1e-6);
+
+    // Perfect fifth (and its inverse, the fourth) -> consonant.
+    const auto fifth = HDAW::checkKeyConflict(0, 0, 7, 0);
+    ASSERT_TRUE(fifth.ok) << fifth.error;
+    EXPECT_EQ(fifth.relation, "consonant");
+    EXPECT_EQ(fifth.intervalSemitones, 7);
+    EXPECT_NEAR(fifth.pitchClassOverlap, 6.0 / 7.0, 1e-6);
+    const auto fourth = HDAW::checkKeyConflict(7, 0, 0, 0);
+    ASSERT_TRUE(fourth.ok) << fourth.error;
+    EXPECT_EQ(fourth.relation, "consonant");
+    EXPECT_EQ(fourth.intervalSemitones, 5);
+
+    // A minor third apart in the SAME mode is a plain modulation -> neutral.
+    const auto neut = HDAW::checkKeyConflict(9, 1, 5, 1);
+    ASSERT_TRUE(neut.ok) << neut.error;
+    EXPECT_EQ(neut.relation, "neutral");
+    EXPECT_EQ(neut.intervalSemitones, 8);
+    EXPECT_NEAR(neut.pitchClassOverlap, 3.0 / 7.0, 1e-6);
+}
+
+// G1b: the verdict reflects PITCH-CLASS OVERLAP, not only the root interval —
+// a tritone-rooted pair that shares most of its material reads less hostile
+// than one that shares none.
+TEST(KeyConflictTheory, OverlapDrivesHostility)
+{
+    // Tritone roots, harmonic minor vs harmonic minor: 4 of 7 shared
+    // (0.57 >= kOverlapRescue) -> rescued to neutral.
+    const auto high = HDAW::checkKeyConflict(0, 7, 6, 7);
+    ASSERT_TRUE(high.ok) << high.error;
+    EXPECT_EQ(high.intervalSemitones, 6);
+    EXPECT_EQ(high.relation, "neutral");
+    EXPECT_NEAR(high.pitchClassOverlap, 4.0 / 7.0, 1e-6);
+
+    // Tritone roots, minor pentatonic vs minor pentatonic: NO shared pitch
+    // class at all -> conflicting.
+    const auto none = HDAW::checkKeyConflict(0, 10, 6, 10);
+    ASSERT_TRUE(none.ok) << none.error;
+    EXPECT_EQ(none.relation, "conflicting");
+    EXPECT_NEAR(none.pitchClassOverlap, 0.0, 1e-6);
+
+    // Same-mode major tritone: 2 of 7 shared -> conflicting.
+    const auto maj = HDAW::checkKeyConflict(0, 0, 6, 0);
+    ASSERT_TRUE(maj.ok) << maj.error;
+    EXPECT_EQ(maj.relation, "conflicting");
+    EXPECT_NEAR(maj.pitchClassOverlap, 2.0 / 7.0, 1e-6);
+
+    // Same 6-semitone root distance, but the verdict tracks the overlap.
+    EXPECT_GT(high.pitchClassOverlap, maj.pitchClassOverlap);
+    EXPECT_GT(high.pitchClassOverlap, none.pitchClassOverlap);
+    EXPECT_NE(high.relation, maj.relation);
+    EXPECT_NE(high.relation, none.relation);
+}
+
+// Surfaces fixture: the MCP tool AND the RPC route over one engine. Every
+// test starts from a known project key: A minor.
+class KeyCheckTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        engine = std::make_unique<AudioEngine>();
+        engine->initialize();
+        server = std::make_unique<mcp::McpServer>();
+        server->setEngine(engine.get());
+        mcp::registerAllTools(*server);
+        engine->getProjectModel().setScaleRoot(9);
+        engine->getProjectModel().setScaleMode(1);
+    }
+
+    void TearDown() override {
+        server.reset();
+        engine.reset();
+    }
+
+    // --- MCP surface -------------------------------------------------------
+    QJsonObject mcpResult(const QString& tool, const QJsonObject& args) {
+        return server->handleRequestOnTestThread(
+                   1, "tools/call",
+                   QJsonObject { { "name", tool }, { "arguments", args } })
+            .toObject();
+    }
+    QJsonObject mcpPayload(const QString& tool, const QJsonObject& args) {
+        const auto result = mcpResult(tool, args);
+        EXPECT_FALSE(result.value("isError").toBool(true))
+            << "MCP " << tool.toStdString() << " errored: "
+            << result.value("content").toArray().at(0).toObject()
+                   .value("text").toString().toStdString();
+        const auto content = result.value("content").toArray();
+        if (content.isEmpty()) return {};
+        return QJsonDocument::fromJson(
+                   content[0].toObject().value("text").toString().toUtf8())
+            .object();
+    }
+    QString mcpErrorText(const QString& tool, const QJsonObject& args) {
+        const auto result = mcpResult(tool, args);
+        EXPECT_TRUE(result.value("isError").toBool(false))
+            << "expected MCP " << tool.toStdString() << " to fail, got: "
+            << result.value("content").toArray().at(0).toObject()
+                   .value("text").toString().toStdString();
+        const auto content = result.value("content").toArray();
+        return content.isEmpty() ? QString()
+                                 : content[0].toObject().value("text").toString();
+    }
+
+    // --- RPC surface -------------------------------------------------------
+    frontend::DispatchResult rpc(const QString& method, const QJsonObject& args) {
+        return frontend::dispatch(*engine, method, args);
+    }
+    QJsonObject rpcPayload(const QString& method, const QJsonObject& args) {
+        const auto r = rpc(method, args);
+        EXPECT_FALSE(r.isError)
+            << "RPC " << method.toStdString() << " errored: "
+            << r.payload.toObject().value("message").toString().toStdString();
+        return r.payload.toObject();
+    }
+    QJsonObject rpcError(const QString& method, const QJsonObject& args) {
+        const auto r = rpc(method, args);
+        EXPECT_TRUE(r.isError) << "expected RPC " << method.toStdString() << " to fail";
+        return r.payload.toObject();
+    }
+
+    std::unique_ptr<AudioEngine> engine;
+    std::unique_ptr<mcp::McpServer> server;
+};
+
+// G2: no candidate arguments -> the check reads the project's current key
+// (the same accessors get_scale reports).
+TEST_F(KeyCheckTest, DefaultsToProjectKey)
+{
+    const auto scale = mcpPayload("get_scale", {});
+    ASSERT_EQ(scale.value("root").toInt(), 9);
+    ASSERT_EQ(scale.value("mode").toInt(), 1);
+
+    const auto v = mcpPayload("key_check", {});
+    EXPECT_TRUE(v.value("ok").toBool());
+    EXPECT_EQ(v.value("relation").toString(), QString("unison"));
+    EXPECT_EQ(v.value("intervalSemitones").toInt(), 0);
+    EXPECT_NEAR(v.value("pitchClassOverlap").toDouble(), 1.0, 1e-9);
+    // The reason names the PROJECT key — a hardcoded default would say
+    // "C major" (root 0) instead of "A minor" (root 9).
+    EXPECT_TRUE(v.value("reason").toString().contains("A minor"))
+        << v.value("reason").toString().toStdString();
+}
+
+// G3: every candidate shape the surface already produces resolves — and the
+// verdict values match hand-computed expectations against A minor.
+TEST_F(KeyCheckTest, AcceptsEveryCandidateShape)
+{
+    // (a) Human key string (analyze_midi_file's `key`).
+    const auto k = mcpPayload("key_check", { { "key", "F minor" } });
+    EXPECT_EQ(k.value("relation").toString(), QString("neutral"));
+    EXPECT_EQ(k.value("intervalSemitones").toInt(), 8);
+    EXPECT_NEAR(k.value("pitchClassOverlap").toDouble(), 3.0 / 7.0, 1e-4);
+    EXPECT_TRUE(k.value("reason").toString().contains("F minor"))
+        << k.value("reason").toString().toStdString();
+
+    // (b) root + scaleMode ints (get_scale's shape): C major vs A minor.
+    const auto b = mcpPayload("key_check", { { "root", 0 }, { "scaleMode", 0 } });
+    EXPECT_EQ(b.value("relation").toString(), QString("relative"));
+    EXPECT_EQ(b.value("intervalSemitones").toInt(), 3);
+    EXPECT_NEAR(b.value("pitchClassOverlap").toDouble(), 1.0, 1e-9);
+
+    // (c) analyze_midi_file's fingerprint shape: MIDI rootNote + scaleType
+    // (root 65 = F). F major vs A minor: 6 of 7 shared, roots 8 apart.
+    const auto c = mcpPayload("key_check", { { "root", 65 }, { "scaleType", 0 } });
+    EXPECT_EQ(c.value("relation").toString(), QString("neutral"));
+    EXPECT_EQ(c.value("intervalSemitones").toInt(), 8);
+    EXPECT_NEAR(c.value("pitchClassOverlap").toDouble(), 6.0 / 7.0, 1e-4);
+
+    // (d) scale-mode NAME (scale_note's spelling), root defaults to the
+    // project root: A dorian vs A minor -> same root, different mode.
+    const auto d = mcpPayload("key_check", { { "scale", "dorian" } });
+    EXPECT_EQ(d.value("relation").toString(), QString("parallel"));
+    EXPECT_EQ(d.value("intervalSemitones").toInt(), 0);
+
+    // (e) root only: the mode defaults to the project's mode (C minor here).
+    const auto e = mcpPayload("key_check", { { "root", 0 } });
+    EXPECT_EQ(e.value("relation").toString(), QString("neutral"));
+    EXPECT_EQ(e.value("intervalSemitones").toInt(), 3);
+}
+
+// G3: unparsable / "unknown" candidates fail with a clear error, never a
+// confident wrong answer.
+TEST_F(KeyCheckTest, RejectsUnparsableCandidates)
+{
+    struct Case { QJsonObject args; QString detail; };
+    const Case cases[] = {
+        { { { "key", "unknown" } },            "unknown" },      // not a note
+        { { { "key", "F" } },                  "no scale mode" },// undetected key
+        { { { "key", "F majorish" } },         "majorish" },     // unknown mode
+        { { { "key", "Hb minor" } },           "Hb" },           // unknown note
+        { { { "root", 0 }, { "scaleType", -1 } }, "scaleType" },  // analyzer -1
+        { { { "root", 0 }, { "scaleMode", 99 } }, "scaleMode" },
+        { { { "root", 200 } },                 "200" },          // out of range
+        { { { "scale", "unknown" } },          "unknown" },      // unknown name
+    };
+    for (const auto& c : cases) {
+        const QString text = mcpErrorText("key_check", c.args);
+        EXPECT_TRUE(text.contains("cannot determine the candidate's key"))
+            << text.toStdString();
+        EXPECT_TRUE(text.contains(c.detail)) << text.toStdString();
+    }
+}
+
+// G4: MCP and RPC return IDENTICAL payloads for success and IDENTICAL failure
+// text (plus the -32602 argument-error class) for the same args.
+TEST_F(KeyCheckTest, McpRpcParity)
+{
+    const QJsonObject successArgs[] = {
+        {},
+        { { "key", "F minor" } },
+        { { "root", 0 }, { "scaleMode", 0 } },
+        { { "root", 65 }, { "scaleType", 0 } },
+        { { "scale", "dorian" } },
+        { { "root", 0 } },
+    };
+    for (const auto& args : successArgs) {
+        const QJsonObject viaMcp = mcpPayload("key_check", args);
+        EXPECT_FALSE(viaMcp.isEmpty());
+        const auto viaRpc = rpc("composition.keyCheck", args);
+        ASSERT_FALSE(viaRpc.isError)
+            << "RPC errored: "
+            << viaRpc.payload.toObject().value("message").toString().toStdString()
+            << " for args " << QJsonDocument(args).toJson(QJsonDocument::Compact).constData();
+        EXPECT_EQ(viaRpc.payload.toObject(), viaMcp)
+            << "payloads differ for args "
+            << QJsonDocument(args).toJson(QJsonDocument::Compact).constData();
+    }
+
+    const QJsonObject failArgs[] = {
+        { { "key", "unknown" } },
+        { { "key", "F" } },
+        { { "key", "F majorish" } },
+        { { "root", 0 }, { "scaleType", -1 } },
+        { { "root", 200 } },
+        { { "scale", "unknown" } },
+    };
+    for (const auto& args : failArgs) {
+        const QString mcpText = mcpErrorText("key_check", args);
+        const auto err = rpcError("composition.keyCheck", args);
+        EXPECT_EQ(err.value("message").toString(), mcpText)
+            << "failure text differs for args "
+            << QJsonDocument(args).toJson(QJsonDocument::Compact).constData();
+        EXPECT_EQ(err.value("code").toInt(), -32602);
+    }
 }
 
 } // namespace

@@ -146,6 +146,15 @@ otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
   genre-relevant, and the register-per-pack rule:
   [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) §2
   ("Source material locations").
+- **Key-fit gate**: `key_check` (RPC `composition.keyCheck`) compares a candidate key against
+  the project's current scale — it defaults to `get_scale` — and returns
+  `unison | relative | parallel | consonant | neutral | conflicting` plus the pitch-class
+  overlap behind the verdict (the root interval alone is not the answer: A minor ↔ C major is
+  `relative`, while a tritone root sharing 4/7 of its classes is rescued to `neutral`). Accepts
+  a human key (`"F minor"`), `root`+`scaleMode`, or `analyze_midi_file`'s `scaleType`, and
+  **errors rather than guessing** when the candidate's key cannot be determined. This is the
+  pre-listen gate at the palette step — the call that answers *"will this clash and sound
+  sour?"*.
 - **Modulation-first**: device's own matrix → onboard FX → HDAW automation/track
   LFO → HDAW internal FX → third-party plugin last.
 - **Verification-first**: `param_verity` (audibility), `tone_verity` (envelope/pitch/AM),

@@ -64,3 +64,29 @@ Surfaces: MCP `set_bus_target {busID:int, busTarget:int}` → RPC `project.setBu
   an arbitrary parent (so only the *editing* is missing). The cycle walk is the one piece with
   no precedent — `createBus` cannot create a cycle (a new bus has no children), but re-parenting
   can.
+
+## Full-suite result (2026-09-23, commit `ab78da0`)
+
+**1870 tests / 278 suites — 1828 pass, 3 failed:**
+1. `RespawnPath.RealPathPassesThrough` — documented pre-existing (`docs/testing-mcp.md`).
+2. `PluginIsolation.LargeStateRoundTripThroughProxy` — the documented solo-pass flake.
+3. `BusSetTarget.ReparentRewiresTheLiveGraphAndCarriesTheSubtree` — **ours, and it is a TEST bug:**
+
+```
+send_test.cpp(1649): Value of: liveGraphHasConnection(engine, liveBusNodeId(engine, hpf.busID), 0, masterNode, 0)
+  Actual: false
+```
+**Root cause:** `const auto masterNode = liveMasterNodeId(engine);` is captured at line 1612 and
+reused at 1649 — but `setBusTarget` rebuilds the graph in between, and `graph.clear()` plus node
+recreation assigns **new `NodeID`s**, so the cached id points at a node that no longer exists.
+Every other lookup in that block (`liveBusNodeId(engine, 1)`, `liveBusNodeId(engine, hpf.busID)`)
+is called *fresh*, which is why the neighbouring assertions passed. F already calls
+`liveMasterNodeId(engine)` fresh in the "…and back" section further down; the fix is to do the
+same at 1649. Re-running with the fresh lookup then tells us whether the engine is correct — the
+diagnosis predicts it is.
+
+**Correction to my own earlier report:** I claimed the 95-test targeted run covered F's new
+re-parent/cycle/undo tests. It did **not** — my filter was
+`BusFxParam.*:BusSendCreate.*:BusSendRpcTest.*:TrackFxDelay.*:*Routing*:*Filter*`, which does not
+match `BusSetTarget.*`; only F's RPC twins (`BusSendRpcTest.SetBusTarget*`) ran there. So this is
+a **first-run failure, not order-dependence**, and the targeted gate I reported was incomplete.
