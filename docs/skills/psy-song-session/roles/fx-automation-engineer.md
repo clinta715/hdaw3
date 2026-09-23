@@ -14,6 +14,32 @@ See `../reference.md` — prefer the device's own matrix, then HDAW automation,
 then internal FX, then third-party. `apply_matrix_preset` applies the movement;
 `param_verity` confirms it's audible.
 
+## The gesture vocabulary (this is the job, not decoration)
+
+Coverage gates ("every sounding track carries modulation") pass on a 0.25 Hz cutoff
+drift, so they cannot make a track sound designed. What distinguishes
+dub/psybient/psytrance productions is **named events in time**, and they are one call
+each: `add_automation_lane {trackId, laneName, paramID}` (paramID = `100 +
+slot*100 + paramIndex`; one lane per paramID, built-in lanes 1/2/3 = Volume/Pan/Mute)
+then `automation_preset {trackId, lane, sections:[{start,end,preset}]}` — `sections`
+entries each carry their own preset, so several gestures stack on one lane.
+
+- `delayThrow` — the dub throw (delay mix burst at a phrase boundary)
+- `steppedGate` — dub gating (rhythmic volume drops)
+- `openClose`, `phaseSweep`, `macro` — filter/space arcs per section
+- `riser`, `pump`, `subtleLife`, `randomDrift`
+
+Every gesture must be **provable**: a `mix_diff` delta (rmsDb / band energies / peak
+ratio) against the same render without it, or a `tone_verity` expectation the gesture
+satisfies. A gesture with no measurement is decoration.
+
+**Limitation (verified 2026-09-22):** sends and buses have **no agent surface** —
+`set_track_send_level`/`get_track_sends` are inert because nothing in `src/mcp/` or
+`src/frontend/` can create a bus, so the shared-return architecture (all sources →
+one delay bus + one reverb bus, ridden per phrase) is currently impossible. Use
+per-track FX + the gesture lanes above; see the capability-gap note in
+`docs/composition-toolkit.md`.
+
 ## Surface area
 `list_device_params` (device parameter map — engines, intent vocabulary, tier,
 durability; call this FIRST to pick a target), `list_fx_chains`, `load_fx_chain`,

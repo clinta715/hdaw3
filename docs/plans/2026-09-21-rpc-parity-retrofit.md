@@ -496,6 +496,34 @@ pre-existing tests that need a LIVE track processor). New coverage:
    `…NordRouteValidatesDumpsBeforeQueueing` ("track not found: 0" = null LIVE track), plus the five
    `McpCoverageTest` FX-slot tests. Re-run them where an audio endpoint exists before claiming green.
 
+## Post-audit note: gaps of a THIRD kind are still open (2026-09-22)
+
+The claim above is about *MCP tools that lack an RPC route*. A different gap class
+was found on 2026-09-22 while composing: **engine capabilities that NEITHER surface
+exposes** — so no tool exists to be mapped in the first place, and this ledger cannot
+see them.
+
+Verified case: the mixer's **bus/send architecture**. `RoutingManager::addBus` handles
+`busType == "group" | "fx"` (`RoutingManager.cpp:358-375`) and `addSend` reads
+`sendTarget` / `sendLevel` (`RoutingManager.cpp:442-467`), and
+`set_track_send_level` / `set_track_send_mode` / `get_track_sends` are registered as
+MCP tools — but **nothing in `src/mcp/` or `src/frontend/` ever creates a bus**, so
+there is no valid send target and the send tools are inert (`get_track_sends` returns
+`[]` for every track on a fresh project). The audit method used here (join tools to
+routes on the shared command symbol) cannot detect it: the tools map to commands that
+themselves have no caller.
+
+Impact: the dub/psybient production idiom — shared delay + reverb returns ridden by
+per-phrase send automation (the throw) — is unreachable by an agent, which is a large
+part of why agent-composed mixes in that genre keep landing structurally correct and
+sonically flat. Documented in `docs/composition-toolkit.md` ("Known capability gap")
+with the available workaround (per-track FX + `automation_preset` gesture lanes).
+
+Audit consequence for future sweeps: **also enumerate model capabilities with no
+command-layer caller** — walk the command layer for public operations (bus create,
+send create, group routing) and check whether *any* MCP tool or router reaches them,
+rather than only joining existing tools to routers.
+
 ## Deviation / process notes
 
 - `hdaw-guard` mandates subagent delegation. Subagents are disabled by the user's global

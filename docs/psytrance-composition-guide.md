@@ -131,7 +131,73 @@ key/BPM filters therefore match analyzed pads/loops directly.
 - Pack filenames inside `E:\samples` are reliable role hints; analysis CLAP
   tags + DSP descriptors back them up (see `select_psy_samples.py`).
 
-### Select a role-classified palette
+### Source material locations (dev box, verified 2026-09-22)
+
+| What | Root | Files | Sidecars |
+| --- | --- | --- | --- |
+| Sample packs (audio) | `E:\samples` | 52,742 | `.timbre.json` per analyzed sample |
+| MIDI packs | `E:\midi` | 19,137 | — (parse with `analyze_midi_file`) |
+| Virus patches (Vavra / OsTIrus / Osirus) | `D:\pdf\Virus Presets` | 303 | 148 `.virus.json` |
+| JE8086 patches | `D:\pdf\je8086` | 7,503 | 3,735 `.je8086.json` |
+| Waldorf microQ | `D:\pdf\rhythm-lab.com_waldorf_micro_q` | — | 528 `.vavra.json` |
+| Waldorf Microwave XT | `D:\pdf\microwave` | 116 | 34 `.xenia.json` |
+| Nord Lead 2x banks | `D:\pdf\NL2x Banks` | 13,739 | 6,841 `.nl2x.json` |
+| DX7 cartridges (fm_synth) | `D:\pdf\Dexed Presets` | **19,197 `.syx`** | — (load with `fm_synth_import_sysex`, 32-voice carts; `voiceIndex` picks the voice, e.g. `1980 Sounds\Keys.syx` v3 = "RHODES EGH") |
+
+**MIDI snippet labels are NOT trustworthy — analyse them.** `E:\midi` pack filenames carry
+`[root] [mode]` tags (e.g. `18 - [RIFF] [C] [Natural Minor] [8bars].mid`). Measured
+2026-09-22: of 104 files whose names claim `[C] [Natural Minor]`, only **55** actually
+analyse as C + Natural Minor — 8 have a different root (63/67 = Eb/G, not C in another
+octave) and **two analysed as `scaleType: 0` (Major) despite the "Natural Minor" label**.
+Gating on the filename would have put sour notes in the arrangement. Always run
+`analyze_midi_file {path}` first and keep only snippets where
+`fingerprint.rootNote % 12 == 0` (C in any octave) **and** `fingerprint.scaleType == 1`
+(Natural Minor, the same index as the project's `scaleMode`). The tool also returns
+`key: "C minor"` and `scale: "Minor (Aeolian)"` as a human-readable confirmation, plus
+`patterns[]` with per-bar `{pitch, startBeat, durationBeats, velocity}` ready to place via
+`add_notes`.
+
+- Only a fraction of `E:\samples` / `E:\midi` is HDAW-**registered**. Register per pack
+  via MCP `add_library {name, path, type}` then `scan_library {id}` — the script path
+  (`register_library.py`) is safe only when NO engine runs, because an engine restart
+  clobbers externally written registry entries.
+- Several large roots are still **unexpanded archives**, invisible to `search_library`
+  until extracted: `samples.7z` 20.9 GB, `_Drum Loops.7z` 20.5 GB,
+  `_Percussion Loops.7z` 26.5 GB, `_real_leads.7z` 7.0 GB, `_FXs.7z` 2.5 GB,
+  `_atmospheres.7z` 1.8 GB.
+- Genre-relevant packs already on disk — **psytrance**: `Kampfer Audio Psytrance Kicks 2`,
+  `Psytrance Elements by Inside Mind Vol.2`, `Prism - Psytrance - Zenhiser`,
+  `Santo Grau Records WS Dark Psytrance Sample Pack #2`,
+  `FLOW36 Psytrance Sample pack Loops 2025`, `Antinomy Psytrance Sounds Vol.2 WAV MiDi`;
+  **dub/reggae (psydub)**: `_Reggaeton and Dancehall/Full Dub Riddims Big Reggae Sample Pack{,_2}`;
+  **breaks**: `_break/` (235 packs incl. Amen tributes, `100 Amen Breaks By Veak - Volume 2`);
+  **atmosphere/SFX**: `_soundfx/` (108 packs), `Atmospheric Loops/`.
+
+### Genre note: `audit_song_structure`'s backbeat gate assumes psytrance
+
+`allDropsHaveBackbeat` requires a clap/snare on the **2-and-4** backbeat in every drop.
+That is correct for psytrance and **wrong for dub**, where the defining accent is the
+*one-drop*: rim/snare on **beat 3 only**, with beat 1 left open, and the offbeat skank
+carrying the rhythm. Measured 2026-09-22 (`dub_embers`): a faithful one-drop (rim on
+beat 3, `[RIFF]`-style offbeat skank) failed the structure gate with
+"a drop has no clap/snare backbeat" while every other gate passed.
+
+Two legitimate responses:
+1. **Hybridise** — add a clap on 2-and-4 under the rim-on-3. That reads as
+   electro-reggae / dancehall and satisfies the gate; it is what `dub_embers` does.
+2. **Accept the failure** and record it — a roots one-drop is *supposed* to fail a
+   psytrance-shaped gate; note it in the brief rather than distorting the groove.
+
+Do NOT "fix" it by moving the rim to 2-and-4: that converts the groove into a rock/pop
+backbeat, which every reggae programming guide warns against.
+
+### Render time scales with automation density, not just length
+
+Measured 2026-09-22: a 300 s render of a 14-track arrangement with ~6,000 notes and
+~15,000 automation points took **410 s — slower than realtime** (a 9-track
+sampler-only render of the same length took ~10 s). Budget render time per *automation
+points x tracks*, not per minute of audio: dense envelope work can make a "5 minute
+render" a 7-minute wait, and two of them (measure + final) a quarter hour.
 
 ```bash
 python3 select_psy_samples.py   # → timbre-lib/psy_sample_selection.tsv
@@ -708,6 +774,33 @@ Also note the dedicated effect editions installed: **OsirusFX, OsTIrusFX,
 VavraFX, XeniaFX** (list_plugins kind=effect finds them; param surface identical
 to the instrument build).
 
+#### The `*FX` editions: they load, expose params, but do NOT process track audio
+
+The four `*FX` CLAPs (OsirusFX, OsTIrusFX, VavraFX, XeniaFX) are scanned as
+`kind: effect`, and it is tempting to insert them inline on any track to get the
+authentic hardware FX section. **Tested 2026-09-22 (`dub_embers`) — they do not work
+as insert effects:**
+
+- They load **only with the format-qualified scan id** (`list_plugins` →
+  `add_fx {trackId, pluginId: "CLAP-VavraFX-a405fdaa-0"}`). The **bare name**
+  (`"VavraFX"`) leaves a dead slot: `list_fx` reports `"pluginFormat": ""` and
+  `"paramCount": 0`, and `list_fx_params` returns `{"params": []}` — with the
+  qualified id the same slot reports `"pluginFormat": "CLAP"` and exposes the full
+  surface (**VavraFX: 7,557 params**, oscillators through FX).
+- **After the instrument in the chain they silence the track.** A/B with
+  `set_fx_bypass` on the same window: bypassed `soloRms 0.0595 / audible=1`, active
+  `soloRms 0 / audible=0` (VavraFX on a modal part); the same pattern held for
+  XeniaFX. Placed **before** the instrument they pass audio unchanged (a no-op:
+  identical RMS to 5 decimals either way).
+- They also will not resolve a program/state via the usual preset tools in this
+  build, so there is nothing to "fix" by loading a patch first.
+
+**Working path for that hardware FX character:** use the **instrument** build
+(Osirus / OsTIrus / Vavra / Xenia / JE8086) as the sound source and automate *its own*
+internal FX params — `Ch N Chorus Mix/Rate/Depth/Feedback`, `Ch N Delay/Reverb Mode`
+(0-26 types), `Ch N Phaser Mode/Mix/Depth/Frequency`, per-channel EQ, distortion —
+exactly as the section above describes. Those are real, automatable, and they render.
+
 #### Gearmulator internal-FX recipes (probe-verified indices, 2026-09-16)
 
 Before hand-picking a chain below, check the device's harvested matrix presets
@@ -1200,6 +1293,17 @@ six `set_internal_fx_param` calls; the track-level ModulationManager LFOs
 | `tremolo` | 6 Hz amplitude | Offbeat pluck pulse, percussive beds |
 | `fm_motion` | 2 Hz triangle → osc2→osc1 FM | Growl texture, alien timbre motion |
 | `animated_sweep` | 0.25 Hz cutoff+pitch+amp+FM | Build/riser beds, section transitions |
+
+**Trap: verify `Cutoff` after any `sub_synth_import_sysex`.** The Virus→sub_synth
+mapping writes the patch's filter as-is, and Virus patches with a closed filter land
+at `Cutoff = 20 Hz` (the parameter minimum) — the slot then renders **near-silent**
+while reporting a successful import with "24 params mapped". Observed 2026-09-22 on
+two `Access_Virus_TI/*.syx` banks: solo RMS 0.0029 (inaudible under a kick), and
+opening `Cutoff` (param 7) to 300 Hz took the same part to 0.0446 — a 15× change from
+one parameter. So after importing, read the slot back
+(`list_fx_params`) and set `Cutoff` for the role (sub ≈200–400 Hz, pad ≈1.5–3 kHz)
+before auditioning; `audition_plugin {trackIndex, slotIndex}` reports `audible` and
+is the gate, not the import's `ok`.
 
 ### Combining the instruments
 

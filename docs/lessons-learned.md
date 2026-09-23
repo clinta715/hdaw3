@@ -460,13 +460,21 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     `PluginPathResolution.*` uses bare names.
 
 29. **Check the process exit code BEFORE debugging a crash: 0x2A (42) is the
-    intentional `engine_restart` exit, and the MCP wrapper restarts the engine
-    on its 10-second call timeout.** A whole day of "engine crashed and respawned
-    with an empty project" incidents was actually the wrapper timing out on long
-    calls (batched fills, library scans, auditions > 10 s) and restarting the
-    engine — wiping unsaved state. Only ONE event was a real crash (heap
-    corruption C0000374, dumped). **Rules:** (a) read procdump's "Process Exit"
-    line first: exit 42 = timeout restart (state loss, not a crash); (b) keep
+    intentional `engine_restart` exit; the MCP wrapper separately restarts the
+    engine on its call timeout (lazy-mcp `requestTimeout`, default 10 s, and the
+    documented override was found ABSENT from the live config on 2026-09-22).**
+    A whole day of "engine crashed and respawned with an empty project" incidents
+    was actually the wrapper timing out on long calls (batched fills, library
+    scans, auditions > 10 s) and restarting the engine — wiping unsaved state.
+    Only ONE event was a real crash (heap corruption C0000374, dumped).
+    **Corrected 2026-09-22:** 42 is NOT the timeout signature — the only path that
+    exits 42 is the `engine_restart` tool (`McpTools_Engine.cpp:137`;
+    `main_headless`/`main` return `app.exec()`, and `mcp-launch.bat` has no 42
+    branch). A timeout shows up as a discarded connection plus a relaunch (exit
+    0/1 once the engine is killed or hits stdin EOF); reading 42 as "the wrapper
+    killed me" misattributes an explicit restart. **Rules:** (a) read procdump's "Process Exit"
+    line first: 42 = a caller invoked `engine_restart`; 0/1 after a long call =
+    timeout/EOF (state loss, not a crash); (b) keep
     mutating calls under the wrapper timeout — batch small, checkpoint-save
     immediately, and never blind-retry a timed-out call (the first is still
     running engine-side); (c) arm WER LocalDumps (full, engine + plugin host —

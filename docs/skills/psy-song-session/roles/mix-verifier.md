@@ -36,8 +36,14 @@ them, bounce back to the orchestrator for an Arranger pass.
    (max 3) back to the Arranger.
 6. **Gain staging**: `auto_gain_to_target` per track toward the brief's RMS with
    `allowGlobalScale` for headroom. Gain goes to FADERS/bands — never by squashing:
-   the master limiter is NOT transparent (measured ~-10 dB RMS; do not ship it as
-   a loudness fix; document its state if enabled). **Check fader authority first:**
+   the master limiter is NOT transparent (measured ~-10 dB RMS; do not ship it as a
+   loudness fix; document its state if enabled). **A fader only attenuates**: its
+   ceiling is 1.0, so `auto_gain_to_target`/`auto_gain_tracks` report
+   `clamped=true, fader=1.0` and silently miss the target when a SOURCE is quiet
+   (measured 2026-09-22: 9 of 11 tracks clamped, sub 0.0029 RMS vs a 0.08 target).
+   Fix the level at the source — the instrument's output level, a closed filter, or a
+   saturator `Output dB` *after* the synth — then re-stage; raising the master does
+   not substitute (it clips the sum). **Check fader authority first:**
    if `audit_modulation_coverage` lists the track in `faderOverriddenIds` (an
    enabled Volume lane from the movement pass), `set_track_volume` writes are
    overridden — call `set_fader_authoritative` before staging gain, then re-audit.

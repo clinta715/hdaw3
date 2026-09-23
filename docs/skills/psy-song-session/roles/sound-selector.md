@@ -54,9 +54,13 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    basis — chord, or note + octave-down + 7th-up + octave-up (see Arranger). Your
    job is the timbre that makes those stacks audible: presence EQ in the role's
    band (lead ~400 Hz–3 kHz per `analyze_tuning` targets), not fader gain alone.
-6. **Audition everything**: `audition_plugin {trackId, slotIndex}` must report
-   audible (solo peak > -80 dBFS). Silent-at-default presets are rejected, not
-   shipped. Sampler roles: `sampler_set_sample` + `sampler_get_state` to verify.
+6. **Audition everything**: `audition_plugin {trackIndex, slotIndex}` must report
+   audible (solo peak > -80 dBFS). NOTE the argument is `trackIndex`, not `trackId`
+   — the engine rejects `trackId` with "unknown property". Silent-at-default presets
+   are rejected, not shipped. Sampler roles: `sampler_set_sample` + `sampler_get_state` to verify.
+   **After any `sub_synth_import_sysex`, read the slot back and set `Cutoff`**: a
+   Virus patch with a closed filter imports at 20 Hz and renders near-silent while
+   the import reports success (see the trap in `docs/psytrance-composition-guide.md` §5c).
 7. **Load per-role FX chains** from `list_fx_chains` factory presets when they fit
    the role ("Kick Punch", "Bass Glue", "Acid Lead", ...). Load them BEFORE
    auditioning so the audition hears the sound through its role processing.

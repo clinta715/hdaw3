@@ -41,6 +41,18 @@ radius and code discovery. Kept current by a post-commit hook + `--watch`.
 Query, don't rebuild (`graphify update .` only when stale). Never invent an edge;
 verify with grep. The graph is a snapshot — cross-check critical paths.
 
+**Refresh gotcha (measured 2026-09-22):** on this box `graphify update .` **fails** —
+`graphify.exe` is a trampoline that re-execs `python …\Scripts\graphify`, an
+extensionless shim that does not exist (`can't open file '…\Scripts\graphify'`), while
+`query`/`explain`/`path` work fine in-process. Run the module directly instead:
+`python -m graphify update . --force` (the interpreter is recorded in
+`graphify-out/.graphify_python`; `--force` is required when a rebuild yields fewer
+nodes). The post-commit hook's **detached `watch` rebuild does not re-extract changed
+files** — after a hook rebuild of a tree containing new code, 0 of the new symbols were
+in the graph; the explicit `update --force` extracted all 1318 files and added them
+(20601 → 20695 nodes). Verify with `graphify explain <newSymbol>` before trusting a
+"rebuilt" log line.
+
 **codebase-memory** MCP — semantic index for "where is X implemented" questions.
 
 ## Lessons learned (one-line index — full narratives in [`docs/lessons-learned.md`](docs/lessons-learned.md))
@@ -73,7 +85,14 @@ verify with grep. The graph is a snapshot — cross-check critical paths.
 26. **Isolated-child bulk state travels via SHM ring, not the control pipe** — log the failure branch of every bounded send; verify against the child's report.
 27. **Audit renders are tree copies into fresh children** — live-only writes aren't inputs; parent-local readbacks prove nothing; respect variance floors.
 28. **Bare plugin identifiers ('Vavra.clap') resolve against the scan DB** — a .clap suffix is not a path; log the whole load failure branch.
-29. **Check the exit code before debugging a crash** — 0x2A (42) = intentional engine_restart (wrapper 10 s call timeout); arm WER LocalDumps; batch small, save often.
+29. **Check the exit code before debugging a crash** — 0x2A (42) = the deliberate
+    `engine_restart` tool (`McpTools_Engine.cpp`), and ONLY that: a request
+    timeout never produces 42 — it discards the connection and relaunches the
+    engine onto a **fresh empty project** (exit 0/1). That timeout is lazy-mcp's
+    `requestTimeout`, **default 10 s**, live for the hdaw server; verify the
+    override is truly present in `~/.config/lazy-mcp/servers.json` (it has been
+    observed missing) — see `docs/testing-mcp.md`. Arm WER LocalDumps; batch
+    small, save often.
 30. **Batch tree surgery at the LIST level** — removeAllChildren fires the listener per child; swap the container node.
 31. **Patch selection needs a variety mechanism** — deterministic ranking repeats; select_patch = cluster-stratified + seeded + ledger.
 
@@ -119,6 +138,12 @@ otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
   **`select_patch`** (cluster-stratified, seeded, ledger-excluded) for "give me a
   different one"; `param_verity_corpus` to audit a slot's parameters;
   `sweep_dx7_patches.py --engine vavra_plugin` to collect dsp vectors.
+- **Source material (dev box)**: samples `E:\samples`, MIDI `E:\midi`, patch banks
+  `D:\pdf\{Virus Presets,je8086,microwave,NL2x Banks}` and
+  `D:\pdf\rhythm-lab.com_waldorf_micro_q` — counts, sidecar state, which packs are
+  genre-relevant, and the register-per-pack rule:
+  [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) §2
+  ("Source material locations").
 - **Modulation-first**: device's own matrix → onboard FX → HDAW automation/track
   LFO → HDAW internal FX → third-party plugin last.
 - **Verification-first**: `param_verity` (audibility), `tone_verity` (envelope/pitch/AM),
@@ -135,6 +160,25 @@ otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
 - Never hard-kill a build (truncates `.ninja_deps` → full rebuild).
 - **Frontend:** `cd frontend; npm run build`, then rebuild the C++ project.
   Full details of the traps: [`docs/build-and-testing.md`](docs/build-and-testing.md).
+
+## Disk housekeeping
+
+`scripts/cleanup-stale.ps1` reclaims stale scratch on this dev box: crash dumps +
+debugger symbol caches, `%TEMP%` (HDAW param traces, `hdaw_debug.log`, render WAVs,
+engine copies, `hdaw_crash_captures\engine_*`), agent chat logs (pi / omp / opencode
+/ codex), and re-downloadable caches under `-Aggressive` (`-ModelCache` for
+HuggingFace). **Dry-run by default** — `-Apply` deletes. Files held open by a
+running process are reported `LOCKED`, which is what protects a live engine's
+`hdaw_paramtrace_<pid>.log` (lesson 29's "save often" is the companion habit).
+`scripts/cleanup-stale-db.mjs` (`-AgentDb`) is the sqlite companion for
+`~/.local/share/opencode/opencode.db` — `VACUUM` reclaims the freelist (`auto_vacuum`
+was 0; 6.3 GB of dead pages), `--days N` prunes sessions through the FK cascades,
+and it refuses to write while another process holds the DB.
+
+Two invariants when editing either script: `%TEMP%\hdaw_crash_captures` and its `wer`
+child are **protected dirs** (`scripts/crash-diag.ps1` registers `wer` as WER's
+DumpFolder), and the capture-tree sweep globs `engine_*` only — a bare
+`hdaw_crash_captures\*` matched `wer` and deleted it.
 
 ## Shell: PowerShell only (no `&&` or `&`)
 

@@ -357,7 +357,11 @@ common value (so a human can audition the source of a recipe).
     py -3 timbre-lib/harvest_fx_presets.py --out timbre-lib/harvested_fx_presets.json \
         --vocab vavra=<...>/parameterDescriptions_mq.json \
         --vocab xenia=<...>/parameterDescriptions_xt.json \
-        "D:/pdf/je8086" "D:/pdf/rhythm-lab.com_waldorf_micro_q" "D:/pdf/microwave" "D:/pdf/NL2x Banks"
+        "D:/pdf/je8086" "D:/pdf/rhythm-lab.com_waldorf_micro_q" "D:/pdf/microwave" "D:/pdf/NL2x Banks" \
+        "D:/pdf/Virus Presets"
+
+Source roots and their sidecar counts (samples / MIDI / all four patch banks + Virus):
+see `docs/psytrance-composition-guide.md` §2 "Source material locations".
 
 Sweep 2026-09-16: **11,111 sidecars** (je8086 3735, vavra 528, xenia 7, nodalred2x 6841)
 yielding, per engine, the FX/modulation vocabulary actually in use - e.g. 35 named

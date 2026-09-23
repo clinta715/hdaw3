@@ -53,8 +53,13 @@ patch is too quiet for the role, not that the measurement broke.
 
 ## The 10-second wrapper timeout (AGENTS.md lesson 29)
 
-Every mutating call must stay under the wrapper's 10 s timeout. On timeout
-the wrapper restarts the engine (exit 42), wiping unsaved state. Batch
+Every mutating call must stay under the wrapper's request timeout — lazy-mcp's
+`requestTimeout`, **10 000 ms by default**, and the documented override
+(`docs/testing-mcp.md`) has been observed missing from the live config, so verify
+it before assuming a long call is safe. On timeout the wrapper discards the
+connection and the next call relaunches the engine onto a **fresh empty project**,
+wiping unsaved state. That is NOT exit 42: 42 comes only from the deliberate
+`engine_restart` tool, never from a timeout. Batch
 small; `save_project` IMMEDIATELY after each mutation group; never
 blind-retry a timed-out call (the first is still running engine-side).
 `scripts/crash-diag.ps1 report` gives exit codes + dump inventory.

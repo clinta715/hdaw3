@@ -41,6 +41,31 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   flaky at the start of iteration 2. A comment in the test file
   documents this. A future fix is to make the test order-independent
   (e.g. by isolating the audio device).
+- **`McpServer.HttpRoundTrip` also binds a FIXED port** — `TransportHttp
+  t(18765)` and `http://127.0.0.1:18765/mcp` (mcp_server_test.cpp:115,122).
+  So it fails for a second, unrelated reason whenever anything else holds
+  18765: running the suite while a dev engine is up (observed 2026-09-22,
+  engine held 18765 → this test failed in the full run, then passed in
+  isolation and in a filtered run with the port free). Before blaming a
+  change for this test, free the port and re-run it alone.
+- **Pre-existing failure (deterministic, unrelated to any change):
+  `RespawnPath.RealPathPassesThrough`** (`tests/unit/proxy/crash_recovery_test.cpp:655`,
+  file last touched 2026-08-20). It asserts that
+  `PluginManager::resolveRespawnPath("/usr/lib/MyPlugin.clap", …)` returns
+  that Unix-style path unchanged, and fails on this Windows environment
+  (the `EXPECT_EQ` also renders the `const char*` operand as a pointer —
+  a gtest/JUCE-`String` typing artifact). It does not involve any
+  command/model code. Treat it as a known red test when running the full
+  suite, and note that the "1 flake" baseline recorded in `AGENTS.md`
+  (2026-09-21) is stale — a full run on 2026-09-22 showed 4 failures, of
+  which 3 clear when the port is free / the tests are run in a filtered
+  order (2 of them `McpServer.*`) and the 4th is the documented
+  `PluginIsolation.LargeStateRoundTripThroughProxy` flake. **Two full runs on
+  2026-09-22 pin this down: with a dev engine holding 18765 → 4 failures (the two
+  `McpServer.*` above included); with the port free → exactly 2, the two
+  pre-existing ones listed here. So the "1 flake" baseline in `AGENTS.md`
+  (2026-09-21) is stale, and the two `McpServer.*` failures are an artifact of
+  running the suite alongside a live engine, not a regression.**
 - **HTTP runtime path coverage**: `McpServer.EngineSettingsStartMcpHttp`
   enables `mcp/httpEnabled` in `QSettings`, starts `AudioEngine` with the
   persisted config, and verifies a real `POST /mcp` round-trip on the
@@ -234,9 +259,75 @@ when tempo match is on.
 The player does not apply time-stretching — tempo matching adjusts
 playback rate (pitch changes with speed).
 
+## Which MCP transport is live — check this before blaming a timeout
+
+There are **two** independent ways hdaw's tools reach an agent, with **different
+timeouts**. Diagnose with the error the harness prints (`server:` / `transport:`),
+never by assumption:
+
+| Transport | Server name | Config that owns it | Client timeout |
+| --- | --- | --- | --- |
+| HTTP (current OMP harness) | `hdaw-http` | repo-root `.mcp.json` → `http://127.0.0.1:18765/mcp` | per-server `timeout`, else **OMP's 30 s default** |
+| stdio proxy (pi chain) | `hdaw` | `~/.config/lazy-mcp/servers.json` → `mcp-launch.bat` → engine | lazy-mcp `requestTimeout`, else **10 000 ms** |
+
+- The HTTP path does **not** go through lazy-mcp at all — editing
+  `~/.config/lazy-mcp/servers.json` cannot change its behaviour. The stdio path is
+  what `mcp-launch.bat`, `%TEMP%\hdaw_crash_captures\...\procdump.log`, and the
+  exit-code forensics below are about.
+- **Applied 2026-09-22:** `.mcp.json` now sets `"type": "http"` + `"timeout": 900000`
+  on `hdaw-http`, so a long but healthy call (full render, plugin warmup) is not cut
+  at 30 s; and `~/.config/lazy-mcp/servers.json` regained the documented
+  `requestTimeout: 900000` + `healthMonitor.idleTimeout: 0` (it had been lost — the
+  file's mtime predated the 2026-09-15 fix).
+- **Never set `timeout: 0`.** It disables the client-side deadline completely, and
+  HTTP/SSE carry **no socket-idle timeout** — an engine that accepts the connection
+  and then stalls would block the agent indefinitely. Prefer a bounded value.
+- `OMP_MCP_TIMEOUT_MS` overrides every per-server `timeout` process-wide (set it in
+  the launching environment when you need a different budget without editing a
+  committed file).
+- After editing either file: `/mcp reload` (or a new session) — a config change is
+  not picked up mid-flight. Verify with `jq` **and** by watching whether a
+  deliberately long call is cut, since a config the running client never re-read is
+  indistinguishable from one that was ignored.
+
+### Long calls: the engine keeps working after the socket drops
+
+Observed 2026-09-22 while driving the engine directly over HTTP (no harness in the
+path): calls that run for minutes return `RemoteDisconnected` — the client's response
+socket is closed — **while the engine is unaffected** (same pid, port still open).
+Three examples: `export_audio {wait:true}` on a 303 s render (the WAV was written in
+full and the export job completed), and two `auto_gain_tracks` batches (the faders
+were staged; only the reply was lost). So:
+
+- Prefer the async form where one exists (`export_audio`, `mix_report`,
+  `analyze_tuning` accept `wait:false` → poll `poll_job`).
+- After a drop, **re-read state before retrying** — the mutation very likely applied.
+  A blind retry double-applies it (the same reason lesson 29 says never blind-retry a
+  timed-out call).
+- Do not run `save_project` concurrently with an export: on 2026-09-22 a render that
+  had reported "export complete" was gone from disk when the save ran alongside it.
+  Save between mutation groups, after the export job reports finished.
+
+### `export_audio` reports success and writes NOTHING if the output directory is missing
+
+The renderer creates the output **file** but not its **directory**. If the parent folder
+does not exist at submit time, `export_audio` returns `"export complete: <path>"`,
+`success: true`, and the progress/completion notifications fire — while no file is ever
+written. Verified 2026-09-22 twice, both times on a brand-new song folder:
+
+- `dub_embers`: the first full render reported success; `ls` showed only `brief.json`.
+  Re-submitting later (after the folder existed) worked.
+- `aether_dub`: a stem export to a not-yet-created `compositions/aether_dub/` produced no
+  file; the **identical** export after the folder existed wrote 7,891,298 bytes (27.4 s).
+
+Practical rules: **create the song folder before the first export** (writing the brief
+first is enough), and treat "success + no file" as this bug rather than re-timing the
+render. This also costs real time — two full 300 s renders were lost to it before the
+cause was found.
+
 ## The engine "crashes" during MCP sessions — lazy-mcp lifecycle knobs
 
-The hdaw MCP server runs through **lazy-mcp** (`~/.pi/agent/mcp.json` →
+The **stdio** path runs through **lazy-mcp** (`~/.pi/agent/mcp.json` →
 npx lazy-mcp → `~/.config/lazy-mcp/servers.json` → mcp-launch.bat → the
 engine). lazy-mcp has two lifecycle defaults that silently kill the
 engine process, and each relaunch starts a FRESH EMPTY project:
@@ -262,6 +353,19 @@ engine process, and each relaunch starts a FRESH EMPTY project:
   "servers": [ { "name": "hdaw", "requestTimeout": 900000, ... } ]
 }
 ```
+
+**Verify the fix is actually present before trusting it.** On 2026-09-22 the live
+`~/.config/lazy-mcp/servers.json` (mtime Sep 10, *before* this fix) contained only
+the `servers` array — **neither `requestTimeout` nor `healthMonitor`** — so the
+10 000 ms default was live again and every long call could still discard the
+connection and relaunch onto an empty project:
+
+```powershell
+jq '{requestTimeout, healthMonitor}' "$env:USERPROFILE\.config\lazy-mcp\servers.json"
+```
+
+A `null` means the override is missing; re-apply the block above (it takes effect
+on the next lazy-mcp start).
 
 `idleTimeout: 0` is lazy-mcp's documented "legacy never-sleep mode" — the
 echo-friendly default is right for most servers but wrong for a DAW
