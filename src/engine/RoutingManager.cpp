@@ -107,13 +107,25 @@ void RoutingManager::rebuildFromValueTree()
     // connection here would be silently rejected.
 
     auto busList = projectModel.getBusListTree();
+    // Two phases: create EVERY bus node first, then wire every parent edge.
+    // connectBusToParent resolves the parent through busNodes[parentID], so
+    // creating and connecting one bus at a time (addBus) made a bus whose
+    // busTarget names a bus later in BUS_LIST — the default "Reverb" return
+    // re-parented under a filter bus created after it, which setBusTarget exists
+    // to allow — find no node yet and fall back to the master, leaving the tree
+    // and the live graph disagreeing. The fallback is for an id that names no bus
+    // at all, not for one that has simply not been created yet.
     for (int i = 0; i < busList.getNumChildren(); ++i)
     {
         auto busTree = busList.getChild(i);
-        int busID = busTree.getProperty(IDs::busID);
-        juce::String busType = busTree.getProperty(IDs::busType).toString();
-        if (busType == "master") continue;
-        addBus(busID, busTree);
+        if (busTree.getProperty(IDs::busType).toString() == "master") continue;
+        createBusNode(busTree.getProperty(IDs::busID), busTree);
+    }
+    for (int i = 0; i < busList.getNumChildren(); ++i)
+    {
+        auto busTree = busList.getChild(i);
+        if (busTree.getProperty(IDs::busType).toString() == "master") continue;
+        connectBusToParent(busTree.getProperty(IDs::busID));
     }
 
     auto trackList = projectModel.getTrackListTree();
@@ -355,7 +367,7 @@ void RoutingManager::removeClipsForTrack(int trackIndex)
     }
 }
 
-void RoutingManager::addBus(int busID, juce::ValueTree busTree)
+void RoutingManager::createBusNode(int busID, const juce::ValueTree& busTree)
 {
     juce::String busType = busTree.getProperty(IDs::busType).toString();
     juce::String busName = busTree.getProperty(IDs::name).toString();
@@ -365,7 +377,6 @@ void RoutingManager::addBus(int busID, juce::ValueTree busTree)
         auto node = graph.addNode(std::make_unique<GroupBusProcessor>(busName));
         groupBuses[busID] = static_cast<GroupBusProcessor*>(node->getProcessor());
         busNodes[busID] = node;
-        connectBusToParent(busID);
     }
     else if (busType == "fx")
     {
@@ -379,7 +390,6 @@ void RoutingManager::addBus(int busID, juce::ValueTree busTree)
         fxProc->applyFromTree(busTree);
         fxBusProcessors[busID] = fxProc;
         busNodes[busID] = node;
-        connectBusToParent(busID);
     }
 }
 

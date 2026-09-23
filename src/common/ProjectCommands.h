@@ -131,6 +131,22 @@ public:
     // undo unit), leaving no dangling sendTarget.
     virtual bool removeBus(int busID, std::string& error) = 0;
 
+    struct BusRetargetResult
+    {
+        bool ok = false;
+        std::string error;
+    };
+    // setBusTarget: re-parent `busID` — the write is the BUS node's busTarget
+    // property (the durable parent id RoutingManager::connectBusToParent reads)
+    // inside ONE undo transaction, followed by exactly ONE
+    // rebuildRoutingGraph(). busTarget 0 is the master. Returns ok=false with a
+    // clear `error` and NO tree change for: an unknown busID; the master bus
+    // (its busTarget is -1 by design); busTarget == busID; an unknown
+    // busTarget; and any busTarget whose own parent chain reaches busID —
+    // the transitive cycle check, since a graph cycle would corrupt the routing
+    // graph and re-parenting (unlike createBus) can close one several hops deep.
+    virtual BusRetargetResult setBusTarget(int busID, int busTarget) = 0;
+
     struct SendCreateResult
     {
         bool ok = false;

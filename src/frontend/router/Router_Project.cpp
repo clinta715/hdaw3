@@ -91,6 +91,18 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         if (!c.removeBus(id, error)) return makeError(-32602, QString::fromStdString(error));
         return { false, QStringLiteral("ok") };
     }
+    // The MCP twin (set_bus_target in McpTools_Send.cpp) takes exactly these keys
+    // (`busID` / `busTarget`) and calls the SAME command, so an accepted
+    // re-parent is {"ok":true} on both and a refusal carries the command's text
+    // verbatim on both (tests/unit/frontend/bus_send_rpc_test.cpp drives both).
+    if (m == "setBusTarget") {
+        int id, target;
+        if (!requireInt(o, "busID", id, nullptr) || !requireInt(o, "busTarget", target, nullptr))
+            return makeError(-32602, "busID and busTarget required");
+        auto r = c.setBusTarget(id, target);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        return { false, QJsonObject{{ "ok", true }} };
+    }
     if (m == "addSend") {
         int i, busTarget;
         if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "busTarget", busTarget, nullptr))

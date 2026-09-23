@@ -51,6 +51,10 @@ public:
     BusCreateResult createBus(const std::string& busType, const std::string& name,
                               const std::string& fxType, int busTarget) override;
     bool removeBus(int busID, std::string& error) override;
+    // ProjectCommands — Bus RE-PARENTING (tree-mutating, one rebuild): moves the
+    // bus's parent without touching its children, refusing every edit whose
+    // parent chain would come back around to the bus being moved.
+    BusRetargetResult setBusTarget(int busID, int busTarget) override;
     SendCreateResult createSend(int trackIndex, int busTarget, float level,
                                 bool isPreFader) override;
     bool removeSend(int trackIndex, int sendIndex, std::string& error) override;

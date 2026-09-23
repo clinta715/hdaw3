@@ -286,6 +286,72 @@ TEST_F(BusSendRpcTest, RemoveBusUnknownIdFailsOnBothSurfaces) {
     EXPECT_EQ(busCount(), before);
 }
 
+// set_bus_target / project.setBusTarget (docs/plans/2026-09-23-set-bus-target.md,
+// slice F): the re-parent pair. Unlike the creators it allocates nothing, so its
+// payload carries no fresh id and must match VERBATIM — both surfaces report the
+// bare {"ok":true} the frozen contract names, and both drive the same BUS node.
+TEST_F(BusSendRpcTest, SetBusTargetMatchesMcp) {
+    auto& cmds = engine->getProjectCommands();
+    const int hpf = cmds.createBus("fx", "Dub HPF", "filter", 0).busID;
+    const int delay = cmds.createBus("fx", "Dub Delay", "delay", 0).busID;
+    ASSERT_GE(hpf, 0);
+    ASSERT_GE(delay, 0);
+    ASSERT_TRUE(busNode(hpf).isValid());
+    ASSERT_TRUE(busNode(delay).isValid());
+
+    // ONE args object for both surfaces: the route's key names must BE the MCP
+    // property names (`busID` / `busTarget`), or this fails here instead of
+    // sending -32602 in the field.
+    const QJsonObject args{ { "busID", delay }, { "busTarget", hpf } };
+    const QJsonValue viaMcp = mcpValue("set_bus_target", args);
+    const QJsonValue viaRpc = rpcPayload("project.setBusTarget", args);
+    EXPECT_EQ(viaRpc, viaMcp);
+    EXPECT_TRUE(viaMcp.toObject().value("ok").toBool());
+
+    // Both calls wrote the same parent (the second merely repeats it — an
+    // idempotent re-parent is accepted, not reported as a conflict), and the
+    // listing an agent reads back agrees with the edit.
+    EXPECT_EQ(static_cast<int>(busNode(delay).getProperty(IDs::busTarget)), hpf);
+    EXPECT_EQ(listedBus(mcpValue("list_buses", QJsonObject{}).toArray(), delay)
+                  .value("busTarget").toInt(),
+              hpf);
+}
+
+// Every refusal the command layer owns, on the shared args object: a cycle closed
+// through a descendant, the master, the bus itself, an unknown parent, an unknown
+// bus. Same text on both surfaces, and the tree never moves.
+TEST_F(BusSendRpcTest, SetBusTargetRefusalsMatchMcp) {
+    auto& cmds = engine->getProjectCommands();
+    const int hpf = cmds.createBus("fx", "Dub HPF", "filter", 0).busID;
+    const int delay = cmds.createBus("fx", "Dub Delay", "delay", hpf).busID;   // delay -> HPF
+    ASSERT_GE(hpf, 0);
+    ASSERT_GE(delay, 0);
+
+    const juce::String treeBefore = engine->getProjectModel().getTree().toXmlString();
+
+    // The cycle the transitive walk exists for: the proposed parent is the HPF's
+    // own child (a loop createBus could never have made).
+    expectSameFailure("set_bus_target", "project.setBusTarget",
+                      QJsonObject{ { "busID", hpf }, { "busTarget", delay } });
+    EXPECT_TRUE(rpc("project.setBusTarget", QJsonObject{ { "busID", hpf }, { "busTarget", delay } })
+                    .payload.toObject().value("message").toString().contains("descendant"))
+        << "the transitive cycle refusal must say why";
+
+    expectSameFailure("set_bus_target", "project.setBusTarget",      // the master
+                      QJsonObject{ { "busID", 0 }, { "busTarget", hpf } });
+    expectSameFailure("set_bus_target", "project.setBusTarget",      // itself
+                      QJsonObject{ { "busID", hpf }, { "busTarget", hpf } });
+    expectSameFailure("set_bus_target", "project.setBusTarget",      // no such parent
+                      QJsonObject{ { "busID", hpf }, { "busTarget", 999 } });
+    expectSameFailure("set_bus_target", "project.setBusTarget",      // no such bus
+                      QJsonObject{ { "busID", 999 }, { "busTarget", 0 } });
+
+    EXPECT_EQ(engine->getProjectModel().getTree().toXmlString(), treeBefore)
+        << "a refused re-parent changed the tree";
+    EXPECT_EQ(static_cast<int>(busNode(delay).getProperty(IDs::busTarget)), hpf)
+        << "a refused re-parent moved the bus";
+}
+
 // --- Sends ------------------------------------------------------------------
 
 // G6 (success half): add_send and project.addSend agree on the payload and both

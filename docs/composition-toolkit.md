@@ -109,15 +109,15 @@ internal filter slot runs (`src/engine/InternalFilter.h`), with `Cutoff` / `Mode
 2=BP) / `Resonance` — and it is what makes a return **high-passable**, which the peak-only `eq`
 cannot express.
 
-**High-passing a return = CHAINING buses.** `busTarget` is set at creation and nothing
-re-parents a bus afterwards, so: **create the filter bus FIRST** (`add_bus {fxType:"filter",
-busTarget:0}`), then the delay bus with `busTarget = <filter bus>`, and send into the *delay*
-bus. Measured 2026-09-23 (`aether_dub`, 16 s of drop1, chained delay → HPF 250 Hz → master):
-bass band **18 627 → 15 505 (−17%)**, sub **5 645 → 4 445 (−21%)** — the classic dub move, now
-expressible. A `set_bus_target` command (to re-parent an existing bus, e.g. the default
-`Reverb`) is the obvious follow-up. Note a bus created *after* the graph was last prepared is
-never prepared itself; `FxBusProcessor::processBlock` now fails safe (pass-through) rather than
-corrupting memory. The pre-existing `set_track_send_level` /
+**High-passing a return = routing it through a filter bus.** Two ways: **create the filter bus
+first** (`add_bus {fxType:"filter", busTarget:0}`) then the child with `busTarget = <filter bus>`,
+**or re-parent an existing bus** with `set_bus_target {busID, busTarget}` — which works on the
+default `Reverb` return too (self-targeting, the master, unknown ids and any target that would
+close a cycle are refused). Measured 2026-09-23 (`aether_dub`, 16 s of drop1): chained delay
+return → bass **18 627 → 15 505 (−17%)**, sub **5 645 → 4 445 (−21%)**; re-parenting the *reverb*
+return behind a 250 Hz HPF → sub **4 604 → 3 698 (−20%)**. Note a bus created *after* the graph
+was last prepared is never prepared itself; `FxBusProcessor::processBlock` now fails safe
+(pass-through) rather than corrupting memory. The pre-existing `set_track_send_level` /
 `_mode` / `_bypassed` / `get_track_sends` shape and read an existing send. RPC twins:
 `project.addBus` / `removeBus` / `addSend` / `removeSend`. Full plan + gates:
 `docs/plans/2026-09-22-bus-send-surface.md`.

@@ -44,7 +44,6 @@ public:
     static bool isFolderTrack(const juce::ValueTree& trackTree);
     void addTrack(int trackIndex, juce::ValueTree trackTree);
     void removeTrack(int trackIndex);
-    void addBus(int busID, juce::ValueTree busTree);
     void removeBus(int busID);
     // `sendIndex` is the per-track send position (0-based). Each send must
     // use a distinct index; the previous implementation hardcoded 0, which
@@ -111,6 +110,13 @@ public:
 private:
     std::unique_ptr<HDAW::Track> buildTrackProcessor(int trackIndex, juce::ValueTree trackTree);
     void connectTrackToBus(int trackIndex, int busID);
+    // Node creation and parent wiring are separate steps so a rebuild can create
+    // EVERY bus node before it connects any of them: connectBusToParent resolves
+    // the parent through busNodes[parentID], so a bus whose busTarget names a bus
+    // created LATER (the default "Reverb" return re-parented under a filter bus
+    // added after it) would otherwise find no node and silently fall back to the
+    // master — the tree and the live graph disagreeing.
+    void createBusNode(int busID, const juce::ValueTree& busTree);
     void connectBusToParent(int busID);
     void rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree,
                               juce::AudioProcessorGraph::UpdateKind updateKind = juce::AudioProcessorGraph::UpdateKind::sync);

@@ -359,6 +359,91 @@ bool AudioEngineCommands::removeBus(int busID, std::string& error)
     return true;
 }
 
+ProjectCommands::BusRetargetResult AudioEngineCommands::setBusTarget(int busID, int busTarget)
+{
+    BusRetargetResult result;
+
+    auto& model = engine_.getProjectModel();
+    auto busList = model.getBusListTree();
+    if (!busList.isValid())
+    {
+        result.error = "setBusTarget: project has no ROUTING_GRAPH/BUS_LIST node";
+        return result;
+    }
+
+    auto bus = HDAW::findBusNode(busList, busID);
+    if (!bus.isValid())
+    {
+        result.error = "setBusTarget: no bus with id " + std::to_string(busID);
+        return result;
+    }
+    // The master is the root by design (busTarget -1, never a child of anything):
+    // re-parenting it would either invent a cycle or make the graph roofless.
+    if (busID == 0 || bus.getProperty(IDs::busType).toString() == "master")
+    {
+        result.error = "setBusTarget: the master bus cannot be re-parented";
+        return result;
+    }
+    if (busTarget == busID)
+    {
+        result.error = "setBusTarget: bus " + std::to_string(busID) + " cannot be its own busTarget";
+        return result;
+    }
+    // 0 = master, always a valid parent (connectBusToParent resolves it to the
+    // master node), so it passes here without a lookup.
+    if (!HDAW::findBusNode(busList, busTarget).isValid())
+    {
+        result.error = "setBusTarget: busTarget " + std::to_string(busTarget) + " does not exist";
+        return result;
+    }
+
+    // ── The transitive cycle check ─────────────────────────────────────────
+    // A cycle corrupts the routing graph, and re-parenting is the one edit that
+    // can close one: createBus cannot (a brand-new bus has no children), but
+    // moving an existing bus under one of its OWN descendants — however many
+    // hops away — turns its parent chain into a loop that
+    // RoutingManager::connectBusToParent would then wire head-to-tail.
+    //
+    // So walk the PROPOSED PARENT's chain upward: busTarget, then that bus's
+    // busTarget, and so on until the master (0) terminates it. The moment the
+    // walk meets busID, busTarget sits inside the subtree being moved and the
+    // edit is refused. The hop budget is belt-and-braces: every bus appears at
+    // most once in BUS_LIST, so a well-formed chain reaches the master (or a dead
+    // id) within the list's length; the cap only bounds a pre-existing malformed
+    // chain that would otherwise spin.
+    const int hopLimit = busList.getNumChildren() + 1;
+    int ancestor = busTarget;
+    for (int hop = 0; ancestor != 0 && hop < hopLimit; ++hop)
+    {
+        if (ancestor == busID)
+        {
+            result.error = "setBusTarget: busTarget " + std::to_string(busTarget)
+                           + " is a descendant of bus " + std::to_string(busID)
+                           + " (that would create a routing cycle)";
+            return result;
+        }
+        auto ancestorNode = HDAW::findBusNode(busList, ancestor);
+        if (!ancestorNode.isValid())
+            break;   // a dangling id higher up: the walk has no parent to follow
+        ancestor = static_cast<int>(ancestorNode.getProperty(IDs::busTarget, 0));
+    }
+
+    auto& um = model.getUndoManager();
+
+    // One undo unit for this command, mirroring createBus/removeBus. The BUS node
+    // is the identity, so the write is a property on it (not a re-insertion):
+    // position in BUS_LIST is irrelevant and nothing else in the tree changes.
+    um.beginNewTransaction("Set bus target");
+    bus.setProperty(IDs::busTarget, busTarget, &um);
+
+    // ONE rebuild for the structural change (lesson 6), through the pump-park-safe
+    // wrapper — the AudioProcessorGraph is never mutated from this thread.
+    rebuildRoutingGraph();
+
+    result.ok = true;
+    return result;
+}
+
 ProjectCommands::SendCreateResult AudioEngineCommands::createSend(int trackIndex, int busTarget,
                                                                   float level, bool isPreFader)
 {

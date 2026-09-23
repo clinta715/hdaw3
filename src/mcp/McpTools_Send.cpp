@@ -118,6 +118,24 @@ void registerSendTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"set_bus_target", "Re-parent a bus: busTarget becomes the bus's parent "
+        "bus id (0 = master). Only the moved bus changes — its own children keep feeding it — so "
+        "an existing return can be routed through a filter bus added later (reverb -> HPF -> "
+        "master) instead of being recreated in the right order. Errors (with NO change) for an "
+        "unknown busID, the master bus, busTarget equal to busID, an unknown busTarget, and any "
+        "busTarget whose own parent chain reaches this bus (re-parenting could otherwise close a "
+        "cycle several hops deep).",
+        objSchema({{"busID", QJsonObject{{"type","integer"}}},
+                  {"busTarget", QJsonObject{{"type","integer"}}}}, {"busID","busTarget"}),
+        "send",
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto r = e->getProjectCommands().setBusTarget(a.value("busID").toInt(-1),
+                                                          a.value("busTarget").toInt(-1));
+            if (!r.ok) return McpToolResult::text(QString::fromStdString(r.error), true);
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
+                {"ok", true}}).toJson(QJsonDocument::Compact)));
+        }});
+
     s.registerTool({"add_send", "Create a send from a track to a bus and return its sendIndex. "
         "Defaults: level 1.0, post-fader.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},

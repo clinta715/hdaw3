@@ -1543,3 +1543,250 @@ TEST(BusFxParam, FilterBusChainedBehindADelayBusHighPassesTheReturn)
     EXPECT_LT(highpass, lowpass * 0.35)
         << "the chained return is not high-passed (lp=" << lowpass << " hp=" << highpass << ")";
 }
+
+// ─── Bus RE-PARENTING (2026-09-23, set_bus_target) ───────────────────────────
+// busTarget used to be writable only by createBus, so a return's parent was fixed
+// at creation and a mis-ordered chain had to be torn down and recreated. These
+// tests cover the three gates the plan names for the command itself: G1 (the live
+// graph moves with the edit), G3 (no edit may close a parent cycle — however many
+// hops deep — with the tree left byte-identical), G4 (one undo unit, one rebuild).
+
+namespace {
+
+// The graph node a busID is wired FROM (its live processor's node).
+juce::AudioProcessorGraph::NodeID liveBusNodeId(AudioEngine& engine, int busID)
+{
+    return nodeIdOfLiveProcessor(engine, liveFxBus(engine, busID));
+}
+
+// The master node — what connectBusToParent resolves busTarget 0 to, so it is the
+// node a bus parented to the master must actually be connected to.
+juce::AudioProcessorGraph::NodeID liveMasterNodeId(AudioEngine& engine)
+{
+    auto* proc = engine.getMainProcessor();
+    auto* rm = (proc != nullptr) ? proc->getRoutingManager() : nullptr;
+    return (rm != nullptr) ? nodeIdOfLiveProcessor(engine, rm->getMasterBus()) : juce::AudioProcessorGraph::NodeID{};
+}
+
+// busTarget straight off the BUS node (-2 when there is no such bus, so a
+// missing node cannot be mistaken for the master's -1).
+int busTargetOf(AudioEngine& engine, int busID)
+{
+    return static_cast<int>(findBusInTree(engine.getProjectModel().getBusListTree(), busID)
+                                .getProperty(IDs::busTarget, -2));
+}
+
+} // namespace
+
+// G1 — the topology the gap blocked: the DEFAULT "Reverb" return (bus 1, created
+// with busTarget 0) is re-parented behind a filter bus added later, with its own
+// child bus following it, and then moved back. Every assertion is on the LIVE
+// graph (a tree-only assertion would pass even if RoutingManager never moved).
+TEST(BusSetTarget, ReparentRewiresTheLiveGraphAndCarriesTheSubtree)
+{
+    AudioEngine engine;
+    engine.initialize();
+    ASSERT_GE(seedTrack(engine, 1), 0);
+
+    auto& cmds = engine.getProjectCommands();
+    auto busList = engine.getProjectModel().getBusListTree();
+    ASSERT_TRUE(busList.isValid());
+
+    // Buses are created BEFORE the graph is prepared (same ordering rule as the
+    // chained-filter test: a bus added after the last prepare is never prepared).
+    const auto hpf = cmds.createBus("fx", "Dub HPF", "filter", 0);
+    ASSERT_TRUE(hpf.ok) << hpf.error;
+    const auto delay = cmds.createBus("fx", "Dub Delay", "delay", 1);   // 1 = default Reverb
+    ASSERT_TRUE(delay.ok) << delay.error;
+
+    // The default project's return, spelled out so a change to the shipped
+    // project fails here with the reason rather than as a mystery graph diff.
+    const auto reverb = findBusInTree(busList, 1);
+    ASSERT_TRUE(reverb.isValid()) << "the default project must ship bus 1";
+    EXPECT_EQ(reverb.getProperty(IDs::name).toString(), juce::String("Reverb"));
+    ASSERT_EQ(static_cast<int>(reverb.getProperty(IDs::busTarget)), 0)
+        << "the default Reverb return starts on the master";
+    ASSERT_EQ(reverb.getProperty(IDs::fxType).toString(), juce::String("reverb"));
+
+    ASSERT_TRUE(ensureLiveRoutingGraph(engine));
+    const auto masterNode = liveMasterNodeId(engine);
+    ASSERT_NE(masterNode.uid, 0u);
+
+    // Starting topology: delay -> Reverb -> master, HPF -> master.
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, delay.busID), 0,
+                                       liveBusNodeId(engine, 1), 0));
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, 1), 0, masterNode, 0));
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, hpf.busID), 0, masterNode, 0));
+
+    // The re-parent: the EXISTING Reverb return now runs through the HPF bus.
+    const auto retarget = cmds.setBusTarget(1, hpf.busID);
+    ASSERT_TRUE(retarget.ok) << retarget.error;
+    EXPECT_TRUE(retarget.error.empty());
+    EXPECT_EQ(busTargetOf(engine, 1), hpf.busID) << "the BUS node did not take the new parent";
+
+    // Live, after the rebuild the command issued: delay -> Reverb -> HPF -> master.
+    // The child (the delay bus) is still feeding its parent — only the re-parented
+    // bus's OWN edge moved — and the old Reverb -> master edge is gone, because a
+    // rebuild replaces the graph rather than layering onto it.
+    //
+    // This edge is also the regression signal for a rebuild-ordering fix: the
+    // Reverb (bus 1) now targets a bus that sits AFTER it in BUS_LIST, so a
+    // create-then-connect rebuild (which resolves the parent through the nodes it
+    // has made so far) fell back to the master and left the tree and the graph
+    // disagreeing. Asserted, not assumed:
+    EXPECT_LT(busList.indexOf(findBusInTree(busList, 1)),
+              busList.indexOf(findBusInTree(busList, hpf.busID)))
+        << "the re-parent below must be a forward reference in BUS_LIST order";
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, 1), 0,
+                                       liveBusNodeId(engine, hpf.busID), 0))
+        << "the Reverb return is not connected to the HPF bus (L)";
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, 1), 1,
+                                       liveBusNodeId(engine, hpf.busID), 1))
+        << "the Reverb return is not connected to the HPF bus (R)";
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, delay.busID), 0,
+                                       liveBusNodeId(engine, 1), 0))
+        << "re-parenting dropped the child that fed the moved bus";
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, hpf.busID), 0, masterNode, 0));
+    EXPECT_FALSE(liveGraphHasConnection(engine, liveBusNodeId(engine, 1), 0, masterNode, 0))
+        << "the Reverb return is still wired straight to the master";
+
+    // ...and back: the parent is an ordinary editable edge, not a one-way change.
+    const auto restored = cmds.setBusTarget(1, 0);
+    ASSERT_TRUE(restored.ok) << restored.error;
+    EXPECT_EQ(busTargetOf(engine, 1), 0);
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, 1), 0,
+                                       liveMasterNodeId(engine), 0));
+    EXPECT_FALSE(liveGraphHasConnection(engine, liveBusNodeId(engine, 1), 0,
+                                        liveBusNodeId(engine, hpf.busID), 0))
+        << "the old Reverb -> HPF edge survived the move back";
+}
+
+// G3 — the gate that matters. createBus cannot build a cycle (a new bus has no
+// children); re-parenting can, and the loop can be several hops deep, so the
+// check walks the PROPOSED PARENT's chain and refuses when it meets the bus being
+// moved. Every refusal names its reason and leaves the tree byte-identical.
+TEST(BusSetTarget, CyclesMasterAndUnknownIdsAreRefusedWithNoTreeChange)
+{
+    AudioEngine engine;
+    engine.initialize();
+    ASSERT_GE(seedTrack(engine, 1), 0);
+
+    auto& cmds = engine.getProjectCommands();
+    auto busList = engine.getProjectModel().getBusListTree();
+
+    // HPF -> master, delay -> HPF, eq -> delay: so the delay is a descendant of
+    // the HPF one hop away and the eq two hops away.
+    const auto hpf = cmds.createBus("fx", "Dub HPF", "filter", 0);
+    ASSERT_TRUE(hpf.ok) << hpf.error;
+    const auto delay = cmds.createBus("fx", "Dub Delay", "delay", hpf.busID);
+    ASSERT_TRUE(delay.ok) << delay.error;
+    const auto eq = cmds.createBus("fx", "Dub EQ", "eq", delay.busID);
+    ASSERT_TRUE(eq.ok) << eq.error;
+    ASSERT_TRUE(ensureLiveRoutingGraph(engine));
+
+    auto* proc = engine.getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    auto* rmBefore = proc->getRoutingManager();
+    ASSERT_NE(rmBefore, nullptr);
+
+    // The refusal check is byte-level: the whole project tree, serialized, must
+    // come back identical (a stray property write, a re-stamped node, any change
+    // at all shows up here rather than passing as "no visible difference").
+    const juce::String treeBefore = engine.getProjectModel().getTree().toXmlString();
+    auto treeNow = [&] { return engine.getProjectModel().getTree().toXmlString(); };
+
+    auto expectRefused = [&](int busID, int busTarget, const char* needle)
+    {
+        const auto r = cmds.setBusTarget(busID, busTarget);
+        EXPECT_FALSE(r.ok) << "setBusTarget(" << busID << ", " << busTarget << ") was accepted";
+        EXPECT_NE(r.error.find(needle), std::string::npos) << "the reason was: " << r.error;
+        EXPECT_EQ(treeNow(), treeBefore)
+            << "a refused setBusTarget changed the tree (" << busID << " -> " << busTarget << ")";
+    };
+
+    // Unknown bus being moved / unknown parent / itself / the master. The master's
+    // busTarget is -1 by design: it is the root of every chain.
+    expectRefused(999, 0, "no bus with id 999");
+    expectRefused(hpf.busID, 999, "does not exist");
+    expectRefused(hpf.busID, hpf.busID, "its own busTarget");
+    expectRefused(0, hpf.busID, "master");
+    // A DESCENDANT one hop away...
+    expectRefused(hpf.busID, delay.busID, "descendant");
+    // ...and one several hops away: the HPF cannot move under the eq, which is
+    // reached only through the delay.
+    expectRefused(hpf.busID, eq.busID, "descendant");
+    // The same loop approached from the other end (moving the delay under itself
+    // via the eq) is refused too.
+    expectRefused(delay.busID, eq.busID, "descendant");
+    expectRefused(delay.busID, delay.busID, "its own busTarget");
+
+    // G4: every refusal above rejected BEFORE any edit, so not one of them issued
+    // a rebuild — the same RoutingManager instance is still live.
+    EXPECT_EQ(proc->getRoutingManager(), rmBefore)
+        << "a refused setBusTarget rebuilt the routing graph";
+
+    // ...and the chain those refusals were protecting is exactly where it was.
+    EXPECT_EQ(busTargetOf(engine, hpf.busID), 0);
+    EXPECT_EQ(busTargetOf(engine, delay.busID), hpf.busID);
+    EXPECT_EQ(busTargetOf(engine, eq.busID), delay.busID);
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, eq.busID), 0,
+                                       liveBusNodeId(engine, delay.busID), 0));
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, delay.busID), 0,
+                                       liveBusNodeId(engine, hpf.busID), 0));
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, hpf.busID), 0,
+                                       liveMasterNodeId(engine), 0));
+
+    // The walk is not a blanket "no": it terminates at the master, so the deepest
+    // bus may still move to busTarget 0 (0 is always the master, never looked up).
+    const auto toMaster = cmds.setBusTarget(eq.busID, 0);
+    ASSERT_TRUE(toMaster.ok) << toMaster.error;
+    EXPECT_EQ(busTargetOf(engine, eq.busID), 0);
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, eq.busID), 0,
+                                       liveMasterNodeId(engine), 0));
+    EXPECT_FALSE(liveGraphHasConnection(engine, liveBusNodeId(engine, eq.busID), 0,
+                                        liveBusNodeId(engine, delay.busID), 0));
+}
+
+// G4 — atomicity: a re-parent is ONE undo unit. A single undo restores the old
+// parent, and the next rebuild projects the restored tree.
+TEST(BusSetTarget, OneUndoRevertsAReparent)
+{
+    AudioEngine engine;
+    engine.initialize();
+    ASSERT_GE(seedTrack(engine, 1), 0);
+
+    auto& cmds = engine.getProjectCommands();
+    auto busList = engine.getProjectModel().getBusListTree();
+    const auto hpf = cmds.createBus("fx", "Dub HPF", "filter", 0);
+    ASSERT_TRUE(hpf.ok) << hpf.error;
+    const auto delay = cmds.createBus("fx", "Dub Delay", "delay", 0);
+    ASSERT_TRUE(delay.ok) << delay.error;
+    ASSERT_TRUE(ensureLiveRoutingGraph(engine));
+    ASSERT_EQ(busTargetOf(engine, delay.busID), 0);
+
+    const auto retarget = cmds.setBusTarget(delay.busID, hpf.busID);
+    ASSERT_TRUE(retarget.ok) << retarget.error;
+    ASSERT_EQ(busTargetOf(engine, delay.busID), hpf.busID);
+    ASSERT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, delay.busID), 0,
+                                       liveBusNodeId(engine, hpf.busID), 0));
+
+    ASSERT_TRUE(cmds.canUndo());
+    cmds.undo();
+
+    // ONE step: the parent is back and the buses the test built are still there
+    // (the unit is the property write, not the session).
+    EXPECT_EQ(busTargetOf(engine, delay.busID), 0) << "one undo did not restore the parent";
+    EXPECT_TRUE(findBusInTree(busList, hpf.busID).isValid()) << "the undo went too far";
+    EXPECT_TRUE(findBusInTree(busList, delay.busID).isValid());
+    EXPECT_EQ(busTargetOf(engine, hpf.busID), 0);
+
+    // AudioEngineCommands::undo rewrites the tree but does not project it, so the
+    // next rebuild is what carries the restored parent into the graph — and that
+    // graph must then read exactly what the tree says.
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    EXPECT_TRUE(liveGraphHasConnection(engine, liveBusNodeId(engine, delay.busID), 0,
+                                       liveMasterNodeId(engine), 0));
+    EXPECT_FALSE(liveGraphHasConnection(engine, liveBusNodeId(engine, delay.busID), 0,
+                                        liveBusNodeId(engine, hpf.busID), 0))
+        << "the undone edge is still live in the graph";
+}
