@@ -6,6 +6,7 @@
 #include "engine/Track.h"
 #include "engine/FxBusProcessor.h"
 #include "engine/GroupBusProcessor.h"
+#include "engine/InternalFilter.h"
 #include "engine/TrackFXSlot.h"
 #include "engine/TransportManager.h"
 #include "model/ProjectModel.h"
@@ -225,13 +226,19 @@ TEST(Send, StateSurvivesRoutingGraphRebuild)
 
 namespace {
 
-// Bootstraps a live RoutingManager on a deviceless session (no-op when a device
-// already ran prepareToPlay). Mirrors the incremental-routing test harness.
+// Bootstraps a live RoutingManager on a deviceless session. Preparing is
+// idempotent, so this ALWAYS prepares rather than early-returning on an existing
+// manager: AudioEngine::initialize() can leave a manager in place while
+// getSampleRate() is still 0, and that is exactly the state in which
+// rebuildRoutingGraph's `if (getSampleRate() > 0)` guard skips re-preparing
+// freshly added nodes - a bus created afterwards stays unprepared, its DSP never
+// runs, and (before FxBusProcessor::processBlock grew its fail-safe) processing
+// it corrupted memory. Measured 2026-09-23: the chained filter return passed
+// audio through unprocessed (lp == hp bit-for-bit).
 bool ensureLiveRoutingGraph(AudioEngine& engine)
 {
     auto* proc = engine.getMainProcessor();
     if (proc == nullptr) return false;
-    if (proc->getRoutingManager() != nullptr) return true;
     {
         const juce::MessageManagerLock pumpPark;
         proc->prepareToPlay(44100.0, 512);
@@ -458,10 +465,12 @@ TEST(BusSendCreate, RejectionsLeaveTheTreeUntouched)
     EXPECT_FALSE(badType.error.empty());
     EXPECT_EQ(badType.busID, -1);
 
-    const auto badFxType = cmds.createBus("fx", "Nope", "filter", 0);
+    const auto badFxType = cmds.createBus("fx", "Nope", "notafxtype", 0);
     EXPECT_FALSE(badFxType.ok);
     EXPECT_NE(badFxType.error.find("reverb"), std::string::npos)
         << "the error must name the accepted fx types: " << badFxType.error;
+    EXPECT_NE(badFxType.error.find("filter"), std::string::npos)
+        << "the error must name the accepted fx types, filter included: " << badFxType.error;
 
     const auto emptyFxType = cmds.createBus("fx", "Nope", "", 0);
     EXPECT_FALSE(emptyFxType.ok);
@@ -803,15 +812,15 @@ TEST(BusFxParam, ClampsOutOfRangeAndRejectsBadTargets)
 
     // An fx bus whose fxType has no defs: writing a param would be fake (G5).
     juce::ValueTree bogus(IDs::BUS);
-    bogus.setProperty(IDs::name, "Filter Bus", nullptr);
+    bogus.setProperty(IDs::name, "Bogus Bus", nullptr);
     bogus.setProperty(IDs::busID, 42, nullptr);
     bogus.setProperty(IDs::busType, "fx", nullptr);
     bogus.setProperty(IDs::busTarget, 0, nullptr);
-    bogus.setProperty(IDs::fxType, "filter", nullptr);
+    bogus.setProperty(IDs::fxType, "notafxtype", nullptr);
     busList.addChild(bogus, -1, nullptr);
     error.clear();
     EXPECT_FALSE(cmds.setBusFxParam(42, 0, 0.5f, error));
-    EXPECT_NE(error.find("unsupported fxType \"filter\""), std::string::npos) << error;
+    EXPECT_NE(error.find("unsupported fxType \"notafxtype\""), std::string::npos) << error;
     EXPECT_FALSE(findBusInTree(busList, 42).hasProperty("param_0"));
     busList.removeChild(busList.indexOf(bogus), nullptr);
 
@@ -1056,7 +1065,7 @@ TEST(BusFxParam, ParamChangesTheRenderedOutput)
 // space for the surfaces, not two.
 TEST(BusFxParam, DefTableMatchesTrackFxDefs)
 {
-    for (const char* type : { "reverb", "eq", "compressor", "delay" })
+    for (const char* type : { "reverb", "eq", "compressor", "delay", "filter" })
     {
         const auto& busDefs = HDAW::busFxParamDefs(type);
         const auto trackDefs = HDAW::TrackFXSlot::getParamDefsForType(type);
@@ -1085,11 +1094,27 @@ TEST(BusFxParam, DefTableMatchesTrackFxDefs)
     EXPECT_FLOAT_EQ(busDelayDefs[1].max, 0.99f);
     EXPECT_FLOAT_EQ(busDelayDefs[4].max, 6.0f);
 
-    EXPECT_TRUE(HDAW::busFxParamDefs("filter").empty());
+    EXPECT_EQ(HDAW::busFxParamDefs("filter").size(), 3u)
+        << "the filter return exposes Cutoff / Mode / Resonance";
+    EXPECT_TRUE(HDAW::busFxParamDefs("notafxtype").empty());
     EXPECT_TRUE(HDAW::busFxParamDefs("").empty());
     EXPECT_FLOAT_EQ(HDAW::clampBusFxParam("reverb", 0, 9.0f), 1.0f);
     EXPECT_FLOAT_EQ(HDAW::clampBusFxParam("reverb", 9, 9.0f), 9.0f) << "unknown index is not a clamp";
     EXPECT_FLOAT_EQ(HDAW::clampBusFxParam("delay", 1, 4.0f), 0.99f);
+    EXPECT_FLOAT_EQ(HDAW::clampBusFxParam("filter", 0, 5.0f), 20.0f);
+    EXPECT_FLOAT_EQ(HDAW::clampBusFxParam("filter", 0, 1.0e6f), 20000.0f);
+    EXPECT_FLOAT_EQ(HDAW::clampBusFxParam("filter", 1, 9.0f), 2.0f);
+    EXPECT_FLOAT_EQ(HDAW::clampBusFxParam("filter", 2, 0.0f), 0.1f);
+    EXPECT_FLOAT_EQ(HDAW::clampBusFxParam("filter", 2, 99.0f), 10.0f);
+
+    // G1: the accepted-type list names filter in the same order both surfaces
+    // and createBus's rejection message read it (one list, every message).
+    bool filterListed = false;
+    for (const char* t : HDAW::busFxTypes())
+        filterListed = filterListed || (std::string(t) == "filter");
+    EXPECT_TRUE(filterListed) << "busFxTypes() must accept filter";
+    EXPECT_NE(std::string(HDAW::busFxTypesText()).find("filter"), std::string::npos);
+    EXPECT_EQ(std::string(HDAW::busFxTypesText()), std::string("reverb, delay, eq, compressor, filter"));
 }
 
 // G4 basis: the shared read shaping (both surfaces return these strings) sees
@@ -1148,4 +1173,373 @@ TEST(BusFxParam, ReadShapingDescribesTheDefaultBuses)
     EXPECT_EQ(HDAW::findFxBusForRead(busList, 999).error, "no bus with id 999");
     EXPECT_EQ(HDAW::findFxBusForRead(busList, 0).error,
               "bus 0 is not an fx bus (busType \"master\")");
+}
+
+// ─── Slice E: the filter return (2026-09-23) ────────────────────────────────
+// A return can be high-passed: the bus `filter` chain runs the SAME
+// InternalFilter DSP a track's internal filter slot runs (extracted verbatim),
+// so the classic dub move — rolling the lows off a delay return so the repeats
+// stop muddying the bass — becomes expressible. The eq return is still a single
+// PEAK filter and cannot do this. Assertions are on the RENDERED signal and on
+// the LIVE graph, never on the stored value alone.
+namespace {
+
+// Steady-state RMS of a continuous 0.5-amplitude `freqHz` sine that has been
+// run through `proc` for `warmupBlocks` blocks and then measured over
+// `measureBlocks`. The phase runs across blocks (a per-block phase reset would
+// inject a step the filter would ring on).
+template <typename Processor>
+double steadySineRms(Processor& proc, double freqHz, int warmupBlocks = 4, int measureBlocks = 8)
+{
+    juce::AudioBuffer<float> buffer(2, 512);
+    juce::MidiBuffer midi;
+    double sum = 0.0;
+    int measured = 0;
+    for (int b = 0; b < warmupBlocks + measureBlocks; ++b)
+    {
+        buffer.clear();
+        for (int s = 0; s < 512; ++s)
+        {
+            const float v = 0.5f * std::sin(2.0 * juce::MathConstants<double>::pi
+                                            * freqHz * (s + b * 512) / 44100.0);
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.setSample(ch, s, v);
+        }
+        proc.processBlock(buffer, midi);
+        if (b < warmupBlocks) continue;
+        ++measured;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int s = 0; s < 512; ++s)
+                sum += static_cast<double>(buffer.getSample(ch, s)) * buffer.getSample(ch, s);
+    }
+    return std::sqrt(sum / (double) (measured * 2 * 512));
+}
+
+// A fresh filter bus with Cutoff/Mode set, fed a steady sine.
+double filterBusSineRms(int mode, float cutoffHz, double freqHz)
+{
+    HDAW::FxBusProcessor fx("Probe", "filter");
+    fx.prepareToPlay(44100.0, 512);
+    fx.setParam(0, cutoffHz);                        // Cutoff
+    fx.setParam(1, static_cast<float>(mode));        // Mode: 0=LP, 1=HP, 2=BP
+    return steadySineRms(fx, freqHz);
+}
+
+// Steady-state gain of the extracted filter at `freqHz` (0.5-amplitude sine in,
+// RMS ratio out) — the analytic anchor for the TPT solve.
+double filterGainAt(HDAW::InternalFilter& f, double freqHz, int samples = 200000)
+{
+    double sum = 0.0;
+    int measured = 0;
+    for (int i = 0; i < samples; ++i)
+    {
+        const float x = 0.5f * std::sin(2.0 * juce::MathConstants<double>::pi
+                                        * freqHz * i / 44100.0);
+        const float y = f.processSample(0, x);
+        if (i < samples / 2) continue;
+        ++measured;
+        sum += static_cast<double>(y) * y;
+    }
+    const double inRms = 0.5 / std::sqrt(2.0);
+    return std::sqrt(sum / measured) / inRms;
+}
+
+} // namespace
+
+// G4 (analytic anchor): the TPT solve is exact AT the cutoff, where all three
+// modes have gain 1/k = Resonance/2 — the property the 2026-09-09 hand-rolled
+// variant broke (it never swept its cutoff). Measured on the extracted class
+// directly, in the steady state, with the values the surfaces advertise.
+TEST(InternalFilterDsp, IsExactAtTheCutoffInEveryMode)
+{
+    for (const float res : { 0.7f, 2.0f })
+    {
+        const float expected = res / 2.0f;           // 1/k, k = 2/Q
+        for (const int mode : { 0, 1, 2 })
+        {
+            HDAW::InternalFilter f;
+            f.prepare(44100.0);
+            f.setParam(0, 1000.0f);
+            f.setParam(1, static_cast<float>(mode));
+            f.setParam(2, res);
+            EXPECT_NEAR(filterGainAt(f, 1000.0), expected, 0.01)
+                << "mode " << mode << " resonance " << res;
+        }
+    }
+
+    // A 1 kHz lowpass passes 100 Hz and rejects 5 kHz (the sweep is real, not a
+    // pass-through); highpass is the mirror image. Analytic TPT values.
+    HDAW::InternalFilter lp;
+    lp.prepare(44100.0);
+    lp.setParam(0, 1000.0f);
+    lp.setParam(1, 0.0f);
+    lp.setParam(2, 0.7f);
+    EXPECT_NEAR(filterGainAt(lp, 100.0), 0.971, 0.02);
+    EXPECT_NEAR(filterGainAt(lp, 5000.0), 0.033, 0.02);
+
+    HDAW::InternalFilter hp;
+    hp.prepare(44100.0);
+    hp.setParam(0, 1000.0f);
+    hp.setParam(1, 1.0f);
+    hp.setParam(2, 0.7f);
+    EXPECT_NEAR(filterGainAt(hp, 100.0), 0.0097, 0.01);
+    EXPECT_NEAR(filterGainAt(hp, 5000.0), 0.902, 0.02);
+}
+
+// G5 at the DSP entry: every param clamps to its def, Mode is the int enum it
+// is advertised as (rounded, so a fractional value cannot fall through the mode
+// switch to lowpass), and an unknown index mutates nothing.
+TEST(InternalFilterDsp, ClampsEveryParamAndIgnoresUnknownIndexes)
+{
+    HDAW::InternalFilter f;
+    f.prepare(44100.0);
+
+    f.setParam(0, 1.0f);        EXPECT_FLOAT_EQ(f.getParam(0), 20.0f);
+    f.setParam(0, 1.0e6f);      EXPECT_FLOAT_EQ(f.getParam(0), 20000.0f);
+    f.setParam(1, 9.0f);        EXPECT_FLOAT_EQ(f.getParam(1), 2.0f);
+    f.setParam(1, -3.0f);       EXPECT_FLOAT_EQ(f.getParam(1), 0.0f);
+    f.setParam(1, 1.6f);        EXPECT_FLOAT_EQ(f.getParam(1), 2.0f) << "Mode is an int enum";
+    f.setParam(2, 0.0f);        EXPECT_FLOAT_EQ(f.getParam(2), 0.1f);
+    f.setParam(2, 99.0f);       EXPECT_FLOAT_EQ(f.getParam(2), 10.0f);
+
+    f.setParam(0, 500.0f);
+    f.setParam(9, 123.0f);
+    f.setParam(-1, 123.0f);
+    EXPECT_FLOAT_EQ(f.getParam(0), 500.0f) << "an unknown index still moved the filter";
+    EXPECT_FLOAT_EQ(f.getParam(9), 0.0f);
+}
+
+// G2 — the point of the slice: the filter return changes the audio it passes.
+// A 100 Hz "bass" send into a 1 kHz-cutoff return keeps ~0.97 of its level in
+// Lowpass and ~0.01 in Highpass; a 5 kHz send is the mirror image; and moving
+// the cutoff in Lowpass moves the band. A param that reads back but never
+// reaches the DSP fails here.
+TEST(BusFxParam, FilterBusModeAndCutoffChangeTheRenderedAudio)
+{
+    const double bassLp   = filterBusSineRms(0, 1000.0f, 100.0);
+    const double bassHp   = filterBusSineRms(1, 1000.0f, 100.0);
+    const double trebleLp = filterBusSineRms(0, 1000.0f, 5000.0);
+    const double trebleHp = filterBusSineRms(1, 1000.0f, 5000.0);
+    const double bassLpLowCut = filterBusSineRms(0, 250.0f, 100.0);
+
+    EXPECT_NEAR(bassLp, 0.343, 0.03) << "Lowpass @1k must pass 100 Hz";
+    EXPECT_LT(bassHp, bassLp * 0.05)
+        << "Highpass @1k did not remove the low band (lp=" << bassLp << " hp=" << bassHp << ")";
+    EXPECT_NEAR(trebleHp, 0.319, 0.03) << "Highpass @1k must pass 5 kHz";
+    EXPECT_LT(trebleLp, trebleHp * 0.1)
+        << "Lowpass @1k did not remove the high band (lp=" << trebleLp << " hp=" << trebleHp << ")";
+    EXPECT_GT(bassLp, bassLpLowCut * 1.15)
+        << "the Cutoff param did not move the low band (1k=" << bassLp
+        << " 250=" << bassLpLowCut << ")";
+
+    // Mode is the enum the def advertises, and the readback reports what the DSP
+    // runs.
+    HDAW::FxBusProcessor fx("Probe", "filter");
+    fx.prepareToPlay(44100.0, 512);
+    EXPECT_FLOAT_EQ(fx.getParam(0), 1000.0f) << "an untouched filter return runs the def defaults";
+    EXPECT_FLOAT_EQ(fx.getParam(1), 0.0f);
+    EXPECT_FLOAT_EQ(fx.getParam(2), 0.7f);
+    fx.setParam(1, 5.0f);   EXPECT_FLOAT_EQ(fx.getParam(1), 2.0f);
+    fx.setParam(0, 1.0f);   EXPECT_FLOAT_EQ(fx.getParam(0), 20.0f);
+    fx.setParam(0, 1.0e6f); EXPECT_FLOAT_EQ(fx.getParam(0), 20000.0f);
+    fx.setParam(2, 0.0f);   EXPECT_FLOAT_EQ(fx.getParam(2), 0.1f);
+    fx.setParam(2, 99.0f);  EXPECT_FLOAT_EQ(fx.getParam(2), 10.0f);
+    fx.setParam(7, 0.5f);   EXPECT_FLOAT_EQ(fx.getParam(7), 0.0f) << "no such param";
+}
+
+// G1/G5: createBus accepts "filter", the live return is a filter chain running
+// the track filter's defs, its params clamp at the command AND the processor, an
+// unknown paramIndex is rejected with no mutation, and the values survive a
+// rebuild.
+TEST(BusSendCreate, CreateFilterBusAndShapeItsParams)
+{
+    AudioEngine engine;
+    engine.initialize();
+    ASSERT_GE(seedTrack(engine, 1), 0);
+    ASSERT_TRUE(ensureLiveRoutingGraph(engine));
+
+    auto& cmds = engine.getProjectCommands();
+    auto busList = engine.getProjectModel().getBusListTree();
+    const auto bus = cmds.createBus("fx", "Dub HPF", "filter", 0);
+    ASSERT_TRUE(bus.ok) << bus.error;
+    EXPECT_EQ(bus.busID, 2);                 // 0 = master, 1 = default "Reverb"
+
+    auto busTree = findBusInTree(busList, bus.busID);
+    ASSERT_TRUE(busTree.isValid());
+    EXPECT_EQ(busTree.getProperty(IDs::busType).toString(), juce::String("fx"));
+    EXPECT_EQ(busTree.getProperty(IDs::fxType).toString(), juce::String("filter"));
+    EXPECT_EQ(static_cast<int>(busTree.getProperty(IDs::busTarget)), 0);
+
+    auto* live = liveFxBus(engine, bus.busID);
+    ASSERT_NE(live, nullptr) << "the filter bus has no live FxBusProcessor";
+    EXPECT_EQ(live->getFxType(), juce::String("filter"));
+    EXPECT_FLOAT_EQ(live->getParam(0), 1000.0f) << "Cutoff default";
+    EXPECT_FLOAT_EQ(live->getParam(1), 0.0f) << "Mode default = lowpass";
+    EXPECT_FLOAT_EQ(live->getParam(2), 0.7f) << "Resonance default";
+
+    // The read surface (list_bus_fx_params' payload) reports exactly the three
+    // params, with the track filter's ranges.
+    auto fxParsed = juce::JSON::parse(juce::String(HDAW::shapeBusFxParamsJson(busTree)));
+    EXPECT_EQ(fxParsed.getProperty("fxType", "").toString(), juce::String("filter"));
+    auto* params = fxParsed.getProperty("params", juce::var()).getArray();
+    ASSERT_NE(params, nullptr);
+    ASSERT_EQ(params->size(), 3);
+    EXPECT_EQ((*params)[0].getProperty("name", "").toString(), juce::String("Cutoff"));
+    EXPECT_NEAR(static_cast<double>((*params)[0].getProperty("minValue", 0.0)), 20.0, 1e-6);
+    EXPECT_NEAR(static_cast<double>((*params)[0].getProperty("maxValue", 0.0)), 20000.0, 1e-6);
+    EXPECT_EQ((*params)[1].getProperty("name", "").toString(), juce::String("Mode"));
+    EXPECT_NEAR(static_cast<double>((*params)[1].getProperty("maxValue", 0.0)), 2.0, 1e-6);
+    EXPECT_EQ((*params)[2].getProperty("name", "").toString(), juce::String("Resonance"));
+    EXPECT_NEAR(static_cast<double>((*params)[2].getProperty("minValue", 0.0)), 0.1, 1e-6);
+
+    std::string error;
+    ASSERT_TRUE(cmds.setBusFxParam(bus.busID, 1, 9.0f, error)) << error;   // Mode above the enum
+    EXPECT_FLOAT_EQ(live->getParam(1), 2.0f) << "Mode was not clamped to the def";
+    EXPECT_NEAR(static_cast<double>(busTree.getProperty("param_1")), 2.0, 1e-6);
+    ASSERT_TRUE(cmds.setBusFxParam(bus.busID, 0, 5.0f, error)) << error;   // Cutoff below the def
+    EXPECT_FLOAT_EQ(live->getParam(0), 20.0f);
+    ASSERT_TRUE(cmds.setBusFxParam(bus.busID, 2, 99.0f, error)) << error;  // Resonance above the def
+    EXPECT_FLOAT_EQ(live->getParam(2), 10.0f);
+
+    // Unknown paramIndex: rejected, and neither the tree nor the processor moves.
+    error.clear();
+    const int propsBefore = busTree.getNumProperties();
+    EXPECT_FALSE(cmds.setBusFxParam(bus.busID, 9, 0.5f, error));
+    EXPECT_NE(error.find("out of range"), std::string::npos) << error;
+    EXPECT_EQ(busTree.getNumProperties(), propsBefore) << "a rejected index still wrote the tree";
+    EXPECT_FLOAT_EQ(live->getParam(2), 10.0f) << "a rejected index still moved the processor";
+
+    // Gate 1/6/10: the filter chain and its params survive a rebuild.
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    live = liveFxBus(engine, bus.busID);
+    ASSERT_NE(live, nullptr) << "the filter return was lost on rebuild";
+    EXPECT_EQ(live->getFxType(), juce::String("filter"));
+    EXPECT_FLOAT_EQ(live->getParam(0), 20.0f) << "Cutoff lost on rebuild";
+    EXPECT_FLOAT_EQ(live->getParam(1), 2.0f) << "Mode lost on rebuild";
+    EXPECT_FLOAT_EQ(live->getParam(2), 10.0f) << "Resonance lost on rebuild";
+}
+
+// G3 — the deliverable, end to end: delay bus (busTarget = filter bus) ->
+// filter bus (Mode=HP, Cutoff 250 Hz) -> master, with a send into the delay bus.
+// The live graph must have the filter bus as the delay bus's parent (busTarget
+// already nests buses — no new routing), and what reaches the master must come
+// out high-passed: the same chain in Lowpass keeps the low band, Highpass drops
+// it, measured on the live processors in graph order.
+TEST(BusFxParam, FilterBusChainedBehindADelayBusHighPassesTheReturn)
+{
+    AudioEngine engine;
+    engine.initialize();
+    ASSERT_GE(seedTrack(engine, 1), 0);
+    auto& cmds = engine.getProjectCommands();
+    auto busList = engine.getProjectModel().getBusListTree();
+
+    // Create the buses BEFORE the graph is prepared, so the single prepare covers
+    // them. A bus created after the last prepare is never prepared itself
+    // (MainAudioProcessor::rebuildRoutingGraph only re-prepares when
+    // getSampleRate() > 0), and processing it then indexes an unsized scratch
+    // buffer and an unallocated delay line - measured 2026-09-23: channel-1 inf
+    // followed by an access violation. This ordering is also what a real session
+    // does: the tree exists when the device opens.
+    const auto hpf = cmds.createBus("fx", "Dub HPF", "filter", 0);
+    ASSERT_TRUE(hpf.ok) << hpf.error;
+    const auto delay = cmds.createBus("fx", "Dub Delay", "delay", hpf.busID);
+    ASSERT_TRUE(delay.ok) << delay.error;
+    const auto send = cmds.createSend(0, delay.busID, 1.0f, false);
+    ASSERT_TRUE(send.ok) << send.error;
+
+    ASSERT_TRUE(ensureLiveRoutingGraph(engine));
+
+    EXPECT_EQ(static_cast<int>(findBusInTree(busList, delay.busID).getProperty(IDs::busTarget)),
+              hpf.busID) << "the delay bus must target the filter bus";
+    EXPECT_EQ(findBusInTree(busList, hpf.busID).getProperty(IDs::fxType).toString(),
+              juce::String("filter"));
+
+    // Look the live processors up AFTER the prepare: a re-prepare rebuilds the
+    // RoutingManager, so pointers captured earlier would dangle.
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    auto* liveHpf = rm->getFxBus(hpf.busID);
+    auto* liveDelay = rm->getFxBus(delay.busID);
+    ASSERT_NE(liveHpf, nullptr);
+    ASSERT_NE(liveDelay, nullptr);
+    EXPECT_EQ(liveDelay->getFxType(), juce::String("delay"));
+    EXPECT_EQ(liveHpf->getFxType(), juce::String("filter"));
+
+    // The live graph: send -> delay bus -> filter bus -> master. The graph runs
+    // the buses in that order, so the filter is what the master hears.
+    const auto hpfNode = nodeIdOfLiveProcessor(engine, liveHpf);
+    const auto delayNode = nodeIdOfLiveProcessor(engine, liveDelay);
+    const auto masterNode = nodeIdOfLiveProcessor(engine, rm->getMasterBus());
+    ASSERT_NE(hpfNode.uid, 0u);
+    ASSERT_NE(delayNode.uid, 0u);
+    ASSERT_NE(masterNode.uid, 0u);
+    EXPECT_TRUE(liveGraphHasConnection(engine, delayNode, 0, hpfNode, 0))
+        << "the delay bus is not connected to the filter bus (L)";
+    EXPECT_TRUE(liveGraphHasConnection(engine, delayNode, 1, hpfNode, 1))
+        << "the delay bus is not connected to the filter bus (R)";
+    EXPECT_TRUE(liveGraphHasConnection(engine, hpfNode, 0, masterNode, 0))
+        << "the filter bus is not connected to the master";
+    auto sends = liveSendProcessors(engine);
+    ASSERT_EQ(sends.size(), 1u);
+    EXPECT_TRUE(liveGraphHasConnection(engine, nodeIdOfLiveProcessor(engine, sends[0]), 0,
+                                       delayNode, 0))
+        << "the send does not feed the delay bus";
+
+    // The chain's params, through the command surface: a pure-wet 20 ms repeat
+    // (so the filter sees a delayed copy of the send) and a 250 Hz filter.
+    std::string error;
+    ASSERT_TRUE(cmds.setBusFxParam(delay.busID, 0, 0.02f, error)) << error;
+    ASSERT_TRUE(cmds.setBusFxParam(delay.busID, 1, 0.0f, error)) << error;
+    ASSERT_TRUE(cmds.setBusFxParam(delay.busID, 2, 1.0f, error)) << error;
+    ASSERT_TRUE(cmds.setBusFxParam(hpf.busID, 0, 250.0f, error)) << error;
+    ASSERT_TRUE(cmds.setBusFxParam(hpf.busID, 2, 0.7f, error)) << error;
+
+    // Render the chain in graph order: send -> delay bus -> filter bus. The
+    // send's own input path is a 100 Hz "bass" line; the filter's mode is the
+    // only thing that changes between the two renders.
+    auto renderBass = [&](float mode)
+    {
+        std::fprintf(stderr, "MARK render start mode=%g\n", (double) mode);
+        EXPECT_TRUE(cmds.setBusFxParam(hpf.busID, 1, mode, error)) << error;
+        std::fprintf(stderr, "MARK param set\n");
+        EXPECT_FLOAT_EQ(liveHpf->getParam(1), mode) << "the command did not reach the live filter";
+        HDAW::SendProcessor sendProc;
+        sendProc.prepareToPlay(44100.0, 512);
+        sendProc.setSendLevel(1.0f);
+        std::fprintf(stderr, "MARK send prepared\n");
+        juce::AudioBuffer<float> buffer(2, 512);
+        juce::MidiBuffer midi;
+        double sum = 0.0;
+        int measured = 0;
+        for (int b = 0; b < 12; ++b)
+        {
+            buffer.clear();
+            for (int s = 0; s < 512; ++s)
+            {
+                const float v = 0.5f * std::sin(2.0 * juce::MathConstants<double>::pi
+                                                * 100.0 * (s + b * 512) / 44100.0);
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.setSample(ch, s, v);
+            }
+            sendProc.processBlock(buffer, midi);
+            liveDelay->processBlock(buffer, midi);
+            liveHpf->processBlock(buffer, midi);
+            if (b < 4) continue;
+            ++measured;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int s = 0; s < 512; ++s)
+                    sum += static_cast<double>(buffer.getSample(ch, s)) * buffer.getSample(ch, s);
+            std::fprintf(stderr, "MARK b=%d sum=%g measured=%d\n", b, sum, measured);
+        }
+        std::fprintf(stderr, "MARK render end sum=%g measured=%d ret=%g\n", sum, measured,
+                     std::sqrt(sum / (double) (measured * 2 * 512)));
+        return std::sqrt(sum / (double) (measured * 2 * 512));
+    };
+
+    const double lowpass  = renderBass(0.0f);
+    const double highpass = renderBass(1.0f);
+
+    EXPECT_GT(lowpass, 0.15) << "the chain does not pass the send at all (lp=" << lowpass << ")";
+    EXPECT_LT(highpass, lowpass * 0.35)
+        << "the chained return is not high-passed (lp=" << lowpass << " hp=" << highpass << ")";
 }

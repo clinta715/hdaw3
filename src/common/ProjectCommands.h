@@ -118,10 +118,10 @@ public:
         int busID = -1;
     };
     // createBus: busType is "fx" | "group". An fx bus requires fxType from
-    // FxBusProcessor's set {"reverb","delay","eq","compressor"} (any other value
-    // would build a silent passthrough bus). busTarget must be an existing busID
-    // (0 = master). Returns ok=false + error, with NO tree change, on any
-    // rejection.
+    // FxBusProcessor's set {"reverb","delay","eq","compressor","filter"} (any
+    // other value would build a silent passthrough bus). busTarget must be an
+    // existing busID (0 = master). Returns ok=false + error, with NO tree
+    // change, on any rejection.
     virtual BusCreateResult createBus(const std::string& busType,
                                       const std::string& name,
                                       const std::string& fxType,

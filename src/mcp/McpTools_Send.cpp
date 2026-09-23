@@ -88,7 +88,10 @@ void registerSendTools(McpServer& s, AudioEngine* e)
     // SAME payloads, which is what the twin test asserts.
 
     s.registerTool({"add_bus", "Create a bus (busType 'fx' or 'group') and return its busID. "
-        "busTarget is the parent bus id (default 0 = master).",
+        "busTarget is the parent bus id (default 0 = master) — an fx bus may target another fx "
+        "bus, which chains them (create the filter bus first, then the delay bus targeting it, "
+        "for a high-passed delay return). An fx bus requires fxType one of "
+        "reverb|delay|eq|compressor|filter; anything else is rejected by name.",
         objSchema({{"busType", QJsonObject{{"type","string"}}},
                   {"name", QJsonObject{{"type","string"}}},
                   {"fxType", QJsonObject{{"type","string"}}},
@@ -185,7 +188,8 @@ void registerSendTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_bus_fx_param", "Set an FX bus parameter in REAL units (the index / "
         "minValue / maxValue list_bus_fx_params reports; values clamp to that range). Shapes the shared "
         "send return — reverb Room Size / Wet Level, eq Gain, compressor Threshold, delay Delay "
-        "Time (seconds) / Feedback / Mix / SyncToTempo / Division. Errors (with no mutation) for an "
+        "Time (seconds) / Feedback / Mix / SyncToTempo / Division, filter Cutoff (Hz) / Mode "
+        "(0=lowpass, 1=highpass, 2=bandpass) / Resonance. Errors (with no mutation) for an "
         "unknown busID, a non-fx bus, or a paramIndex the bus's fxType does not have. Durable: the "
         "value lives on the BUS node, so it survives save/load, rebuildRoutingGraph() and "
         "prepareToPlay.",

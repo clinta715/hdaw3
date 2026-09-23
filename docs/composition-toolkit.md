@@ -102,9 +102,22 @@ documented a capability gap; it is now closed). `add_bus {busType:"fx"|"group", 
 fxType, busTarget}` creates a bus and returns its `busID`; `add_send {trackId, busTarget,
 level, isPreFader}` routes a track into it; `remove_bus` / `remove_send` tear down, and
 `remove_bus` cascades (every send targeting it goes in the same undo unit — one `undo`
-restores bus + sends). `fxType` must be one of `FxBusProcessor`'s four —
-`reverb`, `delay`, `eq`, `compressor`; anything else is rejected by name (an unknown
-type would build a silent passthrough). The pre-existing `set_track_send_level` /
+restores bus + sends). `fxType` must be one of `FxBusProcessor`'s five —
+`reverb`, `delay`, `eq`, `compressor`, **`filter`**; anything else is rejected by name (an
+unknown type would build a silent passthrough). `filter` is the state-variable filter a track's
+internal filter slot runs (`src/engine/InternalFilter.h`), with `Cutoff` / `Mode` (0=LP, 1=HP,
+2=BP) / `Resonance` — and it is what makes a return **high-passable**, which the peak-only `eq`
+cannot express.
+
+**High-passing a return = CHAINING buses.** `busTarget` is set at creation and nothing
+re-parents a bus afterwards, so: **create the filter bus FIRST** (`add_bus {fxType:"filter",
+busTarget:0}`), then the delay bus with `busTarget = <filter bus>`, and send into the *delay*
+bus. Measured 2026-09-23 (`aether_dub`, 16 s of drop1, chained delay → HPF 250 Hz → master):
+bass band **18 627 → 15 505 (−17%)**, sub **5 645 → 4 445 (−21%)** — the classic dub move, now
+expressible. A `set_bus_target` command (to re-parent an existing bus, e.g. the default
+`Reverb`) is the obvious follow-up. Note a bus created *after* the graph was last prepared is
+never prepared itself; `FxBusProcessor::processBlock` now fails safe (pass-through) rather than
+corrupting memory. The pre-existing `set_track_send_level` /
 `_mode` / `_bypassed` / `get_track_sends` shape and read an existing send. RPC twins:
 `project.addBus` / `removeBus` / `addSend` / `removeSend`. Full plan + gates:
 `docs/plans/2026-09-22-bus-send-surface.md`.

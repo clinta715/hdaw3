@@ -104,6 +104,17 @@ void MainAudioProcessor::setTransportManager(HDAW::TransportManager* tm)
 
 void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    // Record the host's rate/block size ON THE PROCESSOR. Without this,
+    // getSampleRate() stays 0 for any caller that invokes prepareToPlay directly
+    // (the deviceless test harness), and rebuildRoutingGraph's re-prepare guard
+    // (`if (getSampleRate() > 0)` below) then skips preparing freshly added
+    // nodes: a bus created after the last prepare was left unprepared, and
+    // processing it indexed the scratch buffer AND the delay line out of bounds
+    // (measured 2026-09-23: channel-1 inf, then an access violation). The device
+    // manager sets this before calling us in production; doing it here makes the
+    // processor self-consistent whichever way it was prepared.
+    setRateAndBufferSizeDetails(sampleRate, samplesPerBlock);
+
     if (projectModel == nullptr || transportManager == nullptr || formatManager == nullptr) return;
 
     transportManager->setSampleRate(sampleRate);

@@ -209,11 +209,49 @@ TEST_F(BusSendRpcTest, AddBusRejectsUnknownBusTargetOnBothSurfaces) {
 // The other rejection the command layer owns: an fxType FxBusProcessor cannot
 // build. Reported identically by both surfaces.
 TEST_F(BusSendRpcTest, AddBusRejectsUnsupportedFxTypeOnBothSurfaces) {
-    const QJsonObject args{ { "busType", "fx" }, { "name", "Filter Bus" },
-                            { "fxType", "filter" }, { "busTarget", 0 } };
+    const QJsonObject args{ { "busType", "fx" }, { "name", "Bogus Bus" },
+                            { "fxType", "notafxtype" }, { "busTarget", 0 } };
     const int before = busCount();
     expectSameFailure("add_bus", "project.addBus", args);
     EXPECT_EQ(busCount(), before) << "a rejected createBus must not touch BUS_LIST";
+    EXPECT_TRUE(rpc("project.addBus", args).payload.toObject().value("message").toString()
+                    .contains("filter"))
+        << "the rejection must name the accepted fx types, filter included";
+}
+
+// The `filter` return (slice E of docs/plans/2026-09-23-filter-bus.md) is a bus
+// the command layer accepts, so both surfaces create it and report the same
+// payload — the type list is one shared list, not a per-surface one.
+TEST_F(BusSendRpcTest, AddFilterBusMatchesMcp) {
+    const QJsonObject args{ { "busType", "fx" }, { "name", "Dub HPF" },
+                            { "fxType", "filter" }, { "busTarget", 0 } };
+    const QJsonValue viaMcp = mcpValue("add_bus", args);
+    const QJsonValue viaRpc = rpcPayload("project.addBus", args);
+    expectSameCreationPayload(viaMcp, viaRpc, "busID");
+    for (const int id : { viaMcp.toObject().value("busID").toInt(-1),
+                          viaRpc.toObject().value("busID").toInt(-1) }) {
+        ASSERT_GE(id, 0);
+        ASSERT_TRUE(busNode(id).isValid());
+        EXPECT_EQ(busNode(id).getProperty(IDs::fxType).toString().toStdString(), "filter");
+    }
+
+    // Both surfaces read the same three params back through list_bus_fx_params /
+    // read.listBusFxParams.
+    const QJsonObject readArgs{ { "busID", viaMcp.toObject().value("busID").toInt(-1) } };
+    const QJsonValue mcpRead = mcpValue("list_bus_fx_params", readArgs);
+    const QJsonValue rpcRead = rpcPayload("read.listBusFxParams", readArgs);
+    EXPECT_EQ(rpcRead, mcpRead);
+    const QJsonArray params = mcpRead.toObject().value("params").toArray();
+    ASSERT_EQ(params.size(), 3);
+    EXPECT_EQ(params[0].toObject().value("name").toString(), QString("Cutoff"));
+    EXPECT_EQ(params[1].toObject().value("name").toString(), QString("Mode"));
+    EXPECT_EQ(params[2].toObject().value("name").toString(), QString("Resonance"));
+    EXPECT_DOUBLE_EQ(params[0].toObject().value("minValue").toDouble(), 20.0);
+    EXPECT_DOUBLE_EQ(params[0].toObject().value("maxValue").toDouble(), 20000.0);
+    EXPECT_DOUBLE_EQ(params[1].toObject().value("maxValue").toDouble(), 2.0);
+    // Resonance's min is a float def (0.1f) surfaced through JSON, so compare
+    // with a tolerance rather than bit-exactness (0.1f != 0.1 as a double).
+    EXPECT_NEAR(params[2].toObject().value("minValue").toDouble(), 0.1, 1e-6);
 }
 
 // remove_bus / project.removeBus: the SUCCESS payload is identical string-for-string

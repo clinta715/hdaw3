@@ -15,6 +15,13 @@
 // advertising them is not a fake param (G5). The defs below are pinned to
 // TrackFXSlot::getParamDefsForType("delay") (which derives from
 // InternalDelay::paramDefs()) by BusFxParam.DefTableMatchesTrackFxDefs.
+//
+// The `filter` return (slice E of docs/plans/2026-09-23-filter-bus.md) is the
+// same move for the SVF: FxBusProcessor's filter chain runs the shared
+// InternalFilter DSP (engine/InternalFilter.h, the same class TrackFXSlot uses),
+// so a return can be high-passed. Its defs are pinned to
+// TrackFXSlot::getParamDefsForType("filter") (which derives from
+// InternalFilter::paramDefs()) by the same test.
 #include <juce_core/juce_core.h>
 #include <vector>
 
@@ -28,13 +35,13 @@ struct BusFxParamDef { const char* name; float def; float min; float max; };
 // name the same accepted set in the same order.
 inline const std::vector<const char*>& busFxTypes()
 {
-    static const std::vector<const char*> types = { "reverb", "delay", "eq", "compressor" };
+    static const std::vector<const char*> types = { "reverb", "delay", "eq", "compressor", "filter" };
     return types;
 }
 
 inline const char* const busFxTypesText()
 {
-    return "reverb, delay, eq, compressor";
+    return "reverb, delay, eq, compressor, filter";
 }
 
 inline const std::vector<BusFxParamDef>& busFxParamDefs(const juce::String& fxType)
@@ -67,11 +74,23 @@ inline const std::vector<BusFxParamDef>& busFxParamDefs(const juce::String& fxTy
         {"SyncToTempo",  0.0f, 0.0f,   1.0f  },
         {"Division",     0.0f, 0.0f,   6.0f  },
     };
+    static const std::vector<BusFxParamDef> filter = {
+        // The track filter's defs verbatim (TrackFXSlot::getParamDefsForType,
+        // which derives them from InternalFilter::paramDefs()): Cutoff Hz, the
+        // Mode enum 0=lowpass / 1=highpass / 2=bandpass, and Resonance Q.
+        // Mode is what makes a return high-passable — the classic dub move of
+        // rolling the lows off a delay return so the repeats stop muddying the
+        // bass — which the single PEAK-filter eq cannot express.
+        {"Cutoff",    1000.0f,   20.0f, 20000.0f},
+        {"Mode",         0.0f,    0.0f,     2.0f},
+        {"Resonance",    0.7f,    0.1f,    10.0f},
+    };
     static const std::vector<BusFxParamDef> none = {};
     if (fxType == "reverb")     return reverb;
     if (fxType == "eq")         return eq;
     if (fxType == "compressor") return comp;
     if (fxType == "delay")      return delay;
+    if (fxType == "filter")     return filter;
     return none;
 }
 

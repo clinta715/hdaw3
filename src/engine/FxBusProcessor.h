@@ -1,6 +1,7 @@
 #pragma once
 #include "BusProcessorBase.h"
 #include "InternalDelay.h"
+#include "InternalFilter.h"
 #include "../common/BusFxDefs.h"
 #include <juce_dsp/juce_dsp.h>
 #include <array>
@@ -9,9 +10,10 @@
 namespace HDAW {
 
 // FX return bus: one hardcoded DSP chain per fxType (reverb / delay / eq /
-// compressor), now PARAMETERIZED — the defs live in common/BusFxDefs.h and the
-// values in a lock-free std::atomic<float> array (the MasterBusProcessor
-// pattern), so the command thread never takes a lock the audio thread holds.
+// compressor / filter), now PARAMETERIZED — the defs live in common/BusFxDefs.h
+// and the values in a lock-free std::atomic<float> array (the
+// MasterBusProcessor pattern), so the command thread never takes a lock the
+// audio thread holds.
 //
 // Persistence is the BUS node's param_<i> property (the same grammar
 // MasterBusProcessor uses on MASTER_FX slots), which is why the values are
@@ -116,9 +118,21 @@ public:
 
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
     {
-        juce::ScopedNoDenormals noDenormals;
         const int numSamples = buffer.getNumSamples();
         const int numChannels = juce::jmin(2, buffer.getNumChannels());
+
+        // Fail safe when this bus is not prepared for this block size. A bus
+        // created after the graph was last prepared is never prepared itself
+        // (MainAudioProcessor::rebuildRoutingGraph only re-prepares when
+        // getSampleRate() > 0), and releaseResources() shrinks the scratch buffer
+        // to 1x1 - processing then would index the scratch buffer AND the delay
+        // line out of bounds (measured 2026-09-23: channel-1 inf, then an access
+        // violation). Pass the input through untouched instead of corrupting
+        // memory; the next prepareToPlay builds the chain properly.
+        if (scratchBuffer.getNumChannels() < 2 || scratchBuffer.getNumSamples() < numSamples)
+            return;
+
+        juce::ScopedNoDenormals noDenormals;
 
         scratchBuffer.clear();
         for (int ch = 0; ch < numChannels; ++ch)
@@ -146,6 +160,12 @@ public:
             eqProcess.process(context);
         if (compEnabled)
             compProcess.process(context);
+        if (filterEnabled)
+        {
+            // The same per-sample SVF solve the track slot's Filter case runs,
+            // over the scratch block in place (no allocation, no lock).
+            filterProcess.process(block);
+        }
 
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.copyFrom(ch, 0, scratchBuffer, ch, 0, numSamples);
@@ -190,6 +210,7 @@ private:
         delayEnabled = false;
         eqEnabled = false;
         compEnabled = false;
+        filterEnabled = false;
 
         if (spec.sampleRate <= 0.0)
             return;
@@ -221,6 +242,16 @@ private:
             compEnabled = true;
             compProcess.reset();
             compProcess.prepare(spec);
+        }
+        else if (currentFxType == "filter")
+        {
+            // The shared internal filter (InternalFilter.h), the same DSP a
+            // track's internal filter slot runs — so a return can be
+            // high-passed (Mode 1), which the peak-filter eq cannot express.
+            // prepare() only sets the sample rate and computes coefficients; the
+            // stored params are pushed by applyAllParamsToDsp() below.
+            filterEnabled = true;
+            filterProcess.prepare(spec.sampleRate);
         }
 
         // Defaults are overridden by whatever setParam/applyFromTree stored.
@@ -287,6 +318,14 @@ private:
             // derived value moved, so a running return responds without a rebuild.
             delayProcess.setParam(paramIndex, value);
         }
+        else if (currentFxType == "filter")
+        {
+            // Cutoff / Mode / Resonance — one push into the shared DSP (the def
+            // table and InternalFilter::paramDefs() are the same table), which
+            // clamps again at its own entry and recomputes the TPT coefficients
+            // on every change. Mode is the high-pass/low-pass switch.
+            filterProcess.setParam(paramIndex, value);
+        }
     }
 
     juce::String currentFxType;
@@ -299,6 +338,7 @@ private:
     std::atomic<bool> delayEnabled{ false };
     std::atomic<bool> eqEnabled{ false };
     std::atomic<bool> compEnabled{ false };
+    std::atomic<bool> filterEnabled{ false };
 
     juce::dsp::Reverb reverbProcess;
     // The shared internal delay DSP (InternalDelay.h) — feedback, mix and
@@ -307,6 +347,9 @@ private:
     juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,
                                    juce::dsp::IIR::Coefficients<float>> eqProcess;
     juce::dsp::Compressor<float> compProcess;
+    // The shared internal filter DSP (InternalFilter.h) — the same SVF a track's
+    // internal filter slot runs, so a return can be high-passed.
+    InternalFilter filterProcess;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FxBusProcessor)
 };

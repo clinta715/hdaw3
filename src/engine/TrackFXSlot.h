@@ -26,6 +26,7 @@
 #include "PsyFmAlgorithms.h"
 #include "PsyFmState.h"
 #include "InternalDelay.h"
+#include "InternalFilter.h"
 
 namespace HDAW {
 
@@ -161,12 +162,22 @@ public:
         // Cutoff â€” the honest filter sweep for generation scripts (plan
         // 2026-08-29 P1-2). Param 1 is an int enum: 0=lowpass, 1=highpass,
         // 2=bandpass. Automation of Mode is rounded to the nearest enum value.
+        //
+        // The table itself comes from InternalFilter (slice E): the DSP that
+        // consumes these values owns the names/ranges, so the slot's advertised
+        // def and the DSP's own clamp cannot drift apart — and the same class
+        // now backs the bus `filter` return.
         if (type == "filter")
-            return {
-                { 0, "Cutoff",    1000.0f,   20.0f, 20000.0f },
-                { 1, "Mode",         0.0f,    0.0f,     2.0f },
-                { 2, "Resonance",    0.7f,    0.1f,    10.0f },
-            };
+        {
+            std::vector<InternalParamDef> defs;
+            defs.reserve((size_t) InternalFilter::kNumParams);
+            for (int i = 0; i < InternalFilter::kNumParams; ++i)
+            {
+                const auto& d = InternalFilter::paramDefs()[(size_t) i];
+                defs.push_back({ i, juce::String(d.name), d.def, d.min, d.max });
+            }
+            return defs;
+        }
         // Drive -> selectable transfer curve -> DC block -> dry/wet mix ->
         // output trim, 2x oversampled (plan 2026-09-02). Type is an int enum
         // (0=SoftTanh, 1=SoftAtan, 2=Hard, 3=Bitcrush); Bits applies to the
@@ -813,8 +824,11 @@ public:
             {
                 // Push stored params through the same apply path commands use
                 // (saturator precedent) so prepare reflects the tree values.
+                // prepare() sets the sample rate and clears the integrator
+                // states, exactly where the previous inline version assigned
+                // filter.sampleRate and called filter.reset().
+                filter.prepare(spec.sampleRate);
                 applyFilterParamsFromValues();
-                filter.reset();
                 break;
             }
             case ActiveType::Saturator:
@@ -1641,47 +1655,12 @@ private:
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
     std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
     std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
-    // Manual TPT state-variable filter â€” replaces juce::dsp::StateVariableTPTFilter
-    // which silently passed through in ProcessContextReplacing mode (the inherited
-    // block-level process() never applied the coefficients). This is pure math:
-    // per-sample TPT SVF with explicit coefficient update on every param change.
-    struct ManualSVF {
-        float ic1eqL = 0, ic2eqL = 0;  // left integrator states
-        float ic1eqR = 0, ic2eqR = 0;  // right integrator states
-        float g = 0, k = 1, Dinv = 1;
-        float sampleRate = 44100;
-        float cutoff = 1000;
-        float resonance = 0.7;
-        int type = 0; // 0=LP, 1=HP, 2=BP
-        // Correct TPT (trapezoidal) SVF, verified numerically against the
-        // analytic loop solve (2026-09-09): the previous hand-rolled variant
-        // omitted the damping term in v3, mis-derived v2 (spurious ic1
-        // feed-in, missing the a2*v3 term) and returned k*v2 for HP â€” the
-        // filter never actually swept its cutoff (AutomationPidRouting
-        // regression). Loop: hp = x - k*bp - lp, trap: y = g*u + s,
-        // s' = 2y - s, solved instantaneously:
-        //   bp = (g*x + ic1 - g*ic2) / D,  D = 1 + g*k + g^2,  lp = g*bp + ic2.
-        void updateCoefficients() {
-            g = std::tan(3.14159265f * std::min(cutoff, sampleRate * 0.49f) / sampleRate);
-            k = 2.0f / std::max(0.1f, resonance);
-            Dinv = 1.0f / (1.0f + g * k + g * g);
-        }
-        float processSample(int ch, float input) {
-            const float ic1 = (ch == 0) ? ic1eqL : ic1eqR;
-            const float ic2 = (ch == 0) ? ic2eqL : ic2eqR;
-            const float bp = (g * input + ic1 - g * ic2) * Dinv;
-            const float lp = g * bp + ic2;
-            if (ch == 0) { ic1eqL = 2.0f * bp - ic1; ic2eqL = 2.0f * lp - ic2; }
-            else         { ic1eqR = 2.0f * bp - ic1; ic2eqR = 2.0f * lp - ic2; }
-            switch (type) {
-                case 1: return input - k * bp - lp; // highpass
-                case 2: return bp;                   // bandpass
-                default: return lp;                  // lowpass
-            }
-        }
-        void reset() { ic1eqL = 0; ic2eqL = 0; ic1eqR = 0; ic2eqR = 0; }
-    };
-    ManualSVF filter;
+    // Shared internal state-variable filter DSP (InternalFilter.h): the same
+    // object the fx buses use, so the track filter's arithmetic exists once.
+    // Extracted verbatim from the ManualSVF struct this slot used to nest
+    // (slice E, plan 2026-09-23) — the TPT solve, the per-channel integrator
+    // states and the mode switch are unchanged.
+    InternalFilter filter;
     std::unique_ptr<SamplerEngine> sampler;
     std::unique_ptr<SubtractiveSynthEngine> subSynth;
     std::unique_ptr<FmSynthEngine> fmSynth;
@@ -2102,22 +2081,23 @@ private:
     }
 
     // Reconfigure the state-variable filter from stored internalParamValues.
-    // Cutoff is clamped just below Nyquist (the TPT filter's cutoff setter
-    // asserts frequency < sampleRate/2) and kept >= 1 Hz, so a 20 kHz cutoff
-    // never trips the assert at low sample rates.
+    // The three values are pushed through InternalFilter::setParam, which
+    // clamps to the same defs the slot advertises (Cutoff 20..20000, Mode 0..2
+    // — rounded to the enum, Resonance 0.1..10) and recomputes the TPT
+    // coefficients on every change, exactly like the inline field writes this
+    // replaced. The stored values are already def-clamped (setInternalParam /
+    // loadParamsFromTree / prepare all run clampToParamDef), so the added clamp
+    // is a no-op on the track path; the cutoff is still folded below Nyquist
+    // inside the coefficient solve (0.49 * sampleRate), so a 20 kHz cutoff
+    // never trips a bad tangent at a low sample rate.
     void applyFilterParamsFromValues()
     {
-        filter.cutoff = (internalParamValues.size() > 0) ? internalParamValues[0] : 1000.0f;
-        const float mode   = (internalParamValues.size() > 1) ? internalParamValues[1] : 0.0f;
-        const float res    = (internalParamValues.size() > 2) ? internalParamValues[2] : 0.7f;
-        const int m = juce::jlimit(0, 2, juce::roundToInt(mode));
-        const float sr = static_cast<float>(sampleRate_);
-        const float maxCut = std::max(1.0f, sr * 0.49f);
-        filter.cutoff = juce::jlimit(1.0f, maxCut, filter.cutoff);
-        filter.type = m;
-        filter.resonance = res;
-        filter.sampleRate = sr;
-        filter.updateCoefficients();
+        filter.setParam(InternalFilter::Cutoff,
+                        (internalParamValues.size() > 0) ? internalParamValues[0] : 1000.0f);
+        filter.setParam(InternalFilter::ModeParam,
+                        (internalParamValues.size() > 1) ? internalParamValues[1] : 0.0f);
+        filter.setParam(InternalFilter::Resonance,
+                        (internalParamValues.size() > 2) ? internalParamValues[2] : 0.7f);
     }
 
     // Push the stored saturator params into both channel engines. Type (1)
