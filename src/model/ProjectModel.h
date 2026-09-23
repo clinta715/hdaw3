@@ -364,6 +364,12 @@ public:
     int allocateNoteID();
     void resetNoteIDCounter();
     int allocateCcID();
+    // Bus ids are derived from the tree (max busID in BUS_LIST + 1, floor 2 —
+    // 0 is the master bus, 1 the default "Reverb" fx bus). Unlike clips/notes
+    // there is no per-instance counter: the bus list is tiny and is the single
+    // source of truth, so a fresh scan can never mint a colliding id after a
+    // loadProject() (which a stale counter would).
+    int allocateBusID();
     juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file);
     juce::ValueTree createMidiClipEmpty(juce::String name, double start, double dur);
     juce::ValueTree createMidiNote(int note, float vel, double start, double dur);

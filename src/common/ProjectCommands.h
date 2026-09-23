@@ -94,6 +94,71 @@ public:
     virtual void setTrackSendMode(int trackIndex, int sendIndex, bool isPreFader) = 0;
     virtual void setTrackSendBypassed(int trackIndex, int sendIndex, bool bypassed) = 0;
 
+    // ── Bus / send creation (2026-09-22) ─────────────────────────────────────
+    // The ValueTree is the ONLY creator of graph topology: buses live at
+    // ROUTING_GRAPH/BUS_LIST/BUS and sends at track/SEND_LIST/SEND, and
+    // RoutingManager::rebuildFromValueTree builds each node from them. These
+    // commands therefore mutate the tree inside ONE undo transaction and issue
+    // exactly ONE rebuildRoutingGraph() (never rm->addBus/addSend from the
+    // command thread — audio-graph mutation off the message thread is the
+    // pump-park pitfall, lesson 12).
+    //
+    // Sends are POSITIONAL, exactly like tracks: a SEND has no stable id, its
+    // index is its position in the track's SEND_LIST.
+    //
+    // Undo: every command's tree edits land in ONE undo unit. createBus,
+    // removeBus and removeSend open a fresh unit; createSend appends to the
+    // current one, so the "create a bus, then route to it" idiom reverts as a
+    // single undo step (and a removeBus undo restores the bus plus every send
+    // it cascaded away).
+    struct BusCreateResult
+    {
+        bool ok = false;
+        std::string error;
+        int busID = -1;
+    };
+    // createBus: busType is "fx" | "group". An fx bus requires fxType from
+    // FxBusProcessor's set {"reverb","delay","eq","compressor"} (any other value
+    // would build a silent passthrough bus). busTarget must be an existing busID
+    // (0 = master). Returns ok=false + error, with NO tree change, on any
+    // rejection.
+    virtual BusCreateResult createBus(const std::string& busType,
+                                      const std::string& name,
+                                      const std::string& fxType,
+                                      int busTarget = 0) = 0;
+    // removeBus: refuses busID 0 / busType "master". Cascades: every SEND
+    // anywhere in the tree whose sendTarget is this bus is removed too (one
+    // undo unit), leaving no dangling sendTarget.
+    virtual bool removeBus(int busID, std::string& error) = 0;
+
+    struct SendCreateResult
+    {
+        bool ok = false;
+        std::string error;
+        int sendIndex = -1;
+    };
+    // createSend: appends a SEND to the track's SEND_LIST (created when absent)
+    // targeting busTarget. `level` is a linear send gain clamped to >= 0
+    // (documented clamp, matching setTrackSendLevel's acceptable range). Returns
+    // ok=false + error, with NO tree change, when trackIndex is out of range or
+    // busTarget names no bus (a send to a missing bus would be a silent dead
+    // node in RoutingManager::addSend).
+    virtual SendCreateResult createSend(int trackIndex, int busTarget, float level, bool isPreFader) = 0;
+    virtual bool removeSend(int trackIndex, int sendIndex, std::string& error) = 0;
+
+    // setBusFxParam: shape an FX bus return. `paramIndex` indexes the bus
+    // fxType's def list in common/BusFxDefs.h (the same names/ranges a track
+    // FX of that type uses, so the surfaces describe ONE parameter space);
+    // `value` is in the def's real units. The write is the BUS node's
+    // param_<index> property (the durable source a rebuild restores) inside
+    // ONE undo transaction, plus a live apply onto the running
+    // FxBusProcessor. Values are clamped to the def (lesson 23) at this
+    // command AND in the processor; an unknown busID, a non-fx bus, an
+    // fxType with no defs, or an out-of-range paramIndex returns false with a
+    // clear `error` and NO tree mutation.
+    virtual bool setBusFxParam(int busID, int paramIndex, float value,
+                               std::string& error) = 0;
+
     // Session
     virtual void setClipScene(int clipId, int sceneIndex) = 0;
     virtual int createSessionClip(int trackIndex, int sceneIndex, bool isMidi) = 0;
@@ -452,7 +517,19 @@ public:
                               juce::String* error = nullptr) = 0;
 
     // Automation
-    virtual bool addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) = 0;
+    // addAutomationLane is create-only by default: a second lane on the same
+    // paramID (or a reused name) is a conflict — two lanes cannot drive the
+    // same plugin parameter. With `replace == true` AND a nonzero paramID the
+    // command instead TAKES OWNERSHIP of the lane already bound to that
+    // paramID: if one exists it is renamed to `laneName` IN PLACE (its points
+    // are kept — a delete+recreate would drop points written outside the
+    // caller's windows) and the call succeeds. This is the re-run path for a
+    // post-arrangement automation pass, which must be able to re-assert "the
+    // lane bound to paramID N is mine, named X" in one call. A `laneName`
+    // already bound to a DIFFERENT paramID is still a conflict (no silent
+    // steal). `replace` with paramID 0 (unbound) behaves exactly as before.
+    virtual bool addAutomationLane(int trackIndex, const std::string& laneName,
+                                   int paramID = 0, bool replace = false) = 0;
     virtual void removeAutomationLane(int trackIndex, const std::string& laneName) = 0;
     virtual void addAutomationPoint(int trackIndex, const std::string& lane,
                                      double time, float value) = 0;

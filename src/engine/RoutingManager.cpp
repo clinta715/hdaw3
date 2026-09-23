@@ -371,7 +371,13 @@ void RoutingManager::addBus(int busID, juce::ValueTree busTree)
     {
         juce::String fxType = busTree.getProperty(IDs::fxType).toString();
         auto node = graph.addNode(std::make_unique<FxBusProcessor>(busName, fxType));
-        fxBusProcessors[busID] = static_cast<FxBusProcessor*>(node->getProcessor());
+        auto* fxProc = static_cast<FxBusProcessor*>(node->getProcessor());
+        // Gates 1/6/10: the BUS node's stored params (param_<i>, written by
+        // setBusFxParam) override resetFxChain's defaults, so a rebuild — or
+        // any fresh graph built from this tree (export/audition) — restores
+        // the parameterized return instead of silently re-defaulting it.
+        fxProc->applyFromTree(busTree);
+        fxBusProcessors[busID] = fxProc;
         busNodes[busID] = node;
         connectBusToParent(busID);
     }

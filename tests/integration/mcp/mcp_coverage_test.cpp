@@ -1605,6 +1605,64 @@ TEST_F(McpCoverageTest, AutomationPresetWindows) {
     EXPECT_TRUE(text(badWindow).contains("bad window"));
 }
 
+// D1 (post-arrangement pass): add_automation_lane{replace:true} takes over the
+// lane bound to a paramID so the two-step pass (lane upsert + automation_preset
+// with clear:true) can be re-run. Running that pair TWICE must leave the same
+// lane, the same point count and the same values — the gate that makes the
+// phase safe. Without `replace` the historical conflict text is unchanged.
+TEST_F(McpCoverageTest, AutomationLaneReplaceUpsertIsRerunnable)
+{
+    auto created = call("add_automation_lane", {{"trackId", 0}, {"laneName", "Old139"}, {"paramID", 139}});
+    ASSERT_FALSE(isError(created)) << text(created).toStdString();
+
+    // Legacy form (no replace) still trips the guard with the same message.
+    auto clash = call("add_automation_lane", {{"trackId", 0}, {"laneName", "DubThrow"}, {"paramID", 139}});
+    EXPECT_TRUE(isError(clash));
+    EXPECT_EQ(text(clash), QString("lane name or paramID already exists"));
+
+    // The documented re-run form: the preset addresses the lane by paramID.
+    const auto runPass = [&]() {
+        auto upsert = call("add_automation_lane",
+            {{"trackId", 0}, {"laneName", "DubThrow"}, {"paramID", 139}, {"replace", true}});
+        EXPECT_FALSE(isError(upsert)) << text(upsert).toStdString();
+        auto preset = call("automation_preset",
+            {{"trackId", 0}, {"lane", 139}, {"preset", "pump"}, {"start", 0}, {"end", 16},
+             {"clear", true}, {"seed", 12345}});
+        EXPECT_FALSE(isError(preset)) << text(preset).toStdString();
+        return engine->getReadModel().getAutomationPoints(0, "DubThrow");
+    };
+
+    const auto firstRun = runPass();
+    EXPECT_GT(firstRun.size(), 0u);
+    const auto secondRun = runPass();
+
+    ASSERT_EQ(firstRun.size(), secondRun.size());
+    for (size_t i = 0; i < firstRun.size(); ++i)
+    {
+        EXPECT_DOUBLE_EQ(firstRun[i].time, secondRun[i].time) << "point " << i << " time";
+        EXPECT_DOUBLE_EQ(firstRun[i].value, secondRun[i].value) << "point " << i << " value";
+    }
+
+    // Tree truth: exactly one lane drives 139, renamed in place.
+    auto lanes = QJsonDocument::fromJson(
+        callText("list_automation_lanes", {{"trackId", 0}}).toString().toUtf8()).array();
+    int boundTo139 = 0;
+    bool renamed = false;
+    for (const auto& lv : lanes)
+    {
+        const auto lane = lv.toObject();
+        if (lane.value("paramID").toInt() == 139) ++boundTo139;
+        if (lane.value("name").toString() == "DubThrow")
+        {
+            renamed = true;
+            EXPECT_EQ(lane.value("paramID").toInt(), 139);
+        }
+        EXPECT_NE(lane.value("name").toString(), QString("Old139"));
+    }
+    EXPECT_EQ(boundTo139, 1);
+    EXPECT_TRUE(renamed);
+}
+
 TEST_F(McpCoverageTest, GenerateArrangement) {
     auto r = call("generate_arrangement", {{"bars", 8}});
     EXPECT_FALSE(isError(r)) << text(r).toStdString();

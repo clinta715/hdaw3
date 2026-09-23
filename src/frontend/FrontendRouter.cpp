@@ -79,7 +79,8 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
                                {"numSamples", static_cast<qint64>(peaks.numSamples)}};
             return { false, result };
         }
-        return dispatchRead(engine.getReadModel(), m, params);
+        return dispatchRead(engine.getReadModel(),
+                            engine.getProjectModel().getBusListTree(), m, params);
     }
     else if (ns == method::Plugin)      return dispatchPlugin(engine.getPluginService(), engine, m, params, server);
     else if (ns == method::PluginParam) return dispatchPluginParam(engine, m, params);

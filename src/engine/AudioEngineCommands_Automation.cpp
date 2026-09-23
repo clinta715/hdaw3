@@ -7,7 +7,8 @@
 
 // ─── ProjectCommands — Automation ─────────────────────────────────
 
-bool AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& laneName, int paramID)
+bool AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& laneName, int paramID,
+                                            bool replace)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     auto trackList = engine_.getProjectModel().getTrackListTree();
@@ -19,6 +20,37 @@ bool AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& l
     {
         autoList = juce::ValueTree(IDs::AUTOMATION_LIST);
         track.addChild(autoList, -1, &um);
+    }
+
+    // Upsert (replace == true, paramID != 0): the caller declares "the lane
+    // bound to paramID is mine, named laneName" — the re-run path for a
+    // post-arrangement automation pass. The lane is RENAMED in place, never
+    // deleted and recreated: points written outside the pass's windows must
+    // survive. Name ownership is checked over the whole list FIRST, so a
+    // laneName held by a different paramID is still a conflict and can never
+    // be silently stolen (or duplicated) by the rename below. paramID == 0
+    // means "unbound" and falls through to the create path unchanged.
+    if (replace && paramID != 0)
+    {
+        for (int i = 0; i < autoList.getNumChildren(); ++i)
+        {
+            auto existing = autoList.getChild(i);
+            if (existing.getProperty(IDs::name, "").toString().toStdString() != laneName)
+                continue;
+            // The name is already ours when it sits on the same binding
+            // (idempotent no-op); on a different one it is a conflict.
+            return static_cast<int>(existing.getProperty(IDs::paramID, 0)) == paramID;
+        }
+        for (int i = 0; i < autoList.getNumChildren(); ++i)
+        {
+            auto existing = autoList.getChild(i);
+            if (static_cast<int>(existing.getProperty(IDs::paramID, 0)) != paramID)
+                continue;
+            existing.setProperty(IDs::name, juce::String(laneName), &um);
+            if (auto* proc = engine_.getMainProcessor())
+                proc->rebuildAutomationCache(trackIndex);
+            return true;
+        }
     }
 
     // Don't add duplicate lanes. Same-name collision is an idempotent no-op

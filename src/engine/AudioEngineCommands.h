@@ -47,6 +47,19 @@ public:
     void setTrackSendMode(int trackIndex, int sendIndex, bool isPreFader) override;
     void setTrackSendBypassed(int trackIndex, int sendIndex, bool bypassed) override;
 
+    // ProjectCommands — Bus / send creation (tree-mutating, one rebuild each)
+    BusCreateResult createBus(const std::string& busType, const std::string& name,
+                              const std::string& fxType, int busTarget) override;
+    bool removeBus(int busID, std::string& error) override;
+    SendCreateResult createSend(int trackIndex, int busTarget, float level,
+                                bool isPreFader) override;
+    bool removeSend(int trackIndex, int sendIndex, std::string& error) override;
+
+    // ProjectCommands — Bus FX params (defs in common/BusFxDefs.h; clamped tree
+    // write + live apply; rejects an unknown bus / non-fx bus / unknown fxType /
+    // out-of-range index with a clear error and no mutation).
+    bool setBusFxParam(int busID, int paramIndex, float value, std::string& error) override;
+
     // Session
     void setClipScene(int clipId, int sceneIndex) override;
     int createSessionClip(int trackIndex, int sceneIndex, bool isMidi) override;
@@ -376,7 +389,8 @@ public:
                        bool clearExisting = false);
 
     // ProjectCommands — Automation
-    bool addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;
+    bool addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0,
+                           bool replace = false) override;
     void removeAutomationLane(int trackIndex, const std::string& laneName) override;
     void addAutomationPoint(int trackIndex, const std::string& lane,
                             double time, float value) override;

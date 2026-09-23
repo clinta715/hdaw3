@@ -1,0 +1,248 @@
+{
+  "_readme": "Composition path ledger \u2014 the memory of the choose-your-own-adventure. One entry per finished song: the committed path ids, the measured verdicts, and which branches were proven or broken by that walk. `select_path` reads this to exclude recently used options (variety) and to prefer `measured` evidence over `untested`. Append-only; never rewrite history \u2014 a branch that failed in one song may pass in another context.",
+  "songs": {
+    "psydub_cave": {
+      "date": "2026-09-22",
+      "tree": "docs/paths/psydub.json",
+      "walked": "free-form (before the tree existed) \u2014 reconstructed retroactively as the first ledger entry",
+      "path": {
+        "foundation": "dub-cave",
+        "palette_theme": "internal-core",
+        "rhythm_feel": "four-on-floor-backbeat",
+        "bass_character": "rolling-sub",
+        "space": "dub-throw",
+        "arrangement": "kickless-breakdown",
+        "texture": "field-plus-rave",
+        "movement": "per-track-lfo",
+        "mix": "canary-master"
+      },
+      "verdict": {
+        "mix_verdict_ok": true,
+        "rms": 0.1251,
+        "peak": 0.9,
+        "arcContrastDb": 14.1,
+        "renders": 11,
+        "final": "psydub_cave/psydub_06_arc2.wav"
+      },
+      "taught": [
+        "the corpus kick fill gives only 1.5 hits/bar \u2014 explicit Euclidean counts are required (rhythm node recipe)",
+        "a kick in EVERY section collapses the arc to 1.1 dB; removing it from intro/outro/breakdown restored 14.1 dB (arrangement node)",
+        "element-level transient shaping does not move the crest (+0.23 dB, peak x0.989)",
+        "RAVE print -> transform -> re-import works: export_audio a stem (seconds), rave_transform_file (5 s), re-import as a sampler layer",
+        "buses/sends have no agent surface \u2014 shared returns are impossible, so the space node is per-track FX + lanes"
+      ]
+    },
+    "phrygian_embers": {
+      "date": "2026-09-22",
+      "tree": "docs/paths/psydub.json",
+      "seed": 2026092301,
+      "walked": "ledger-driven: psydub_cave's path excluded, which forced 3 untested branches",
+      "path": {
+        "foundation": "deep-phrygian",
+        "palette_theme": "sample-led",
+        "rhythm_feel": "broken-midtempo",
+        "bass_character": "growl-wobble",
+        "space": "gated-dub",
+        "arrangement": "slow-burn",
+        "texture": "none",
+        "movement": "per-track-lfo",
+        "mix": "measure-dont-guess"
+      },
+      "verdict": {
+        "mix_verdict_ok": true,
+        "rms": 0.0829,
+        "peak": 0.854,
+        "arcContrastDb": 16.0,
+        "renders": 4,
+        "final": "phrygian_embers/phrygian_embers_v2.wav"
+      },
+      "branch_results": {
+        "deep-phrygian": "PROVEN \u2014 128 BPM / E Phrygian held; arc 16.0 dB",
+        "sample-led": "PROVEN WITH CAVEAT \u2014 the found palette worked (Kampfer kick, 'Jah Rastafari' dub recording in E, E-minor arps from WS Dark + Inside Mind, Kenzee clap), but sampler-led phrase cells come out far too thin (stab 3 notes / 32 bars, lead+bass 8): set explicit density for sampler palettes",
+        "broken-midtempo": "PROVEN \u2014 corpus perc gave uneven 56/112-note patterns over a straight kick; the metre stayed legible",
+        "growl-wobble": "PROVEN \u2014 but with no sub layer the kick reads weaker (kickProminence 0.730 vs 0.854 on psydub_cave). The bass node sets the low-end character, not just its level",
+        "gated-dub": "PROVEN \u2014 512-point steppedGate lanes on perc+stab, and they ALSO satisfied the modulation coverage for those two tracks (gesture lanes count as movement)",
+        "slow-burn": "PROVEN AT THE ARC, LOP-SIDED \u2014 arc 16.0 dB but drop2 0.161 vs drop1 0.060 rms (8.6 dB step), and that step was the peak driver (true peak 2.01 -> master 0.447). Cap the last drop's kick level rather than lowering the whole master",
+        "none (texture)": "FINE \u2014 no texture layer needed; nothing was missing",
+        "measure-dont-guess": "WORKED, WITH ONE ORDER VIOLATION \u2014 the measure pass set master 0.6036, then the late-added movement pass raised the level and the final render clipped at 1.000. Movement MUST precede mix"
+      },
+      "cost": {
+        "renders": 4,
+        "note": "measure + v1(clipped, order violation) + canary + final; a clean walk on this path should be 3 (canary after all mutations, then final)"
+      },
+      "taught": [
+        "the tree had no `movement` node \u2014 the walk failed the coverage gate and the node was added; node ORDER puts movement before mix for a reason (see mutation-order trap)",
+        "sampler-led palettes need explicit cell density"
+      ]
+    },
+    "dub_embers": {
+      "date": "2026-09-22",
+      "tree": "docs/paths/dub_electro.json",
+      "seed": 2026092501,
+      "walked": "hand-designed from a detailed musical brief (7-layer varied percussion, jazzy 7th/9th pad with per-note modulation, modal corpus riffs, 3/16 Rhodes skank + tape echo, dub drop-out) - the branches are now recorded in the dub tree",
+      "path": {
+        "foundation": "c-minor-corpus-match",
+        "percussion_pool": "seven-layer-seeded",
+        "groove": "steppers-one-drop-hybrid",
+        "chords": "cm9-three-voices",
+        "skank": "three-sixteenth-rhodes-tape-echo",
+        "modal": "analysed-corpus-riff",
+        "arrangement": "one-drop-holes-and-drum-dropout",
+        "movement": "per-track-lfo",
+        "mix": "window-probe"
+      },
+      "verdict": {
+        "mix_verdict_ok": true,
+        "rms": 0.1646,
+        "peak": 0.939,
+        "arcContrastDb": 8.5,
+        "kickProminence": 0.465,
+        "tracks": 15,
+        "renders": 7,
+        "final": "dub_embers/dub_embers_v3.wav",
+        "gates": "all six PASS (v2 and v3 both; v1 clipped)"
+      },
+      "tonality": {
+        "project_key": "C minor",
+        "chords": "Cm9 (C Eb G Bb D) <-> Fm9, 4-bar blocks; the 9th sits a semitone above the minor 3rd (the mellow-dissonant cluster)",
+        "verified": "tone_verity f0 read G, Bb, D on the three pad voices (fifth, 7th, 9th) and C on the skank; bass F in an iv block - every fundamental is a chord tone, nothing sour",
+        "gate_that_saved_it": "analyze_midi_file rejected 49 of 104 MIDI files labelled '[C] [Natural Minor]' (8 wrong root, 2 actually MAJOR); the filename labels were not trusted"
+      },
+      "branch_results": {
+        "seven-layer-seeded": "PROVEN WITH CAVEAT - 7 layers work, but seeded randomness returned LOOPS (a 105 BPM hat loop, a 162 BPM shaker break, a kick+snare+tom loop) until filtered to one-shots (duration <= 3s, no loop/break/bpm markers)",
+        "steppers-one-drop-hybrid": "PROVEN - kick on 4 quarters + rim on beat 3 + clap on 2-and-4. A pure one-drop FAILED the psytrance-shaped backbeat gate; the clap hybrid passes it and reads as electro-reggae",
+        "cm9-three-voices": "PROVEN - 3 voices with independent LFOs (0.07/0.11/0.17 Hz) into the synth cutoff; tone_verity confirms the chord tones",
+        "three-sixteenth-rhodes-tape-echo": "PROVEN - DX7 RHODES EGH (Keys.syx v3) chopping every 3/16 through saturator -> delay(dotted-1/8) -> LPF 3.2k -> small reverb, with a 0.6 Hz wow LFO on the delay time and an adsr feedback arc 0.35->0.80. CAVEAT: HDAW has no in-loop filter, so repeats darken once, not per generation",
+        "analysed-corpus-riff": "PROVEN - the analysis gate is the whole story here (see tonality.gate_that_saved_it)",
+        "one-drop-holes-and-drum-dropout": "PROVEN - intro without kick + a kickless, drumless breakdown gave an 8.4 dB arc",
+        "window-probe": "PROVEN AND CHEAP - verify_part on an 8-beat window in the loudest drop returned mixPeak in ~2 s, replacing a 7-minute canary render (true peak 2.25 -> master 0.395)"
+      },
+      "cost": {
+        "renders": 5,
+        "note": "3 were wasted: the first full export produced no file despite reporting success, then the rebalance pushed the peak over twice. The window probe is the fix for the last two."
+      },
+      "taught": [
+        "render time scales with automation density: 300 s of this 15-track/~8.5k-note/~15k-automation-point arrangement took 410-430 s, slower than realtime",
+        "MIDI pack labels lie - always gate on analyze_midi_file",
+        "`audit_song_structure`'s backbeat gate is psytrance-shaped; a roots one-drop fails it by design",
+        "bass:high measured 30:1 even after rebalancing - the genre is bass-dominant but the mid/high detail needs deliberate lifting",
+        "a default compressor on a bass track can make the bassline inaudible - audition the bass solo INSIDE a drop window, never from beat 0 (a dub bass has no clip in the intro)",
+        "root-third-fifth per bar is not a bassline; a 4-bar riff with a hook bar is",
+        "claps deserve delay+feedback and their own placements, not just a backbeat role",
+        "pad modulation reads as static below ~30 s cycle lengths however deep it is"
+      ],
+      "revision_2_user_feedback": {
+        "feedback": "claps exist/use them + delay with feedback; the 3/16 chop is inaudible; some elements unclear; background chord needs more / longer + subtle modulation; no distinct bassline",
+        "diagnosis": "the bassline measured 0.0143 solo rms / 0.0316 peak (vs kick 0.123) because a DEFAULT compressor (threshold -20 dB, 4:1) was clamping a hot synth; the skank was NOT quiet (solo peak 0.34) but masked and smeared by delay mix 0.34 + LPF 3.2k",
+        "fixes": {
+          "bass": "compressor threshold -20 -> -6 dB, ratio 4:1 -> 2:1, fader 1.0, EQ +3.5 dB @120 Hz (kick -3 dB @130 Hz to make room), and a REWRITTEN RIFF (4-bar shape with a hook bar: octave jump + syncopation) -> 0.0561 / 0.1133",
+          "chop": "delay Mix 0.34 -> 0.18, LPF 3.2k -> 8k, +3 dB presence @3 kHz, kick -2.5 dB @2.5 kHz to unmask -> solo peak 0.340 -> 0.4472",
+          "claps": "own delay (dotted-1/8, fb 0.58, mix 0.40) + pickup hits every 2 bars + offbeat doubles every 8 bars",
+          "pads": "LFO depth 0.45 -> 0.22 (subtler) PLUS a second LFO per voice at 0.017-0.031 Hz (30-60 s cycles) on a different target, and envelope cycles 8 -> 3 (~100 s sweeps)"
+        },
+        "remaining": "bass:high is still ~29:1 on the mix bands \u2014 the low end (kick + sub) dominates; the mid/high detail is present and unmasked per-element but the overall tonal balance is still bass-heavy"
+      }
+    },
+    "aether_dub": {
+      "date": "2026-09-22",
+      "tree": "docs/paths/psydub.json",
+      "seed": 2026092601,
+      "walked": "ledger-driven; 7 of 9 branches had never been walked. Built with every earlier lesson applied up front (no post-hoc fixes except the drum chains, see below).",
+      "path": {
+        "foundation": "hypno-half-time",
+        "palette_theme": "hardware-virus",
+        "rhythm_feel": "half-time-dub",
+        "bass_character": "sub-only",
+        "space": "filter-arc",
+        "arrangement": "two-drop-classic",
+        "texture": "rave-only",
+        "movement": "gesture-lanes-only",
+        "mix": "window-probe"
+      },
+      "verdict": {
+        "mix_verdict_ok": true,
+        "rms": 0.072,
+        "peak": 0.91,
+        "arcContrastDb": 10.9,
+        "kickProminence": 0.386,
+        "bassToHighRatio": "14.1:1",
+        "tracks": 13,
+        "renders": 5,
+        "final": "aether_dub/aether_dub_v3.wav",
+        "gates": "all six PASS"
+      },
+      "branch_results": {
+        "hypno-half-time": "PROVEN - 140 BPM / A minor / 175 bars",
+        "hardware-virus": "PARTIAL - the REAL Virus (OsTIrus CLAP-OsTIrus-7fd3f0df-0, 6939 params) carried the BASS, shaped by its own params (Ch 1 Filter 1 Cutoff = paramID 139, Resonance 146, Sub Oscillator Volume 134) and driven by a filter-arc lane on its HARDWARE cutoff. Pads/skank stayed internal: each plugin instance costs an isolated child, and this path already tested 7 fresh branches",
+        "half-time-dub": "PROVEN - kick on 1 + snare on 3 (plus syncopated fills) gave a 10.9 dB arc",
+        "sub-only": "PROVEN but thin - one low voice with no mid-bass leaves kickProm at 0.386; the low end reads as sub rather than a defined bassline unless the mid-bass slot is used",
+        "filter-arc": "PROVEN - macro/openClose/phaseSweep arcs on the pads (2800 points each) and on the Virus's own filter",
+        "two-drop-classic": "PROVEN",
+        "rave-only": "PROVEN - export a stem (verify the folder exists first!), rave_transform_file with vintage.ts, re-import as a sampler layer (11 s for 27 s of audio)",
+        "gesture-lanes-only": "PROVEN - 13/13 coverage from lanes ALONE with no per-track LFOs; drums via the built-in Volume lane, everything else via filter/eq arcs",
+        "window-probe": "FAILED ON THIS PROJECT - verify_part exceeded a 120 s call budget twice (every render spawns/warms the plugin child); fell back to render-and-rescale. The probe recipe is for sampler-only projects"
+      },
+      "cost": {
+        "renders": 5,
+        "note": "one was lost to the export-directory bug; two to the un-tamed drum crest"
+      },
+      "taught": [
+        "drum one-shots need their transient chain from the start: without it the crest measured 30.7 dB (true peak 3.12); adding kick/perc saturators brought it to 2.01",
+        "export_audio writes NOTHING (and still reports success) when the output directory does not exist",
+        "the window probe recipe does not survive plugin instances in the project",
+        "a mid-bass slot is what makes a low end read as a bassline rather than a sub (kickProm 0.386 vs 0.47-0.51 with one)",
+        "one-lane-per-paramID bit again: a named lane on paramID 1 silently collides with the built-in Volume lane"
+      ]
+    }
+  },
+  "branch_stats": {
+    "_note": "derived view for select_path: how often a branch has been walked and whether it held its gate",
+    "measured_ok": [
+      "analysed-corpus-riff",
+      "broken-midtempo",
+      "c-minor-corpus-match",
+      "canary-master",
+      "cm9-three-voices",
+      "deep-phrygian",
+      "dub-cave",
+      "dub-throw",
+      "field-plus-rave",
+      "filter-arc",
+      "four-on-floor-backbeat",
+      "gated-dub",
+      "gesture-lanes-only",
+      "growl-wobble",
+      "half-time-dub",
+      "hypno-half-time",
+      "internal-core",
+      "kickless-breakdown",
+      "measure-dont-guess",
+      "none",
+      "one-drop-holes-and-drum-dropout",
+      "per-track-lfo",
+      "rave-only",
+      "rolling-sub",
+      "sample-led",
+      "seven-layer-seeded",
+      "steppers-one-drop-hybrid",
+      "sub-only",
+      "three-sixteenth-rhodes-tape-echo",
+      "two-drop-classic",
+      "window-probe"
+    ],
+    "proven_with_caveat": [
+      "growl-wobble",
+      "hardware-virus",
+      "measure-dont-guess",
+      "sample-led",
+      "seven-layer-seeded",
+      "slow-burn",
+      "sub-only",
+      "three-sixteenth-rhodes-tape-echo",
+      "window-probe"
+    ],
+    "never_walked": [
+      "movement-plan"
+    ]
+  }
+}

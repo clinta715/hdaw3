@@ -1,0 +1,416 @@
+{
+  "_readme": {
+    "what": "Composition path tree — a choose-your-own-adventure for agent song building. Each node offers a small set of curated options; walking the tree in order and committing one option per node produces a coherent, reproducible track recipe.",
+    "siblings": "docs/paths/dub_electro.json is the dub/electro tree (added 2026-09-22 from the dub_embers build: steppers/one-drop groove, 3/16 Rhodes skank + tape echo, analysed-corpus modal riffs). Both trees share this format and the single docs/paths/ledger.json.",
+    "why": "Replaces guessing with choosing. Measured 2026-09-22 (psydub_cave): ~11 full renders and hundreds of calls were spent on decisions (tempo/key, cell densities, patch levels, arc) that this file enumerates with their consequences.",
+    "how": [
+      "1. Walk nodes in the listed order. At each node pick ONE option (or let `auto` = seeded pick).",
+      "2. Filter first: drop options whose `forbids` collide with anything already committed, and drop ids listed in the cross-song ledger (`docs/paths/ledger.json`) as recently used.",
+      "3. Record each committed id + seed in the Song Brief under `path`, so the track is reproducible and its verdicts attach to a subtree.",
+      "4. Run that option's `gate` after its phase and record the measured value next to the path entry. A gate that fails means the branch mis-fit — fix the branch's recipe, not the gate.",
+      "5. On a PASS verdict, append the path + verdicts to the ledger so the next song can avoid (or deliberately revisit) it."
+    ],
+    "phases": {
+      "rule": "timeline-shape writers -> timeline-dependent writers -> readers. Measurement (mix) is LAST and nothing writes after it.",
+      "arrange": ["foundation", "palette_theme", "rhythm_feel", "bass_character", "arrangement"],
+      "timeline-final": ["space", "texture", "movement", "rides"],
+      "measure": ["mix"],
+      "why": "Anything that references a SECTION, a bar boundary or the total length is a function of the finished timeline. Written before `arrangement` it resolves against a provisional timeline and is silently wrong (the mutation-order trap). `space` was moved after `arrangement` on 2026-09-23 for exactly this reason - its options are section-scoped gestures.",
+      "rerun": "The timeline-final pass must be re-runnable: address automation lanes BY PARAMID, pass `clear: true` to automation_preset, and use add_automation_lane {replace:true} to take ownership of a lane whose name changed between runs."
+    },
+    "rules": [
+      "STRUCTURE = choice, DETAIL = seeded randomness. The tree picks tempo/key/palette/feel/gesture-set/skeleton; phrases, rhythm fills and patch picks stay seeded. Never encode note-level detail here — that kills the good accidents (e.g. a riser cell that renders as a downlifter is a *finding*, not a path bug).",
+      "EVERY option carries a gate. An option with no measurable consequence is a coin flip, not a choice.",
+      "EVIDENCE TAGS: `measured` = verified on psydub_cave 2026-09-22; `documented` = from the composition/hardware guides; `untested` = plausible but never run. Prefer measured; treat untested as an experiment.",
+      "3-4 options per node, never an enumeration. If a node needs 10 options, it is two nodes.",
+      "`bars` in rhythm recipes must equal the SECTION's bar count and `pulseA` must be hits-per-bar x bars: the generator spreads pulseA across grid x bars steps and does NOT tile a short loop (measured: passing bars=1 or a `dsl` string produced 6 notes for a 32-bar section)."
+    ]
+  },
+
+  "genre": "psydub",
+
+  "nodes": {
+    "foundation": {
+      "question": "Tempo / key / mode / length — the frame everything else must fit.",
+      "options": [
+        {
+          "id": "dub-cave",
+          "name": "Cave dub — slow, spacious, Dorian",
+          "implies": { "bpm": 120, "keyRoot": 2, "scaleMode": 2, "totalBars": 150, "style": "psytrance" },
+          "why": "Dorian's natural 6th keeps minor-weight without the tragic pull; 120 BPM at 150 bars is exactly 5:00 (bars = 1.25 x bpm for a 5-minute piece).",
+          "recipe": { "set_tempo": { "bpm": 120 }, "set_scale": { "root": 2, "mode": 2 } },
+          "gate": { "get_scale": { "root": 2, "mode": 2 }, "get_transport": { "bpm": 120 } },
+          "evidence": "measured"
+        },
+        {
+          "id": "hypno-half-time",
+          "name": "Hypnotic half-time — slower pulse, 140 frame",
+          "implies": { "bpm": 140, "keyRoot": 9, "scaleMode": 1, "totalBars": 175, "style": "psytrance" },
+          "why": "Keep a psy frame but write half-time material, so the same 4-on-floor kick reads as dub. Use when the brief asks for movement with dub weight.",
+          "recipe": { "set_tempo": { "bpm": 140 }, "set_scale": { "root": 9, "mode": 1 } },
+          "gate": { "get_transport": { "bpm": 140 } },
+          "evidence": "untested"
+        },
+        {
+          "id": "deep-phrygian",
+          "name": "Deep/Eastern — Phrygian, darker",
+          "implies": { "bpm": 128, "keyRoot": 4, "scaleMode": 3, "totalBars": 160, "style": "psytrance" },
+          "why": "Phrygian's flat 2nd is the dark-psy signature; pair with the dark percussion branch.",
+          "recipe": { "set_tempo": { "bpm": 128 }, "set_scale": { "root": 4, "mode": 3 } },
+          "gate": { "get_scale": { "root": 4, "mode": 3 } },
+          "evidence": "documented"
+        }
+      ]
+    },
+
+    "palette_theme": {
+      "question": "What material plays each role — the 'sound selection' branch.",
+      "options": [
+        {
+          "id": "internal-core",
+          "name": "Internal core (sub_synth / psy_fm / sampler)",
+          "implies": { "bass": "sub_synth(Virus sysex)", "stab": "psy_fm acidLead", "lead": "psy_fm metallicPluck", "pad": "sub_synth(Virus sysex)" },
+          "why": "No plugin latency or isolation risk; every part is reproducible and resident. This is the only fully measured palette so far.",
+          "recipe": {
+            "add_track_with_fx": [ { "name": "SUB Dub", "fxType": "sub_synth" }, { "name": "Dub Stab", "fxType": "psy_fm" }, { "name": "Dub Lead", "fxType": "psy_fm" }, { "name": "Cave Pad", "fxType": "sub_synth" } ],
+            "sub_synth_import_sysex": { "note": "then VERIFY Cutoff — see traps.sysex-cutoff" },
+            "psy_fm_load_preset": [ { "preset": "acidLead" }, { "preset": "metallicPluck" } ],
+            "apply_sub_synth_mod_preset": [ { "presetId": "slow_filter_drift" }, { "presetId": "animated_sweep" } ]
+          },
+          "gate": { "audition_plugin": "audible=1 per slot" },
+          "evidence": "measured"
+        },
+        {
+          "id": "hardware-virus",
+          "name": "Hardware Virus via CLAP (OsTIrus/Osirus/Vavra)",
+          "why": "Real firmware character; the VA suite has 148 Virus sidecars to select from. Heavier: isolated children, warmups, loader status varies per engine.",
+          "implies": { "bass": "Vavra/Osirus plugin slot", "note": "check docs/hardware-va-suite.md §9 status before trusting a preset load" },
+          "recipe": { "add_track_with_fx": [ { "pluginId": "Osirus.clap" } ], "apply_preset": {} },
+          "gate": { "get_fx_capture_status": "receipt ok AND a render is audible" },
+          "evidence": "documented",
+          "forbids": ["low-render-budget"]
+        },
+        {
+          "id": "sample-led",
+          "name": "Sample-led (found material first)",
+          "why": "Build the palette around a found recording; synths support it. The most 'sound design first' branch.",
+          "recipe": { "search_library": { "key": "match the foundation key" }, "related_samples": {}, "sampler_set_sample": {} },
+          "gate": { "validate_sample": "nonzero peaks" },
+          "evidence": "measured 2026-09-22 (phrygian_embers) — palette held up (Kampfer kick, 'Jah Rastafari' dub recording in E, WS/Inside Mind E-minor arps, Kenzee clap), BUT:",
+          "known_issue": "phrase cells are far too thin for samplers — `stab` got 3 notes across a 32-bar section and `lead`/`bass` 8, because the phrase generator's default density is tuned for synths. With a sampler-led palette, set explicit density/length per phrase cell (or accept 2-4 long sustained hits per section deliberately). Check noteCount in the fill report before rendering, not after."
+        }
+      ]
+    },
+
+    "rhythm_feel": {
+      "question": "Kick / clap / hat / perc densities — the 'rhythm selection' branch. Structure gates live here.",
+      "options": [
+        {
+          "id": "four-on-floor-backbeat",
+          "name": "4-on-floor + 2-and-4 backbeat (psy spine)",
+          "why": "Measured: the corpus kick fill gives only 1.5 hits/bar and the spine collapses. Explicit Euclidean counts are exact.",
+          "recipe": {
+            "kick": { "source": "rhythm", "params": { "pulseA_per_bar": 4, "pulseB": 0, "rotationA": 0, "grid": 4, "bars": "SECTION_BARS", "pitchA": 36 } },
+            "clap": { "source": "rhythm", "params": { "pulseA_per_bar": 2, "pulseB": 0, "rotationA": 1, "grid": 4, "bars": "SECTION_BARS", "pitchA": 39 } },
+            "hat":  { "source": "rhythm", "params": { "pulseA_per_bar": 3, "pulseB": 0, "rotationA": 1, "grid": 8, "bars": "SECTION_BARS", "pitchA": 42 } }
+          },
+          "gate": { "noteCount": "kick == 4 x bars, clap == 2 x bars", "audit_song_structure": "allDropsHaveBackbeat == true" },
+          "evidence": "measured"
+        },
+        {
+          "id": "half-time-dub",
+          "name": "Half-time dub (kick on 1, snare on 3)",
+          "why": "The psydub default feel; halves the kick density of the psy spine while keeping weight.",
+          "recipe": {
+            "kick": { "pulseA_per_bar": 2, "pulseB": 0, "rotationA": 0, "grid": 4, "bars": "SECTION_BARS" },
+            "clap": { "pulseA_per_bar": 1, "pulseB": 0, "rotationA": 2, "grid": 4, "bars": "SECTION_BARS" }
+          },
+          "gate": { "noteCount": "kick == 2 x bars", "kickProminence": ">= 0.6" },
+          "evidence": "untested"
+        },
+        {
+          "id": "broken-midtempo",
+          "name": "Broken / shuffled percussion",
+          "why": "Adds intrigue; pair with a straight kick so the metre stays legible.",
+          "recipe": { "perc": { "source": "rhythm", "params": { "corpusRole": "perc" } }, "note": "thin with set_note_velocities, do not hand-edit" },
+          "gate": { "audit_song_structure": "boredomSpans == 0" },
+          "evidence": "untested",
+          "forbids": ["four-on-floor-backbeat"]
+        }
+      ]
+    },
+
+    "bass_character": {
+      "question": "What the low end does and how it moves.",
+      "options": [
+        {
+          "id": "rolling-sub",
+          "name": "Rolling sub with slow filter drift",
+          "why": "Measured: sub_synth + `slow_filter_drift` + Cutoff 300 Hz + Sub Level 0.6 took the sub from 0.0029 to 0.050 RMS. The single biggest level fix of the session.",
+          "recipe": {
+            "sub_synth_import_sysex": {},
+            "set_internal_fx_param": [ { "parameter": "Cutoff", "value": 300 }, { "parameter": "Sub Level", "value": 0.6 }, { "parameter": "Osc1 Level", "value": 0.55 }, { "parameter": "Osc2 Level", "value": 0.35 } ],
+            "apply_sub_synth_mod_preset": { "presetId": "slow_filter_drift" },
+            "level": "Output Level 0.15..0.22 (documented); lift AFTER the synth via a saturator Output dB, never by breaking that rule"
+          },
+          "gate": { "audition_plugin": "audible=1", "auto_gain_to_target": "measuredRms > 0.03" },
+          "evidence": "measured"
+        },
+        {
+          "id": "growl-wobble",
+          "name": "Growl/wobble mid-bass",
+          "why": "growl_bass has a built-in waveshaper + sidechain; the guide's choice for a rolling low-mid voice.",
+          "recipe": { "add_track_with_fx": { "fxType": "growl_bass" }, "set_internal_fx_param": [ { "parameter": "ClipType", "value": "SoftTanh" } ] },
+          "gate": { "audition_plugin": "audible=1" },
+          "evidence": "documented"
+        },
+        {
+          "id": "sub-only",
+          "name": "Sub only (no mid-bass)",
+          "why": "Maximum space; requires the lead/pad to carry the mid. Risky on small speakers — verify the body band.",
+          "recipe": { "note": "skip the mid-bass track entirely" },
+          "gate": { "mix_report": "body band not more than 12 dB below sub" },
+          "evidence": "untested"
+        }
+      ]
+    },
+
+
+    "arrangement": {
+      "question": "Skeleton and where the kick is ABSENT — this is what creates the arc.",
+      "options": [
+        {
+          "id": "kickless-breakdown",
+          "name": "Kick enters at the build, absent in intro/outro/breakdown",
+          "why": "Measured: with the kick present everywhere the arc collapsed to 1.1 dB; removing it from intro/outro/breakdown restored 14.1 dB. Levels and texture lanes could NOT fix it — arrangement did.",
+          "recipe": { "sections": "intro 16 / build1 16 / drop1 32 / breakdown 16 / build2 16 / drop2 32 / outro 22", "kick_cells": "set cells for build/drop sections ONLY" },
+          "gate": { "mix_report.fromPlan": "arcContrast >= 10 dB", "loudnessGates": "ok" },
+          "evidence": "measured"
+        },
+        {
+          "id": "slow-burn",
+          "name": "Slow burn — kick only in the second half",
+          "why": "Longer tension; suits psybient. Untested: watch the boredom-span gate.",
+          "recipe": { "kick_cells": "drop1 second half + drop2 only" },
+          "gate": { "audit_song_structure": "boredomSpans == 0 AND firstDropHasMotif" },
+          "evidence": "untested"
+        },
+        {
+          "id": "two-drop-classic",
+          "name": "Classic two-drop arch",
+          "why": "The template used so far: intro/build/drop/break/build/drop/outro. Predictable but safe.",
+          "recipe": { "sections": "as measured" },
+          "gate": { "audit_song_structure": "all gates" },
+          "evidence": "measured"
+        }
+      ]
+    },
+    "space": {
+      "question": "The FX gesture set — this is where genre character actually lives (not in static slots).",
+      "options": [
+        {
+          "id": "dub-throw",
+          "name": "Throw-driven dub space",
+          "why": "Measured: 152 delayThrow points at every 8-bar boundary across perc/stab/lead, delay on dotted-1/8 with 0.55 feedback. The stage that raised RMS 2 dB while lowering peak (0.817x).",
+          "recipe": {
+            "delay_slot": { "SyncToTempo": 1, "Division": 4, "Feedback": 0.55, "Mix": 0.38 },
+            "add_automation_lane": { "laneName": "DubThrow", "paramID": "100 + slot*100 + 2" },
+            "automation_preset": { "preset": "delayThrow", "sections": "last 2 beats of every 8-bar group" },
+            "DivStep": { "note": "step Division per section (dotted-1/8 in drops, 1/4 in the breakdown, 3/16 in builds)" }
+          },
+          "gate": { "mix_diff": "rmsDb >= +0.5 vs the same render without the throws" },
+          "evidence": "measured"
+        },
+        {
+          "id": "filter-arc",
+          "name": "Filter-arc space",
+          "why": "openClose + phaseSweep on the lead (768 points) and openClose + macro on the pad (512) worked as cross-section arcs.",
+          "recipe": { "automation_preset": [ { "preset": "openClose", "sections": "breakdown" }, { "preset": "phaseSweep", "sections": "drop2" }, { "preset": "macro", "sections": "builds" } ] },
+          "gate": { "tone_verity": "centroidRise differs measurably across the section" },
+          "evidence": "measured"
+        },
+        {
+          "id": "gated-dub",
+          "name": "Gated dub (stepped muting)",
+          "why": "steppedGate on a Volume lane (512 points, measured) — the dub 'chop'. NOTE it makes automation authoritative for that track (faderOverriddenIds).",
+          "recipe": { "automation_preset": { "lane": "Volume", "preset": "steppedGate", "sections": "drop2" } },
+          "gate": { "audit_modulation_coverage": "track listed in faderOverriddenIds" },
+          "evidence": "measured"
+        },
+        {
+          "id": "shared-return",
+          "name": "Shared bus return (the real dub throw)",
+          "why": "Measured 2026-09-22 on aether_dub. The return itself: add_bus {busType:'fx', fxType:'delay'} + add_send {trackId:11, level:1.0} vs the same window at 0.0 over 16 s of drop1 -> rms 0.0832 -> 0.1156 (+2.85 dB), bass 14094 -> 28662 (+103%). The DELAY is now a real feedback delay (slice C3): Feedback 0.7 vs 0.0 over the same window -> last-2s rms 0.1466 vs 0.1159 (+26% tail energy, peak 0.664 vs 0.530) = repeats instead of one tap; and Division 1/8 vs 1/4 -> last-2s rms 0.1373 vs 0.1088, so tempo sync really moves the taps.",
+          "recipe": {
+            "add_bus": { "busType": "fx", "fxType": "delay", "name": "Dub Delay" },
+            "add_send": { "trackId": "<skank/pad>", "busTarget": "<busID>", "level": 1.0 },
+            "shape_it": { "set_bus_fx_param": "busID=<busID>, paramIndex 2 (Mix) = 1.0, paramIndex 1 (Feedback) = 0.6-0.7; optional paramIndex 3 (SyncToTempo) = 1 + paramIndex 4 (Division) 0=1/8 4=dotted-1/8 6=1/4" },
+            "why_mix_1": "MUST set Mix = 1.0 on a SEND return: the default 0.5 re-adds the bus input (a doubled dry signal) on top of the track's own dry. 1.0 makes the return pure echo.",
+            "then": "ride set_track_send_level per phrase; add a second fx bus (fxType 'reverb') for the classic delay+reverb return pair. fxType must be one of reverb|delay|eq|compressor. Discover ids with list_buses, params with list_bus_fx_params.",
+            "caveat": "Mutating commands that trigger a routing rebuild (add_bus/add_send) can drop their HTTP response while completing the work - re-read state (list_buses / get_track_sends) instead of blind-retrying. Sends are positional: removing one shifts the rest."
+          },
+          "gate": { "mix_diff": "rmsDb >= +1.5 vs the same window at send 0.0 (measured +2.85 dB)" },
+          "evidence": "measured"
+        }
+      ],
+      "note": "Bus/send creation landed 2026-09-22 (add_bus / add_send / remove_bus / remove_send, RPC twins project.addBus/addSend/removeBus/removeSend). Caveats: add_bus drops its HTTP response (the work completes), and no tool lists buses yet."
+    },
+
+    "texture": {
+      "question": "Found sound and transformation layers.",
+      "options": [
+        {
+          "id": "field-plus-rave",
+          "name": "Field recording + RAVE-transformed stem",
+          "why": "Measured pipeline: `export_audio {trackIds, start, end}` (seconds) a stem -> `rave_transform_file` (5 s for 32 s of audio, psytrance_synths.ts) -> re-import as a sampler layer. Plus a field recording (seal/tropic/sfx banks) through a long delay.",
+          "recipe": {
+            "stem": { "export_audio": { "trackIds": [ "PAD" ], "start": "beats->seconds", "end": "beats->seconds" } },
+            "transform": { "rave_transform_file": { "modelPath": "rave/models/psytrance_synths.ts", "temperature": 1.1 } },
+            "import": { "add_midi_clip": "+ add_notes over the target section" },
+            "reverse": { "note": "same stem with the sampler's Reverse param = the swell into the breakdown" }
+          },
+          "gate": { "audition_plugin": "audible=1 AND audible in the full mix (not just solo)" },
+          "evidence": "measured"
+        },
+        {
+          "id": "rave-only",
+          "name": "RAVE-only texture",
+          "why": "Cheaper; one transform, no field recording.",
+          "recipe": { "rave_transform_file": { "modelPath": "rave/models/vintage.ts" } },
+          "gate": { "audition_plugin": "audible=1" },
+          "evidence": "untested"
+        },
+        {
+          "id": "none",
+          "name": "No texture layer",
+          "why": "Legitimate when the arrangement is already dense — measured: beds at 0.003-0.010 RMS add nothing audible to a busy mix, and they can flatten the arc if not automated.",
+          "recipe": {},
+          "gate": { "mix_report": "arcContrast unchanged vs the same render without them" },
+          "evidence": "measured"
+        }
+      ]
+    },
+
+    "movement": {
+      "question": "Global modulation coverage — the gate every sounding track must pass. MISSING from the first revision of this tree; added 2026-09-22 after the phrygian_embers walk failed the coverage gate with 7 of 9 tracks bare.",
+      "options": [
+        {
+          "id": "per-track-lfo",
+          "name": "One LFO per sounding track, targeted",
+          "why": "Measured recipe: `add_lfo` then `set_lfo_param` (waveform/rateSync/rate/depth/targetParamID) satisfies `audit_modulation_coverage` (11/11 then 14/14 on psydub_cave). Target the FIRST automatable param of the slot that matters for the role (filter cutoff for melodic, reverb wet for texture, saturator mix for drums) — a bare LFO on a dead param passes the gate and does nothing.",
+          "recipe": { "per_track": { "add_lfo": {}, "set_lfo_param": [ { "param": "waveform", "value": 0 }, { "param": "rateSync", "value": 1 }, { "param": "rate", "value": 0.25 }, { "param": "depth", "value": 0.3 }, { "param": "targetParamID", "value": "slot1 first automatable paramID" } ] } },
+          "gate": { "audit_modulation_coverage": "attentionRequiredIds == []" },
+          "evidence": "measured"
+        },
+        {
+          "id": "movement-plan",
+          "name": "Batch movement via apply_movement_plan",
+          "why": "One undo unit across many tracks when the whole arrangement needs movement at once. Note: MCP-only (no RPC route, ledger `unresolved`).",
+          "recipe": { "apply_movement_plan": {} },
+          "gate": { "audit_modulation_coverage": "attentionRequiredIds == []" },
+          "evidence": "documented"
+        },
+        {
+          "id": "gesture-lanes-only",
+          "name": "Rely on gesture lanes (no LFOs)",
+          "why": "An ENABLED lane with >= 3 points also counts as movement — so a space branch rich in gestures can cover the gate. Measured: gated-dub alone covered 2 of 9 tracks.",
+          "gate": { "audit_modulation_coverage": "attentionRequiredIds == []" },
+          "evidence": "measured",
+          "forbids": ["none"]
+        }
+      ]
+    },
+    "rides": {
+      "question": "The timeline-final pass. Everything here is a FUNCTION of the finished arrangement, so it runs after the last structural write and before any measurement.",
+      "options": [
+        {
+          "id": "arc-pass",
+          "name": "Whole-track arc pass",
+          "why": "Lanes are addressed BY PARAMID and re-run with `clear: true`, so the pass is idempotent: re-running after any structural change rewrites the arc over the NEW timeline instead of accumulating stale points. Measured 2026-09-22: the pad arcs took 2800 points; writing them before the arrangement existed produced spans that no longer matched the sections.",
+          "recipe": { "add_automation_lane": { "trackId": "<voice>", "laneName": "Arc", "paramID": "<100+slot*100+paramIndex>", "replace": true }, "automation_preset": { "lane": "<the same paramID>", "preset": "openClose|macro|phaseSweep", "sections": "one window per section", "clear": true, "seed": 12345 } },
+          "gate": { "tone_verity": "the arc's centroidRise differs measurably across sections" },
+          "evidence": "measured"
+        },
+        {
+          "id": "return-ride",
+          "name": "Send/bus return ride (the throw as a SEND)",
+          "why": "The return exists (space/shared-return), so the throw becomes a RIDE on the send instead of a per-track delay. Setup matters: Mix 1.0 on the return (0.5 re-adds a doubled dry) and Feedback 0.6-0.7 for repeats.",
+          "recipe": { "setup": "space/shared-return (add_bus fxType delay + add_send + set_bus_fx_param Mix=1.0, Feedback=0.6-0.7)", "ride": "set_track_send_level per section window (0 in the breakdown, 1.0 at each 8-bar throw point)" },
+          "gate": { "mix_diff": "rmsDb differs measurably between the ride on and off (measured +2.85 dB at send 1.0)" },
+          "evidence": "measured"
+        },
+        {
+          "id": "staging-pass",
+          "name": "Per-section gain staging",
+          "why": "Fader moves are only correct once the sections exist. NOTE the authority trap: an enabled Volume lane makes automation authoritative for that track, so set_track volume writes are then overridden - stage by lane, or keep a Volume lane off the tracks you want to stage by fader.",
+          "recipe": { "set_track": { "trackId": "<voice>", "volume": "<per section>" }, "order": "after every structural write, before measurement" },
+          "gate": { "audit_modulation_coverage": "no unintended track in faderOverriddenIds" },
+          "evidence": "measured"
+        }
+      ],
+      "note": "Nothing writes after measurement. If a late write is unavoidable, RE-MEASURE - a stale peak is worse than no peak, because it looks like a decision (the mutation-order trap)."
+    },
+
+    "mix": {
+      "question": "Gain staging and the master — how loud, exactly.",
+      "options": [
+        {
+          "id": "canary-master",
+          "name": "Canary-derived master, per-track staging first",
+          "why": "Measured: two canaries were worthless because they clipped at 1.0 (peak pinned). Render the canary at master 0.25 so it cannot clip, read its peak, set master = 0.90 / (peak / 0.25). Faders only attenuate (ceiling 1.0) so quiet sources must be fixed at the source.",
+          "recipe": {
+            "stage": { "auto_gain_tracks": { "note": "per-track targets; expect clamped=true on quiet sources -> fix the source, not the fader" } },
+            "canary": { "export_audio": { "path": "_canary.wav" }, "set_master_gain": 0.25, "get_waveform_peaks": "read peak" },
+            "final": { "set_master_gain": "0.90 / (canaryPeak / 0.25)", "export_audio": "the deliverable" }
+          },
+          "gate": { "mix_verdict": "clipping PASS with peak in 0.85..0.95" },
+          "evidence": "measured"
+        },
+        {
+          "id": "window-probe",
+          "name": "Window probe instead of a full canary (cheapest rescale)",
+          "why": "`verify_part {trackIndex, startBeat, endBeat, windowSeconds}` inside the loudest drop returns `mixPeak` in seconds. Set a safe master (0.30), probe, then master = 0.90 / (mixPeak / 0.30). Measured 2026-09-22 (dub_embers): mixPeak 0.675 at 0.30 -> true peak 2.25 -> master 0.395, in ~2 s instead of a 7-minute canary.",
+          "recipe": { "set_master_gain": 0.30, "verify_part": { "startBeat": "loudest section start", "endBeat": "+8" }, "set_master_gain": "0.90 / (mixPeak / 0.30)" },
+          "gate": { "mix_verdict": "clipping PASS with peak 0.85..0.95" },
+          "evidence": "measured"
+        },
+        {
+          "id": "measure-dont-guess",
+          "name": "Skip the canary, read the peak from a normal render and rescale",
+          "why": "One render instead of two when the mix is not near clipping: render at the current master, then master' = master x (0.90 / peak).",
+          "recipe": { "export_audio": {}, "mix_report": "peak", "set_master_gain": "rescale" },
+          "gate": { "mix_report": "peak <= 0.95 after one rescale" },
+          "evidence": "measured"
+        }
+      ]
+    }
+  },
+
+  "traps": {
+    "sysex-cutoff": "After `sub_synth_import_sysex` the Virus filter maps as-is: a closed patch lands at Cutoff = 20 Hz and renders near-silent while reporting '24 params mapped'. Read the slot back and set Cutoff (sub ~300 Hz, pad ~2.2 kHz) BEFORE auditioning. Measured 15x RMS change from that one param.",
+    "density-dsl": "Rhythm cells: `bars` defaults to the WHOLE SECTION and `pulseA` is spread across grid x bars steps — it does not tile a short loop. A `dsl` string ADDS to the default pulseA/pulseB (4/3), so `dsl:\"E(4,4,0)\"` gave 6 notes for a 32-bar section. Use explicit pulseA = hits_per_bar x bars, pulseB = 0.",
+    "one-lane-per-param": "A track has ONE automation lane per paramID: a second `add_automation_lane` on the same param silently returns 'already exists' and the following preset fails with 'lane not found'. Stack gestures via sections[].preset instead.",
+    "built-in-lanes": "paramID 1/2/3 are the built-in Volume/Pan/Mute lanes — pass lane \"Volume\", not a new name.",
+    "element-transients": "Element-level transient shaping did NOT move the crest: kick decay/sustain + saturator + perc/clap trims bought +0.23 dB and peak x0.989. Do not spend a stage on it; the crest is a density/arrangement property.",
+    "texture-beds": "Found-sound beds at 0.003-0.010 RMS are inaudible in a busy mix and can flatten the arc if left static. Automate their Volume per section or drop them.",
+    "long-calls": "Renders and batch gain-staging drop the client socket mid-call while the engine keeps working. Re-read state after a drop; never blind-retry. Never `save_project` during an export (a completed render vanished once).",
+    "mutation-order": "ANY mutation after the measure/canary render invalidates the rescale. Measured 2026-09-22 (phrygian_embers): the measure pass set master 0.6036 from a clean peak, then the (late-added) movement pass raised the level and the final render clipped at 1.000. Walk the whole timeline-final phase (`space`, `texture`, `movement`, `rides` - see `_readme.phases`) BEFORE `mix`, and if anything is written after measuring, re-measure — a stale peak is worse than no measurement, because it looks like a decision.",
+    "probe-cost-scales-with-plugins": "The `window-probe` recipe (a `verify_part` window in the loudest drop, ~2 s on a sampler-only project) becomes UNUSABLE on a plugin-heavy one: measured 2026-09-22 (aether_dub, 13 tracks, one CLAP instrument), two attempts at an 8-beat window each exceeded a 120 s call budget because `verify_part` does a solo AND a full-mix render and every render spawns/warms the plugin child. Fallback that works: render once at a guessed-safe master (0.40 when the last two tracks measured a ~2.2 true peak) and rescale from the measured peak — one extra render, no probe.",
+    "drum-one-shots-need-their-chain": "Short clicky one-shots have enormous peak-to-RMS ratios: a track built from them with NO processing measured a **30.7 dB crest** (true peak 3.12 at rms 0.09), and per-track staging only bought 1 dB (3.12 -> 2.77). Adding the transient chain — kick saturator Drive 8 / Mix 0.7 / Output -3 dB, perc saturator Drive 10 / Output -4 dB, eq+reverb on snare/hats — is what brings it back to the ~2.2 range the earlier tracks showed. Budget these slots from the start; retro-fitting them costs canary renders.",
+    "export-dir-must-exist": "`export_audio` reports `success:true` and writes NOTHING when the output DIRECTORY does not exist (it creates the file, not the folder). Measured twice 2026-09-22; the identical export after creating the folder wrote the full file. Create the song folder (writing the brief is enough) BEFORE the first export — see docs/testing-mcp.md.",
+    "slow-burn-lopsided": "The `slow-burn` arrangement branch (kick only in the second half) makes the last drop much louder than the first: measured drop2 rms 0.218 vs drop1 0.081 = 8.6 dB step, and THAT was the peak driver, not the overall level. If you take this branch, cap the first drop's expectation (or the last drop's kick level) rather than lowering the master for the whole track.",
+    "bus-response-dropped": "`add_bus` completes but DROPS its HTTP response (reproduced 2/2, 2026-09-22): the BUS lands in BUS_LIST while the caller sees RemoteDisconnected. `add_send` / `remove_bus` return normally, and the bus id is deterministic (`max(busID)+1`), so the work is never lost — but never blind-retry, and re-read state after a drop.",
+    "no-bus-read-tool": "Nothing lists buses (only add_bus/remove_bus exist): take the new id as `max(busID)+1`, or read BUS_LIST from a saved project. A `list_buses` companion is the obvious follow-up.",
+    "export-range-is-seconds": "`export_audio`'s `start`/`end` are SECONDS, not beats (a 64..80 range produced exactly a 16.0 s file), while `verify_part` uses `startBeat`/`endBeat`. Lesson 1 (beats vs seconds) lives inside a tool signature — confirm the window from the rendered duration before trusting an A/B.",
+    "legacy-send-arg-mismatch": "The legacy routes `setTrackSendLevel`/`_Mode`/`_Bypassed` take `trackIndex` on RPC but `trackId` on MCP. The new `add_send`/`remove_send` use `trackId` on BOTH surfaces (argument names are part of the contract).",
+    "bus-return-mix": "A bus return's Mix defaults to 0.5, which re-adds the bus INPUT — on a SEND that is a doubled dry signal on top of the track's own dry. Set Mix 1.0 for a pure echo return (delay AND reverb). Measured 2026-09-22.",
+    "rebuild-commands-drop-response": "Mutating commands that trigger a routing rebuild (`add_bus`, `add_send`; intermittent, not deterministic) can drop their HTTP response while COMPLETING the work. Re-read state (`list_buses` / `get_track_sends` / a save) instead of blind-retrying, and never assume the mutation failed."
+  },
+
+  "measured_baseline": {
+    "song": "psydub_cave (2026-09-22)",
+    "final": { "rms": 0.1251, "peak": 0.900, "arcContrastDb": 14.1, "verdict": "all six gates PASS" },
+    "unmet": "0.125 RMS vs the brief's 0.21 target; crest ~17 dB. Closing it needs bus/return architecture + drum-bus transient work, and buses/sends have no agent surface today.",
+    "cost": "~11 full renders for one 5-minute track; the path tree exists to cut that to <=3."
+  }
+}

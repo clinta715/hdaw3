@@ -1,0 +1,265 @@
+{
+  "_readme": {
+    "what": "Composition path tree for dub / electro-dub (the second genre tree; see psydub.json for the format contract and ledger.json for cross-song memory).",
+    "genre_basis": "Research 2026-09-22 (MusicRadar/reggae programming guides + Roland RE-201 documentation): one-drop puts kick+rim on BEAT 3 with beat 1 left open; steppers puts the kick on all four quarters; the skank is a short clipped chord on the OFFBEATS (the '&' of each beat); dub space comes from a TAPE ECHO with the filter INSIDE the feedback loop, wow 5-12% / flutter 3-8%, and a feedback arc (normal 35% -> throw 60% -> regen 80% -> exit 20%); spring reverb is subtle (wet 8-20%), not a large wash.",
+    "measured_on": "dub_embers, 2026-09-22 (96 BPM, C minor, 120 bars, 15 tracks) — every recipe below carries the values actually used.",
+    "phases": {
+      "rule": "timeline-shape writers -> timeline-dependent writers -> readers. Measurement (mix) is LAST and nothing writes after it.",
+      "arrange": ["foundation", "percussion_pool", "groove", "chords", "skank", "modal", "arrangement"],
+      "timeline-final": ["movement"],
+      "measure": ["mix"],
+      "why": "Anything that references a SECTION, a bar boundary or the total length is a function of the finished timeline and must be written after `arrangement` - written earlier it resolves against a provisional timeline and is silently wrong (the mutation-order trap). This tree has no `space` node (its gestures live in `movement`), so nothing needed moving on 2026-09-23.",
+      "rides": "The timeline-final recipes (whole-track arcs, send/bus return rides, per-section staging) live in the psydub tree's `rides` node and apply here unchanged - see docs/paths/psydub.json.",
+      "rerun": "The pass must be re-runnable: address automation lanes BY PARAMID, pass `clear: true` to automation_preset, and use add_automation_lane {replace:true} to take ownership of a lane whose name changed between runs."
+    },
+    "how": "same contract as psydub.json: walk the nodes in order, one option each, filter by forbids + the ledger, record the path in the brief, run each option's gate."
+  },
+
+  "genre": "dub_electro",
+
+  "nodes": {
+    "foundation": {
+      "question": "Tempo / key / mode — and whether the key can be matched to the source material.",
+      "options": [
+        {
+          "id": "c-minor-corpus-match",
+          "name": "C minor at 96 BPM — chosen to match the MIDI corpus labels",
+          "why": "E:\\midi riff packs are labelled and, when analysed, are overwhelmingly C Natural Minor. Setting the project to C minor (root 0, scaleMode 1) makes the modal snippets agree BY CONSTRUCTION instead of by transposition, which removes the whole class of sour-note errors.",
+          "implies": { "bpm": 96, "keyRoot": 0, "scaleMode": 1, "totalBars": 120 },
+          "recipe": { "set_tempo": { "bpm": 96 }, "set_scale": { "root": 0, "mode": 1 } },
+          "gate": { "get_scale": { "root": 0, "mode": 1 }, "note": "bars = 1.25 x bpm for 5:00 (96 -> 120)" },
+          "evidence": "measured"
+        },
+        {
+          "id": "steppers-105",
+          "name": "Steppers at 100-105 BPM",
+          "why": "Research range for steppers; more forward drive than one-drop.",
+          "implies": { "bpm": 102, "totalBars": 128 },
+          "gate": { "get_transport": { "bpm": 102 } },
+          "evidence": "documented"
+        }
+      ]
+    },
+
+    "percussion_pool": {
+      "question": "4-8 mostly non-overlapping percussive layers, randomly picked from the corpus.",
+      "options": [
+        {
+          "id": "seven-layer-seeded",
+          "name": "7 layers, seeded random one-shots, loop-rejected",
+          "why": "Measured recipe that worked: kick / rim / closed hat / open hat / shaker / conga / tom, each a seeded random pick across the registered drum kits, FILTERED to one-shots (duration <= 3 s, no 'loop'/'break'/'bpm' markers). Blind randomness picked a 105 BPM hat LOOP, a 162 BPM shaker break and a kick+snare+tom loop — all of which would have broken the non-overlap and imported a stray tempo.",
+          "recipe": {
+            "search": "search_library per role across the kits, seeded shuffle, take the first",
+            "reject": "durationSeconds > 3.0 OR name matches (loop|break|bpm|full|mixed|demo)",
+            "roles": ["kick", "rim=snares", "closed=hihat", "open=open hat", "shaker", "conga", "tom"]
+          },
+          "gate": { "audit": "no two layers share a role or a loop tempo; every sample durationSeconds <= 3.0" },
+          "evidence": "measured"
+        },
+        {
+          "id": "four-layer-core",
+          "name": "4 layers (kick, rim, hat, perc)",
+          "why": "Minimum that still reads as a riddim; use when the mix is already dense.",
+          "gate": { "audit_song_structure": "no boredom spans" },
+          "evidence": "untested"
+        }
+      ]
+    },
+
+    "groove": {
+      "question": "The beat. THIS is where dub's identity lives, and where the psytrance gates fight you.",
+      "options": [
+        {
+          "id": "steppers-one-drop-hybrid",
+          "name": "Steppers kick + rim on beat 3, clap on 2-and-4",
+          "why": "Measured: kick on all 4 quarters (steppers), rim on beat 3 (the one-drop accent), plus a clap on 2-and-4. The clap is an electro-reggae hybrid that ALSO satisfies `audit_song_structure`'s backbeat gate — a pure one-drop fails that gate by design.",
+          "recipe": {
+            "kick": "4 per bar + an extra kick at 2.75 on the last bar of every 8",
+            "rim": "beat 3 only, 0-indexed start 2.0",
+            "clap": "beats 1 and 3 (0-indexed) + a 3.75 grace hit every 8 bars",
+            "hats": "closed offbeat 8ths (0.5/1.5/2.5/3.5), open hat at 3.5 every 4 bars",
+            "shaker": "16ths, velocity 62 on the beat / 40 off",
+            "conga": "syncopated at 0.75/1.25/2.75/3.25",
+            "tom": "4-hit fill at 3.0/3.25/3.5/3.75 every 8 bars"
+          },
+          "gate": { "audit_song_structure": "allDropsHaveBackbeat == true", "noteCount": "kick == 4 x bars + fills" },
+          "evidence": "measured"
+        },
+        {
+          "id": "pure-one-drop",
+          "name": "Pure one-drop (no kick on beat 1, rim on 3)",
+          "why": "The authentic roots groove: beat 1 stays open. Expect `allDropsHaveBackbeat` to FAIL — record it in the brief rather than distorting the groove.",
+          "recipe": { "kick": "beat 3 only", "rim": "beat 3 only (doubled)", "hats": "offbeat 8ths" },
+          "gate": { "mix_report": "arc gates ok", "acknowledge": "structure backbeat gate will fail by design" },
+          "evidence": "documented"
+        }
+      ]
+    },
+
+    "chords": {
+      "question": "The harmonic bed — jazzy 7ths/9ths, mellow but dissonant, modulated per note.",
+      "options": [
+        {
+          "id": "cm9-three-voices",
+          "name": "Cm9 / Fm9 vamp split across 3 independently-modulated voices",
+          "why": "Measured: Cm9 (C Eb G Bb D) alternating with Fm9 (F Ab C Eb G) over 4-bar blocks, split as low = C2+G2, mid = Eb3+Bb3, high = D4. The 9th (D) sits a semitone above the minor 3rd (Eb) — that half-step IS the 'mellow but dissonant' cluster. Each voice carries its OWN slow LFO (0.07 / 0.11 / 0.17 Hz) into the synth Cutoff, so the chord beats against itself and thickens. `tone_verity` confirmed the fundamentals land on G, Bb and D (fifth, 7th, 9th).",
+          "recipe": {
+            "tracks": "3 x sub_synth (Virus sysex), Cutoff ~1800 (the closed-filter trap applies)",
+            "notes": "one sustained note per chord tone per 8-bar block (30-beat duration)",
+            "modulation": "add_lfo + set_lfo_param per voice, targetParamID 107 (synth Cutoff), rateSync 0, distinct rates"
+          },
+          "gate": { "tone_verity": "f0 is a chord tone for every pad voice", "audit_modulation_coverage": "all voices covered" },
+          "evidence": "measured"
+        },
+        {
+          "id": "single-track-chord",
+          "name": "One chord track via generate_chord",
+          "why": "Cheaper (one track, chordType Minor 9 / Dominant 9, voicing + inversion available), but per-note modulation is impossible on a single track — you get one LFO for the whole chord.",
+          "recipe": { "generate_chord": { "chordType": "Minor 9", "rootPitch": 48, "length": 32 } },
+          "gate": { "tone_verity": "f0 is a chord tone" },
+          "evidence": "untested"
+        }
+      ]
+    },
+
+    "skank": {
+      "question": "The dub chord chop and its echo — the genre's signature gesture.",
+      "options": [
+        {
+          "id": "three-sixteenth-rhodes-tape-echo",
+          "name": "3/16 Rhodes ostinato through a tape-echo chain",
+          "why": "Measured: a DX7 'RHODES EGH' voice (fm_synth, `D:\\pdf\\Dexed Presets\\1980 Sounds\\Keys.syx` voiceIndex 3) chopping the chord every 3/16 (0.75 beats, dotted-8th hemiola) across the chord tones, through saturator -> delay (sync, Division 4 = dotted-1/8 = 3/16, feedback 0.62, mix 0.34) -> LPF 3.2 kHz -> small reverb (room 0.30, wet 0.18). A 0.6 Hz LFO on the delay TIME supplies tape wow; an `adsr` envelope on the delay Feedback gives the research's feedback arc 0.35 -> 0.80; a 0.09 Hz LFO on Pan drifts the repeats.",
+          "recipe": {
+            "voice": "fm_synth_import_sysex Keys.syx voiceIndex 3 (iterate voiceIndex and read voiceName to find an EP)",
+            "placement": "5 hits per bar at 0.75-beat spacing + a 3.75 wrap hit, 4 chord tones per hit, duration 0.22",
+            "echo": "saturator 8 dB drive -> delay -> LPF 3200 Hz AFTER the delay (HDAW has no in-loop filter; an output filter darkens the repeats but does NOT progressively darken each generation)",
+            "modulation": "LFO 0.6 Hz depth 0.06 -> delay Time (paramID 300); LFO 0.09 Hz -> Pan (2)"
+          },
+          "gate": { "tone_verity": "f0 is the chord root", "mix_diff": "the chop measurably changes rms/high band vs the same render without it" },
+          "evidence": "measured",
+          "known_limit": "no in-loop filtering and no true send bus: the repeats darken once, not per generation, and the echo sits on the track rather than on a shared return"
+        },
+        {
+          "id": "eight-offbeat-skank",
+          "name": "Classic one-drop skank on the offbeat 8ths",
+          "why": "The research standard: short clipped chord on the '&' of every beat (steps 3/7/11/15), 1/16-1/8 long, high-passed so it does not fight the bass. Less busy than the 3/16 ostinato.",
+          "recipe": { "placement": "beats 0.5/1.5/2.5/3.5, duration 0.25, chord tones" },
+          "gate": { "tone_verity": "f0 is a chord tone" },
+          "evidence": "documented"
+        }
+      ]
+    },
+
+    "modal": {
+      "question": "Mid-range melodic material over the bed — sourced, key-verified, and filter-shaped.",
+      "options": [
+        {
+          "id": "analysed-corpus-riff",
+          "name": "Corpus riff gated by analyze_midi_file, on 2 mono instruments",
+          "why": "Measured: of 104 files labelled '[C] [Natural Minor]', only 55 analysed as C + Natural Minor — 8 had a different root and TWO analysed as Major despite the label. Gate on `fingerprint.rootNote % 12 == 0 AND fingerprint.scaleType == 1`, then place `patterns[].notes` (per-bar {pitch, startBeat, durationBeats, velocity}) with add_notes, repeated across sections.",
+          "recipe": {
+            "select": "analyze_midi_file, keep only C + Natural Minor",
+            "place": "the 8-bar riff repeated per section on two instruments (one at pitch, one an octave down)",
+            "shape": "generate_automation_envelope on the filter Cutoff (paramID 200): 'saw' 16 cycles / 'adsr' 24 cycles across the arrangement"
+          },
+          "gate": { "analyze_midi_file": "root%12==0 and scaleType==1 for every snippet used", "tone_verity": "f0 in-key" },
+          "evidence": "measured"
+        },
+        {
+          "id": "generated-modal-phrase",
+          "name": "Generate the modal line instead of sourcing it",
+          "why": "generate_phrase with a scale-aware style keeps the mode by construction and avoids corpus hunting, at the cost of the human phrasing a real riff has.",
+          "recipe": { "generate_phrase": { "style": "Lead", "density": 0.4, "scaleRoot": 0, "scaleMode": 1 } },
+          "gate": { "tone_verity": "f0 in-key" },
+          "evidence": "documented"
+        }
+      ]
+    },
+
+    "arrangement": {
+      "question": "Where the kick is absent and where the drums drop out entirely.",
+      "options": [
+        {
+          "id": "one-drop-holes-and-drum-dropout",
+          "name": "Intro with no kick + a full drum drop-out in the breakdown",
+          "why": "Measured: intro = rim + shaker only (no kick — the one-drop 'hole'), the breakdown drops ALL drums leaving bass + echo (the classic dub move), drops = full hybrid groove. Produced an 8 dB arc over a 300 s track.",
+          "recipe": { "sections": "intro 8 / build1 16 / drop1 32 / break 16 / build2 16 / drop2 32 (120 bars at 96 BPM = 5:00)" },
+          "gate": { "mix_report.fromPlan": "arcContrast >= 6 dB, loudnessGates ok" },
+          "evidence": "measured"
+        },
+        {
+          "id": "no-dropout",
+          "name": "Continuous groove (no drum drop-out)",
+          "why": "Simpler and safer for a DJ-friendly edit; loses the signature dub gesture.",
+          "gate": { "mix_report": "loudnessGates ok" },
+          "evidence": "untested"
+        }
+      ]
+    },
+
+    "movement": {
+      "question": "Coverage + musical movement (reuse the psydub node's options).",
+      "options": [
+        { "id": "per-track-lfo", "name": "One targeted LFO per sounding track",
+          "recipe": { "note": "add_lfo + set_lfo_param, targetParamID = the first automatable param of the slot that matters" },
+          "gate": { "audit_modulation_coverage": "attentionRequiredIds == []" }, "evidence": "measured" },
+        { "id": "gesture-lanes-only", "name": "Rely on gesture lanes (>= 3 points counts)",
+          "gate": { "audit_modulation_coverage": "attentionRequiredIds == []" }, "evidence": "measured" }
+      ]
+    },
+
+    "mix": {
+      "question": "Gain staging and the master.",
+      "options": [
+        {
+          "id": "measure-dont-guess",
+          "name": "Render once at a safe master, read the peak, rescale",
+          "why": "Measured: rendering at master 0.5 gave peak 0.954 with rms 0.177 — inside the 0.85-0.95 window, so NO second render was needed. Watch the bass band: this arrangement measured bass:high = 38:1, so trim the bass fader (0.72) before blaming the master.",
+          "recipe": { "set_master_gain": 0.5, "export_audio": {}, "mix_report": "read peak", "rescale_only_if": "peak < 0.85 or > 0.95" },
+          "gate": { "mix_verdict": "clipping PASS" },
+          "evidence": "measured"
+        },
+        {
+          "id": "window-probe",
+          "name": "Window probe instead of a full canary (cheapest rescale)",
+          "why": "Measured 2026-09-22 (dub_embers, 300 s render that takes ~7 min): `verify_part {trackIndex, startBeat, endBeat, windowSeconds}` on a SHORT window inside the LOUDEST section returns `mixPeak` in seconds. Set a safe master (0.30), probe the loudest drop, then master = 0.90 / (mixPeak / 0.30). On dub_embers the probe read mixPeak 0.675 at 0.30 -> true peak 2.25 -> master 0.395, in ~2 s instead of a 7-minute canary render.",
+          "recipe": { "set_master_gain": 0.30, "verify_part": { "startBeat": "loudest section start", "endBeat": "+8", "windowSeconds": 4 }, "set_master_gain": "0.90 / (mixPeak / 0.30) - small margin" },
+          "gate": { "mix_verdict": "clipping PASS with peak in 0.85..0.95" },
+          "evidence": "measured",
+          "caveat": "the window must contain the global peak — pick the loudest drop, and expect the reading to be a hair optimistic if the true peak is a single transient elsewhere"
+        },
+        {
+          "id": "canary-master",
+          "name": "Canary at 0.25 then exact master",
+          "why": "Braver but costs an extra render; use when the mix is expected to clip.",
+          "gate": { "mix_verdict": "clipping PASS" },
+          "evidence": "measured"
+        }
+      ]
+    }
+  },
+
+  "traps": {
+    "compressor-eats-the-bass": "A default `compressor` slot (Threshold -20 dB, Ratio 4:1) on the bass made the bassline inaudible: soloPeak measured 0.032 while a pad voice at the SAME pitches measured 0.116. Raising Threshold to -6 dB and Ratio to 2:1 doubled the bass (0.032 -> 0.060) and the rewritten riff plus fader 1.0 took it to 0.105. The synth was hot and the compressor was clamping it. ALWAYS audition a bass solo with `verify_part` inside a DROP window before mixing around it — and note that an audition from beat 0 measures SILENCE if the track (like a dub bass) has no clip in the intro.",
+    "static-bassline": "Root-third-fifth on every bar is not a bassline. User feedback on dub_embers: 'I don't really hear a distinct bassline'. Fix: a 4-bar riff shape with a hook bar (octave jump + syncopation) and rests, i-i-iv-i, answering the offbeat skank by playing ON the beats.",
+    "claps-are-an-instrument": "Don't reserve claps for a backbeat-fix. User feedback: 'claps exist, you can use them! you can put delay on them too, with feedback.' Give the clap its own delay (dotted-1/8, feedback ~0.58, mix ~0.40) plus pickup hits every 2 bars and offbeat doubles every 8.",
+    "chop-clarity": "A 3/16 chop can be present and still unhearable: `verify_part` showed the Rhodes skank at soloPeak 0.34 (loud) while it read as a wash in the mix. The fixes were subtractive and additive at once — delay Mix 0.34 -> 0.18 (less smearing), LPF 3.2k -> 8k (let it speak), +3 dB presence EQ at 3 kHz, and a -2.5 dB dip at 2.5 kHz on the KICK to unmask it.",
+    "pad-modulation-must-be-long": "User feedback: the background chord 'could use more / longer+subtle modulation'. Fast shallow LFOs (0.07-0.17 Hz, depth 0.45) read as static. Fix: depth down to ~0.22 AND a SECOND LFO per voice at 0.017-0.031 Hz (30-60 s cycles) on a different target, plus envelope cycles stretched from 8 to 3 over the arrangement (~100 s sweeps).",
+    "slot-must-exist": "`set_internal_fx_param` on a slot index that does not exist returns 'slot not found' and DOES NOTHING — and if you are not checking the error it looks like the write landed. Measured 2026-09-22: three +2 dB pad EQ writes went to slot 3 on tracks that only had chorus(1)+reverb(2); the fix was `add_fx {fxType:'eq'}` first. Always `list_fx_params {trackId, slotIndex}` before writing a param into a chain you did not build.",
+    "tonal-balance-recipe": "When the mix bands come out bass-dominant (measured 38,983 bass vs 1,330 high = 29:1), the fix is four moves at once, not a master change: (1) trim where kick and bass FIGHT — kick -4 dB @42 Hz (below its punch) plus fader 0.82, bass Sub Level 0.85 -> 0.60 and Cutoff 600 -> 450; (2) lift the highs at source — closed hat +3.5 dB @9 kHz, shaker +2.5 dB @7 kHz; (3) add body — +2 dB @500 Hz on the pad voices, skank LPF 3.2k -> 10k; (4) NARROW the modal filter envelopes (0.15-0.95 of the sweep range -> 0.55-0.85) so the riffs sit in a clear band instead of washing across it.",
+    "label-trust": "MIDI pack filenames lie. 104 files named '[C] [Natural Minor]' produced only 55 that analysed as C + Natural Minor; 2 analysed as MAJOR. Always gate on analyze_midi_file's fingerprint (rootNote % 12 == 0 and scaleType == 1).",
+    "loop-vs-oneshot": "Seeded random sample picks return LOOPS unless filtered. A 105 BPM hat loop, a 162 BPM shaker break and a kick+snare+tom loop were all picked before the duration/name filter went in — each would have imported a stray tempo or overlapped other layers.",
+    "backbeat-gate-vs-dub": "`audit_song_structure.allDropsHaveBackbeat` wants 2-and-4; a roots one-drop (rim on beat 3) fails it by design. Hybridise with a clap on 2-and-4, or record the failure as intentional. Never move the rim to 2-and-4.",
+    "no-in-loop-filter": "HDAW's delay has no filter inside the feedback loop (params: Time, Feedback, Mix, Sync, Division), so tape-echo repeats cannot be progressively darkened. Put a filter AFTER the delay and accept one-generation darkening; use lower feedback (<= 0.62) to stop low-end build-up instead.",
+    "no-sends": "buses/sends still have no agent surface, so the research's send-based dub routing cannot be built; per-track FX + gesture lanes only (docs/composition-toolkit.md, 'Known capability gap').",
+    "render-time": "Render time scales with automation density: 300 s of a 14-track / ~6k-note / ~15k-automation-point arrangement took 410 s (slower than realtime), where a 9-track sampler-only render of the same length took ~10 s. Budget two renders (measure + final) as a quarter hour on a dense dub arrangement.",
+    "sysex-cutoff": "Same trap as psydub.json: after sub_synth_import_sysex the virus filter lands as-is, so a closed patch renders near-silent at Cutoff 20 Hz. Set it per role (bass ~260, pad ~1800) before auditioning."
+  },
+
+  "measured_baseline": {
+    "song": "dub_embers (2026-09-22)",
+    "result": { "rms": 0.1772, "peak": 0.954, "arcContrastDb": 8.0, "kickProminence": 0.515,
+                "bands_bass_to_high": "38:1", "tracks": 15, "notes": "~8,500", "notes_first_pass_gate_failure": "structure (no 2-and-4 backbeat)" },
+    "key_check": "Cm9/Fm9 vamp in C minor; tone_verity f0 read G, Bb, D on the pad voices (fifth, 7th, 9th) and C on the skank — no sour tones"
+  }
+}

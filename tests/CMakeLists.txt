@@ -184,6 +184,7 @@ add_executable(hdaw_tests
     unit/frontend/rpc_parity_ratchet_test.cpp
     unit/frontend/rpc_namespace_coverage_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
+    unit/frontend/bus_send_rpc_test.cpp
     integration/proxy/isolation_integration_test.cpp
     integration/proxy/namespace_collision_test.cpp
 )

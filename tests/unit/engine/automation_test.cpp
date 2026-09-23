@@ -8,6 +8,10 @@
 // the read model, and rejects duplicate targets.
 #include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
+#include "engine/AutomationPreset.h"
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 // Zero-track default contract (v0.33+): createDefaultProject() ships an
@@ -31,6 +35,42 @@ const AutomationLaneSnapshot* findLane(const std::vector<AutomationLaneSnapshot>
         if (l.name == name)
             return &l;
     return nullptr;
+}
+
+// A lane's (startTime, gain) points read straight from the ValueTree — the
+// durable source a rebuild restores, not a read-model projection.
+std::vector<std::pair<double, double>> lanePoints(AudioEngine& engine, int trackIndex,
+                                                  const std::string& laneName)
+{
+    std::vector<std::pair<double, double>> pts;
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return pts;
+    auto autoList = trackList.getChild(trackIndex).getChildWithName(IDs::AUTOMATION_LIST);
+    if (!autoList.isValid()) return pts;
+    auto lane = autoList.getChildWithProperty(IDs::name, juce::String(laneName));
+    if (!lane.isValid()) return pts;
+    auto pointList = lane.getChildWithName(IDs::POINT_LIST);
+    for (int i = 0; i < pointList.getNumChildren(); ++i)
+    {
+        auto pt = pointList.getChild(i);
+        pts.emplace_back(static_cast<double>(pt.getProperty(IDs::startTime, 0.0)),
+                         static_cast<double>(pt.getProperty(IDs::gain, 0.0)));
+    }
+    return pts;
+}
+
+// How many lanes the track has bound to `paramID` (tree truth, not a snapshot).
+int countLanesBoundTo(AudioEngine& engine, int trackIndex, int paramID)
+{
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return 0;
+    auto autoList = trackList.getChild(trackIndex).getChildWithName(IDs::AUTOMATION_LIST);
+    if (!autoList.isValid()) return 0;
+    int n = 0;
+    for (int i = 0; i < autoList.getNumChildren(); ++i)
+        if (static_cast<int>(autoList.getChild(i).getProperty(IDs::paramID, 0)) == paramID)
+            ++n;
+    return n;
 }
 }
 
@@ -273,4 +313,168 @@ TEST(Automation, AddLaneParamIdCollisionReturnsError)
     // A lane with a different name AND different paramID should succeed.
     bool fourth = cmds.addAutomationLane(trackIdx, "My Resonance", 106);
     EXPECT_TRUE(fourth);
+}
+
+// ── Lane upsert by paramID (the post-arrangement pass's re-run path) ────────
+// G1: replace=true takes ownership of the lane bound to paramID. The lane is
+// RENAMED IN PLACE, so points written outside the pass's windows survive — a
+// delete+recreate would silently drop them.
+TEST(Automation, G1_ReplaceRenamesLaneBoundToParamIdAndKeepsPoints)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    ASSERT_TRUE(cmds.addAutomationLane(0, "Old", 139));
+    cmds.addAutomationPoint(0, "Old", 4.0, 0.25f);
+    cmds.addAutomationPoint(0, "Old", 8.0, 0.75f);
+    const auto before = lanePoints(engine, 0, "Old");
+    ASSERT_EQ(before.size(), 2u);
+
+    EXPECT_TRUE(cmds.addAutomationLane(0, "DubThrow", 139, /*replace*/ true));
+
+    // Tree truth: exactly one lane drives 139, it carries the new name, and
+    // it is the SAME lane as before (same points, same values).
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 139), 1);
+    const auto after = lanePoints(engine, 0, "DubThrow");
+    ASSERT_EQ(after.size(), before.size());
+    for (size_t i = 0; i < before.size(); ++i)
+    {
+        EXPECT_DOUBLE_EQ(after[i].first, before[i].first);
+        EXPECT_DOUBLE_EQ(after[i].second, before[i].second);
+    }
+    EXPECT_TRUE(lanePoints(engine, 0, "Old").empty());   // the old name is gone
+
+    auto lanes = engine.getReadModel().getAutomationLanes(0);
+    EXPECT_EQ(findLane(lanes, "Old"), nullptr);
+    const auto* lane = findLane(lanes, "DubThrow");
+    ASSERT_NE(lane, nullptr);
+    EXPECT_EQ(lane->paramID, 139);
+
+    // Re-running the same upsert is the idempotent no-op it must be.
+    EXPECT_TRUE(cmds.addAutomationLane(0, "DubThrow", 139, true));
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 139), 1);
+    EXPECT_EQ(lanePoints(engine, 0, "DubThrow").size(), 2u);
+}
+
+// G2: the default (no replace / replace=false) is unchanged — the conflict
+// guard still fires, nothing moves — while the same-name+same-paramID create
+// stays the idempotent true.
+TEST(Automation, G2_ReplaceOffKeepsConflictGuard)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    ASSERT_TRUE(cmds.addAutomationLane(0, "Old", 139));
+    cmds.addAutomationPoint(0, "Old", 4.0, 0.25f);
+
+    EXPECT_FALSE(cmds.addAutomationLane(0, "DubThrow", 139));         // legacy form
+    EXPECT_FALSE(cmds.addAutomationLane(0, "DubThrow", 139, false));  // explicit false
+
+    // Changed nothing (tree truth): the lane is still "Old"/139 with its point.
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 139), 1);
+    EXPECT_EQ(lanePoints(engine, 0, "Old").size(), 1u);
+    EXPECT_TRUE(lanePoints(engine, 0, "DubThrow").empty());
+
+    // Idempotent create is still true (same name, same paramID, twice).
+    EXPECT_TRUE(cmds.addAutomationLane(0, "X", 7));
+    EXPECT_TRUE(cmds.addAutomationLane(0, "X", 7));
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 7), 1);
+    EXPECT_FALSE(cmds.addAutomationLane(0, "X", 8, true));  // name already owns paramID 7
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 7), 1);
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 8), 0);
+}
+
+// G2 (frozen contract clause): replace=true with paramID 0 means "unbound" —
+// there is no binding to take over, so it falls back to the create path
+// exactly as before (two unbound lanes with distinct names are allowed and
+// no existing lane is renamed).
+TEST(Automation, G2b_ReplaceWithZeroParamIdFallsBackToCreate)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    EXPECT_TRUE(cmds.addAutomationLane(0, "U1", 0, true));
+    EXPECT_TRUE(cmds.addAutomationLane(0, "U2", 0, true));   // a second unbound lane
+    EXPECT_TRUE(cmds.addAutomationLane(0, "U2", 0, true));   // idempotent on the same name
+
+    auto lanes = engine.getReadModel().getAutomationLanes(0);
+    const auto* u1 = findLane(lanes, "U1");
+    const auto* u2 = findLane(lanes, "U2");
+    ASSERT_NE(u1, nullptr);
+    ASSERT_NE(u2, nullptr);
+    EXPECT_EQ(u1->paramID, 0);
+    EXPECT_EQ(u2->paramID, 0);
+}
+
+// G4: replace=true must never steal a name that a DIFFERENT paramID owns, and
+// must leave the tree untouched when it refuses.
+TEST(Automation, G4_ReplaceDoesNotStealNameBoundToOtherParamId)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    ASSERT_TRUE(cmds.addAutomationLane(0, "Ride", 200));
+    ASSERT_TRUE(cmds.addAutomationLane(0, "Old", 139));
+
+    EXPECT_FALSE(cmds.addAutomationLane(0, "Ride", 139, true));
+
+    // Nothing changed: "Ride" still drives 200, "Old" still drives 139.
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 200), 1);
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 139), 1);
+    auto lanes = engine.getReadModel().getAutomationLanes(0);
+    const auto* ride = findLane(lanes, "Ride");
+    const auto* old = findLane(lanes, "Old");
+    ASSERT_NE(ride, nullptr);
+    ASSERT_NE(old, nullptr);
+    EXPECT_EQ(ride->paramID, 200);
+    EXPECT_EQ(old->paramID, 139);
+}
+
+// G3: the two-step post-arrangement pass — add_automation_lane(replace=true)
+// then automation_preset{clear:true} with a fixed seed — is re-runnable: the
+// second identical run produces the same point count AND values.
+TEST(Automation, G3_PostPassRerunIsIdempotent)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    HDAW::AutomationPreset::PresetWindow w;
+    w.start = 0.0;
+    w.end = 16.0;
+    w.preset = HDAW::AutomationPreset::Preset::Pump;
+    const std::vector<HDAW::AutomationPreset::PresetWindow> windows{ w };
+
+    const auto runPass = [&]() -> std::vector<std::pair<double, double>>
+    {
+        EXPECT_TRUE(cmds.addAutomationLane(0, "DubThrow", 139, /*replace*/ true));
+        int added = -1;
+        const std::string err =
+            cmds.applyAutomationPreset(0, "DubThrow", windows, /*clear*/ true, 12345, &added);
+        EXPECT_TRUE(err.empty()) << err;
+        EXPECT_GT(added, 0);
+        return lanePoints(engine, 0, "DubThrow");
+    };
+
+    const auto first = runPass();
+    ASSERT_GT(first.size(), 0u);
+    const auto second = runPass();
+
+    // Second run: same lane, same binding, same point count, same values.
+    EXPECT_EQ(countLanesBoundTo(engine, 0, 139), 1);
+    ASSERT_EQ(second.size(), first.size());
+    for (size_t i = 0; i < first.size(); ++i)
+    {
+        EXPECT_DOUBLE_EQ(second[i].first, first[i].first) << "point " << i << " time";
+        EXPECT_DOUBLE_EQ(second[i].second, first[i].second) << "point " << i << " value";
+    }
 }

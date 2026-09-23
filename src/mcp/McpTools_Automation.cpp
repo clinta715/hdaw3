@@ -122,18 +122,20 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
     // automation pass the compound id (100 + slotIndex*100 + paramIndex).
     // Mirrors project.addAutomationLane / project.removeAutomationLane so the
     // UI and MCP share one command path (AGENTS.md feature-parity contract).
-    s.registerTool({"add_automation_lane", "Create an automation lane, optionally bound to a target paramID (1=volume, 2=pan, 3=mute, or 100+slotIndex*100+paramIndex for a plugin FX param).",
+    s.registerTool({"add_automation_lane", "Create an automation lane, optionally bound to a target paramID (1=volume, 2=pan, 3=mute, or 100+slotIndex*100+paramIndex for a plugin FX param). With replace=true and a nonzero paramID the call instead takes ownership of the lane already bound to that paramID: it is renamed to laneName in place, keeping its points, so a post-arrangement automation pass can re-run and re-assert \"the lane bound to paramID N is mine, named X\" in one call. A laneName already bound to a different paramID still fails.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"laneName",  QJsonObject{{"type","string"}}},
-                  {"paramID",   QJsonObject{{"type","integer"}}}}, {"trackId","laneName"}),
+                  {"paramID",   QJsonObject{{"type","integer"}}},
+                  {"replace",   QJsonObject{{"type","boolean"}}}}, {"trackId","laneName"}),
         "automation",
         [e](const QJsonObject& a) -> McpToolResult {
             int trackId = a.value("trackId").toInt(-1);
             QString laneNameQ = a.value("laneName").toString();
             if (laneNameQ.isEmpty()) return McpToolResult::text("laneName required", true);
             int paramID = a.value("paramID").toInt(0);
+            bool replace = a.value("replace").toBool(false);
             bool added = e->getProjectCommands().addAutomationLane(
-                trackId, laneNameQ.toUtf8().constData(), paramID);
+                trackId, laneNameQ.toUtf8().constData(), paramID, replace);
             if (!added)
                 return McpToolResult::text("lane name or paramID already exists", true);
             return McpToolResult::text("ok");

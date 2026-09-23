@@ -2,8 +2,10 @@
 #include "RouterHelpers.h"
 
 #include "../../common/ReadModel.h"
+#include "../../common/BusInfo.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
@@ -14,7 +16,8 @@ using namespace frontend::router_helpers;
 
 namespace frontend {
 
-DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& params) {
+DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& busList,
+                            const QString& m, const QJsonValue& params) {
     const auto o = paramsObject(params);
     if (m == "snapshot")         { return { false, toJson(r.snapshot()) }; }
     if (m == "getTrackCount")    { return { false, r.getTrackCount() }; }
@@ -100,6 +103,25 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
         int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
         QJsonArray arr; for (const auto& s : r.getTrackSends(i)) arr.append(toJson(s));
         return { false, arr };
+    }
+
+    // --- Buses (docs/plans/2026-09-22-bus-fx-params.md, slice C) ---
+    // common/BusInfo.h holds the ONE shaping and the ONE read-side validation, so these
+    // return exactly what the MCP twins (list_buses / list_bus_fx_params in
+    // McpTools_Send.cpp) return — including the failure text. The shaping is a compact
+    // JSON document (what an MCP text payload is); the router hands the client the
+    // parsed structure rather than a string-quoted document.
+    if (m == "listBuses") {
+        return { false, QJsonDocument::fromJson(
+            QString::fromStdString(HDAW::shapeBusesJson(HDAW::readBuses(busList))).toUtf8()).array() };
+    }
+    if (m == "listBusFxParams") {
+        int id; if (!requireInt(o, "busID", id, nullptr)) return makeError(-32602, "busID required");
+        const auto target = HDAW::findFxBusForRead(busList, id);
+        if (!target.bus.isValid())
+            return makeError(-32602, QString::fromStdString(target.error));
+        return { false, QJsonDocument::fromJson(
+            QString::fromStdString(HDAW::shapeBusFxParamsJson(target.bus)).toUtf8()).object() };
     }
     if (m == "isDirty")         { return { false, r.isDirty() }; }
     if (m == "sampler.getState") {

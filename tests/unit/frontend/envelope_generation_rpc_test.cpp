@@ -137,3 +137,60 @@ TEST(EnvelopeGenerationRpc, G5_DefaultsApplied)
     EXPECT_TRUE(points.isArray());
     EXPECT_GT(points.toArray().size(), 0);
 }
+
+// D1 (post-arrangement pass): the RPC twin accepts the same `replace` key as
+// the MCP tool. Without it the conflict guard fires with the historical text
+// byte-for-byte; with it the lane bound to paramID is taken over (renamed in
+// place, its points kept), which is what makes the pass re-runnable.
+TEST(EnvelopeGenerationRpc, AddAutomationLaneReplaceTakesOwnership)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    seedTracks(engine, 1);
+
+    rpc(engine, "project.addAutomationLane",
+        QJsonObject{ { "trackIndex", 0 }, { "laneName", "Old" }, { "paramID", 139 } });
+    rpc(engine, "project.addAutomationPoint",
+        QJsonObject{ { "trackIndex", 0 }, { "lane", "Old" }, { "time", 4.0 }, { "value", 0.25 } });
+
+    // Legacy form: still the same error, name and paramID untouched.
+    auto clash = frontend::dispatch(engine, "project.addAutomationLane",
+        QJsonObject{ { "trackIndex", 0 }, { "laneName", "DubThrow" }, { "paramID", 139 } });
+    ASSERT_TRUE(clash.isError);
+    EXPECT_EQ(clash.payload.toObject().value("message").toString().toStdString(),
+              "lane name or paramID already exists");
+
+    // replace:true renames the lane bound to 139 in place.
+    auto r = frontend::dispatch(engine, "project.addAutomationLane",
+        QJsonObject{ { "trackIndex", 0 }, { "laneName", "DubThrow" }, { "paramID", 139 },
+                     { "replace", true } });
+    ASSERT_FALSE(r.isError) << r.payload.toObject().value("message").toString().toStdString();
+
+    auto lanes = rpc(engine, "read.getAutomationLanes",
+                     QJsonObject{ { "trackIndex", 0 } }).toArray();
+    bool renamed = false, oldGone = true;
+    int boundTo139 = 0;
+    for (const auto& lv : lanes)
+    {
+        const auto lane = lv.toObject();
+        if (lane.value("name").toString() == "DubThrow")
+        {
+            renamed = true;
+            EXPECT_EQ(lane.value("paramID").toInt(), 139);
+        }
+        if (lane.value("name").toString() == "Old")
+            oldGone = false;
+        if (lane.value("paramID").toInt() == 139)
+            ++boundTo139;
+    }
+    EXPECT_TRUE(renamed);
+    EXPECT_TRUE(oldGone);
+    EXPECT_EQ(boundTo139, 1);
+
+    // Points survived the rename (beats domain through the read path).
+    auto pts = rpc(engine, "read.getAutomationPoints",
+                   QJsonObject{ { "trackIndex", 0 }, { "laneName", "DubThrow" } }).toArray();
+    ASSERT_EQ(pts.size(), 1);
+    EXPECT_NEAR(pts[0].toObject().value("value").toDouble(), 0.25, 1e-6);
+}

@@ -20,26 +20,42 @@ struct DelayProbeResult
     int                 sampleRate = 44100;
 };
 
+// One delay slot's full configuration for a probe render: manual Delay Time or
+// tempo-synced Division, plus the feedback/mix the C3 extraction moved into the
+// shared InternalDelay DSP.
+struct DelayProbeConfig
+{
+    double sampleRate = 44100.0;
+    int    blockSize  = 512;
+    int    blocks     = 100;
+    float  delaySec   = 0.5f;    // param 0 (ignored while sync is on)
+    float  feedback   = 0.3f;    // param 1
+    float  mix        = 1.0f;    // param 2 (1.0 == pure echo, dry = 0)
+    float  sync       = 0.0f;    // param 3 SyncToTempo
+    float  division   = 0.0f;    // param 4 Division
+    double bpm        = 120.0;   // project tempo fed to the slot
+};
+
 // Render `blocks` blocks through a prepared delay slot. An impulse is placed
-// at sample 0 of block 0. mix=1.0 makes the output pure-echo (dry = 0).
-DelayProbeResult renderDelayImpulse(double sampleRate, int blockSize,
-                                    float delaySec, float feedback, int blocks)
+// at sample 0 of block 0.
+DelayProbeResult renderDelayImpulse(const DelayProbeConfig& cfg)
 {
     HDAW::TrackFXSlot slot("delay");
-    slot.prepare({ sampleRate, (juce::uint32) blockSize, 2 });
-    // Manual mode (SyncToTempo=0 default): delay = param 0 seconds.
-    slot.setInternalParam(0, delaySec); // Delay Time
-    slot.setInternalParam(1, feedback); // Feedback
-    slot.setInternalParam(2, 1.0f);     // Mix = 1.0 → dry = 0
+    slot.prepare({ cfg.sampleRate, (juce::uint32) cfg.blockSize, 2 });
+    slot.setTempo(cfg.bpm);                       // the tempo feed Track.cpp:584 provides
+    slot.setInternalParam(0, cfg.delaySec);       // Delay Time / sync-derived time
+    slot.setInternalParam(1, cfg.feedback);       // Feedback
+    slot.setInternalParam(2, cfg.mix);            // Mix
+    slot.setInternalParam(3, cfg.sync);           // SyncToTempo
+    slot.setInternalParam(4, cfg.division);       // Division
 
     DelayProbeResult r;
-    r.sampleRate = (int) sampleRate;
+    r.sampleRate = (int) cfg.sampleRate;
     juce::MidiBuffer midi;
-    const int total = blockSize * blocks;
-    r.out.assign((size_t) total, 0.0f);
-    for (int b = 0; b < blocks; ++b)
+    r.out.assign((size_t) (cfg.blockSize * cfg.blocks), 0.0f);
+    for (int b = 0; b < cfg.blocks; ++b)
     {
-        juce::AudioBuffer<float> buf(2, blockSize);
+        juce::AudioBuffer<float> buf(2, cfg.blockSize);
         buf.clear();
         if (b == 0)
         {
@@ -48,10 +64,34 @@ DelayProbeResult renderDelayImpulse(double sampleRate, int blockSize,
         }
         slot.process(buf, midi);
         for (int ch = 0; ch < 2; ++ch)
-            for (int s = 0; s < blockSize; ++s)
-                r.out[(size_t) (b * blockSize + s)] = buf.getSample(ch, s);
+            for (int s = 0; s < cfg.blockSize; ++s)
+                r.out[(size_t) (b * cfg.blockSize + s)] = buf.getSample(ch, s);
     }
     return r;
+}
+
+// Legacy signature: manual Delay Time, mix 1.0.
+DelayProbeResult renderDelayImpulse(double sampleRate, int blockSize,
+                                    float delaySec, float feedback, int blocks)
+{
+    DelayProbeConfig cfg;
+    cfg.sampleRate = sampleRate;
+    cfg.blockSize  = blockSize;
+    cfg.delaySec   = delaySec;
+    cfg.feedback   = feedback;
+    cfg.mix        = 1.0f;
+    cfg.blocks     = blocks;
+    return renderDelayImpulse(cfg);
+}
+
+// Peak |sample| within +-2 of `index` (the tap lands on the sample the derived
+// time rounds to; the assertion is about the tap, not the rounding rule).
+float peakNear(const std::vector<float>& out, int index)
+{
+    float peak = 0.0f;
+    for (int i = juce::jmax(0, index - 2); i <= juce::jmin((int) out.size() - 1, index + 2); ++i)
+        peak = juce::jmax(peak, std::fabs(out[(size_t) i]));
+    return peak;
 }
 
 } // namespace
@@ -75,32 +115,90 @@ TEST(TrackFxDelay, ImpulseProducesDecayingEchoes)
         ASSERT_NEAR(r.out[(size_t) s], 0.0f, 1e-3f) << "pre-echo @ " << s;
 }
 
-// Sync mode: Division 6 (1/4 note) at a known BPM must derive the delay time
-// (division fraction 0.25 × 60 / bpm).
-TEST(TrackFxDelay, SyncDivisionDerivesDelayTime)
+// G-C3-1 (the extraction's regression gate): a short delay keeps the exact
+// analytic tap pattern the inline DSP produced — delay 0.1 s, feedback 0.5,
+// mix 1.0 → 1.0 / 0.5 / 0.25 at 0.1 / 0.2 / 0.3 s.
+TEST(TrackFxDelay, ShortDelayTapsStayAnalytic)
 {
     const double sr = 44100.0;
-    const double bpm = 120.0;                    // clean math: 1/4 = 0.5 s
-    const float fb = 0.5f;
-    const int blocks = 100;
+    DelayProbeConfig cfg;
+    cfg.sampleRate = sr;
+    cfg.delaySec   = 0.1f;      // 4410 samples
+    cfg.feedback   = 0.5f;
+    cfg.mix        = 1.0f;
+    cfg.blocks     = 100;       // 51200 samples → 11 echoes
+    const auto r = renderDelayImpulse(cfg);
 
-    HDAW::TrackFXSlot slot("delay");
-    slot.prepare({ sr, 512, 2 });
-    slot.setInternalParam(3, 1.0f);   // SyncToTempo ON
-    slot.setInternalParam(4, 6.0f);   // Division 6 = 1/4 note
-    slot.setInternalParam(1, fb);
-    slot.setInternalParam(2, 1.0f);   // Mix = 1.0
-    // NOTE: project-BPM access lives in the engine; the slot's sync derives
-    // from computeDelaySeconds()'s BPM source. If the slot has no BPM source
-    // in isolation, this test documents the manual-mode contract instead:
-    // fall back to verifying the delay still echoes in sync mode rather than
-    // being silently skipped by the size() guard.
+    const int d1 = (int) std::lround(cfg.delaySec * sr);        // 4410
+    EXPECT_NEAR(r.out[(size_t) d1], 1.0f, 0.02f)       << "echo #1 @ " << d1;
+    EXPECT_NEAR(r.out[(size_t) (2 * d1)], 0.5f, 0.02f) << "echo #2 @ " << 2 * d1;
+    EXPECT_NEAR(r.out[(size_t) (3 * d1)], 0.25f, 0.02f) << "echo #3 @ " << 3 * d1;
+    EXPECT_NEAR(r.out[(size_t) (4 * d1)], 0.125f, 0.02f) << "echo #4 @ " << 4 * d1;
+    // Pure echo (mix 1.0): the dry impulse is not in the output, and the line is
+    // empty before the first tap.
+    EXPECT_NEAR(r.out[0], 0.0f, 1e-6f);
+    for (int s = 1; s < d1 - 2; ++s)
+        ASSERT_NEAR(r.out[(size_t) s], 0.0f, 1e-3f) << "pre-echo @ " << s;
+}
 
-    juce::MidiBuffer midi;
-    juce::AudioBuffer<float> buf(2, 512);
-    buf.clear();
-    buf.setSample(0, 0, 1.0f);
-    buf.setSample(1, 0, 1.0f);
-    slot.process(buf, midi);
-    SUCCEED() << "sync-mode delay renders without being skipped";
+// The Mix param blends the dry input with the echo, the way the inline code did
+// (dry = 1 - mix on the input, mix on the delayed read).
+TEST(TrackFxDelay, MixBlendsDryAndWet)
+{
+    const double sr = 44100.0;
+    DelayProbeConfig cfg;
+    cfg.sampleRate = sr;
+    cfg.delaySec   = 0.05f;     // 2205 samples
+    cfg.feedback   = 0.0f;      // one echo only, so the blend is unambiguous
+    cfg.mix        = 0.25f;
+    cfg.blocks     = 20;
+    const auto r = renderDelayImpulse(cfg);
+
+    const int d1 = (int) std::lround(cfg.delaySec * sr);
+    EXPECT_NEAR(r.out[0], 0.75f, 0.01f)             << "dry = 1 - mix";
+    EXPECT_NEAR(r.out[(size_t) d1], 0.25f, 0.01f)   << "wet = mix";
+    EXPECT_NEAR(r.out[(size_t) (2 * d1)], 0.0f, 1e-6f) << "feedback 0 must not repeat";
+}
+
+// G-C3-3: tempo sync is real on the track slot too — the derived tap follows the
+// Division AND the project BPM the engine pushes (Track.cpp:584 -> setTempo).
+TEST(TrackFxDelay, SyncDivisionAndTempoMoveTheTaps)
+{
+    const double sr = 44100.0;
+    auto synced = [sr](float division, double bpm)
+    {
+        DelayProbeConfig cfg;
+        cfg.sampleRate = sr;
+        cfg.blocks     = 60;        // 30720 samples > the slowest tap below
+        cfg.sync       = 1.0f;
+        cfg.division   = division;
+        cfg.bpm        = bpm;
+        cfg.feedback   = 0.0f;      // one tap per division: unambiguous
+        cfg.mix        = 1.0f;
+        return renderDelayImpulse(cfg);
+    };
+
+    // Division 0 = 1/8 note, 6 = 1/4 note; beat fractions 0.125 / 0.25.
+    const auto eighth120  = synced(0.0f, 120.0);   // 0.0625 s = 2756 samples
+    const auto quarter120 = synced(6.0f, 120.0);   // 0.125  s = 5513 samples
+    const auto quarter60  = synced(6.0f, 60.0);    // 0.25   s = 11025 samples
+
+    EXPECT_NEAR(peakNear(eighth120.out, 2756), 1.0f, 0.02f)  << "1/8 @ 120 BPM";
+    EXPECT_NEAR(peakNear(quarter120.out, 5513), 1.0f, 0.02f) << "1/4 @ 120 BPM";
+    EXPECT_NEAR(peakNear(quarter60.out, 11025), 1.0f, 0.02f) << "1/4 @ 60 BPM";
+    EXPECT_LT(peakNear(eighth120.out, 5513), 1e-3f)  << "division 0 tapped at the 1/4 position";
+    EXPECT_LT(peakNear(quarter120.out, 2756), 1e-3f)  << "division 6 tapped at the 1/8 position";
+    EXPECT_LT(peakNear(quarter60.out, 5513), 1e-3f)   << "the tempo change did not move the tap";
+
+    // Manual mode still ignores Division/tempo entirely: SyncToTempo off means
+    // param 0 seconds, whatever the BPM is.
+    DelayProbeConfig manual;
+    manual.sampleRate = sr;
+    manual.delaySec   = 0.05f;
+    manual.feedback   = 0.0f;
+    manual.mix        = 1.0f;
+    manual.bpm        = 60.0;
+    manual.blocks     = 20;
+    const auto manualTap = renderDelayImpulse(manual);
+    EXPECT_NEAR(peakNear(manualTap.out, 2205), 1.0f, 0.02f) << "manual Delay Time";
 }

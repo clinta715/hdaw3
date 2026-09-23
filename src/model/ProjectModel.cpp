@@ -144,6 +144,15 @@ int ProjectModel::allocateCcID()
     return nextCcID_.fetch_add(1, std::memory_order_relaxed);
 }
 
+int ProjectModel::allocateBusID()
+{
+    int maxID = 1; // 0 = master, 1 = the default "Reverb" fx bus
+    auto busList = getBusListTree();
+    for (int i = 0; i < busList.getNumChildren(); ++i)
+        maxID = juce::jmax(maxID, static_cast<int>(busList.getChild(i).getProperty(IDs::busID, -1)));
+    return maxID + 1;
+}
+
 void ProjectModel::resetNoteIDCounter()
 {
     nextNoteID_.store(1, std::memory_order_relaxed);

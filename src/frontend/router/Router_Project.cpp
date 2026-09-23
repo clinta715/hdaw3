@@ -70,6 +70,62 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setTrackSendMode")     { int i, si; bool b;  if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "isPreFader", b, nullptr)) return makeError(-32602, "trackIndex, sendIndex, isPreFader required"); c.setTrackSendMode(i, si, b); return { false, QJsonValue::Null }; }
     if (m == "setTrackSendBypassed") { int i, si; bool b;  if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, sendIndex, bypassed required"); c.setTrackSendBypassed(i, si, b); return { false, QJsonValue::Null }; }
 
+    // --- Bus / send creation (docs/plans/2026-09-22-bus-send-surface.md, slice B) ---
+    // The routes above only shape sends that already exist. Argument names mirror the
+    // MCP tools (add_bus / remove_bus / add_send / remove_send in McpTools_Send.cpp)
+    // exactly, and every payload below is byte-identical to what those tools return —
+    // the twin test in tests/unit/frontend/bus_send_rpc_test.cpp asserts both.
+    if (m == "addBus") {
+        std::string busType;
+        if (!requireString(o, "busType", busType, nullptr)) return makeError(-32602, "busType required");
+        const std::string name = optString(o, "name", "");
+        const std::string fxType = optString(o, "fxType", "");
+        const int busTarget = optInt<int>(o, "busTarget", 0, nullptr);
+        auto r = c.createBus(busType, name, fxType, busTarget);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        return { false, QJsonObject{{ "ok", true }, { "busID", r.busID }} };
+    }
+    if (m == "removeBus") {
+        int id; if (!requireInt(o, "busID", id, nullptr)) return makeError(-32602, "busID required");
+        std::string error;
+        if (!c.removeBus(id, error)) return makeError(-32602, QString::fromStdString(error));
+        return { false, QStringLiteral("ok") };
+    }
+    if (m == "addSend") {
+        int i, busTarget;
+        if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "busTarget", busTarget, nullptr))
+            return makeError(-32602, "trackId and busTarget required");
+        const float level = optFloat(o, "level", 1.0f, nullptr);
+        const bool pre = optBool(o, "isPreFader", false, nullptr);
+        auto r = c.createSend(i, busTarget, level, pre);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        return { false, QJsonObject{{ "ok", true }, { "sendIndex", r.sendIndex }} };
+    }
+    if (m == "removeSend") {
+        int i, si;
+        if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr))
+            return makeError(-32602, "trackId and sendIndex required");
+        std::string error;
+        if (!c.removeSend(i, si, error)) return makeError(-32602, QString::fromStdString(error));
+        return { false, QStringLiteral("ok") };
+    }
+
+    // --- Bus FX params (docs/plans/2026-09-22-bus-fx-params.md, slice C) ---
+    // The MCP twin (set_bus_fx_param in McpTools_Send.cpp) takes exactly these keys
+    // (`busID` / `paramIndex` / `value`) and calls the SAME command, so a success is
+    // "ok" on both and a refusal carries the command's text verbatim on both
+    // (tests/unit/frontend/bus_send_rpc_test.cpp drives both surfaces with one object).
+    if (m == "setBusFxParam") {
+        int id, paramIndex; float v;
+        if (!requireInt(o, "busID", id, nullptr) || !requireInt(o, "paramIndex", paramIndex, nullptr)
+            || !requireFloat(o, "value", v, nullptr))
+            return makeError(-32602, "busID, paramIndex, value required");
+        std::string error;
+        if (!c.setBusFxParam(id, paramIndex, v, error))
+            return makeError(-32602, QString::fromStdString(error));
+        return { false, QStringLiteral("ok") };
+    }
+
     // Session methods live in dispatchSession below; they are dispatched via
     // the method::Session namespace branch in dispatch().
 
@@ -516,7 +572,7 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     }
 
     // --- Automation ---
-    if (m == "addAutomationLane")       { int i; std::string lane; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", lane, nullptr)) return makeError(-32602, "trackIndex and laneName required"); int paramID = optInt(o, "paramID", 0, nullptr); if (!c.addAutomationLane(i, lane, paramID)) return makeError(-32602, "lane name or paramID already exists"); return { false, QJsonValue::Null }; }
+    if (m == "addAutomationLane")       { int i; std::string lane; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", lane, nullptr)) return makeError(-32602, "trackIndex and laneName required"); int paramID = optInt(o, "paramID", 0, nullptr); bool replace = optBool(o, "replace", false, nullptr); if (!c.addAutomationLane(i, lane, paramID, replace)) return makeError(-32602, "lane name or paramID already exists"); return { false, QJsonValue::Null }; }
     if (m == "removeAutomationLane")    { int i; std::string lane; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", lane, nullptr)) return makeError(-32602, "trackIndex and laneName required"); c.removeAutomationLane(i, lane); return { false, QJsonValue::Null }; }
     if (m == "addAutomationPoint")      { int i; std::string lane; double t; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, lane, time, value required"); c.addAutomationPoint(i, lane, t, v); return { false, QJsonValue::Null }; }
     if (m == "removeAutomationPoint")   { int i; std::string lane; double t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr)) return makeError(-32602, "trackIndex, lane, time required"); c.removeAutomationPoint(i, lane, t); return { false, QJsonValue::Null }; }

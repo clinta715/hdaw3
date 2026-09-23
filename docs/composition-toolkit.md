@@ -97,6 +97,64 @@ product pillar and should be reached for wherever it fits:
   risk). Device matrix, per-device FX recipes and caveats:
   `docs/hardware-va-suite.md`.
 
+**Bus/send architecture — reachable since 2026-09-22** (this section previously
+documented a capability gap; it is now closed). `add_bus {busType:"fx"|"group", name,
+fxType, busTarget}` creates a bus and returns its `busID`; `add_send {trackId, busTarget,
+level, isPreFader}` routes a track into it; `remove_bus` / `remove_send` tear down, and
+`remove_bus` cascades (every send targeting it goes in the same undo unit — one `undo`
+restores bus + sends). `fxType` must be one of `FxBusProcessor`'s four —
+`reverb`, `delay`, `eq`, `compressor`; anything else is rejected by name (an unknown
+type would build a silent passthrough). The pre-existing `set_track_send_level` /
+`_mode` / `_bypassed` / `get_track_sends` shape and read an existing send. RPC twins:
+`project.addBus` / `removeBus` / `addSend` / `removeSend`. Full plan + gates:
+`docs/plans/2026-09-22-bus-send-surface.md`.
+
+Measured 2026-09-22 (aether_dub, 16 s of drop1, send 1.0 vs 0.0 into an `fxType:"delay"`
+bus): **rms 0.0832 → 0.1156 (+39%, +2.85 dB), bass band 14 094 → 28 662 (+103%), body
+3 905 → 8 715 (+123%)** — the return reaches the master, so the dub idiom (one shared
+delay/reverb return, ridden per phrase) is now buildable. The bus read/param gap those
+measurements walked into is closed: **`list_buses`** (RPC `read.listBuses`) lists every bus
+with its `fxType`, and **`list_bus_fx_params` / `set_bus_fx_param`** (RPC
+`read.listBusFxParams` / `project.setBusFxParam`) read and shape an fx bus's parameters
+(`index` / `name` / `minValue` / `maxValue` / `defaultValue` / `value` vocabulary, shared with
+`list_fx_params`) — plan: `docs/plans/2026-09-22-bus-fx-params.md`.
+
+**The delay return is a real feedback delay** (slice C3 of that plan, 2026-09-22): the bus's
+`delay` chain now uses the *same* DSP as a track's internal delay — the class `InternalDelay`
+(`src/engine/InternalDelay.h`), extracted verbatim from `TrackFXSlot` and shared by both, so a
+track delay renders exactly what it rendered before (asserted analytically: taps
+1.0 / 0.5 / 0.25 / 0.125 at 1x/2x/3x/4x the delay time for feedback 0.5). Its five params are
+real and settable: **Delay Time** (0.01-5 s), **Feedback** (<= 0.99 — the runaway clamp),
+**Mix**, **SyncToTempo**, **Division** (0=1/8, 4=dotted-1/8, 6=1/4; derived as
+`beats x 60/bpm`, the bus reading the project BPM from the playhead so it follows tempo live
+*and* in export). Measured on aether_dub, 16 s of drop1, send at 1.0: Feedback **0.7 vs 0.0**
+-> last-2s rms 0.1466 vs 0.1159 (**+26% tail energy**, peak 0.664 vs 0.530) = repeats instead
+of one tap; Division **1/8 vs 1/4** -> last-2s rms 0.1373 vs 0.1088, so sync really moves the
+taps.
+
+**Set Mix = 1.0 on a send return.** The default 0.5 re-adds the bus input — a doubled dry
+signal on top of the track's own dry. 1.0 makes the return pure echo (the classic send-return
+wiring). The same applies to a reverb return.
+
+Three verified caveats remain: mutating commands that trigger a routing rebuild (`add_bus`,
+`add_send`) can **drop their HTTP response while completing the work** (intermittent —
+re-read state with `list_buses` / `get_track_sends` rather than blind-retrying); **sends are
+positional** (index = position in the track's `SEND_LIST`, so removing one shifts the rest);
+and `export_audio`'s `start`/`end` are **seconds** while `verify_part` takes
+`startBeat`/`endBeat` — check the rendered duration before trusting an A/B.
+
+Still available (and often the cheaper choice): per-track FX plus **gestural lane
+automation** — `add_automation_lane {trackId, laneName, paramID}` (paramID = `100 +
+slot*100 + paramIndex`; built-in lanes are 1 Volume / 2 Pan / 3 Mute, one lane per
+paramID) followed by `automation_preset`, whose presets are the gesture vocabulary:
+`delayThrow` (the dub throw), `steppedGate` (dub gating), `openClose`, `phaseSweep`,
+`macro`, `riser`, `pump`, `subtleLife`, `randomDrift`. `sections[]` entries each carry
+their own `preset`, so one call can layer several gestures on one lane
+(measured: 768 points from `openClose`+`phaseSweep`; 152 points of `delayThrow` per
+track). Note an enabled Volume lane makes automation authoritative for that track —
+it then appears in `audit_modulation_coverage`'s `faderOverriddenIds` and
+`set_track` volume writes are overridden.
+
 **Guideline: when adding a feature, ask whether the generative/random/modulation
 toolkit applies.** New note or parameter editing should offer humanize/randomize;
 new content types should consider a generative path; new modulatable parameters

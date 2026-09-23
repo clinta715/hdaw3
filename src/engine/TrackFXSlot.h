@@ -25,6 +25,7 @@
 #include "PsyFmEngine.h"
 #include "PsyFmAlgorithms.h"
 #include "PsyFmState.h"
+#include "InternalDelay.h"
 
 namespace HDAW {
 
@@ -117,14 +118,21 @@ public:
         // 0=1/8, 1=1/16, 2=1/32, 3=triplet-1/8 (2/3*1/8), 4=dotted-1/8
         // (1.5*1/8), 5=dotted-1/16 (1.5*1/16), 6=1/4. Beat fractions:
         // 0.125, 0.0625, 0.03125, 0.08333, 0.1875, 0.09375, 0.25.
+        //
+        // The table itself comes from InternalDelay (slice C3): the DSP that
+        // consumes these values owns the names/ranges, so the slot's
+        // advertised def and the DSP's own clamp cannot drift apart.
         if (type == "delay")
-            return {
-                { 0, "Delay Time", 0.5f, 0.01f,  5.0f    },
-                { 1, "Feedback",   0.3f, 0.0f,   0.99f   },
-                { 2, "Mix",        0.5f, 0.0f,   1.0f    },
-                { 3, "SyncToTempo",0.0f, 0.0f,   1.0f    },
-                { 4, "Division",   0.0f, 0.0f,   6.0f    },
-            };
+        {
+            std::vector<InternalParamDef> defs;
+            defs.reserve((size_t) InternalDelay::kNumParams);
+            for (int i = 0; i < InternalDelay::kNumParams; ++i)
+            {
+                const auto& d = InternalDelay::paramDefs()[(size_t) i];
+                defs.push_back({ i, juce::String(d.name), d.def, d.min, d.max });
+            }
+            return defs;
+        }
         if (type == "chorus")
             return {
                 { 0, "Rate",         1.5f,  0.1f,  5.0f   },
@@ -437,8 +445,9 @@ public:
     // Feed the project tempo (beats per minute) from the audio thread each
     // block (Track::processBlock -> TrackFXSlot::process). Atomic store only â€”
     // lock-free, no allocation, safe on the audio thread. Tempo-synced delay
-    // divisions read this when SyncToTempo (param 3) is on.
-    void setTempo(double bpm) { tempoBpm.store(static_cast<float>(bpm), std::memory_order_relaxed); }
+    // divisions read this when SyncToTempo (param 3) is on; the atomic now lives
+    // in the shared InternalDelay (slice C3).
+    void setTempo(double bpm) { delay.setTempo(bpm); }
 
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
 
@@ -739,14 +748,15 @@ public:
             }
             case ActiveType::Delay:
             {
-                delay = std::make_unique<juce::dsp::DelayLine<float>>(static_cast<int>(spec.sampleRate));
-                delay->prepare(spec);
-                float delaySec = computeDelaySeconds();
-                int delaySamps = juce::roundToInt(delaySec * spec.sampleRate);
-                delaySamps = std::max(1, delaySamps);
-                delay->setDelay(delaySamps);
-                lastDelayTime = delaySec;
-                lastDelaySamps = delaySamps;
+                // InternalDelay sizes the line to the Delay Time def's 5 s top
+                // before juce's prepare() allocates it, then this loop pushes the
+                // already-clamped values so its derived-time cache matches what
+                // the first process() block would compute (the C3 extraction:
+                // same arithmetic, same ordering as the previous inline line).
+                delay.prepare(spec);
+                for (size_t i = 0;
+                     i < internalParamValues.size() && i < (size_t) InternalDelay::kNumParams; ++i)
+                    delay.setParam((int) i, internalParamValues[i]);
                 break;
             }
             case ActiveType::EQ:
@@ -1201,39 +1211,12 @@ public:
             case ActiveType::Reverb:      if (reverb) reverb->process(context);  break;
             case ActiveType::Delay:
             {
-                if (delay && internalParamValues.size() >= 3)
-                {
-                    float fb = internalParamValues[1];
-                    float wetMix = internalParamValues[2];
-                    float dryMix = 1.0f - wetMix;
-                    // Derived in sync mode (Division * 60 / project BPM,
-                    // recomputed every block so tempo changes re-apply
-                    // automatically); raw Delay Time param otherwise.
-                    float delayTime = computeDelaySeconds();
-                    // Only recompute delay samples when the derived delay
-                    // changed (param, division, tempo, or manual seconds).
-                    if (std::fabs(delayTime - lastDelayTime) > 1e-4f)
-                    {
-                        lastDelayTime = delayTime;
-                        lastDelaySamps = juce::roundToInt(delayTime * sampleRate_);
-                        lastDelaySamps = std::max(1, lastDelaySamps);
-                    }
-                    int delaySamps = lastDelaySamps;
-                    auto& outputBlock = context.getOutputBlock();
-                    auto numChannels = outputBlock.getNumChannels();
-                    auto numSamples = outputBlock.getNumSamples();
-                    for (size_t ch = 0; ch < numChannels; ++ch)
-                    {
-                        auto* channelData = outputBlock.getChannelPointer(ch);
-                        for (size_t s = 0; s < numSamples; ++s)
-                        {
-                            float in = channelData[s];
-                            float delayed = delay->popSample(static_cast<int>(ch), delaySamps);
-                            delay->pushSample(static_cast<int>(ch), in + delayed * fb);
-                            channelData[s] = in * dryMix + delayed * wetMix;
-                        }
-                    }
-                }
+                // InternalDelay holds the fb/mix/time state (pushed by
+                // applyInternalParamToDsp and by prepare) and runs the same
+                // pop/push/mix loop this slot used inline; the size() guard is
+                // the slot's own "the def list is the 5-param one" check.
+                if (internalParamValues.size() >= 3)
+                    delay.process(context.getOutputBlock());
                 break;
             }
             case ActiveType::EQ:          if (eq)     eq->process(context);      break;
@@ -1301,7 +1284,7 @@ public:
             return;
         }
         if (reverb)    reverb->reset();
-        if (delay)     delay->reset();
+        delay.reset();
         if (eq)        eq->reset();
         if (comp)      comp->reset();
         if (chorusDsp) chorusDsp->reset();
@@ -1651,7 +1634,9 @@ private:
         juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>;
 
     std::unique_ptr<juce::dsp::Reverb> reverb;
-    std::unique_ptr<juce::dsp::DelayLine<float>> delay;
+    // Shared internal delay DSP (InternalDelay.h): the same object the fx buses
+    // use, so the track delay's arithmetic exists once (slice C3).
+    InternalDelay delay;
     std::unique_ptr<EQProcessor> eq;
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
     std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
@@ -1711,12 +1696,9 @@ private:
     double sampleRate_ = 44100.0;
     std::vector<float> internalParamValues;
 
-    // Delay parameter cache â€” avoids recomputing delay samples per sample
-    float lastDelayTime = -1.0f;
-    int lastDelaySamps = 1;
-    // Project tempo fed from Track::processBlock each block (audio-thread
-    // atomic store; default 120 BPM). Used by tempo-synced delay divisions.
-    std::atomic<float> tempoBpm{ 120.0f };
+    // (The delay's derived-time cache, division table and project-tempo atomic
+    // moved into InternalDelay with the extraction — slice C3. This slot feeds
+    // them through setTempo()/setParam() and nothing else reads them.)
 
     mutable std::vector<ParamInfo> cachedParams;
     std::atomic<int> numParams{ 0 };
@@ -1758,38 +1740,9 @@ private:
         return def.minValue + normalizedValue * (def.maxValue - def.minValue);
     }
 
-    // Tempo-synced delay division beat fractions (P1-3), indexed by the
-    // Division param (4): 0=1/8, 1=1/16, 2=1/32, 3=triplet-1/8 (2/3*1/8),
-    // 4=dotted-1/8 (1.5*1/8), 5=dotted-1/16 (1.5*1/16), 6=1/4.
-    static constexpr float kDelayDivisionBeats[7] = {
-        0.125f, 0.0625f, 0.03125f, 0.08333f, 0.1875f, 0.09375f, 0.25f
-    };
-
-    bool isDelaySyncOn() const
-    {
-        return activeType == ActiveType::Delay && internalParamValues.size() > 3
-            && internalParamValues[3] > 0.5f;
-    }
-
-    // Effective delay seconds. Sync mode: kDelayDivisionBeats[division] *
-    // 60 / bpm (bpm <= 0 falls back to 120), clamped to the Delay Time param
-    // range 0.01..5 s. Sync off: raw Delay Time param (0). Reads the audio
-    // thread's atomic tempo; safe to call from both processBlock and the
-    // param-apply path (the cached lastDelayTime compare gates setDelay).
-    float computeDelaySeconds() const
-    {
-        if (isDelaySyncOn())
-        {
-            int division = (internalParamValues.size() > 4)
-                ? juce::roundToInt(internalParamValues[4]) : 0;
-            division = juce::jlimit(0, 6, division);
-            double bpm = static_cast<double>(tempoBpm.load(std::memory_order_relaxed));
-            if (bpm <= 0.0) bpm = 120.0;
-            const double sec = static_cast<double>(kDelayDivisionBeats[division]) * 60.0 / bpm;
-            return static_cast<float>(juce::jlimit(0.01, 5.0, sec));
-        }
-        return (internalParamValues.size() > 0) ? internalParamValues[0] : 0.5f;
-    }
+    // (kDelayDivisionBeats, isDelaySyncOn() and computeDelaySeconds() are
+    // InternalDelay's now — the tempo-sync derivation lives with the DSP that
+    // consumes it, so the track slot and the fx bus cannot diverge.)
 
     // Clamps a raw param value to the slot type's documented range. Params
     // without a def definition pass through unchanged. Out-of-range values
@@ -1856,21 +1809,13 @@ private:
             }
             case ActiveType::Delay:
             {
-                if (!delay || paramIndex > 4) break;
-                // Sync mode derives the delay from Division + BPM, so a direct
-                // Delay Time write is ignored while sync is on (it resumes
-                // mattering when sync is turned off). Any other delay param
-                // change (SyncToTempo, Division) re-derives and re-applies.
-                if (paramIndex == 0 && isDelaySyncOn()) break;
-                const float delaySec = computeDelaySeconds();
-                if (std::fabs(delaySec - lastDelayTime) > 1e-4f)
-                {
-                    int delaySamps = juce::roundToInt(delaySec * sampleRate_);
-                    delaySamps = std::max(1, delaySamps);
-                    delay->setDelay(delaySamps);
-                    lastDelayTime = delaySec;
-                    lastDelaySamps = delaySamps;
-                }
+                // One push into the shared DSP: it stores the clamped value and
+                // re-derives the delay only when the derived time moved. A Delay
+                // Time write while SyncToTempo is on is accepted and stored but
+                // cannot move the delay (the derivation reads Division + tempo
+                // then), and it takes effect the moment sync is switched off —
+                // identical to the inline code this replaced.
+                delay.setParam(paramIndex, value);
                 break;
             }
             case ActiveType::Chorus:
