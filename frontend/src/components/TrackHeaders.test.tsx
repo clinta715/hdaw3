@@ -81,7 +81,7 @@ describe("TrackHeaders", () => {
     const { container } = render(<TrackHeaders />);
     fireEvent.contextMenu(container.querySelectorAll(".th-row")[1]);
     fireEvent.mouseDown(screen.getByText("Delete Track"));
-    expect(mockedCall).toHaveBeenCalledWith("project.removeTrack", { trackId: 1 });
+    expect(mockedCall).toHaveBeenCalledWith("project.removeTrack", { trackId: 1, force: true });
   });
 
   it("Duplicate Track from the header menu duplicates that track", () => {
@@ -97,7 +97,7 @@ describe("TrackHeaders", () => {
     const { container } = render(<TrackHeaders />);
     fireEvent.contextMenu(container.querySelector(".th-row") as HTMLElement);
     fireEvent.mouseDown(screen.getByText("Set Type: MIDI"));
-    expect(mockedCall).toHaveBeenCalledWith("project.setTrackType", { trackIndex: 0, trackType: 1 });
+    expect(mockedCall).toHaveBeenCalledWith("project.setTrackType", { trackId: 0, trackType: 1 });
   });
 
   it("hide button toggles track hidden state via RPC", () => {
@@ -107,7 +107,7 @@ describe("TrackHeaders", () => {
     expect(hideBtns).toHaveLength(2);
     // Click hide on track 1
     fireEvent.click(hideBtns[1]);
-    expect(mockedCall).toHaveBeenCalledWith("project.setTrackHidden", { trackIndex: 1, hidden: true });
+    expect(mockedCall).toHaveBeenCalledWith("project.setTrackHidden", { trackId: 1, hidden: true });
   });
 
   it("hidden tracks are excluded from rendered rows", () => {

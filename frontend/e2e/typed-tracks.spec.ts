@@ -14,7 +14,7 @@ test.describe("Typed tracks (user journeys)", () => {
   });
 
   test("setting trackType on an existing track updates the type badge", async ({ page }) => {
-    await rpcCall(page, "project.setTrackType", { trackIndex: 0, trackType: 1 });
+    await rpcCall(page, "project.setTrackType", { trackId: 0, trackType: 1 });
     const badge = page.locator(".th-row").first().locator(".th-type-badge");
     await expect(badge).toContainText("\u266B", { timeout: 10000 });
   });
@@ -32,8 +32,8 @@ test.describe("Typed tracks (user journeys)", () => {
 
     // Move the audio track into the folder
     await rpcCall(page, "project.moveTrackIntoFolder", {
-      trackIndex: Number(childIndex),
-      folderIndex: Number(folderIndex),
+      trackId: Number(childIndex),
+      folderId: Number(folderIndex),
     });
 
     const targetFolder = allRows.nth(Number(folderIndex));
@@ -56,8 +56,8 @@ test.describe("Typed tracks (user journeys)", () => {
 
     const childIndex = await rpcCall<number>(page, "project.addTrack", { trackType: 0 });
     await rpcCall(page, "project.moveTrackIntoFolder", {
-      trackIndex: Number(childIndex),
-      folderIndex: Number(folderIndex),
+      trackId: Number(childIndex),
+      folderId: Number(folderIndex),
     });
 
     await rpcCall(page, "project.addMidiClip", {
@@ -83,8 +83,8 @@ test.describe("Typed tracks (user journeys)", () => {
 
     const childIndex = await rpcCall<number>(page, "project.addTrack", { trackType: 0 });
     await rpcCall(page, "project.moveTrackIntoFolder", {
-      trackIndex: Number(childIndex),
-      folderIndex: Number(folderIndex),
+      trackId: Number(childIndex),
+      folderId: Number(folderIndex),
     });
 
     const childRow = page.locator(".th-row").nth(Number(childIndex));
@@ -99,20 +99,20 @@ test.describe("Typed tracks (user journeys)", () => {
 
     const childIndex = await rpcCall<number>(page, "project.addTrack", { trackType: 0 });
     await rpcCall(page, "project.moveTrackIntoFolder", {
-      trackIndex: Number(childIndex),
-      folderIndex: Number(folderIndex),
+      trackId: Number(childIndex),
+      folderId: Number(folderIndex),
     });
 
     // Wait for the DOM to reflect both new tracks (default 3 + folder + child = 5)
     await expect(page.locator(".th-row")).toHaveCount(3 + 2, { timeout: 5000 });
 
-    await rpcCall(page, "project.setTrackMuted", { trackIndex: Number(folderIndex), muted: true });
+    await rpcCall(page, "project.setTrackMuted", { trackId: Number(folderIndex), muted: true });
 
     const childRow = page.locator(".th-row").nth(Number(childIndex));
     const muteBtn = childRow.locator(".th-mute");
     await expect(muteBtn).toHaveClass(/active/, { timeout: 10000 });
 
-    await rpcCall(page, "project.setTrackMuted", { trackIndex: Number(folderIndex), muted: false });
+    await rpcCall(page, "project.setTrackMuted", { trackId: Number(folderIndex), muted: false });
     await expect(muteBtn).not.toHaveClass(/active/, { timeout: 10000 });
   });
 

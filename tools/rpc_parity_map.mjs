@@ -56,19 +56,32 @@ const nsConst = {};
   while ((m = re.exec(h)) !== null) if (!m[2].includes('.')) nsConst[m[1]] = m[2];
 }
 const fnToNs = {};
+const intercepts = new Map();   // "ns.method" -> 'FrontendRouter.cpp'
 {
   const t = fs.readFileSync(path.join(ROOT, 'src/frontend/FrontendRouter.cpp'), 'utf8');
   // Split the dispatch chain into branches at each `method::X` and take the dispatch
-  // function called inside that branch. Handles BOTH forms used here: the one-liner
+  // functions called inside that branch. Handles BOTH forms used here: the one-liner
   // (`else if (ns == method::Settings) return dispatchSettings(...)`) and the multi-line
   // block (`if (ns == method::Project) { ... return dispatchProject(...); }`).
+  // EVERY call in the branch is registered, not just the first: a branch may dispatch
+  // to several functions (method::Project now intercepts removeTrack / addTrackWithFx
+  // before falling through to dispatchProject), and taking only the first dropped
+  // `dispatchProject` from the map — which made the enclosing-function attribution in
+  // Router_Project.cpp fall back to the file's first KNOWN function and relabel every
+  // project.* route as settings.* (caught 2026-09-23 by regenerating after the
+  // parity-twin slice; the ratchet's live dispatch probe is what keeps this honest).
   const marks = [...t.matchAll(/method::(\w+)/g)];
   for (let i = 0; i < marks.length; ++i) {
     const ns = nsConst[marks[i][1]];
     if (!ns) continue;
     const seg = t.slice(marks[i].index, i + 1 < marks.length ? marks[i + 1].index : t.length);
-    const call = seg.match(/(dispatch\w+)\s*\(/);
-    if (call) fnToNs[call[1]] = ns;
+    for (const call of seg.matchAll(/(dispatch\w+)\s*\(/g)) fnToNs[call[1]] = ns;
+    // Branch-level intercepts: a method whose route lives in a dispatch function that
+    // does NOT spell the method name itself (removeTrack / addTrackWithFx are resolved
+    // here and then delegated) never appears in a router file's `if (m == "…")` chain.
+    // Record them with the branch's namespace so they stay in the ledger.
+    for (const hit of seg.matchAll(/if\s*\(\s*m\s*==\s*"([A-Za-z0-9_]+)"\s*\)/g))
+      intercepts.set(ns + '.' + hit[1], 'FrontendRouter.cpp');
   }
 }
 const rpc = new Map();   // "ns.method" -> router file
@@ -91,6 +104,10 @@ for (const f of fs.readdirSync(path.join(ROOT, 'src/frontend/router'))) {
   let m;
   while ((m = re.exec(txt)) !== null) rpc.set(nsAt(m.index) + '.' + m[1], f);
 }
+// Branch-level intercepts resolved in FrontendRouter.cpp itself (see above). Only added
+// when no router file already claims the route, so a real file attribution always wins.
+for (const [key, file] of intercepts)
+  if (!rpc.has(key)) rpc.set(key, file);
 
 // ---- classification rules ---------------------------------------------------
 const camel = s => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
@@ -187,10 +204,24 @@ const FORCE_REVIEW = {
     + 'family) — this preset front door needs its own route',
 };
 
+// The reverse of an ALIAS: ONE tool whose capability is spread over MANY routes, so no
+// 1:1 name-derived route can ever exist and the heuristic would park it in the review
+// queue forever. The listed target is a REAL route (the ratchet's live dispatch probe
+// verifies it); the note is where the 1:many shape is stated, so the row never reads as
+// a 1:1 mapping. `set_track` is the MCP partial-update tool for the 13 project.setTrack*
+// routes (2026-09-23 parity slice).
+const FANOUT = {
+  set_track: ['project.setTrackName',
+    'fan-out: one tool covers the 13 project.setTrack* routes (Name/Color/Volume/Pan/'
+    + 'Muted/Soloed/Hidden/Armed/InputMonitor/Height/MidiChannel/Type/Collapsed) — '
+    + 'twin test: AddFxParityTest.SetTrackPropertiesMirrorRouteArgumentNames'],
+};
+
 const rows = [];
 for (const { tool } of tools) {
   if (FORCE_REVIEW[tool]) { rows.push([tool, 'unresolved', '-', FORCE_REVIEW[tool]]); continue; }
   if (ALIASES[tool] && rpc.has(ALIASES[tool])) { rows.push([tool, 'mapped', ALIASES[tool], 'alias (verified; see the ledger notes)']); continue; }
+  if (FANOUT[tool] && rpc.has(FANOUT[tool][0])) { rows.push([tool, 'mapped', FANOUT[tool][0], FANOUT[tool][1]]); continue; }
   const c = camel(tool);
   if (methodToNs.has(c)) {
     const ns = methodToNs.get(c)[0];

@@ -81,22 +81,22 @@ export default function TrackHeaders() {
   const handleMute = (idx: number, muted: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
     useAutomationStore.getState().setLastClickedParamID(3);
-    rpc.call("project.setTrackMuted", { trackIndex: idx, muted: !muted }).catch(console.error);
+    rpc.call("project.setTrackMuted", { trackId: idx, muted: !muted }).catch(console.error);
   };
 
   const handleSolo = (idx: number, soloed: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
-    rpc.call("project.setTrackSoloed", { trackIndex: idx, soloed: !soloed }).catch(console.error);
+    rpc.call("project.setTrackSoloed", { trackId: idx, soloed: !soloed }).catch(console.error);
   };
 
   const handleArm = (idx: number, armed: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
-    rpc.call("project.setTrackArmed", { trackIndex: idx, armed: !armed }).catch(console.error);
+    rpc.call("project.setTrackArmed", { trackId: idx, armed: !armed }).catch(console.error);
   };
 
   const handleMonitor = (idx: number, monitor: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
-    rpc.call("project.setTrackInputMonitor", { trackIndex: idx, monitor: !monitor }).catch(console.error);
+    rpc.call("project.setTrackInputMonitor", { trackId: idx, inputMonitor: !monitor }).catch(console.error);
   };
 
   const handleColorChange = (idx: number, e: React.MouseEvent) => {
@@ -107,7 +107,7 @@ export default function TrackHeaders() {
     input.addEventListener("input", () => {
       const hex = input.value.replace("#", "");
       const color = parseInt(hex, 16);
-      rpc.call("project.setTrackColor", { trackIndex: idx, color }).catch(console.error);
+      rpc.call("project.setTrackColor", { trackId: idx, color }).catch(console.error);
     });
     input.click();
   };
@@ -115,14 +115,14 @@ export default function TrackHeaders() {
   const handleHideToggle = (idx: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const currentlyHidden = tracks[idx].isHidden ?? false;
-    rpc.call("project.setTrackHidden", { trackIndex: idx, hidden: !currentlyHidden }).catch(console.error);
+    rpc.call("project.setTrackHidden", { trackId: idx, hidden: !currentlyHidden }).catch(console.error);
   };
 
   const handleHeightDrag = (idx: number, startY: number, startH: number) => {
     const onMove = (me: MouseEvent) => {
       const delta = me.clientY - startY;
       const newH = Math.max(40, Math.min(200, startH + delta));
-      rpc.call("project.setTrackHeight", { trackIndex: idx, height: newH });
+      rpc.call("project.setTrackHeight", { trackId: idx, height: newH });
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
@@ -196,7 +196,7 @@ export default function TrackHeaders() {
               const fromIndex = dragIndex;
               const toIndex = dropTarget.index;
               if (dropTarget.position === "into" && track.trackType === 2) {
-                rpc.call("project.moveTrackIntoFolder", { trackIndex: fromIndex, folderIndex: toIndex }).catch(console.error);
+                rpc.call("project.moveTrackIntoFolder", { trackId: fromIndex, folderId: toIndex }).catch(console.error);
               } else {
                 // `newIndex` indexes the CURRENT order (before = at the hovered
                 // row, after = one past it); project.moveTrack owns the forward
@@ -233,7 +233,7 @@ export default function TrackHeaders() {
               className="th-chevron"
               onClick={(e) => {
                 e.stopPropagation();
-                rpc.call("project.setTrackCollapsed", { trackIndex: track.index, collapsed: !track.isCollapsed }).catch(console.error);
+                rpc.call("project.setTrackCollapsed", { trackId: track.index, collapsed: !track.isCollapsed }).catch(console.error);
               }}
               title={track.isCollapsed ? "Expand folder" : "Collapse folder"}
             >
@@ -330,7 +330,7 @@ export default function TrackHeaders() {
                   onBlur={(e) => {
                     const num = parseInt(e.target.value, 10);
                     if (num >= 1 && num <= 16) {
-                      rpc.call("project.setTrackMidiChannel", { trackIndex: track.index, channel: num - 1 });
+                      rpc.call("project.setTrackMidiChannel", { trackId: track.index, midiChannel: num - 1 });
                     }
                     setEditingMidiCh(null);
                   }}
@@ -406,7 +406,7 @@ export default function TrackHeaders() {
               {menuTrack && menuTrack.parentId != null && menuTrack.parentId >= 0 && (
                 <button onMouseDown={(e) => {
                   e.stopPropagation();
-                  rpc.call("project.moveTrackOutOfFolder", { trackIndex: headerMenu.trackIndex }).catch(() => {});
+                  rpc.call("project.moveTrackOutOfFolder", { trackId: headerMenu.trackIndex }).catch(() => {});
                   setHeaderMenu(null);
                 }}>
                   Move Out of Folder
@@ -417,7 +417,7 @@ export default function TrackHeaders() {
                   {tracks.filter(t => t.trackType === 2 && t.index !== headerMenu.trackIndex).map(folder => (
                     <button key={folder.index} onMouseDown={(e) => {
                       e.stopPropagation();
-                      rpc.call("project.moveTrackIntoFolder", { trackIndex: headerMenu.trackIndex, folderIndex: folder.index }).catch(() => {});
+                      rpc.call("project.moveTrackIntoFolder", { trackId: headerMenu.trackIndex, folderId: folder.index }).catch(() => {});
                       setHeaderMenu(null);
                     }}>
                       Move Into: {folder.name}
@@ -430,7 +430,7 @@ export default function TrackHeaders() {
                 className={menuType === 0 ? "ctx-checked" : ""}
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  rpc.call("project.setTrackType", { trackIndex: headerMenu.trackIndex, trackType: 0 }).catch(() => {});
+                  rpc.call("project.setTrackType", { trackId: headerMenu.trackIndex, trackType: 0 }).catch(() => {});
                   setHeaderMenu(null);
                 }}
               >
@@ -440,7 +440,7 @@ export default function TrackHeaders() {
                 className={menuType === 1 ? "ctx-checked" : ""}
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  rpc.call("project.setTrackType", { trackIndex: headerMenu.trackIndex, trackType: 1 }).catch(() => {});
+                  rpc.call("project.setTrackType", { trackId: headerMenu.trackIndex, trackType: 1 }).catch(() => {});
                   setHeaderMenu(null);
                 }}
               >
@@ -449,7 +449,12 @@ export default function TrackHeaders() {
               <div className="ctx-separator" />
               <button className="ctx-danger" onMouseDown={(e) => {
                 e.stopPropagation();
-                rpc.call("project.removeTrack", { trackId: headerMenu.trackIndex }).catch(() => {});
+                // force:true — the route now runs the same clip guard as MCP
+                // remove_track, and this button IS the user's explicit deletion
+                // (it used to destroy the clips silently). Without force a
+                // clip-carrying track would refuse and the button would do
+                // nothing.
+                rpc.call("project.removeTrack", { trackId: headerMenu.trackIndex, force: true }).catch(() => {});
                 setHeaderMenu(null);
               }}>
                 Delete Track

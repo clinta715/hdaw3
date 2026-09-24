@@ -32,6 +32,7 @@
 #include <QDir>
 #include <QFile>
 #include <cmath>
+#include <string>
 #include <vector>
 
 namespace {
@@ -672,6 +673,61 @@ TEST(TrackProperties, MoveTrack)
     cmds.moveTrack(origCount - 1, 0);
     auto moved = engine.getReadModel().getTrack(0);
     EXPECT_EQ(moved.name, "Second");
+}
+
+// The folder-move commands BOTH surfaces now call (MCP move_track_into_folder /
+// move_track_out_of_folder and RPC project.moveTrackIntoFolder /
+// project.moveTrackOutOfFolder). Membership is a PAIR of positional refs — the
+// folder's childIds CSV and the child's parentId — so a half-link would hand
+// mute/solo to the wrong track. Every rejection is the command's NO-OP.
+TEST(TrackProperties, FolderMoveMembershipPairAndNoOps)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    const int audio = cmds.addTrack("Audio");     // a plain track, NOT a folder
+    const int folder = cmds.addTrack("Folder");
+    cmds.setTrackType(folder, 2);                 // trackType 2 = folder
+    const int child = cmds.addTrack("Child");
+    auto tl = engine.getProjectModel().getTrackListTree();
+    const auto childIds = [&tl](int idx) {
+        return tl.getChild(idx).getProperty(IDs::childIds).toString().toStdString();
+    };
+    const auto parentId = [&tl](int idx) {
+        return static_cast<int>(tl.getChild(idx).getProperty(IDs::parentId, -1));
+    };
+
+    // A non-folder target claims nothing (folder semantics read childIds, the
+    // mute/solo cascade reads parentId — neither may move).
+    cmds.moveTrackIntoFolder(child, audio);
+    EXPECT_EQ(childIds(audio), "");
+    EXPECT_EQ(parentId(child), -1);
+
+    // Out-of-range indices on either side are no-ops.
+    cmds.moveTrackIntoFolder(child, 99);
+    cmds.moveTrackIntoFolder(-1, folder);
+    EXPECT_EQ(childIds(folder), "");
+    EXPECT_EQ(parentId(child), -1);
+
+    // The happy path links BOTH refs.
+    cmds.moveTrackIntoFolder(child, folder);
+    EXPECT_EQ(childIds(folder), std::to_string(child));
+    EXPECT_EQ(parentId(child), folder);
+
+    // Moving the folder into itself must not disturb its membership.
+    cmds.moveTrackIntoFolder(folder, folder);
+    EXPECT_EQ(childIds(folder), std::to_string(child));
+    EXPECT_EQ(parentId(child), folder);
+
+    // Moving out clears both, and a second move-out (parentless track) is a
+    // no-op rather than a stray childIds rewrite.
+    cmds.moveTrackOutOfFolder(child);
+    EXPECT_EQ(childIds(folder), "");
+    EXPECT_EQ(parentId(child), -1);
+    cmds.moveTrackOutOfFolder(child);
+    EXPECT_EQ(childIds(folder), "");
+    EXPECT_EQ(parentId(child), -1);
 }
 
 // ============================================================================

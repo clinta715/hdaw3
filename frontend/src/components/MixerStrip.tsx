@@ -33,11 +33,11 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
     if (isMaster)
       rpc.call("project.setMasterGain", { gain: volume }).catch(console.error);
     else
-      rpc.call("project.setTrackVolume", { trackIndex: track.index, volume }).catch(console.error);
+      rpc.call("project.setTrackVolume", { trackId: track.index, volume }).catch(console.error);
   };
   const commitPan = () => {
     if (pan !== track.pan)
-      rpc.call("project.setTrackPan", { trackIndex: track.index, pan }).catch(console.error);
+      rpc.call("project.setTrackPan", { trackId: track.index, pan }).catch(console.error);
   };
 
   const setSendLevel = (si: number, level: number) => {
@@ -106,7 +106,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
             className={`ms-btn ms-mute${track.effectiveMuted ? " active" : ""}${track.muted !== track.effectiveMuted ? " ms-btn--cascaded" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
-              rpc.call("project.setTrackMuted", { trackIndex: track.index, muted: !track.muted }).catch(console.error);
+              rpc.call("project.setTrackMuted", { trackId: track.index, muted: !track.muted }).catch(console.error);
             }}
             title={track.muted !== track.effectiveMuted ? "Muted by parent folder" : "Mute"}
           >M</button>
@@ -114,7 +114,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
             className={`ms-btn ms-solo${track.effectiveSoloed ? " active" : ""}${track.soloed !== track.effectiveSoloed ? " ms-btn--cascaded" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
-              rpc.call("project.setTrackSoloed", { trackIndex: track.index, soloed: !track.soloed }).catch(console.error);
+              rpc.call("project.setTrackSoloed", { trackId: track.index, soloed: !track.soloed }).catch(console.error);
             }}
             title={track.soloed !== track.effectiveSoloed ? "Soloed by parent folder" : "Solo"}
           >S</button>
@@ -122,7 +122,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
             className={`ms-btn ms-arm${track.armed ? " active" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
-              rpc.call("project.setTrackArmed", { trackIndex: track.index, armed: !track.armed }).catch(console.error);
+              rpc.call("project.setTrackArmed", { trackId: track.index, armed: !track.armed }).catch(console.error);
             }}
             title="Arm"
           >R</button>

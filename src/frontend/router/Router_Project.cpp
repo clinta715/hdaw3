@@ -7,6 +7,15 @@
 #include "RouterHelpers.h"
 
 #include "../../common/ProjectCommands.h"
+// The two engine-context routes below (removeTrack's dryRun/force guard,
+// addTrackWithFx's composite) run the SAME shared bodies the MCP tools run, so
+// both surfaces agree by construction:
+//   - TrackRemoveGuard.h  — remove_track / project.removeTrack guard + texts
+//   - AddTrackWithFx.h    — the composite (pluginId gate + created-track shape)
+//   - TrackJson.h         — the {trackId, routed} creation payload
+#include "../../common/AddTrackWithFx.h"
+#include "../../common/TrackJson.h"
+#include "../../common/TrackRemoveGuard.h"
 #include "../../engine/AudioEngine.h"
 #include "../../common/SettingsKeys.h"
 #include "../../engine/PhraseGenerator.h"
@@ -45,22 +54,13 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         int trackType = optInt(o, "trackType", 0, nullptr);
         return { false, c.addTrack(name, color, parentBus, trackType) };
     }
-    if (m == "removeTrack") {
-        int i;
-        if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required");
-        // Shift payload, byte-identical to MCP remove_track's text payload
-        // (AGENTS.md parity; the command owns the shape — see
-        // common/ProjectCommands.h TrackRemovalResult):
-        //   {"ok":true,"removed":<oldIndex>,"shifted":[{"from":N,"to":N-1},...]}
-        // `shifted` is [] when the last track was removed; an out-of-range
-        // index keeps this route's non-error contract and reports ok:false.
-        const auto r = c.removeTrack(i);
-        QJsonArray shifted;
-        for (const auto& p : r.shifted)
-            shifted.append(QJsonObject{ { "from", p.first }, { "to", p.second } });
-        return { false, QJsonObject{ { "ok", r.ok }, { "removed", r.removed },
-                                     { "shifted", shifted } } };
-    }
+    // removeTrack lives in dispatchRemoveTrack (below): its dryRun/force guard
+    // needs the ProjectModel, not just the command interface, and FrontendRouter
+    // routes the method there before this dispatcher (the addFxSlot precedent).
+    // The shift payload it shapes is unchanged:
+    //   {"ok":true,"removed":<oldIndex>,"shifted":[{"from":N,"to":N-1},...]}
+    // (AGENTS.md parity; the command owns the shape — see
+    // common/ProjectCommands.h TrackRemovalResult).
     // moveTrack: the command below IS the single reorder contract — MCP
     // move_track now routes through it too (it used to splice inline at the
     // un-decremented index, so forward moves disagreed with this route's order
@@ -68,23 +68,41 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     // equal to `trackId` is a no-op, exactly like the command. No payload:
     // MCP's twin answers text "ok" (AGENTS.md parity).
     if (m == "moveTrack")       { int i, n; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "newIndex", n, nullptr)) return makeError(-32602, "trackId and newIndex required"); c.moveTrack(i, n); return { false, QJsonValue::Null }; }
-    if (m == "duplicateTrack")  { int i; if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required"); return { false, c.duplicateTrack(i) }; }
-    if (m == "setTrackName")    { int i; std::string s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "trackIndex and name required"); c.setTrackName(i, s); return { false, QJsonValue::Null }; }
-    if (m == "setTrackColor")   { int i, color; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "color", color, nullptr)) return makeError(-32602, "trackIndex and color required"); c.setTrackColor(i, color); return { false, QJsonValue::Null }; }
-    if (m == "setTrackVolume")  { int i; float v;   if (!requireInt(o, "trackIndex", i, nullptr) || !requireFloat(o, "volume", v, nullptr)) return makeError(-32602, "trackIndex and volume required"); c.setTrackVolume(i, v); return { false, QJsonValue::Null }; }
+    // duplicateTrack answers the SAME object as MCP duplicate_track
+    // (common/TrackJson.h): {trackId, routed}. It used to answer a bare int
+    // while the tool answered "trackId=N routed=1" — two shapes for one
+    // operation, which no consumer could compare. trackId is the new index (the
+    // copy is appended last), routed is 1 when that index names a track.
+    if (m == "duplicateTrack")  {
+        int i;
+        if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required");
+        const int newIdx = c.duplicateTrack(i);
+        return { false, QJsonDocument::fromJson(QString::fromStdString(
+                     HDAW::shapeTrackCreatedJson(newIdx, c.getTrackCount())).toUtf8()).object() };
+    }
+    if (m == "setTrackName")    { int i; std::string s; if (!requireInt(o, "trackId", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "trackId and name required"); c.setTrackName(i, s); return { false, QJsonValue::Null }; }
+    if (m == "setTrackColor")   { int i, color; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "color", color, nullptr)) return makeError(-32602, "trackId and color required"); c.setTrackColor(i, color); return { false, QJsonValue::Null }; }
+    if (m == "setTrackVolume")  { int i; float v;   if (!requireInt(o, "trackId", i, nullptr) || !requireFloat(o, "volume", v, nullptr)) return makeError(-32602, "trackId and volume required"); c.setTrackVolume(i, v); return { false, QJsonValue::Null }; }
     if (m == "setMasterGain")   { float v;          if (!requireFloat(o, "gain", v, nullptr)) return makeError(-32602, "gain required"); c.setMasterGain(v); return { false, QJsonValue::Null }; }
-    if (m == "setTrackPan")     { int i; float v;   if (!requireInt(o, "trackIndex", i, nullptr) || !requireFloat(o, "pan", v, nullptr))     return makeError(-32602, "trackIndex and pan required"); c.setTrackPan(i, v); return { false, QJsonValue::Null }; }
-    if (m == "setTrackMuted")   { int i; bool b;    if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "muted", b, nullptr))   return makeError(-32602, "trackIndex and muted required"); c.setTrackMuted(i, b); return { false, QJsonValue::Null }; }
-    if (m == "setTrackSoloed")  { int i; bool b;    if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "soloed", b, nullptr))  return makeError(-32602, "trackIndex and soloed required"); c.setTrackSoloed(i, b); return { false, QJsonValue::Null }; }
-    if (m == "setTrackArmed")   { int i; bool b;    if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "armed", b, nullptr))   return makeError(-32602, "trackIndex and armed required"); c.setTrackArmed(i, b); return { false, QJsonValue::Null }; }
-    if (m == "setTrackInputMonitor") { int i; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "monitor", b, nullptr)) return makeError(-32602, "trackIndex and monitor required"); c.setTrackInputMonitor(i, b); return { false, QJsonValue::Null }; }
-    if (m == "setTrackHeight")  { int i, h; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "height", h, nullptr)) return makeError(-32602, "trackIndex and height required"); c.setTrackHeight(i, h); return { false, QJsonValue::Null }; }
-    if (m == "setTrackMidiChannel") { int i, ch; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "channel", ch, nullptr)) return makeError(-32602, "trackIndex and channel required"); c.setTrackMidiChannel(i, ch); return { false, QJsonValue::Null }; }
-    if (m == "setTrackType") { int i, t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "trackType", t, nullptr)) return makeError(-32602, "trackIndex and trackType required"); c.setTrackType(i, t); return { false, QJsonValue::Null }; }
-    if (m == "setTrackCollapsed") { int i; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "collapsed", b, nullptr)) return makeError(-32602, "trackIndex and collapsed required"); c.setTrackCollapsed(i, b); return { false, QJsonValue::Null }; }
-    if (m == "setTrackHidden") { int i; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "hidden", b, nullptr)) return makeError(-32602, "trackIndex and hidden required"); c.setTrackHidden(i, b); return { false, QJsonValue::Null }; }
-    if (m == "moveTrackIntoFolder") { int i, f; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "folderIndex", f, nullptr)) return makeError(-32602, "trackIndex and folderIndex required"); c.moveTrackIntoFolder(i, f); return { false, QJsonValue::Null }; }
-    if (m == "moveTrackOutOfFolder") { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); c.moveTrackOutOfFolder(i); return { false, QJsonValue::Null }; }
+    if (m == "setTrackPan")     { int i; float v;   if (!requireInt(o, "trackId", i, nullptr) || !requireFloat(o, "pan", v, nullptr))     return makeError(-32602, "trackId and pan required"); c.setTrackPan(i, v); return { false, QJsonValue::Null }; }
+    if (m == "setTrackMuted")   { int i; bool b;    if (!requireInt(o, "trackId", i, nullptr) || !requireBool(o, "muted", b, nullptr))   return makeError(-32602, "trackId and muted required"); c.setTrackMuted(i, b); return { false, QJsonValue::Null }; }
+    if (m == "setTrackSoloed")  { int i; bool b;    if (!requireInt(o, "trackId", i, nullptr) || !requireBool(o, "soloed", b, nullptr))  return makeError(-32602, "trackId and soloed required"); c.setTrackSoloed(i, b); return { false, QJsonValue::Null }; }
+    if (m == "setTrackArmed")   { int i; bool b;    if (!requireInt(o, "trackId", i, nullptr) || !requireBool(o, "armed", b, nullptr))   return makeError(-32602, "trackId and armed required"); c.setTrackArmed(i, b); return { false, QJsonValue::Null }; }
+    // `inputMonitor` / `midiChannel` (not `monitor` / `channel`) are the MCP
+    // set_track property names — AGENTS.md: argument names are part of the
+    // contract, so the route mirrors the tool (renamed 2026-09-23, no alias).
+    if (m == "setTrackInputMonitor") { int i; bool b; if (!requireInt(o, "trackId", i, nullptr) || !requireBool(o, "inputMonitor", b, nullptr)) return makeError(-32602, "trackId and inputMonitor required"); c.setTrackInputMonitor(i, b); return { false, QJsonValue::Null }; }
+    if (m == "setTrackHeight")  { int i, h; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "height", h, nullptr)) return makeError(-32602, "trackId and height required"); c.setTrackHeight(i, h); return { false, QJsonValue::Null }; }
+    if (m == "setTrackMidiChannel") { int i, ch; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "midiChannel", ch, nullptr)) return makeError(-32602, "trackId and midiChannel required"); c.setTrackMidiChannel(i, ch); return { false, QJsonValue::Null }; }
+    if (m == "setTrackType") { int i, t; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "trackType", t, nullptr)) return makeError(-32602, "trackId and trackType required"); c.setTrackType(i, t); return { false, QJsonValue::Null }; }
+    if (m == "setTrackCollapsed") { int i; bool b; if (!requireInt(o, "trackId", i, nullptr) || !requireBool(o, "collapsed", b, nullptr)) return makeError(-32602, "trackId and collapsed required"); c.setTrackCollapsed(i, b); return { false, QJsonValue::Null }; }
+    if (m == "setTrackHidden") { int i; bool b; if (!requireInt(o, "trackId", i, nullptr) || !requireBool(o, "hidden", b, nullptr)) return makeError(-32602, "trackId and hidden required"); c.setTrackHidden(i, b); return { false, QJsonValue::Null }; }
+    // Folder moves: `trackId` / `folderId` are the MCP tools' argument names
+    // (move_track_into_folder / move_track_out_of_folder in McpTools_Track.cpp),
+    // which call these SAME commands — the route's old `folderIndex` spelling
+    // was retired in the same pass (hard rename, no alias).
+    if (m == "moveTrackIntoFolder") { int i, f; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "folderId", f, nullptr)) return makeError(-32602, "trackId and folderId required"); c.moveTrackIntoFolder(i, f); return { false, QJsonValue::Null }; }
+    if (m == "moveTrackOutOfFolder") { int i; if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required"); c.moveTrackOutOfFolder(i); return { false, QJsonValue::Null }; }
 
     // --- Send operations ---
     if (m == "setTrackSendLevel")    { int i, si; float v; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireFloat(o, "level", v, nullptr)) return makeError(-32602, "trackId, sendIndex, level required"); c.setTrackSendLevel(i, si, v); return { false, QJsonValue::Null }; }
@@ -1029,6 +1047,74 @@ DispatchResult dispatchSettings(AudioEngine& engine, const QString& m, const QJs
     }
 
     return makeError(-32601, "unknown settings method: " + m);
+}
+
+// ── Routes that need engine context (the ProjectModel), not just the command
+// interface. FrontendRouter routes these two methods here BEFORE dispatchProject
+// — the same engine-context precedent as project.addFxSlot (the pluginId gate)
+// and project.importMidiFile. Each one runs the SHARED body its MCP twin runs,
+// so the surfaces cannot drift:
+//   removeTrack     — common/TrackRemoveGuard.h  (MCP remove_track)
+//   addTrackWithFx  — common/AddTrackWithFx.h    (MCP add_track_with_fx)
+
+// project.removeTrack {trackId, dryRun?, force?} — the MCP remove_track contract
+// (which this route did not have: it destroyed a track's clips with no preview
+// and no refusal). `dryRun:true` answers the identical preview text as a bare
+// JSON string and mutates nothing; a track that still carries clips refuses with
+// the identical text as the -32602 message unless `force:true`. An out-of-range
+// trackId keeps this route's long-standing NON-error contract and reports
+// ok:false (the pre-existing failure-shape split with the tool's "track not
+// found" — unchanged, and the guard simply does not fire for a missing track).
+DispatchResult dispatchRemoveTrack(AudioEngine& engine, const QJsonValue& params)
+{
+    auto& c = engine.getProjectCommands();
+    const auto o = paramsObject(params);
+    int i;
+    if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required");
+
+    const auto guard = HDAW::inspectTrackForRemoval(engine.getProjectModel(), i);
+    if (guard.found)
+    {
+        if (optBool(o, "dryRun", false, nullptr))
+            return { false, QString::fromStdString(HDAW::trackRemovalDryRunText(i, guard)) };
+        if (guard.clipCount > 0 && !optBool(o, "force", false, nullptr))
+            return makeError(-32602,
+                             QString::fromStdString(HDAW::trackRemovalRefusalText(i, guard)));
+    }
+
+    // Shift payload, byte-identical to MCP remove_track's text payload
+    // (AGENTS.md parity; the command owns the shape — see
+    // common/ProjectCommands.h TrackRemovalResult):
+    //   {"ok":true,"removed":<oldIndex>,"shifted":[{"from":N,"to":N-1},...]}
+    // `shifted` is [] when the last track was removed.
+    const auto r = c.removeTrack(i);
+    QJsonArray shifted;
+    for (const auto& p : r.shifted)
+        shifted.append(QJsonObject{ { "from", p.first }, { "to", p.second } });
+    return { false, QJsonObject{ { "ok", r.ok }, { "removed", r.removed },
+                                 { "shifted", shifted } } };
+}
+
+// project.addTrackWithFx {name, fxType?, pluginId?, color?, parentBus?} — the
+// RPC twin MCP add_track_with_fx never had (rpc_parity_map.inc: "unresolved").
+// Argument names are the tool's property names, and the payload IS the tool's
+// text (parsed here), so the twin test compares them value for value; a refused
+// pluginId comes back as -32602 with the identical HDAW::fxPluginIdError text
+// and leaves NO track behind (the gate runs before the track exists).
+DispatchResult dispatchAddTrackWithFx(AudioEngine& engine, const QJsonValue& params)
+{
+    const auto o = paramsObject(params);
+    std::string name;
+    if (!requireString(o, "name", name, nullptr)) return makeError(-32602, "name required");
+    const auto r = HDAW::addTrackWithFx(engine.getProjectModel(),
+                                        name,
+                                        optString(o, "fxType", ""),
+                                        optString(o, "pluginId", ""),
+                                        optInt<int>(o, "color", -1, nullptr),
+                                        optInt<int>(o, "parentBus", 0, nullptr));
+    if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+    return { false, QJsonDocument::fromJson(QString::fromStdString(
+                 HDAW::shapeAddTrackWithFxJson(r)).toUtf8()).object() };
 }
 
 } // namespace frontend

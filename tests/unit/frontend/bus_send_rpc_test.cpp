@@ -696,6 +696,44 @@ TEST_F(BusSendRpcTest, SetBusFxParamFailuresMatchOnBothSurfaces) {
         << "a rejected setBusFxParam must not touch the bus";
 }
 
+// --- One shape per operation: duplicate_track -------------------------------
+
+// duplicate_track / project.duplicateTrack (2026-09-23): the tool answered the
+// text "trackId=N routed=1" while the route answered a bare int — two shapes for
+// one operation, so no consumer could compare them and no twin test could assert
+// agreement. Both now answer the object common/TrackJson.h shapes
+// ({trackId, routed}), and this is the direct comparison the fix exists for.
+// The new index differs between the two calls (each duplicates), so the payload
+// is compared structurally with that one field blanked — the bus/send creation
+// pattern above.
+TEST_F(BusSendRpcTest, DuplicateTrackReturnsTheSamePayloadOnBothSurfaces) {
+    const QJsonObject args{ { "trackId", 0 } };
+
+    const QJsonValue viaMcp = mcpValue("duplicate_track", args);
+    const QJsonValue viaRpc = rpcPayload("project.duplicateTrack", args);
+    ASSERT_TRUE(viaMcp.isObject());
+    ASSERT_TRUE(viaRpc.isObject());
+
+    // Same keys, same values except the freshly allocated index.
+    EXPECT_EQ(viaRpc.toObject().size(), viaMcp.toObject().size());
+    EXPECT_EQ(viaRpc.toObject().value("routed"), viaMcp.toObject().value("routed"));
+    EXPECT_EQ(viaMcp.toObject().value("routed").toInt(), 1);
+
+    const int mcpId = viaMcp.toObject().value("trackId").toInt(-1);
+    const int rpcId = viaRpc.toObject().value("trackId").toInt(-1);
+    EXPECT_GE(mcpId, 0);
+    EXPECT_GE(rpcId, 0);
+    EXPECT_NE(mcpId, rpcId) << "each call duplicates its own copy";
+
+    // Both copies are real tracks in TRACK_LIST (the payload describes the tree
+    // the command actually mutated, not a fabricated index).
+    auto tl = engine->getProjectModel().getTrackListTree();
+    for (const int id : { mcpId, rpcId }) {
+        ASSERT_LT(id, tl.getNumChildren()) << "trackId " << id << " is not in TRACK_LIST";
+        EXPECT_EQ(tl.getChild(id).getProperty(IDs::name).toString().toStdString(), "Kick copy");
+    }
+}
+
 // --- Argument names (the shared-object assertion) ---------------------------
 
 // The route keys ARE the tool property names. Handing the same object to both

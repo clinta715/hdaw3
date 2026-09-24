@@ -83,7 +83,7 @@ describe("TimelineContextMenu", () => {
     it("Delete Track calls project.removeTrack with the menu's track index", () => {
       const { onClose } = renderMenu({ emptyContextMenu: { x: 10, y: 10, beat: 0, trackIndex: 3 } });
       fireEvent.mouseDown(screen.getByText("Delete Track"));
-      expect(mockedCall).toHaveBeenCalledWith("project.removeTrack", { trackId: 3 });
+      expect(mockedCall).toHaveBeenCalledWith("project.removeTrack", { trackId: 3, force: true });
       expect(onClose).toHaveBeenCalled();
     });
   });

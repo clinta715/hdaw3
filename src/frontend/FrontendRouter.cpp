@@ -66,6 +66,14 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
                 !err.empty())
                 return makeError(-32602, QString::fromStdString(err));
         }
+        // Two more project routes need engine context and run the SHARED body
+        // their MCP twin runs (the same precedent as addFxSlot above):
+        //   removeTrack    — the dryRun/force guard MCP remove_track has
+        //                    (src/common/TrackRemoveGuard.h)
+        //   addTrackWithFx — the composite MCP add_track_with_fx is
+        //                    (src/common/AddTrackWithFx.h), pluginId gate included
+        if (m == "removeTrack")    return dispatchRemoveTrack(engine, params);
+        if (m == "addTrackWithFx") return dispatchAddTrackWithFx(engine, params);
         return dispatchProject(engine.getProjectCommands(), m, params);
     }
     else if (ns == method::Settings) return dispatchSettings(engine, m, params);

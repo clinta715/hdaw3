@@ -99,7 +99,7 @@ describe("Inspector", () => {
     render(<Inspector />);
     const muteBtn = screen.getByText("M");
     fireEvent.click(muteBtn);
-    expect(mockedCall).toHaveBeenCalledWith("project.setTrackMuted", { trackIndex: 0, muted: true });
+    expect(mockedCall).toHaveBeenCalledWith("project.setTrackMuted", { trackId: 0, muted: true });
   });
 
   it("clicking clip mute toggle calls setClipMuted", () => {

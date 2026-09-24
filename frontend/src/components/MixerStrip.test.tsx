@@ -89,12 +89,12 @@ describe("MixerStrip", () => {
   it("clicking M calls project.setTrackMuted with the toggled value", () => {
     render(<MixerStrip track={mkTrack({ index: 2, muted: false })} meter={meter} />);
     fireEvent.click(screen.getByText("M"));
-    expect(mockedCall).toHaveBeenCalledWith("project.setTrackMuted", { trackIndex: 2, muted: true });
+    expect(mockedCall).toHaveBeenCalledWith("project.setTrackMuted", { trackId: 2, muted: true });
   });
 
   it("clicking S calls project.setTrackSoloed with the toggled value", () => {
     render(<MixerStrip track={mkTrack({ index: 2, soloed: true })} meter={meter} />);
     fireEvent.click(screen.getByText("S"));
-    expect(mockedCall).toHaveBeenCalledWith("project.setTrackSoloed", { trackIndex: 2, soloed: false });
+    expect(mockedCall).toHaveBeenCalledWith("project.setTrackSoloed", { trackId: 2, soloed: false });
   });
 });

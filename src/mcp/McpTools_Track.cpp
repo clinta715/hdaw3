@@ -2,7 +2,14 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
-#include "../common/FxPluginIdCheck.h"
+// The shared bodies behind the track tools: add_track_with_fx's composite
+// (pluginId gate + created-track shape + payload), the remove-track dryRun/force
+// guard, and the creation payload shaper — all three are also what the RPC
+// routes use, so the surfaces agree by construction. AddTrackWithFx.h pulls in
+// FxPluginIdCheck.h (the gate it runs) — this TU has no direct use for it.
+#include "../common/AddTrackWithFx.h"
+#include "../common/TrackJson.h"
+#include "../common/TrackRemoveGuard.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -50,13 +57,13 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             t.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, &um);
             t.addChild(ProjectModel::createTrackAutomationList(), -1, &um);
             m.getTrackListTree().addChild(t, -1, &um);
-            bool routingOk = idx >= 0 && idx < e->getProjectModel().getTrackListTree().getNumChildren();
             // P3-2: JSON response (was plain text "trackId=N routed=1"). The
             // trackId/routed keys are semantically unchanged, so parsers that
-            // look up the key by name keep working.
-            QJsonObject result{{"trackId", idx}, {"routed", routingOk ? 1 : 0}};
-            return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(result).toJson(QJsonDocument::Compact)));
+            // look up the key by name keep working. The shape lives in
+            // common/TrackJson.h — duplicate_track and the RPC route that now
+            // answers duplicateTrack emit THE SAME object.
+            return McpToolResult::text(QString::fromStdString(
+                HDAW::shapeTrackCreatedJson(idx, m.getTrackListTree().getNumChildren())));
         }});
 
     s.registerTool({"remove_track",
@@ -65,29 +72,31 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         "`removed` is the deleted track's old index and `shifted` lists every track "
         "index above it moved down by one ([] when the last track was removed) — the "
         "identical payload RPC project.removeTrack returns. Folder parent/child links "
-        "and song-plan cell track refs are remapped by the shared command path.",
+        "and song-plan cell track refs are remapped by the shared command path. "
+        "`dryRun:true` reports what would be removed without mutating; a track that "
+        "still carries clips refuses removal unless `force:true` — RPC "
+        "project.removeTrack runs the SAME guard (src/common/TrackRemoveGuard.h) and "
+        "answers the same text (dryRun preview / refusal), so neither surface can "
+        "destroy clips by accident.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"dryRun",  QJsonObject{{"type","boolean"}}},
                   {"force",   QJsonObject{{"type","boolean"}}}}, {"trackId"}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
-            auto tl = m.getTrackListTree();
             int id = a.value("trackId").toInt();
-            if (id < 0 || id >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
-            auto track = tl.getChild(id);
-            QString name = jstr(track.getProperty(IDs::name).toString());
-            auto clipList = track.getChildWithName(IDs::CLIP_LIST);
-            int clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
+            // The dryRun preview and the clip refusal come from
+            // common/TrackRemoveGuard.h — the SAME guard RPC
+            // project.removeTrack now runs, so both surfaces answer the same
+            // bytes (and both refuse to destroy clips without force).
+            const auto guard = HDAW::inspectTrackForRemoval(m, id);
+            if (!guard.found) return McpToolResult::text("track not found", true);
             if (a.value("dryRun").toBool(false))
-            {
-                QString info = QString("would remove track %1 (%2), %3 clips").arg(id).arg(name).arg(clipCount);
-                if (clipCount > 0)
-                    info += ". Pass force:true to confirm deletion of clips.";
-                return McpToolResult::text(info);
-            }
-            if (clipCount > 0 && !a.value("force").toBool(false))
-                return McpToolResult::text(QString("track %1 (%2) has %3 clips. Pass force:true to confirm deletion.").arg(id).arg(name).arg(clipCount), true);
+                return McpToolResult::text(
+                    QString::fromStdString(HDAW::trackRemovalDryRunText(id, guard)));
+            if (guard.clipCount > 0 && !a.value("force").toBool(false))
+                return McpToolResult::text(
+                    QString::fromStdString(HDAW::trackRemovalRefusalText(id, guard)), true);
             // ONE removal path (handoff 7): the shared command splices AND
             // remaps the durable positional refs, and returns the shift report.
             // Undo semantics are unchanged — the command's removeChild(&um) is
@@ -102,29 +111,57 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
                 QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
-    s.registerTool({"set_track", "Update track properties (partial).",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
-                  {"name",   QJsonObject{{"type","string"}}},
-                  {"volume", QJsonObject{{"type","number"}}},
-                  {"pan",    QJsonObject{{"type","number"}}},
-                  {"mute",   QJsonObject{{"type","boolean"}}},
-                  {"solo",   QJsonObject{{"type","boolean"}}},
-                  {"color",  QJsonObject{{"type","integer"}}},
-                  {"hidden", QJsonObject{{"type","boolean"}}}}, {"trackId"}),
+    s.registerTool({"set_track",
+        "Update track properties (partial). `trackId` is the TRACK_LIST index. "
+        "Properties: name, volume, pan, mute, solo, color, hidden, armed, "
+        "inputMonitor, height, midiChannel, trackType, collapsed — each one is "
+        "written through the SAME ProjectCommands setter the matching RPC route "
+        "(project.setTrackName / setTrackVolume / setTrackPan / setTrackMuted / "
+        "setTrackSoloed / setTrackColor / setTrackHidden / setTrackArmed / "
+        "setTrackInputMonitor / setTrackHeight / setTrackMidiChannel / "
+        "setTrackType / setTrackCollapsed) calls, so an MCP write and a route write "
+        "land the identical tree property. The property names are the route "
+        "arguments' (only `mute`/`solo` keep this tool's historical spelling; the "
+        "routes spell them `muted`/`soloed`). Returns text \"ok\" (RPC answers Null "
+        "— a text tool cannot return JSON null).",
+        objSchema({{"trackId",      QJsonObject{{"type","integer"}}},
+                  {"name",         QJsonObject{{"type","string"}}},
+                  {"volume",       QJsonObject{{"type","number"}}},
+                  {"pan",          QJsonObject{{"type","number"}}},
+                  {"mute",         QJsonObject{{"type","boolean"}}},
+                  {"solo",         QJsonObject{{"type","boolean"}}},
+                  {"color",        QJsonObject{{"type","integer"}}},
+                  {"hidden",       QJsonObject{{"type","boolean"}}},
+                  {"armed",        QJsonObject{{"type","boolean"}}},
+                  {"inputMonitor", QJsonObject{{"type","boolean"}}},
+                  {"height",       QJsonObject{{"type","integer"}}},
+                  {"midiChannel",  QJsonObject{{"type","integer"}}},
+                  {"trackType",    QJsonObject{{"type","integer"}}},
+                  {"collapsed",    QJsonObject{{"type","boolean"}}}}, {"trackId"}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
-            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+            auto& m = e->getProjectModel();
+            auto& cmds = e->getProjectCommands();
             int id = a.value("trackId").toInt();
-            auto tl = m.getTrackListTree();
-            if (id < 0 || id >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
-            auto t = tl.getChild(id);
-            if (a.contains("name"))   t.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
-            if (a.contains("volume")) t.setProperty(IDs::volume, a.value("volume").toDouble(), &um);
-            if (a.contains("pan"))    t.setProperty(IDs::pan, a.value("pan").toDouble(), &um);
-            if (a.contains("mute"))   t.setProperty(IDs::isMuted, a.value("mute").toBool(), &um);
-            if (a.contains("solo"))   t.setProperty(IDs::isSoloed, a.value("solo").toBool(), &um);
-            if (a.contains("color"))  t.setProperty(IDs::color, a.value("color").toInt(), &um);
-            if (a.contains("hidden")) t.setProperty(IDs::isHidden, a.value("hidden").toBool(), &um);
+            if (id < 0 || id >= m.getTrackListTree().getNumChildren())
+                return McpToolResult::text("track not found", true);
+            // ONE write path per property: the commands the RPC routes call.
+            // Writing the ValueTree here instead (as this tool used to) is a fork
+            // of the route's logic — the two surfaces could then disagree about
+            // which property a key lands on and under which undo unit.
+            if (a.contains("name"))         cmds.setTrackName(id, a.value("name").toString().toStdString());
+            if (a.contains("volume"))       cmds.setTrackVolume(id, static_cast<float>(a.value("volume").toDouble()));
+            if (a.contains("pan"))          cmds.setTrackPan(id, static_cast<float>(a.value("pan").toDouble()));
+            if (a.contains("mute"))         cmds.setTrackMuted(id, a.value("mute").toBool());
+            if (a.contains("solo"))         cmds.setTrackSoloed(id, a.value("solo").toBool());
+            if (a.contains("color"))        cmds.setTrackColor(id, a.value("color").toInt());
+            if (a.contains("hidden"))       cmds.setTrackHidden(id, a.value("hidden").toBool());
+            if (a.contains("armed"))        cmds.setTrackArmed(id, a.value("armed").toBool());
+            if (a.contains("inputMonitor")) cmds.setTrackInputMonitor(id, a.value("inputMonitor").toBool());
+            if (a.contains("height"))       cmds.setTrackHeight(id, a.value("height").toInt());
+            if (a.contains("midiChannel"))  cmds.setTrackMidiChannel(id, a.value("midiChannel").toInt());
+            if (a.contains("trackType"))    cmds.setTrackType(id, a.value("trackType").toInt());
+            if (a.contains("collapsed"))    cmds.setTrackCollapsed(id, a.value("collapsed").toBool());
             return McpToolResult::text("ok");
         }});
 
@@ -170,25 +207,64 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"duplicate_track",
-        "Duplicate a track (deep copy with new clip/note IDs). Returns the new track index.",
+        "Duplicate a track (deep copy with new clip/note IDs). Returns the SAME "
+        "compact JSON as add_track — {\"trackId\":N,\"routed\":1}: `trackId` is the "
+        "new track's index (the copy is appended last), `routed` is 1 when that "
+        "index names a track in TRACK_LIST. RPC project.duplicateTrack returns that "
+        "same object (it used to answer a bare int).",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
-            auto tl = m.getTrackListTree();
             int id = a.value("trackId").toInt();
-            if (id < 0 || id >= tl.getNumChildren())
+            if (id < 0 || id >= m.getTrackListTree().getNumChildren())
                 return McpToolResult::text("track not found", true);
             int newIdx = e->getProjectCommands().duplicateTrack(id);
             if (newIdx < 0)
                 return McpToolResult::text("duplicate failed", true);
-            bool routingOk = newIdx >= 0 && newIdx < e->getProjectModel().getTrackListTree().getNumChildren();
-            return McpToolResult::text(
-                QString("trackId=%1 routed=%2").arg(newIdx).arg(routingOk ? "1" : "0"));
+            return McpToolResult::text(QString::fromStdString(
+                HDAW::shapeTrackCreatedJson(newIdx, m.getTrackListTree().getNumChildren())));
+        }});
+
+    // The two folder moves: RPC-only until now (project.moveTrackIntoFolder /
+    // project.moveTrackOutOfFolder), which is why an agent could not group
+    // tracks at all. Both call the SAME ProjectCommands entry points the routes
+    // call and take the routes' argument names — `trackId` / `folderId` are
+    // TRACK_LIST indices (folder membership is a positional pair: the folder's
+    // childIds CSV and the child's parentId).
+    s.registerTool({"move_track_into_folder",
+        "Move a track into a folder track: the folder's childIds gains the track and "
+        "the track's parentId is set to it. `trackId` and `folderId` are TRACK_LIST "
+        "indices; the SAME ProjectCommands::moveTrackIntoFolder call RPC "
+        "project.moveTrackIntoFolder makes, with the same argument names. A "
+        "non-folder target, an out-of-range index or trackId == folderId is the "
+        "command's NO-OP (still \"ok\"). Returns text \"ok\" (RPC answers Null — a "
+        "text tool cannot return JSON null).",
+        objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+                  {"folderId", QJsonObject{{"type","integer"}}}}, {"trackId","folderId"}),
+        "track",
+        [e](const QJsonObject& a) -> McpToolResult {
+            e->getProjectCommands().moveTrackIntoFolder(a.value("trackId").toInt(),
+                                                        a.value("folderId").toInt());
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"move_track_out_of_folder",
+        "Move a track out of its folder: the parent folder's childIds drops the track "
+        "and the track's parentId returns to the folder-less sentinel -1. `trackId` "
+        "is a TRACK_LIST index; the SAME ProjectCommands::moveTrackOutOfFolder call "
+        "RPC project.moveTrackOutOfFolder makes, with the same argument name. A track "
+        "that has no parent is the command's NO-OP (still \"ok\"). Returns text "
+        "\"ok\" (RPC answers Null — a text tool cannot return JSON null).",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "track",
+        [e](const QJsonObject& a) -> McpToolResult {
+            e->getProjectCommands().moveTrackOutOfFolder(a.value("trackId").toInt());
+            return McpToolResult::text("ok");
         }});
 
     s.registerTool({"add_track_with_fx",
-        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, or provide pluginId for a VST3/CLAP plugin. Returns compact JSON {trackId, routed, fxType} (same shape as add_track).",
+        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, or provide pluginId for a VST3/CLAP plugin (fxType is then inferred as \"plugin\"). Returns compact JSON {trackId, routed, fxType} — the same creation shape add_track returns, plus the echoed fxType. RPC project.addTrackWithFx takes these SAME argument names, runs the SAME composite (src/common/AddTrackWithFx.h) and returns the identical payload, refusing an ungateable pluginId with the identical text.",
         objSchema({{"name",     QJsonObject{{"type","string"}}},
                    {"fxType",   QJsonObject{{"type","string"},
                        {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth"}}}},
@@ -197,47 +273,23 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
                    {"parentBus",QJsonObject{{"type","integer"}}}}, {"name"}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
-            auto& m = e->getProjectModel();
-            auto& um = m.getUndoManager();
-            // Gate pluginId BEFORE the track exists: a shadow-edition or
-            // unresolvable id must not silently slot a 'none' placeholder
-            // through this composite tool (item-1 hole). The SAME shared
-            // validator as add_fx / the project.addFxSlot intercept formats
-            // the text, so both surfaces fail byte-identically
-            // (src/common/FxPluginIdCheck.h). Empty pluginId (track without
-            // a plugin) passes untouched — the add_fx accept rules.
-            const std::string pluginId = a.value("pluginId").toString().toStdString();
-            if (const auto err = HDAW::fxPluginIdError(pluginId, m); !err.empty())
-                return McpToolResult::text(QString::fromStdString(err), true);
-            int idx = m.getTrackListTree().getNumChildren();
-
-            juce::ValueTree t(IDs::TRACK);
-            t.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
-            t.setProperty(IDs::volume, 0.85, &um);
-            t.setProperty(IDs::pan, 0.0, &um);
-            t.setProperty(IDs::isMuted, false, &um);
-            t.setProperty(IDs::isSoloed, false, &um);
-            t.setProperty(IDs::parentBus, a.value("parentBus").toInt(0), &um);
-            int color = a.contains("color") ? a.value("color").toInt()
-                                             : static_cast<int>(ProjectModel::trackColorForIndex(idx));
-            t.setProperty(IDs::color, color, &um);
-            t.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, &um);
-            t.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, &um);
-            t.addChild(ProjectModel::createTrackAutomationList(), -1, &um);
-            m.getTrackListTree().addChild(t, -1, &um);
-
-            std::string fxType = a.value("fxType").toString().toStdString();
-            if (fxType.empty() && !pluginId.empty()) fxType = "plugin";
-            if (!fxType.empty())
-                m.addFxSlot(idx, fxType, -1, pluginId);
-
-            bool routingOk = idx >= 0 && idx < e->getProjectModel().getTrackListTree().getNumChildren();
-            // Compact JSON like add_track (the P3-2 convention — a text return forces every
-            // caller to parse a string). fxType is echoed because it is inferred from
-            // pluginId when only that was given.
-            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
-                { "trackId", idx }, { "routed", routingOk ? 1 : 0 },
-                { "fxType", QString::fromStdString(fxType) } }).toJson(QJsonDocument::Compact)));
+            // ONE composite body, shared with RPC project.addTrackWithFx
+            // (src/common/AddTrackWithFx.h): the pluginId gate runs BEFORE the
+            // track exists (a shadow-edition or unresolvable id must not
+            // silently slot a 'none' placeholder — item-1 hole), and the
+            // created track's shape and the payload are identical by
+            // construction instead of by two hand-written copies.
+            const auto r = HDAW::addTrackWithFx(
+                e->getProjectModel(),
+                a.value("name").toString().toStdString(),
+                a.value("fxType").toString().toStdString(),
+                a.value("pluginId").toString().toStdString(),
+                a.contains("color") ? a.value("color").toInt() : -1,
+                a.value("parentBus").toInt(0));
+            if (!r.ok)
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            return McpToolResult::text(
+                QString::fromStdString(HDAW::shapeAddTrackWithFxJson(r)));
         }});
 }
 

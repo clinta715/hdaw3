@@ -478,7 +478,10 @@ export function TimelineContextMenu({
           <div className="ctx-separator" />
           <button className="ctx-danger" onMouseDown={(e) => {
             e.stopPropagation();
-            rpc.call("project.removeTrack", { trackId: emptyContextMenu.trackIndex }).catch(() => {});
+            // force:true — see the header menu: the route now refuses to
+            // destroy a clip-carrying track without it (the MCP remove_track
+            // contract), and this button is the user's explicit deletion.
+            rpc.call("project.removeTrack", { trackId: emptyContextMenu.trackIndex, force: true }).catch(() => {});
             useProjectStore.setState({ isDirty: true });
             onClose();
           }}>

@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -726,6 +727,90 @@ TEST_F(McpCoverageTest, AddTrackReturnsJson) {
     auto t = findTrack(trackId);
     EXPECT_FALSE(t.isEmpty());
     EXPECT_EQ(t.value("name").toString().toStdString(), "JsonTrack");
+}
+
+// ─── The six setters set_track gained (2026-09-23) ────────────────────────
+// armed / inputMonitor / height / midiChannel / trackType / collapsed used to be
+// reachable ONLY through the RPC routes, so the MCP surface could not arm,
+// monitor, size, channelise, retype or collapse a track. set_track now writes
+// them through the SAME commands the routes call. Asserted on the LIVE tree (the
+// ValueTree a rebuild and a save read), not on "the call returned".
+TEST_F(McpCoverageTest, SetTrackWritesTheSixNewPropertiesOnLiveTree) {
+    const QJsonObject args{ {"trackId", 0}, {"trackType", 2}, {"collapsed", true},
+                            {"height", 180}, {"armed", true},
+                            {"inputMonitor", true}, {"midiChannel", 7} };
+    auto r = call("set_track", args);
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_EQ(text(r).trimmed().toStdString(), "ok");
+    engine->drainPendingRoutingRebuild();
+
+    auto tl = engine->getProjectModel().getTrackListTree();
+    auto t = tl.getChild(0);
+    ASSERT_TRUE(t.isValid());
+    EXPECT_EQ(static_cast<int>(t.getProperty(IDs::trackType)), 2);
+    EXPECT_TRUE(static_cast<bool>(t.getProperty(IDs::isCollapsed)));
+    EXPECT_DOUBLE_EQ(static_cast<double>(t.getProperty(IDs::trackHeight)), 180.0);
+    EXPECT_TRUE(static_cast<bool>(t.getProperty(IDs::isArm)));
+    EXPECT_TRUE(static_cast<bool>(t.getProperty(IDs::inputMonitor)));
+    EXPECT_EQ(static_cast<int>(t.getProperty(IDs::midiChannel)), 7);
+
+    // The RPC route for the same property reads back the same state: one write
+    // path, so an MCP write is visible to the route and vice versa.
+    const auto viaRpc = frontend::dispatch(*engine, "project.setTrackArmed",
+                                           QJsonObject{ {"trackId", 0}, {"armed", false} });
+    ASSERT_FALSE(viaRpc.isError)
+        << viaRpc.payload.toObject().value("message").toString().toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_FALSE(static_cast<bool>(t.getProperty(IDs::isArm)));
+}
+
+// ─── The two folder moves MCP gained (2026-09-23) ─────────────────────────
+// move_track_into_folder / move_track_out_of_folder were RPC-only, so an agent
+// could not group tracks at all. Folder membership is a PAIR of positional refs
+// (the folder's childIds CSV + the child's parentId); the assertions below are on
+// the LIVE tree after a drain, and both surfaces are driven over the same scene.
+TEST_F(McpCoverageTest, FolderMoveToolsLandOnLiveTree) {
+    auto& cmds = engine->getProjectCommands();
+    // [Track(seed, 0), Folder(1, trackType 2), Child(2)].
+    const int folder = cmds.addTrack("Folder", -1, -1, 2);
+    const int child = cmds.addTrack("Child");
+    ASSERT_GE(folder, 1);
+    ASSERT_GE(child, 2);
+    engine->drainPendingRoutingRebuild();
+
+    auto tl = engine->getProjectModel().getTrackListTree();
+
+    // MCP in: both refs move together.
+    const QJsonObject into{ {"trackId", child}, {"folderId", folder} };
+    auto inR = call("move_track_into_folder", into);
+    ASSERT_FALSE(isError(inR)) << text(inR).toStdString();
+    EXPECT_EQ(text(inR).trimmed().toStdString(), "ok");
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(),
+              std::to_string(child));
+    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), folder);
+
+    // RPC out: the route mutates the same tree (the tool would be a second
+    // implementation of the same membership write).
+    const auto outRpc = frontend::dispatch(*engine, "project.moveTrackOutOfFolder",
+                                           QJsonObject{ {"trackId", child} });
+    ASSERT_FALSE(outRpc.isError)
+        << outRpc.payload.toObject().value("message").toString().toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(), "");
+    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), -1);
+
+    // MCP out again (now a NO-OP — the track has no parent) and RPC in: the
+    // final state is the folder holding the child, whichever surface wrote it.
+    auto outR = call("move_track_out_of_folder", QJsonObject{ {"trackId", child} });
+    ASSERT_FALSE(isError(outR)) << text(outR).toStdString();
+    const auto inRpc = frontend::dispatch(*engine, "project.moveTrackIntoFolder", into);
+    ASSERT_FALSE(inRpc.isError)
+        << inRpc.payload.toObject().value("message").toString().toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(),
+              std::to_string(child));
+    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), folder);
 }
 
 // ============================================================================

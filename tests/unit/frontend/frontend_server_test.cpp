@@ -243,7 +243,9 @@ TEST(FrontendServer, SetTrackNameAndRead) {
     TestClient client;
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
 
-    QJsonObject setParams{ { "trackIndex", 0 }, { "name", "Lead" } };
+    // `trackId` is the write route's argument (the read route below still
+    // spells its own key `trackIndex` — separate namespace, untouched).
+    QJsonObject setParams{ { "trackId", 0 }, { "name", "Lead" } };
     auto setResp = client.call(1, "project.setTrackName", setParams);
     ASSERT_FALSE(setResp.contains("error"));
 
@@ -356,7 +358,7 @@ TEST(FrontendServer, MissingParamReturnsError) {
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
 
     // setTrackName without a name is an error.
-    QJsonObject badParams{ { "trackIndex", 0 } };
+    QJsonObject badParams{ { "trackId", 0 } };
     auto resp = client.call(99, "project.setTrackName", badParams);
     ASSERT_TRUE(resp.contains("error"));
     EXPECT_EQ(resp.value("error").toObject().value("code").toInt(), -32602);
@@ -1110,7 +1112,7 @@ TEST(FrontendServer, SamplerRpcFamily) {
     // Start playback — with the track volume at 0 (NOT mute, which early-outs
     // the track before the FX chain renders) — so the device callback renders
     // a block, adopts the swap, and the output stays silent.
-    QJsonObject volParams{ { "trackIndex", 0 }, { "volume", 0.0 } };
+    QJsonObject volParams{ { "trackId", 0 }, { "volume", 0.0 } };
     client.call(8, "project.setTrackVolume", volParams);
     auto playResp = client.call(9, "transport.play");
     ASSERT_FALSE(playResp.contains("error")) << playResp.value("error").toObject()

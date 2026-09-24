@@ -12,7 +12,7 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
   const handleName = (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
     const val = (e.target as HTMLInputElement).value.trim();
     if (val && val !== track.name) {
-      rpc.call("project.setTrackName", { trackIndex: track.index, name: val }).catch(console.error);
+      rpc.call("project.setTrackName", { trackId: track.index, name: val }).catch(console.error);
     }
   };
 
@@ -23,7 +23,7 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
     input.addEventListener("input", () => {
       const hex = input.value.replace("#", "");
       const color = parseInt(hex, 16);
-      rpc.call("project.setTrackColor", { trackIndex: track.index, color }).catch(console.error);
+      rpc.call("project.setTrackColor", { trackId: track.index, color }).catch(console.error);
     });
     input.click();
   };
@@ -31,7 +31,7 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
   const ToggleBtn = ({ label, value, rpcMethod, paramName }: { label: string; value: boolean; rpcMethod: string; paramName: string }) => (
     <button
       className={`insp-toggle${value ? " insp-toggle--active" : ""}`}
-      onClick={() => rpc.call(rpcMethod, { trackIndex: track.index, [paramName]: !value }).catch(console.error)}
+      onClick={() => rpc.call(rpcMethod, { trackId: track.index, [paramName]: !value }).catch(console.error)}
     >
       {label}
     </button>
@@ -66,7 +66,7 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
             className="insp-input"
             value={track.trackType}
             onChange={(e) => {
-              rpc.call("project.setTrackType", { trackIndex: track.index, trackType: Number(e.target.value) }).catch(console.error);
+              rpc.call("project.setTrackType", { trackId: track.index, trackType: Number(e.target.value) }).catch(console.error);
             }}
           >
             <option value={0}>Audio</option>
@@ -90,7 +90,7 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
             onBlur={(e) => {
               const v = parseInt(e.target.value, 10);
               if (v >= 0 && v <= 15) {
-                rpc.call("project.setTrackMidiChannel", { trackIndex: track.index, channel: v }).catch(console.error);
+                rpc.call("project.setTrackMidiChannel", { trackId: track.index, midiChannel: v }).catch(console.error);
               }
             }}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
@@ -110,7 +110,7 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
             step="0.01"
             defaultValue={track.volume}
             onMouseUp={(e) => {
-              rpc.call("project.setTrackVolume", { trackIndex: track.index, volume: Number((e.target as HTMLInputElement).value) }).catch(console.error);
+              rpc.call("project.setTrackVolume", { trackId: track.index, volume: Number((e.target as HTMLInputElement).value) }).catch(console.error);
             }}
           />
           <span className="insp-value">{Math.round(track.volume * 100)}%</span>
@@ -125,7 +125,7 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
             step="0.01"
             defaultValue={track.pan}
             onMouseUp={(e) => {
-              rpc.call("project.setTrackPan", { trackIndex: track.index, pan: Number((e.target as HTMLInputElement).value) }).catch(console.error);
+              rpc.call("project.setTrackPan", { trackId: track.index, pan: Number((e.target as HTMLInputElement).value) }).catch(console.error);
             }}
           />
           <span className="insp-value">{track.pan === 0 ? "C" : `${Math.round(Math.abs(track.pan) * 100)}${track.pan < 0 ? "L" : "R"}`}</span>
@@ -142,7 +142,7 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
         <legend className="insp-group-legend">I/O</legend>
         <div className="insp-toggles">
           <ToggleBtn label="Arm" value={track.armed} rpcMethod="project.setTrackArmed" paramName="armed" />
-          <ToggleBtn label="Monitor" value={track.inputMonitor} rpcMethod="project.setTrackInputMonitor" paramName="monitor" />
+          <ToggleBtn label="Monitor" value={track.inputMonitor} rpcMethod="project.setTrackInputMonitor" paramName="inputMonitor" />
           <ToggleBtn label="Hidden" value={track.isHidden ?? false} rpcMethod="project.setTrackHidden" paramName="hidden" />
         </div>
       </fieldset>
