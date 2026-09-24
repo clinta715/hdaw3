@@ -6,6 +6,7 @@
 #include "engine/ProjectSerializer.h"
 #include "engine/TrackFXSlot.h"
 #include "model/ProjectModel.h"
+#include "common/TrackIdRefs.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
@@ -2697,4 +2698,571 @@ TEST (InternalFx, SaturatorNeutralFidelity)
               << " dB, delta=" << (wetDb - dryDb) << " dB" << std::endl;
     EXPECT_NEAR (wetDb, dryDb, 0.5)
         << "Drive 0 / Mix 1 must be transparent within 0.5 dB wideband RMS";
+}
+
+// ── PsyDubFiveMinutes (2026-09-24) ────────────────────────────────────────
+// ~5-minute psy-dub composition rendered end-to-end, exercising the NEW
+// post-B3/post-parity machinery as it sounds: B3 stable-id durable refs
+// (folder childTrackIDs/parentTrackID, SONG_PLAN cell cellTrackID) asserted
+// through HDAW::trackIndexForID/parseIDList (src/common/TrackIdRefs.h) AFTER
+// index-shifting moveTrack splices, and a mid-composition saveProject → fresh
+// ProjectSerializer::load round-trip that must be a no-op on a new-vocabulary
+// file. The cell grid targets the two SILENT folder children — a side grid,
+// the plan's sanctioned fallback — so the audible arrangement stays on the
+// sampler tracks (cell fills generate phrases onto real tracks, which would
+// double the audio) while G4's resolution proof is over LIVE cells with real
+// track targets, not a stripped throwaway scene.
+//
+// Style spec: 138 BPM, 4/4, F minor (F/Ab/Bb/C/Eb), 700 beats = 175 bars
+// (~5:04). Sections: intro 0-12, groove 12-40, build 40-52, dropA 52-84,
+// halftime 84-96, groove2 96-108, build2 108-120, dropB 120-148, brk 148-160,
+// finale 160-175. Dub signature moves: offbeat chord stabs with long reverb +
+// tempo-synced feedback delay, deep sub-bass layering with an automated filter
+// sweep, half-time break with swung hats, pad-driven breakdown with a riser,
+// tape-style outro fade on the built-in Volume lanes.
+TEST (PsytranceComposition, PsyDubFiveMinutes)
+{
+    const auto selection = loadSelection (1);
+    if (selection.empty())
+        GTEST_SKIP() << "library selection TSV missing";
+
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.setTempo (138.0);
+    engine.drainPendingRoutingRebuild();
+
+    constexpr int totalBeats = 700; // 175 bars @ 4/4 ~ 5:04 @ 138 BPM
+    // Section boundaries in BEATS (bar * 4): intro 0-48, groove 48-160,
+    // build 160-208, dropA 208-336, halftime 336-384, groove2 384-432,
+    // build2 432-480, dropB 480-592, brk 592-640, finale 640-700.
+    constexpr int grooveB = 48, buildB = 160, dropAB = 208;
+    constexpr int halfB = 336, groove2B = 384, build2B = 432;
+    constexpr int dropBB = 480, brkB = 592, finB = 640;
+
+    // ---- B3 vocabulary: a folder with two silent children (side cell grid) --
+    const int folderIdx = cmds.addTrack ("PD Folder", -1, -1, 2);
+    ASSERT_GE (folderIdx, 0);
+    const int cellAIdx = cmds.addTrack ("PD CellA", -1, -1, 0);
+    ASSERT_GE (cellAIdx, 0);
+    const int cellBIdx = cmds.addTrack ("PD CellB", -1, -1, 0);
+    ASSERT_GE (cellBIdx, 0);
+    cmds.moveTrackIntoFolder (cellAIdx, folderIdx);
+    cmds.moveTrackIntoFolder (cellBIdx, folderIdx);
+    engine.drainPendingRoutingRebuild();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    const int folderID = HDAW::trackIDForIndex (trackList, folderIdx);
+    const int cellAID = HDAW::trackIDForIndex (trackList, cellAIdx);
+    const int cellBID = HDAW::trackIDForIndex (trackList, cellBIdx);
+    ASSERT_GT (folderID, 0) << "B1: every created track carries a stable id";
+    ASSERT_GT (cellAID, 0);
+    ASSERT_GT (cellBID, 0);
+
+    // ---- Composition tracks (roles from the selection, natural-pitch roots) -
+    std::map<juce::String, std::vector<int>> tracks;
+    for (size_t i = 0; i < selection.size(); ++i)
+    {
+        const juce::String role = selection[i].first.toLowerCase();
+        const int t = cmds.addTrack ((juce::String("PD") + role + juce::String(i)).toStdString(), -1, -1, 0);
+        ASSERT_GE (t, 0);
+        cmds.addFxSlot (t, "sampler", 0, "");
+        const int root = (role == "kick") ? 36 : (role == "bass") ? 36
+                       : (role == "hat")  ? 44 : (role == "lead") ? 62 : 52;
+        cmds.setSamplerSample (t, 0, selection[i].second.toStdString(), root);
+        const double vol = (role == "kick")  ? 1.00
+                         : (role == "bass")  ? 0.95
+                         : (role == "hat")   ? 0.90
+                         : (role == "lead")  ? 0.95
+                         : 0.80;
+        cmds.setTrackVolume (t, vol);
+        tracks[role].push_back (t);
+    }
+    for (const auto* r : { "kick", "bass", "hat", "lead", "pad" })
+        ASSERT_FALSE (tracks[r].empty()) << "missing role " << r;
+    engine.drainPendingRoutingRebuild();
+
+    const int kickT = tracks["kick"][0], bassT = tracks["bass"][0];
+    const int hatT = tracks["hat"][0], leadT = tracks["lead"][0];
+    const int stabT = (tracks["lead"].size() > 1) ? tracks["lead"][1] : leadT;
+    const int padT = tracks["pad"][0];
+    const int pad2T = (tracks["pad"].size() > 1) ? tracks["pad"][1] : padT;
+    const int revT = (tracks["hat"].size() > 1) ? tracks["hat"][1] : hatT;
+
+    auto buildPattern = [&] (int track, const std::vector<std::pair<int, double>>& notes,
+                             int velocity, double durBeats) {
+        const int clipId = cmds.addMidiClip (track, 0.0, totalBeats, "p");
+        ASSERT_GE (clipId, 0);
+        addNotes (cmds, clipId, notes, velocity, durBeats);
+    };
+    auto addFx = [&] (int track, const juce::String& type, int pos) {
+        cmds.addFxSlot (track, type.toStdString(), pos, "");
+    };
+    auto lfo = [&] (int track, int idx, const juce::String& pn, double v) {
+        cmds.setLfoParam (track, idx, pn.toStdString(), v);
+    };
+    auto pumpLfo = [&] (int track, int idx, double depth) {
+        cmds.addLfo (track);
+        lfo (track, idx, "waveform", 1);
+        lfo (track, idx, "rateSync", 1);
+        lfo (track, idx, "rate", 1.0);
+        lfo (track, idx, "depth", depth);
+        lfo (track, idx, "bipolar", 1);
+        lfo (track, idx, "phaseOffset", 180.0);
+        lfo (track, idx, "targetParamID", 1);
+    };
+    // A built-in Volume lane (paramID 1) rides the track fader offline; every
+    // track's fresh automation list ships it DISABLED, so writing a point must
+    // flip it on first or the curve would be swallowed silently.
+    // addAutomationLane is create-only and the built-in "Volume" (paramID 1)
+    // lane already exists on every track, so the fade rides THAT lane by name
+    // — a second paramID-1 lane is a conflict, not a fresh lane.
+    auto volumeLane = [&] (int track, const std::vector<std::pair<double, float>>& pts) {
+        for (const auto& [t, v] : pts)
+            cmds.addAutomationPoint (track, "Volume", t, v);
+        cmds.setAutomationEnabled (track, "Volume", true);
+    };
+
+    // ---- KICK: 4-on-floor, drops in halftime/brk, half-time in the break ----
+    std::vector<std::pair<int, double>> kk;
+    for (int b = grooveB; b < totalBeats; ++b)
+    {
+        if (b >= halfB && b < groove2B) continue;          // half-time break
+        if (b >= brkB && b < finB) continue;               // breakdown
+        kk.push_back ({ 36, b });
+    }
+    for (int b = halfB; b < groove2B; b += 2)              // half-time: every 2 beats
+        kk.push_back ({ 36, b });
+    buildPattern (kickT, kk, 122, 1.9);
+    addFx (kickT, "compressor", 1);
+    cmds.setFxSlotParam (kickT, 1, 0, -18.0f);
+    cmds.setFxSlotParam (kickT, 1, 1, 4.0f);
+    addFx (kickT, "eq", 2);
+    cmds.setFxSlotParam (kickT, 2, 0, 3600.0f);
+
+    // ---- BASS: rolling offbeat 8ths, F-minor roots + sub-octave layer -------
+    // F minor progression (semitones from F=36): i F, VII Eb, VI Db->36+8=C?
+    // Voiced as F(36) Eb(34) Ab(39) Bb(41) C(43) shapes per bar.
+    std::vector<std::pair<int, double>> be;
+    const int rootSeq[8] = { 36, 36, 34, 41, 36, 36, 39, 34 }; // F F Eb Bb F F Ab Eb
+    for (int bar = 3; bar < 175; ++bar)
+    {
+        if (bar >= 84 && bar < 96) continue;                // halftime: sub holds roots
+        if (bar >= 148 && bar < 160) continue;              // breakdown
+        const int oct = (bar >= 148) ? 0 : ((bar >= 52 && bar < 84) || bar >= 120) ? 12 : 0;
+        for (int b = bar * 4; b < bar * 4 + 4; ++b)
+            be.push_back ({ rootSeq[bar % 8] + oct + (b % 2), b + 0.5 });
+    }
+    // Sub-octave layer: long root notes one octave down through the drops.
+    std::vector<std::pair<int, double>> se;
+    for (int bar = 13; bar < 148; ++bar)
+        if (!((bar >= 84 && bar < 96) || (bar >= 148)))
+            se.push_back ({ rootSeq[bar % 8] - 12, bar * 4.0 });
+    buildPattern (bassT, be, 112, 0.4);
+    buildPattern (bassT, se, 100, 3.8);
+    addFx (bassT, "eq", 1);
+    addFx (bassT, "compressor", 2);
+    cmds.setFxSlotParam (bassT, 2, 0, -20.0f);
+    cmds.setFxSlotParam (bassT, 2, 1, 3.0f);
+    // Sub pump (the V4 recipe): triangle volume LFO on the built-in pid 1.
+    pumpLfo (bassT, 1, 0.55);
+
+    // ---- HATS: quarters in intro/build, offbeat 8ths, rolls, swung halftime -
+    std::vector<std::pair<int, double>> hh;
+    for (int bar = 2; bar < 175; ++bar)
+    {
+        if (bar >= 148 && bar < 160) continue;              // breakdown
+        for (int b = bar * 4; b < bar * 4 + 4; ++b)
+        {
+            if (bar < 6 || (bar >= 10 && bar < 12))         // intro: quarters
+            {
+                hh.push_back ({ 44, b });
+                continue;
+            }
+            if (bar >= 84 && bar < 96)                      // swung halftime
+            {
+                hh.push_back ({ 44, b + 0.25 });
+                if (b % 2 == 0) hh.push_back ({ 46, b + 0.75 });
+                continue;
+            }
+            hh.push_back ({ 44, b + 0.5 });
+            const bool roll = ((b / 4) % 8 == 4) || bar >= 160;
+            if (roll)
+            {
+                hh.push_back ({ 46, b + 0.75 });
+                hh.push_back ({ 46, b + 1.0 });
+                hh.push_back ({ 46, b + 1.25 });
+            }
+        }
+    }
+    buildPattern (hatT, hh, 92, 0.2);
+    addFx (hatT, "reverb", 1);
+    cmds.setFxSlotParam (hatT, 1, 0, 0.60f);
+    cmds.setFxSlotParam (hatT, 1, 2, 0.25f);
+
+    // ---- LEAD ARP: dub delay (synced, feedback) + long reverb ---------------
+    // F minor arp: F Ab C Eb shapes; B section lifts to the Bb/C voicing.
+    std::vector<std::pair<int, double>> la;
+    const int arpA[8] = { 65, 68, 72, 75, 68, 72, 80, 75 };  // F Ab C Eb ...
+    const int arpB[8] = { 70, 74, 77, 82, 74, 77, 84, 77 };  // Bb Db F ...
+    for (int bar = 13; bar < 175; ++bar)
+    {
+        if (bar >= 148 && bar < 160) continue;              // breakdown
+        const int* arp = (bar >= 120) ? arpB : arpA;
+        for (int b = bar * 4; b < bar * 4 + 4; ++b)
+            la.push_back ({ arp[(b / 4) % 8], b + (b % 4) * 0.25 });
+    }
+    buildPattern (leadT, la, 88, 0.2);
+    addFx (leadT, "delay", 1);
+    cmds.setFxSlotParam (leadT, 1, 3, 1.0f);   // SyncToTempo
+    cmds.setFxSlotParam (leadT, 1, 4, 4.0f);   // dotted-1/8 (division 4)
+    cmds.setFxSlotParam (leadT, 1, 1, 0.45f);  // Feedback 0.45+
+    cmds.setFxSlotParam (leadT, 1, 2, 0.35f);  // Mix
+    cmds.setFxSlotParam (leadT, 1, 5, 0.25f);  // Damping (tape-ish loop LP)
+    addFx (leadT, "reverb", 2);
+    cmds.setFxSlotParam (leadT, 2, 0, 0.90f);  // Room Size (long)
+    cmds.setFxSlotParam (leadT, 2, 2, 0.30f);  // Wet 0.6-ish post-dubwash
+    addFx (leadT, "compressor", 3);
+    cmds.setFxSlotParam (leadT, 3, 0, -16.0f);
+    pumpLfo (leadT, 0, 0.40);
+
+    // Breakdown melody: long notes over the wash (F Ab Bb C phrase).
+    std::vector<std::pair<int, double>> bm;
+    const int phraseF[4] = { 65, 68, 70, 72 };
+    for (int k = 0; k < 4; ++k)
+    {
+        bm.push_back ({ phraseF[k], 592.0 + k * 8.0 });
+        bm.push_back ({ phraseF[k] + 7, 596.0 + k * 8.0 });
+    }
+    {
+        const int clipId = cmds.addMidiClip (leadT, 0.0, totalBeats, "bm");
+        ASSERT_GE (clipId, 0);
+        addNotes (cmds, clipId, bm, 95, 3.0);
+    }
+
+    // ---- DUB SKANK: offbeat chord stabs, long reverb + synced delay ---------
+    const int ch[8][3] = { {53,56,60}, {56,60,63}, {58,62,65}, {56,60,65}, // Fm/Ab/Bb voicings
+                           {53,58,60}, {60,63,65}, {58,63,65}, {55,58,60} };
+    std::vector<std::pair<int, double>> st;
+    for (int bar = 12; bar < 175; ++bar)
+    {
+        if (bar >= 148 && bar < 160) continue;              // breakdown
+        const auto& c = ch[bar % 8];
+        st.push_back ({ c[0], bar * 4.0 + 1.0 });
+        st.push_back ({ c[1], bar * 4.0 + 1.0 });
+        st.push_back ({ c[2], bar * 4.0 + 1.0 });
+    }
+    buildPattern (stabT, st, 96, 1.3);
+    addFx (stabT, "delay", 1);
+    cmds.setFxSlotParam (stabT, 1, 3, 1.0f);   // SyncToTempo
+    cmds.setFxSlotParam (stabT, 1, 4, 1.0f);   // 1/16 (division 1)
+    cmds.setFxSlotParam (stabT, 1, 1, 0.55f);  // Feedback 0.55
+    cmds.setFxSlotParam (stabT, 1, 2, 0.45f);  // Mix (wet 0.45)
+    addFx (stabT, "reverb", 2);
+    cmds.setFxSlotParam (stabT, 2, 0, 0.85f);
+    cmds.setFxSlotParam (stabT, 2, 2, 0.60f);  // Wet 0.6+ per spec
+    addFx (stabT, "phaser", 3);
+    cmds.setFxSlotParam (stabT, 3, 0, 0.4f);
+
+    // ---- PADS: whole track, chorus + long reverb, pump ---------------------
+    std::vector<std::pair<int, double>> pp;
+    for (int bar = 0; bar < 175; ++bar)
+    {
+        const double b = bar * 4.0;
+        pp.push_back ({ 53, b });
+        pp.push_back ({ 56, b + 0.5 });
+    }
+    buildPattern (padT, pp, 62, 4.0);
+    addFx (padT, "chorus", 1);
+    cmds.setFxSlotParam (padT, 1, 0, 1.3f);
+    cmds.setFxSlotParam (padT, 1, 1, 0.6f);
+    cmds.setFxSlotParam (padT, 1, 4, 0.55f);
+    addFx (padT, "reverb", 2);
+    cmds.setFxSlotParam (padT, 2, 0, 0.95f);
+    cmds.setFxSlotParam (padT, 2, 2, 0.35f);
+    // Sub synth pad2 (no pad2 sample double): sub-level F drone with an
+    // automated cutoff sweep into the finale.
+    addFx (pad2T, "sub_synth", 0);
+    cmds.setFxSlotParam (pad2T, 0, 3, 0.30f);  // Osc2 Level low
+    cmds.setFxSlotParam (pad2T, 0, 7, 900.0f); // Cutoff
+    cmds.setFxSlotParam (pad2T, 0, 10, 0.8f);  // Attack slow
+    cmds.setFxSlotParam (pad2T, 0, 11, 3.5f);  // Decay slow
+    cmds.setFxSlotParam (pad2T, 0, 12, 0.9f);  // Sustain high
+    std::vector<std::pair<int, double>> p2;
+    for (int bar = 0; bar < 175; ++bar)
+        if (bar >= 148 && bar < 175)            // breakdown + finale bed
+            p2.push_back ({ 41, bar * 4.0 });   // F one octave down
+    buildPattern (pad2T, p2, 58, 4.0);
+    cmds.addLfo (pad2T);
+    lfo (pad2T, 0, "waveform", 1);
+    lfo (pad2T, 0, "rateSync", 1);
+    lfo (pad2T, 0, "rate", 0.5);
+    lfo (pad2T, 0, "depth", 0.22);
+    lfo (pad2T, 0, "bipolar", 1);
+    lfo (pad2T, 0, "targetParamID", 1);
+    pumpLfo (pad2T, 1, 0.38);
+
+    // ---- REVERSE-HAT downlifter into the two drops --------------------------
+    if (revT != hatT)
+        cmds.setFxSlotParam (revT, 0, 8, 1.0f); // sampler param 8 = Reverse
+    std::vector<std::pair<int, double>> rv = { { 44, 51.5 }, { 44, 203.5 }, { 44, 475.5 } };
+    {
+        const int clipId = cmds.addMidiClip (revT, 0.0, totalBeats, "rv");
+        ASSERT_GE (clipId, 0);
+        addNotes (cmds, clipId, rv, 100, 0.8);
+    }
+
+    // ---- Macro automation: dual bass filter sweep + pad riser into drops ---
+    // pid 200 = 100 + slot 1 * 100 + param 0 (the bass EQ slot's Frequency,
+    // real units 20..20000 Hz). Lane points are REAL units for fx params.
+    auto setLane = [&] (int track, const juce::String& name, int paramID,
+                        const std::vector<std::pair<double, float>>& pts) {
+        ASSERT_TRUE (cmds.addAutomationLane (track, name.toStdString(), paramID));
+        for (const auto& [t, v] : pts)
+            cmds.addAutomationPoint (track, name.toStdString(), t, v);
+        auto tl = engine.getProjectModel().getTrackListTree();
+        auto al = tl.getChild (track).getChildWithName (IDs::AUTOMATION_LIST);
+        for (auto lane : al)
+            if (lane.getProperty (IDs::name, "").toString() == name)
+                lane.setProperty (IDs::automationEnabled, true,
+                                  &engine.getProjectModel().getUndoManager());
+    };
+    setLane (bassT, "BassSweep", 200,
+             { { 208.0, 200.0f }, { 272.0, 1200.0f }, { 336.0, 3000.0f },
+               { 384.0, 400.0f }, { 480.0, 2000.0f }, { 592.0, 4500.0f },
+               { 640.0, 900.0f }, { 700.0, 2400.0f } });
+    setLane (pad2T, "Riser", 200,
+             { { 160.0, 300.0f }, { 204.0, 400.0f }, { 208.0, 6000.0f },
+               { 336.0, 900.0f }, { 476.0, 500.0f }, { 480.0, 7000.0f },
+               { 592.0, 1200.0f }, { 700.0, 3000.0f } });
+
+    // ---- Outro: tape-style fade on every sounding track (last 8 bars) ------
+    volumeLane (bassT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
+    volumeLane (stabT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
+    volumeLane (hatT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
+    if (padT != pad2T) volumeLane (padT, { { 672.0, 1.0f }, { 700.0, 0.30f } });
+    volumeLane (pad2T, { { 672.0, 1.0f }, { 700.0, 0.0f } });
+
+    engine.drainPendingRoutingRebuild();
+
+    // ---- G4a: folder membership survives index-shifting splices ------------
+    // moveTrack (bassT, 0) shifts every index above the splice; the durable
+    // refs are stable ids, so the folder still claims the SAME two children.
+    const auto folderChildIDsBefore = HDAW::parseIDList (
+        engine.getProjectModel().getTrackListTree().getChild (folderIdx),
+        IDs::childTrackIDs);
+    ASSERT_EQ (folderChildIDsBefore.size(), 2u) << "folder must hold exactly the two side-grid children";
+    const int bassID = HDAW::trackIDForIndex (trackList, bassT);
+    const int pad2ID = HDAW::trackIDForIndex (trackList, pad2T);
+    ASSERT_GT (bassID, 0);
+    ASSERT_GT (pad2ID, 0);
+    cmds.moveTrack (bassT, 0);           // splice 1: every index above shifts down
+    trackList = engine.getProjectModel().getTrackListTree();
+    const int lastIdx = static_cast<int> (trackList.getNumChildren()) - 1;
+    const int pad2IdxNow = HDAW::trackIndexForID (trackList, pad2ID);
+    ASSERT_GE (pad2IdxNow, 0);
+    cmds.moveTrack (pad2IdxNow, lastIdx); // splice 2 from the other end
+
+    trackList = engine.getProjectModel().getTrackListTree();
+    const int folderIdxNow = HDAW::trackIndexForID (trackList, folderID);
+    ASSERT_GE (folderIdxNow, 0);
+    std::vector<int> childIdxs;
+    for (int id : HDAW::parseIDList (trackList.getChild (folderIdxNow), IDs::childTrackIDs))
+        childIdxs.push_back (HDAW::trackIndexForID (trackList, id));
+    std::sort (childIdxs.begin(), childIdxs.end());
+    EXPECT_EQ (childIdxs.size(), 2u);
+    EXPECT_EQ (childIdxs[0], HDAW::trackIndexForID (trackList, cellAID))
+        << "folder childTrackIDs must still resolve to CellA after splices";
+    EXPECT_EQ (childIdxs[1], HDAW::trackIndexForID (trackList, cellBID))
+        << "folder childTrackIDs must still resolve to CellB after splices";
+    // Each child's parentTrackID resolves to the folder by identity.
+    for (int id : { cellAID, cellBID })
+    {
+        const int idx = HDAW::trackIndexForID (trackList, id);
+        ASSERT_GE (idx, 0);
+        EXPECT_EQ (HDAW::trackIndexForID (trackList,
+            static_cast<int> (trackList.getChild (idx).getProperty (IDs::parentTrackID, -1))),
+            HDAW::trackIndexForID (trackList, folderID))
+            << "child " << id << "'s parentTrackID must resolve to the folder";
+    }
+    // The splice must not have moved the COMPOSITION tracks' ids.
+    EXPECT_NE (HDAW::trackIndexForID (trackList, cellAID),
+               HDAW::trackIndexForID (trackList, folderID));
+    EXPECT_EQ (HDAW::trackIDForIndex (trackList, 0), bassID)
+        << "B1: the bass track carries its stable id with it to index 0";
+
+    // ---- G4b: SONG_PLAN + cells targeting the side-grid tracks -------------
+    ProjectCommands::SongPlanData plan;
+    plan.bpm = 138.0;                       // setSongPlan applies this to the transport
+    plan.keyRoot = 5;                       // F
+    plan.scaleMode = 1;                     // natural minor
+    plan.style = "psy-dub";
+    plan.seed = 20260924;
+    plan.totalBars = 175;
+    plan.sections = { { "intro",    "intro",     12,    0.0,  48.0 },
+                      { "groove",   "mainA",     28,   48.0, 160.0 },
+                      { "build",    "build",     12,  160.0, 208.0 },
+                      { "dropA",    "mainA",     32,  208.0, 336.0 },
+                      { "halftime", "mini",      12,  336.0, 384.0 },
+                      { "groove2",  "mainA",     12,  384.0, 432.0 },
+                      { "build2",   "build",     12,  432.0, 480.0 },
+                      { "dropB",    "mainB",     28,  480.0, 592.0 },
+                      { "brk",      "breakdown", 12,  592.0, 640.0 },
+                      { "finale",   "finale",    15,  640.0, 700.0 } };
+    auto planResult = cmds.setSongPlan (plan);
+    ASSERT_TRUE (planResult.ok) << planResult.error;
+
+    // Note: the plan's bars cover beats 0..700 and the plan carries the
+    // transport bpm (138) the composition already used — no tempo drift.
+    // CellRecipe.trackId stays a positional TRACK_LIST index (the public/wire
+    // contract); the storage layer (B3) mints the cell's cellTrackID from it.
+    ProjectCommands::CellRecipe cellA, cellB;
+    cellA.section = "groove"; cellA.role = "pdarp";
+    cellA.trackId = HDAW::trackIndexForID (trackList, cellAID);
+    cellA.sourceKind = "phrase";
+    cellA.paramsJson = R"({"style":"Lead"})";
+    cellA.seed = 7;
+    cellB.section = "dropB"; cellB.role = "pdsnr";
+    cellB.trackId = HDAW::trackIndexForID (trackList, cellBID);
+    cellB.sourceKind = "rhythm";
+    cellB.paramsJson = R"({"pulseA":4,"pulseB":0,"pitchA":44,"pitchB":44})";
+    cellB.seed = 11;
+    std::string cellErr;
+    ASSERT_TRUE (cmds.setCellRecipe (cellA, &cellErr)) << cellErr;
+    ASSERT_TRUE (cmds.setCellRecipe (cellB, &cellErr)) << cellErr;
+    auto fill = cmds.fillCells ("all");
+    ASSERT_TRUE (fill.ok) << fill.error;
+    ASSERT_EQ (fill.filled, 2) << "both side-grid cells must fill";
+    ASSERT_EQ (fill.cells.size(), 2u);
+    EXPECT_GT (fill.cells[0].noteCount, 0);
+    EXPECT_GT (fill.cells[1].noteCount, 0);
+    EXPECT_GT (fill.cells[0].clipId, 0);
+    EXPECT_GT (fill.cells[1].clipId, 0);
+
+    // The cells' cellTrackID must resolve to CellA/CellB by identity.
+    auto cells = engine.getProjectModel().getTree()
+                     .getChildWithName (IDs::SONG_PLAN).getChildWithName (IDs::CELLS);
+    ASSERT_EQ (cells.getNumChildren(), 2);
+    for (int c = 0; c < cells.getNumChildren(); ++c)
+    {
+        const int targetID = static_cast<int> (cells.getChild (c).getProperty (IDs::cellTrackID, -1));
+        ASSERT_GT (targetID, 0) << "B3: live cells store cellTrackID, not the legacy index";
+        const int resolvedIdx = HDAW::trackIndexForID (trackList, targetID);
+        EXPECT_EQ (trackList.getChild (resolvedIdx).getProperty (IDs::name).toString(),
+                   juce::String (cells.getChild (c).getProperty (IDs::cellRole).toString() == "pdarp"
+                                     ? "PD CellA" : "PD CellB"))
+            << "cell " << c << " target must resolve to its side-grid track";
+    }
+
+    // ---- G5: mid-composition save → fresh load round-trip ------------------
+    const juce::File saveFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                    .getChildFile ("hdaw_psydub_midtest.hdaw");
+    saveFile.deleteFile();
+    const auto folderIDsBefore = folderChildIDsBefore;
+    ASSERT_TRUE (cmds.saveProject (saveFile.getFullPathName().toStdString()));
+    ProjectModel loaded;
+    ASSERT_TRUE (HDAW::ProjectSerializer::load (loaded, saveFile));
+    auto tl2 = loaded.getTrackListTree();
+    ASSERT_EQ (tl2.getNumChildren(), trackList.getNumChildren());
+
+    // The id->index resolution table must be IDENTICAL pre/post on the new
+    // vocabulary (the migration must be a no-op on new-vocabulary files).
+    auto resolveAll = [&] (const juce::ValueTree& tl) {
+        std::vector<std::pair<int, int>> out;   // (trackID, index)
+        for (int t = 0; t < tl.getNumChildren(); ++t)
+            out.push_back ({ static_cast<int> (tl.getChild (t).getProperty (IDs::trackID, -1)), t });
+        return out;
+    };
+    EXPECT_EQ (resolveAll (trackList), resolveAll (tl2));
+    for (int t = 0; t < tl2.getNumChildren(); ++t)
+    {
+        EXPECT_FALSE (tl2.getChild (t).hasProperty (IDs::parentId)) << "no legacy parentId after load";
+        EXPECT_FALSE (tl2.getChild (t).hasProperty (IDs::childIds)) << "no legacy childIds after load";
+    }
+    auto cells2 = loaded.getTree().getChildWithName (IDs::SONG_PLAN).getChildWithName (IDs::CELLS);
+    ASSERT_EQ (cells2.getNumChildren(), 2);
+    for (int c = 0; c < cells2.getNumChildren(); ++c)
+        EXPECT_FALSE (cells2.getChild (c).hasProperty (IDs::cellTrack)) << "no legacy cellTrack after load";
+
+    // Folder membership by identity, resolved through the loaded tree.
+    for (int id : folderIDsBefore)
+    {
+        const int idx2 = HDAW::trackIndexForID (tl2, id);
+        ASSERT_GE (idx2, 0) << "folder child id " << id << " must resolve after load";
+        EXPECT_EQ (static_cast<int> (tl2.getChild (idx2).getProperty (IDs::parentTrackID, -1)),
+                   folderID);
+    }
+    EXPECT_EQ (HDAW::parseIDList (tl2.getChild (
+        HDAW::trackIndexForID (tl2, folderID)), IDs::childTrackIDs), folderIDsBefore);
+    // Cell targets by identity.
+    EXPECT_EQ (static_cast<int> (cells2.getChild (0).getProperty (IDs::cellTrackID, -1)),
+               static_cast<int> (cells.getChild (0).getProperty (IDs::cellTrackID, -1)));
+    EXPECT_EQ (static_cast<int> (cells2.getChild (1).getProperty (IDs::cellTrackID, -1)),
+               static_cast<int> (cells.getChild (1).getProperty (IDs::cellTrackID, -1)));
+    const int resolvedCellA2 = HDAW::trackIndexForID (tl2,
+        static_cast<int> (cells2.getChild (0).getProperty (IDs::cellTrackID, -1)));
+    const int resolvedCellB2 = HDAW::trackIndexForID (tl2,
+        static_cast<int> (cells2.getChild (1).getProperty (IDs::cellTrackID, -1)));
+    EXPECT_EQ (tl2.getChild (resolvedCellA2).getProperty (IDs::name).toString(), "PD CellA");
+    EXPECT_EQ (tl2.getChild (resolvedCellB2).getProperty (IDs::name).toString(), "PD CellB");
+
+    // ---- Two-pass render (canary + gain-normalized final) -------------------
+    auto* mp = engine.getMainProcessor();
+    auto& em = mp->getExportManager();
+    juce::AudioFormatManager exportFm;
+    exportFm.registerBasicFormats();
+    const juce::File outDir ("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const double dur = HDAW::ExportManager::calculateProjectDuration (engine.getProjectModel());
+    const juce::File out = outDir.getChildFile ("psy_dub_test.wav");
+    cmds.setMasterGain (1.0f);
+
+    auto computePeak = [&] (const juce::File& f) {
+        std::unique_ptr<juce::AudioFormatReader> rdr (exportFm.createReaderFor (f));
+        if (rdr == nullptr) return 1.0f;
+        juce::AudioBuffer<float> buf (2, static_cast<int> (rdr->lengthInSamples));
+        rdr->read (&buf, 0, static_cast<int> (rdr->lengthInSamples), 0, true, true);
+        double acc = 0.0;
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            const float* s = buf.getReadPointer (ch);
+            for (int i = 0; i < buf.getNumSamples(); ++i)
+                acc += static_cast<double> (s[i]) * s[i];
+        }
+        const double rms = std::sqrt (acc / (2.0 * buf.getNumSamples()));
+        juce::Logger::writeToLog ("PsyDub: rms=" + juce::String (rms, 4)
+            + " size=" + juce::String ((juce::int64) f.getSize()));
+        return (std::max) (buf.getMagnitude (0, 0, buf.getNumSamples()),
+                           buf.getMagnitude (1, 0, buf.getNumSamples()));
+    };
+    auto render = [&] (float masterGain, bool& ok) {
+        cmds.setMasterGain (masterGain);
+        out.deleteFile();
+        ok = em.startExport (engine.getProjectModel().getTree(), exportFm,
+                             &engine.getPluginManager(), out, 48000.0, 0.0, dur,
+                             HDAW::ExportManager::WAV, 24);
+        if (!ok) return 1.0f;
+        ok = waitForExport (em, 1200000);
+        if (!ok) return 1.0f;
+        EXPECT_GT (out.getSize(), 1000);
+        return computePeak (out);
+    };
+    bool ok = false;
+    const float canaryPeak = render (0.25f, ok);
+    ASSERT_TRUE (ok);
+    ASSERT_LE (canaryPeak, 0.9f) << "canary clipped";
+    const float truePeak = canaryPeak / 0.25f;
+    const float finalGain = (std::min) (0.90f / truePeak, 1.0f);
+    const float finalPeak = render (finalGain, ok);
+    ASSERT_TRUE (ok);
+    EXPECT_LE (finalPeak, 0.95f) << "final render clipped";
+    EXPECT_GE (finalPeak, 0.35f) << "final render too quiet";
+    std::cout << "PsyDub: truePeak=" << truePeak << " finalGain=" << finalGain
+              << " finalPeak=" << finalPeak << " dur=" << dur
+              << " beats=700" << std::endl;
+    // calculateProjectDuration adds the engine's documented 3 s reverb tail
+    // (ExportManager.cpp: maxEnd + 3.0), so 700 beats @ 138 BPM (304.35 s)
+    // renders as ~307.35 s — still inside the 4:50-5:10 gate window.
+    ASSERT_NEAR (dur, 700.0 * 60.0 / 138.0 + 3.0, 0.5)
+        << "700 beats @ 138 BPM + the 3 s tail ~ 307.3 s";
+    saveFile.deleteFile();
 }
