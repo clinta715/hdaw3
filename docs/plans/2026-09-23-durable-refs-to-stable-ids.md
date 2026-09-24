@@ -1,7 +1,7 @@
 # Plan: B3 — durable references migrate to stable ids
 
-Status: **proposed, NOT implemented** (needs the user's decision — it changes the saved project
-format and retires a shipped contract).
+Status: **IMPLEMENTED 2026-09-24** (decisions below; slices S1/S2/S3 landed, gates G1-G6 verified in
+`tests/unit/engine/durable_ref_migration_test.cpp` + the rewritten pin tests).
 
 Follows B1 (`40ebe3b`, stable `trackID`/`sendID` shipped + echoed) and B2 (ids usable as arguments).
 
@@ -48,6 +48,13 @@ Indices are also what make `remove_track`/`move_track` return a shift payload at
 **Retirements (the payoff, and the risky part):**
 - `remapTrackPositionalRefs` + `trackRemovalIndexMap` + `trackMoveIndexMap` deleted;
   `removeTrack`/`moveTrack` stop remapping (they still return the shift report — see open question 1).
+  **Correction found during implementation (2026-09-24):** `removeTrack` must still run ONE indexed
+  walk that PRUNES the removed id from every durable ref (parent folders' `childTrackIDs`, the removed
+  node's children's `parentTrackID`, cells' `cellTrackID` -> -1). Reason: `allocateTrackID()` is
+  `max(existing)+1`, so a dangling ref can silently RE-POINT at a subsequently minted track (remove the
+  highest-id track, add one, and the new one shares the dead id). "Leave it dangling and resolve to
+  nothing" is only safe while ids are never reused — they are. This restores the pre-B3 removal
+  semantics (removed -> sentinel) with one walk instead of the remap machinery.
 - The lane/LFO send-target remap in `removeSend` deleted (nothing positional left to fix; a dead
   send's lane simply keeps its id and silently targets nothing — the same "silent no-op" contract the
   pid decode already documents — or, if we prefer explicitness, `removeSend` re-points/deletes by id).
@@ -80,6 +87,33 @@ Indices are also what make `remove_track`/`move_track` return a shift payload at
   reference frontend already consume.
 - Folder semantics are read in more places than the two writers (`ReadModelImpl` cascade, the UI, the
   song-plan fill); each reader must be found by grep, not by memory.
+
+## Decisions taken (2026-09-24 — implementation started)
+
+1. **Shift payloads: KEPT.** `{ok, removed, shifted[]}` stays byte-identical on both surfaces. With ids it
+   becomes advisory ("these indices moved; your ids did not") — no wire change, no client update.
+2. **Vocabulary: migrate + drop.** New storage `parentTrackID` / `childTrackIDs` / `cellTrackID` is the
+   ONLY thing live code writes; the load-time migration converts and REMOVES the legacy `parentId` /
+   `childIds` / `cellTrack`, so a saved file has exactly one vocabulary. Save stays verbatim (the
+   serializer has no property whitelist).
+3. **Scope: refs 1-3 only** (option (a) of question 3). Lane/LFO send targets keep `2000 + sendIndex`
+   and `removeSend`'s remap walk stays — a send id above 999 would overflow into the bus range `3000+`,
+   which is a pid-space design question of its own. Refs 4-5 are explicitly NOT migrated here.
+4. **Public/wire contracts that do NOT change:** `CellRecipe.trackId` stays a TRACK_LIST index on the
+   API/wire (converted at the storage boundary in `setCellRecipeImpl`/`getCells`), and
+   `TrackSnapshot.parentId` stays a positional index (resolved from `parentTrackID` at read time). Only
+   tree storage changes.
+
+**Load-path fact that fixes the migration site:** `ProjectSerializer::load` runs `migrateProjectTree`
+(:170) BEFORE `scanAndSyncTrackIDs()` (:179), so the ids a positional→id migration needs do not exist at
+:170. The migration therefore runs immediately AFTER `scanAndSyncTrackIDs()`, with a null undo manager
+(never undoable), and is idempotent (a node carrying the new property is left alone; its legacy property
+is dropped).
+
+Slices: **S1** vocabulary header + writers + deletion of `remapTrackPositionalRefs` /
+`trackRemovalIndexMap` / `trackMoveIndexMap`; **S2** load-time migration + the `ReadModelImpl` id→index
+conversion; **S3** test rewrites (raw-property pins → resolve-and-compare) + migration/byte-stability
+tests; then the full suite (parity ledger unchanged — no tool/route change).
 
 ## Open questions (need the user's call before implementation)
 1. **Keep the shift payloads?** `{ok, removed, shifted[]}` is shipped and twinned on both surfaces;

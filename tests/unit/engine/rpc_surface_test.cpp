@@ -28,6 +28,7 @@
 #include "engine/ProjectBackup.h"
 #include "engine/TrackFXSlot.h"
 #include "model/ProjectModel.h"
+#include "common/TrackIdRefs.h"   // design B3: stable-id folder refs
 
 #include <QDir>
 #include <QFile>
@@ -646,16 +647,22 @@ TEST(TrackProperties, MoveTrackIntoAndOutOfFolder)
     cmds.setTrackType(folderIdx, 2);
     int childIdx = cmds.addTrack("Child");
 
+    auto tl = engine.getProjectModel().getTrackListTree();
+    const int folderID = static_cast<int>(tl.getChild(folderIdx).getProperty(IDs::trackID, 0));
+    ASSERT_GT(folderID, 0);
+
     cmds.moveTrackIntoFolder(childIdx, folderIdx);
 
-    auto trackTree = engine.getProjectModel().getTrackListTree().getChild(childIdx);
+    auto trackTree = tl.getChild(childIdx);
     ASSERT_TRUE(trackTree.isValid());
-    int parent = static_cast<int>(trackTree.getProperty(IDs::parentId, -1));
-    EXPECT_EQ(parent, folderIdx);
+    // The child's parentTrackID names the folder by identity and resolves to it.
+    const int parentID = static_cast<int>(trackTree.getProperty(IDs::parentTrackID, -1));
+    EXPECT_EQ(parentID, folderID);
+    EXPECT_EQ(HDAW::trackIndexForID(tl, parentID), folderIdx);
 
     cmds.moveTrackOutOfFolder(childIdx);
-    parent = static_cast<int>(trackTree.getProperty(IDs::parentId, -1));
-    EXPECT_EQ(parent, -1);
+    EXPECT_EQ(static_cast<int>(trackTree.getProperty(IDs::parentTrackID, -1)), -1);
+    EXPECT_EQ(HDAW::trackIndexForID(tl, static_cast<int>(trackTree.getProperty(IDs::parentTrackID, -1))), -1);
 }
 
 TEST(TrackProperties, MoveTrack)
@@ -677,9 +684,10 @@ TEST(TrackProperties, MoveTrack)
 
 // The folder-move commands BOTH surfaces now call (MCP move_track_into_folder /
 // move_track_out_of_folder and RPC project.moveTrackIntoFolder /
-// project.moveTrackOutOfFolder). Membership is a PAIR of positional refs — the
-// folder's childIds CSV and the child's parentId — so a half-link would hand
-// mute/solo to the wrong track. Every rejection is the command's NO-OP.
+// project.moveTrackOutOfFolder). Membership is a PAIR of STABLE-id refs — the
+// folder's childTrackIDs and the child's parentTrackID — so a half-link would
+// hand mute/solo to the wrong track. Every rejection is the command's NO-OP; the
+// assertions resolve each id to the track it names.
 TEST(TrackProperties, FolderMoveMembershipPairAndNoOps)
 {
     AudioEngine engine;
@@ -691,43 +699,49 @@ TEST(TrackProperties, FolderMoveMembershipPairAndNoOps)
     cmds.setTrackType(folder, 2);                 // trackType 2 = folder
     const int child = cmds.addTrack("Child");
     auto tl = engine.getProjectModel().getTrackListTree();
-    const auto childIds = [&tl](int idx) {
-        return tl.getChild(idx).getProperty(IDs::childIds).toString().toStdString();
+    // The child ids a folder claims, resolved to their current indices.
+    const auto childIdxs = [&tl](int idx) {
+        std::vector<int> out;
+        for (int id : HDAW::parseIDList(tl.getChild(idx), IDs::childTrackIDs))
+            out.push_back(HDAW::trackIndexForID(tl, id));
+        return out;
     };
-    const auto parentId = [&tl](int idx) {
-        return static_cast<int>(tl.getChild(idx).getProperty(IDs::parentId, -1));
+    // The index the track's parentTrackID resolves to (-1 = no parent).
+    const auto parentIdxs = [&tl](int idx) {
+        return HDAW::trackIndexForID(tl,
+            static_cast<int>(tl.getChild(idx).getProperty(IDs::parentTrackID, -1)));
     };
 
-    // A non-folder target claims nothing (folder semantics read childIds, the
-    // mute/solo cascade reads parentId — neither may move).
+    // A non-folder target claims nothing (folder semantics read childTrackIDs,
+    // the mute/solo cascade reads parentTrackID — neither may move).
     cmds.moveTrackIntoFolder(child, audio);
-    EXPECT_EQ(childIds(audio), "");
-    EXPECT_EQ(parentId(child), -1);
+    EXPECT_TRUE(childIdxs(audio).empty());
+    EXPECT_EQ(parentIdxs(child), -1);
 
     // Out-of-range indices on either side are no-ops.
     cmds.moveTrackIntoFolder(child, 99);
     cmds.moveTrackIntoFolder(-1, folder);
-    EXPECT_EQ(childIds(folder), "");
-    EXPECT_EQ(parentId(child), -1);
+    EXPECT_TRUE(childIdxs(folder).empty());
+    EXPECT_EQ(parentIdxs(child), -1);
 
     // The happy path links BOTH refs.
     cmds.moveTrackIntoFolder(child, folder);
-    EXPECT_EQ(childIds(folder), std::to_string(child));
-    EXPECT_EQ(parentId(child), folder);
+    EXPECT_EQ(childIdxs(folder), (std::vector<int>{ child }));
+    EXPECT_EQ(parentIdxs(child), folder);
 
     // Moving the folder into itself must not disturb its membership.
     cmds.moveTrackIntoFolder(folder, folder);
-    EXPECT_EQ(childIds(folder), std::to_string(child));
-    EXPECT_EQ(parentId(child), folder);
+    EXPECT_EQ(childIdxs(folder), (std::vector<int>{ child }));
+    EXPECT_EQ(parentIdxs(child), folder);
 
     // Moving out clears both, and a second move-out (parentless track) is a
-    // no-op rather than a stray childIds rewrite.
+    // no-op rather than a stray childTrackIDs rewrite.
     cmds.moveTrackOutOfFolder(child);
-    EXPECT_EQ(childIds(folder), "");
-    EXPECT_EQ(parentId(child), -1);
+    EXPECT_TRUE(childIdxs(folder).empty());
+    EXPECT_EQ(parentIdxs(child), -1);
     cmds.moveTrackOutOfFolder(child);
-    EXPECT_EQ(childIds(folder), "");
-    EXPECT_EQ(parentId(child), -1);
+    EXPECT_TRUE(childIdxs(folder).empty());
+    EXPECT_EQ(parentIdxs(child), -1);
 }
 
 // ============================================================================

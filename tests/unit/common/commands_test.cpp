@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "common/ProjectCommands.h"
 #include "common/StableRefResolve.h"   // design B2: the stable-id argument rule
+#include "common/TrackIdRefs.h"        // design B3: stable-id folder/cell refs
 #include "engine/AudioEngine.h"
 #include "engine/RoutingManager.h"
 #include "engine/MidiClipProcessor.h"
@@ -888,10 +889,13 @@ TEST(Commands, MidiNoteRecordingFlushOnDisarm)
     EXPECT_TRUE(found);
 }
 
-// ─── Handoff 7: shift-aware removal — durable positional-ref fixup ─────────
-// Tracks are positional: folder parentId/childIds and SONG_PLAN cellTrack hold
-// TRACK_LIST indices. Every test below follows Gate 10 discipline — mutate,
-// drain the routing rebuild, assert the LIVE tree (never ReadModel-only).
+// ─── Handoff 7 / design B3: durable refs are STABLE IDS, not positions ─────
+// A folder's childTrackIDs holds child trackIDs, a child's parentTrackID holds
+// the folder's trackID, and a SONG_PLAN cell's cellTrackID holds its target's
+// trackID. A splice (removeTrack/moveTrack) renumbers INDICES but changes no
+// durable reference, so the tests below assert WHAT EACH REF POINTS AT — resolve
+// the id and compare the entity (name) — never a raw number. Every test follows
+// Gate 10 discipline: mutate, drain the routing rebuild, assert the LIVE tree.
 
 namespace {
 ProjectCommands::SongPlanData shiftRefsPlan()
@@ -918,9 +922,42 @@ ProjectCommands::CellRecipe shiftRefsCell(const char* role, int trackId)
     r.seed = 1;
     return r;
 }
+
+// The track a durable REF actually POINTS AT: resolve the stored id to the
+// index it currently occupies and read that track's name. "<none>" when the id
+// resolves to nothing (a removed parent, a foreign id) — the entity-level
+// comparison a raw-number assertion cannot make (design B3: an index is a
+// position, an id is an identity).
+std::string nameNamedByID(const juce::ValueTree& trackList, int id)
+{
+    const int idx = HDAW::trackIndexForID(trackList, id);
+    return idx < 0 ? std::string("<none>")
+                   : trackList.getChild(idx).getProperty(IDs::name).toString().toStdString();
+}
+
+// The names a folder claims, resolved from its childTrackIDs CSV in order.
+std::vector<std::string> childNamesOf(const juce::ValueTree& trackList, const juce::ValueTree& folder)
+{
+    std::vector<std::string> names;
+    for (int id : HDAW::parseIDList(folder, IDs::childTrackIDs))
+        names.push_back(nameNamedByID(trackList, id));
+    return names;
+}
+
+// The name a track's parentTrackID names, resolved to the current index.
+std::string parentNameOf(const juce::ValueTree& trackList, const juce::ValueTree& track)
+{
+    return nameNamedByID(trackList, static_cast<int>(track.getProperty(IDs::parentTrackID, -1)));
+}
+
+// The name a SONG_PLAN cell's cellTrackID names, resolved to the current index.
+std::string cellTargetName(const juce::ValueTree& trackList, const juce::ValueTree& cell)
+{
+    return nameNamedByID(trackList, static_cast<int>(cell.getProperty(IDs::cellTrackID, -1)));
+}
 } // namespace
 
-TEST(Commands, RemoveTrackRemapsFolderRefsAndReportsShift)
+TEST(Commands, RemoveTrackKeepsFolderRefsPointingAtTheSameTrack)
 {
     AudioEngine engine;
     engine.initialize();
@@ -936,47 +973,67 @@ TEST(Commands, RemoveTrackRemapsFolderRefsAndReportsShift)
     cmds.moveTrackIntoFolder(c, 1);
 
     auto trackList = engine.getProjectModel().getTrackListTree();
-    ASSERT_EQ(trackList.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2,3");
+    const int idA = static_cast<int>(trackList.getChild(1).getProperty(IDs::trackID, 0));
+    const int idB = static_cast<int>(trackList.getChild(2).getProperty(IDs::trackID, 0));
+    const int idC = static_cast<int>(trackList.getChild(3).getProperty(IDs::trackID, 0));
+    ASSERT_GT(idA, 0);
+    ASSERT_GT(idB, 0);
+    ASSERT_GT(idC, 0);
 
-    // Phase 1: remove X (index 0) — every index above decrements, in ONE walk.
+    // A's childTrackIDs names B and C by IDENTITY (their trackIDs).
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(1)),
+              (std::vector<std::string>{ "B", "C" }));
+
+    // Phase 1: remove X (index 0) — every index above decrements. The two
+    // folder refs are ids, so nothing needs remapping: each still resolves to
+    // the SAME entity at its new index.
     auto r = cmds.removeTrack(0);
     engine.drainPendingRoutingRebuild();
     EXPECT_TRUE(r.ok);
     EXPECT_EQ(r.removed, 0);
-    ASSERT_EQ(r.shifted.size(), 3u);
+    ASSERT_EQ(r.shifted.size(), 3u);   // advisory: indices moved, ids did not
     EXPECT_EQ(r.shifted[0], std::make_pair(1, 0));
     EXPECT_EQ(r.shifted[1], std::make_pair(2, 1));
     EXPECT_EQ(r.shifted[2], std::make_pair(3, 2));
 
     EXPECT_EQ(trackList.getNumChildren(), 3);
     EXPECT_EQ(trackList.getChild(0).getProperty(IDs::name).toString().toStdString(), "A");
-    // A's childIds followed B and C down; B/C still point at A (now index 0).
-    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,2");
-    EXPECT_EQ(static_cast<int>(trackList.getChild(1).getProperty(IDs::parentId, -1)), 0);
-    EXPECT_EQ(static_cast<int>(trackList.getChild(2).getProperty(IDs::parentId, -1)), 0);
+    // A's childTrackIDs still names B and C; B/C still point at A — all three
+    // refs resolve to the SAME tracks, now at indices 1/2 under A at 0.
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(HDAW::trackIndexForID(trackList, idA))),
+              (std::vector<std::string>{ "B", "C" }));
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(HDAW::trackIndexForID(trackList, idB))), "A");
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(HDAW::trackIndexForID(trackList, idC))), "A");
 
-    // Phase 2: remove the folder's MIDDLE child (B at index 1) — childIds
-    // drops B and decrements C's entry; C.parentId (0) is untouched.
-    r = cmds.removeTrack(1);
+    // Phase 2: remove the folder's MIDDLE child (B) — B's id is PRUNED from
+    // A's childTrackIDs (a dangling ref could re-point at a later mint), so A
+    // claims exactly C; C's parentTrackID is an identity and still names A.
+    r = cmds.removeTrack(HDAW::trackIndexForID(trackList, idB));
     engine.drainPendingRoutingRebuild();
     EXPECT_TRUE(r.ok);
-    EXPECT_EQ(r.removed, 1);
     ASSERT_EQ(r.shifted.size(), 1u);
     EXPECT_EQ(r.shifted[0], std::make_pair(2, 1));
-    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1");
-    EXPECT_EQ(static_cast<int>(trackList.getChild(1).getProperty(IDs::parentId, -1)), 0);
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(HDAW::trackIndexForID(trackList, idA))),
+              (std::vector<std::string>{ "C" }));
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(HDAW::trackIndexForID(trackList, idC))), "A");
 
-    // Phase 3: remove the FOLDER itself — its children fall back to the -1
-    // folder-less sentinel (the exact vocabulary moveTrackOutOfFolder writes).
-    r = cmds.removeTrack(0);
+    // Phase 3: remove the FOLDER itself — C's parentTrackID is PRUNED to the -1
+    // sentinel, since the removed folder's id would otherwise be reused by the
+    // next minted track.
+    r = cmds.removeTrack(HDAW::trackIndexForID(trackList, idA));
     engine.drainPendingRoutingRebuild();
     EXPECT_TRUE(r.ok);
     ASSERT_EQ(trackList.getNumChildren(), 1);
-    EXPECT_FALSE(trackList.getChild(0).hasProperty(IDs::childIds));
-    EXPECT_EQ(static_cast<int>(trackList.getChild(0).getProperty(IDs::parentId, -1)), -1);
+    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::name).toString().toStdString(), "C");
+    EXPECT_FALSE(trackList.getChild(0).hasProperty(IDs::childTrackIDs));
+    EXPECT_EQ(static_cast<int>(trackList.getChild(0).getProperty(IDs::parentTrackID, -999)), -1)
+        << "a surviving child of the removed folder must be pruned to the -1 sentinel";
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(0)), "<none>");
+    EXPECT_EQ(engine.getReadModel().snapshot().tracks[0].parentId, -1)
+        << "the wire parentId reads the folder-less sentinel";
 }
 
-TEST(Commands, RemoveTrackRemapsSongPlanCells)
+TEST(Commands, RemoveTrackKeepsSongPlanCellsOnTheSameTrack)
 {
     AudioEngine engine;
     engine.initialize();
@@ -987,14 +1044,23 @@ TEST(Commands, RemoveTrackRemapsSongPlanCells)
     ASSERT_GE(cmds.addTrack("T2"), 0);
     engine.drainPendingRoutingRebuild();
 
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    const int idT0 = static_cast<int>(trackList.getChild(0).getProperty(IDs::trackID, 0));
+    const int idT1 = static_cast<int>(trackList.getChild(1).getProperty(IDs::trackID, 0));
+    const int idT2 = static_cast<int>(trackList.getChild(2).getProperty(IDs::trackID, 0));
+    ASSERT_GT(idT0, 0);
+    ASSERT_GT(idT1, 0);
+    ASSERT_GT(idT2, 0);
+
     ASSERT_TRUE(cmds.setSongPlan(shiftRefsPlan()).ok);
     std::string err;
     ASSERT_TRUE(cmds.setCellRecipe(shiftRefsCell("onT0", 0), &err)) << err;
     ASSERT_TRUE(cmds.setCellRecipe(shiftRefsCell("onT1", 1), &err)) << err;
     ASSERT_TRUE(cmds.setCellRecipe(shiftRefsCell("onT2", 2), &err)) << err;
 
-    // Remove the MIDDLE track: the cell on it sentinel-clears to -1, the cell
-    // above it decrements, the cell below is untouched.
+    // Remove the MIDDLE track: its cell's cellTrackID is PRUNED to -1 (a
+    // dangling id would be reusable by the next minted track); the cells of the
+    // surviving tracks still name T0 / T2.
     auto r = cmds.removeTrack(1);
     engine.drainPendingRoutingRebuild();
     EXPECT_TRUE(r.ok);
@@ -1004,11 +1070,18 @@ TEST(Commands, RemoveTrackRemapsSongPlanCells)
     auto cells = engine.getProjectModel().getTree()
                      .getChildWithName(IDs::SONG_PLAN).getChildWithName(IDs::CELLS);
     ASSERT_EQ(cells.getNumChildren(), 3);
-    EXPECT_EQ(static_cast<int>(cells.getChild(0).getProperty(IDs::cellTrack, -1)), 0);
-    EXPECT_EQ(static_cast<int>(cells.getChild(1).getProperty(IDs::cellTrack, -1)), -1);
-    EXPECT_EQ(static_cast<int>(cells.getChild(2).getProperty(IDs::cellTrack, -1)), 1);
+    EXPECT_EQ(static_cast<int>(cells.getChild(0).getProperty(IDs::cellTrackID, -1)), idT0);
+    EXPECT_EQ(static_cast<int>(cells.getChild(1).getProperty(IDs::cellTrackID, -1)), -1)
+        << "the cell on the removed track must be pruned to the -1 sentinel";
+    EXPECT_EQ(static_cast<int>(cells.getChild(2).getProperty(IDs::cellTrackID, -1)), idT2);
+    EXPECT_EQ(cellTargetName(trackList, cells.getChild(0)), "T0")
+        << "the cell on T0 must still name T0";
+    EXPECT_EQ(cellTargetName(trackList, cells.getChild(1)), "<none>")
+        << "the cell on the removed track must target nothing";
+    EXPECT_EQ(cellTargetName(trackList, cells.getChild(2)), "T2")
+        << "the cell on T2 must still name T2";
 
-    // The command-level view agrees.
+    // The command-level view agrees (the wire keeps the positional contract).
     const auto view = cmds.getCells();
     ASSERT_EQ(view.size(), 3u);
     EXPECT_EQ(view[1].trackId, -1);
@@ -1024,13 +1097,88 @@ TEST(Commands, RemoveTrackRemapsSongPlanCells)
     EXPECT_FALSE(batch.cells[1].ok);
     EXPECT_TRUE(batch.cells[1].error.find("missing track") != std::string::npos)
         << batch.cells[1].error;
-    auto trackList = engine.getProjectModel().getTrackListTree();
+    trackList = engine.getProjectModel().getTrackListTree();
     ASSERT_EQ(trackList.getNumChildren(), 2);
     EXPECT_EQ(trackList.getChild(0).getChildWithName(IDs::CLIP_LIST).getNumChildren(), 1);
     EXPECT_EQ(trackList.getChild(1).getChildWithName(IDs::CLIP_LIST).getNumChildren(), 1);
 }
 
-TEST(Commands, MoveTrackRemapsFolderRefs)
+// The hazard the prune exists to kill: allocateTrackID() is max(existing)+1, so
+// removing the HIGHEST-id track makes the very next mint REUSE that id. A
+// dangling durable ref would silently re-point at the brand-new track; the prune
+// must leave nothing to re-point. Assert both premises (highest id, id reused)
+// so the test can never pass vacuously.
+TEST(Commands, RemoveTrackPrunesRefsSoAReusedIdCannotRePoint)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // [T0, Folder(type 2), T1] — T1 is created LAST, so it holds the highest id.
+    ASSERT_EQ(cmds.addTrack("T0"), 0);
+    ASSERT_EQ(cmds.addTrack("Folder", -1, -1, 2), 1);
+    const int t1 = cmds.addTrack("T1");
+    ASSERT_EQ(t1, 2);
+    engine.drainPendingRoutingRebuild();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int maxID = 0;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+        maxID = std::max(maxID, static_cast<int>(trackList.getChild(t).getProperty(IDs::trackID, 0)));
+    const int deadID = static_cast<int>(trackList.getChild(t1).getProperty(IDs::trackID, 0));
+    ASSERT_GT(deadID, 0);
+    ASSERT_EQ(deadID, maxID) << "premise: T1 must hold the HIGHEST trackID";
+
+    // T1 is claimed by the folder AND targeted by a SONG_PLAN cell.
+    cmds.moveTrackIntoFolder(t1, 1);
+    ASSERT_TRUE(cmds.setSongPlan(shiftRefsPlan()).ok);
+    std::string err;
+    ASSERT_TRUE(cmds.setCellRecipe(shiftRefsCell("onT1", t1), &err)) << err;
+    engine.drainPendingRoutingRebuild();
+    ASSERT_EQ(childNamesOf(trackList, trackList.getChild(1)), (std::vector<std::string>{ "T1" }));
+    auto cells = engine.getProjectModel().getTree()
+                     .getChildWithName(IDs::SONG_PLAN).getChildWithName(IDs::CELLS);
+    ASSERT_EQ(cells.getNumChildren(), 1);
+    ASSERT_EQ(cellTargetName(trackList, cells.getChild(0)), "T1");
+
+    // Remove the highest-id track: both refs must be pruned, not left dangling.
+    const auto removed = cmds.removeTrack(t1);
+    engine.drainPendingRoutingRebuild();
+    EXPECT_TRUE(removed.ok);
+    EXPECT_EQ(HDAW::trackIndexForID(trackList, deadID), -1) << "the id is gone with the track";
+    ASSERT_EQ(trackList.getNumChildren(), 2);
+    const int folderIdx = 1;   // [T0, Folder] after the splice
+    ASSERT_EQ(trackList.getChild(folderIdx).getProperty(IDs::name).toString().toStdString(), "Folder");
+    EXPECT_TRUE(HDAW::parseIDList(trackList.getChild(folderIdx), IDs::childTrackIDs).empty())
+        << "the removed child's id must be pruned from the folder's childTrackIDs";
+    EXPECT_EQ(static_cast<int>(cells.getChild(0).getProperty(IDs::cellTrackID, -1)), -1)
+        << "the cell that targeted the removed track must be pruned to -1";
+
+    // Mint a new track — it REUSES the dead id (max+1). This is the hazard made
+    // real; the assertions below are what a dangling ref would fail.
+    const int t2 = cmds.addTrack("T2");
+    engine.drainPendingRoutingRebuild();
+    ASSERT_EQ(t2, 2);
+    const int newID = static_cast<int>(trackList.getChild(t2).getProperty(IDs::trackID, 0));
+    ASSERT_EQ(newID, deadID) << "premise: the next mint must REUSE the removed id";
+
+    EXPECT_EQ(static_cast<int>(cells.getChild(0).getProperty(IDs::cellTrackID, -1)), -1)
+        << "the cell must NOT re-point at the reused id";
+    ASSERT_EQ(cmds.getCells().size(), 1u);
+    EXPECT_EQ(cmds.getCells()[0].trackId, -1)
+        << "the cell must still read as targeting nothing";
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        const auto tr = trackList.getChild(t);
+        for (int id : HDAW::parseIDList(tr, IDs::childTrackIDs))
+            EXPECT_NE(id, newID) << "no folder's childTrackIDs may list the reused id";
+        EXPECT_NE(static_cast<int>(tr.getProperty(IDs::parentTrackID, -1)), newID)
+            << "no surviving track's parentTrackID may name the reused id";
+    }
+}
+
+
+TEST(Commands, MoveTrackKeepsFolderRefsPointingAtTheSameTrack)
 {
     AudioEngine engine;
     engine.initialize();
@@ -1043,30 +1191,38 @@ TEST(Commands, MoveTrackRemapsFolderRefs)
     engine.drainPendingRoutingRebuild();
     cmds.moveTrackIntoFolder(b, 0);
 
-    // Move X to the front -> [X, A, B]. A's childIds entry (B: 1) and B's
-    // parentId (A: 0) both shift through the permutation. Without the fixup
-    // B.parentId would stay 0 and hand mute/solo to X.
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    const int idB = static_cast<int>(trackList.getChild(b).getProperty(IDs::trackID, 0));
+    ASSERT_GT(idB, 0);
+
+    // Move X to the front -> [X, A, B]. A's childTrackIDs (B's id) and B's
+    // parentTrackID (A's id) are IDENTITIES, so the permutation renumbers their
+    // indices without touching either ref — with a positional ref B.parentId
+    // would have stayed 0 and handed mute/solo to X.
     cmds.moveTrack(2, 0);
     engine.drainPendingRoutingRebuild();
 
-    auto trackList = engine.getProjectModel().getTrackListTree();
     ASSERT_EQ(trackList.getNumChildren(), 3);
     EXPECT_EQ(trackList.getChild(0).getProperty(IDs::name).toString().toStdString(), "X");
     EXPECT_EQ(trackList.getChild(1).getProperty(IDs::name).toString().toStdString(), "A");
     EXPECT_EQ(trackList.getChild(2).getProperty(IDs::name).toString().toStdString(), "B");
-    EXPECT_EQ(trackList.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2");
-    EXPECT_EQ(static_cast<int>(trackList.getChild(2).getProperty(IDs::parentId, -1)), 1);
+    // After the splice each ref still resolves to the SAME entity: A at index 1
+    // names B, and B at index 2 names A.
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(1)), (std::vector<std::string>{ "B" }));
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(2)), "A");
+    EXPECT_EQ(HDAW::trackIndexForID(trackList, idB), 2)
+        << "B's id followed B to its new index";
 }
 
-// ─── Duplicate track: durable positional-ref fixup ─────────────────────────
-// duplicateTrack APPENDS its copy, so no existing index shifts and no
-// HDAW::remapTrackPositionalRefs walk is involved — but the copy must not
-// inherit the source's durable folder refs (childIds CSV / parentId): a cloned
-// childIds makes two folders claim the same children, and a cloned parentId
-// with no matching CSV entry leaves the two refs disagreeing (ReadModelImpl
-// resolves the mute/solo cascade through parentId, folder semantics read
-// childIds). Gate 10 discipline: mutate, drain the routing rebuild, assert the
-// LIVE tree plus the ReadModel projection of the cascade.
+// ─── Duplicate track: durable stable-id ref fixup ──────────────────────────
+// duplicateTrack APPENDS its copy, so no existing index shifts and no remap is
+// involved — but the copy must not inherit the source's durable folder refs
+// (childTrackIDs CSV / parentTrackID): a cloned childTrackIDs makes two folders
+// claim the same children, and a cloned parentTrackID with no matching CSV entry
+// leaves the two refs disagreeing (ReadModelImpl resolves the mute/solo cascade
+// through parentTrackID, folder semantics read childTrackIDs). Gate 10
+// discipline: mutate, drain the routing rebuild, assert the LIVE tree plus the
+// ReadModel projection of the cascade.
 
 TEST(Commands, DuplicateFolderCopyDoesNotClaimChildren)
 {
@@ -1086,7 +1242,8 @@ TEST(Commands, DuplicateFolderCopyDoesNotClaimChildren)
     engine.drainPendingRoutingRebuild();
 
     auto trackList = engine.getProjectModel().getTrackListTree();
-    ASSERT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,2");
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(0)),
+              (std::vector<std::string>{ "B", "C" }));
 
     const int copyIdx = cmds.duplicateTrack(0);
     engine.drainPendingRoutingRebuild();
@@ -1098,17 +1255,20 @@ TEST(Commands, DuplicateFolderCopyDoesNotClaimChildren)
     EXPECT_EQ(copy.getProperty(IDs::name).toString().toStdString(), "A copy");
 
     // The copy does NOT claim the original's children. createTrackValueTree
-    // never sets childIds (a track only acquires it in moveTrackIntoFolder), so
-    // the exact fresh-track value is the property ABSENT, not "".
-    EXPECT_FALSE(copy.hasProperty(IDs::childIds));
+    // never sets childTrackIDs (a track only acquires it in moveTrackIntoFolder),
+    // so the exact fresh-track value is the property ABSENT, not "".
+    EXPECT_FALSE(copy.hasProperty(IDs::childTrackIDs));
+    // No track's parentTrackID resolves to the COPY's index.
     for (int t = 0; t < trackList.getNumChildren(); ++t)
-        EXPECT_NE(static_cast<int>(trackList.getChild(t).getProperty(IDs::parentId, -1)), copyIdx);
+        EXPECT_NE(HDAW::trackIndexForID(trackList,
+                  static_cast<int>(trackList.getChild(t).getProperty(IDs::parentTrackID, -1))), copyIdx);
 
     // The original folder is untouched and every original child still resolves
     // to the ORIGINAL folder — not to the copy.
-    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,2");
-    EXPECT_EQ(static_cast<int>(trackList.getChild(b).getProperty(IDs::parentId, -1)), 0);
-    EXPECT_EQ(static_cast<int>(trackList.getChild(c).getProperty(IDs::parentId, -1)), 0);
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(0)),
+              (std::vector<std::string>{ "B", "C" }));
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(b)), "A");
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(c)), "A");
 
     // Cascade agreement: muting the original folder reaches exactly its own
     // children — the copy would have double-counted them via a cloned childIds.
@@ -1138,29 +1298,32 @@ TEST(Commands, DuplicateChildCopyLinksIntoFolder)
     engine.drainPendingRoutingRebuild();
 
     auto trackList = engine.getProjectModel().getTrackListTree();
-    ASSERT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1");
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(0)), (std::vector<std::string>{ "B" }));
 
     const int copyIdx = cmds.duplicateTrack(b);
     engine.drainPendingRoutingRebuild();
 
     ASSERT_EQ(copyIdx, 3);
     ASSERT_EQ(trackList.getNumChildren(), 4);
-    // The copy keeps the source's parentId (the folder did not move)...
-    EXPECT_EQ(static_cast<int>(trackList.getChild(copyIdx).getProperty(IDs::parentId, -1)), 0);
-    // ...and the folder's CSV learns about it exactly once.
-    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,3");
-    EXPECT_EQ(static_cast<int>(trackList.getChild(2).getProperty(IDs::parentId, -1)), -1); // C stays free
+    // The copy keeps the source's parentTrackID (the folder did not move)...
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(copyIdx)), "A");
+    // ...and the folder's childTrackIDs learns about it exactly once, by the
+    // COPY's id (resolved here to the copy's name).
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(0)),
+              (std::vector<std::string>{ "B", "B copy" }));
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(2)), "<none>")   // C stays free
+        << "C must not be dragged into the folder";
 
-    // Refs are symmetric: walk the CSV and check each entry points back.
-    const juce::String csv = trackList.getChild(0).getProperty(IDs::childIds, "").toString();
-    const auto childIds = juce::StringArray::fromTokens(csv, ",", "");
-    ASSERT_EQ(childIds.size(), 2);
-    for (const auto& tok : childIds)
+    // Refs are symmetric: walk the CSV, resolve each id, and check that the
+    // track it names points back at the folder.
+    const auto children = HDAW::parseIDList(trackList.getChild(0), IDs::childTrackIDs);
+    ASSERT_EQ(children.size(), 2u);
+    for (int childID : children)
     {
-        const int child = tok.getIntValue();
-        ASSERT_GE(child, 0);
-        ASSERT_LT(child, trackList.getNumChildren());
-        EXPECT_EQ(static_cast<int>(trackList.getChild(child).getProperty(IDs::parentId, -1)), 0);
+        const int childIdx = HDAW::trackIndexForID(trackList, childID);
+        ASSERT_GE(childIdx, 0);
+        ASSERT_LT(childIdx, trackList.getNumChildren());
+        EXPECT_EQ(parentNameOf(trackList, trackList.getChild(childIdx)), "A");
     }
 
     // Cascade agreement: the folder's mute reaches B and the copy, not C.
@@ -1189,7 +1352,7 @@ TEST(Commands, DuplicateTrackRefWriteIsOneUndoUnit)
     engine.drainPendingRoutingRebuild();
 
     auto trackList = engine.getProjectModel().getTrackListTree();
-    ASSERT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1");
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(0)), (std::vector<std::string>{ "B" }));
 
     // Isolate the duplicate as ONE undo unit, then undo it once.
     cmds.beginTransaction("Duplicate track");
@@ -1199,23 +1362,23 @@ TEST(Commands, DuplicateTrackRefWriteIsOneUndoUnit)
 
     ASSERT_EQ(copyIdx, 2);
     ASSERT_EQ(trackList.getNumChildren(), 3);
-    ASSERT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,2");
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(0)),
+              (std::vector<std::string>{ "B", "B copy" }));
 
     cmds.undo();
     engine.drainPendingRoutingRebuild();
 
-    // The copy AND the folder's CSV write are reverted together: a separate
-    // undo unit would leave the CSV pointing at a track that no longer exists.
+    // The copy AND the folder's childTrackIDs write are reverted together: a
+    // separate undo unit would leave the CSV naming a track that no longer
+    // exists. After the undo the lone child ref resolves to B under A again.
     EXPECT_EQ(trackList.getNumChildren(), 2);
-    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1");
-    EXPECT_EQ(static_cast<int>(trackList.getChild(b).getProperty(IDs::parentId, -1)), 0);
+    EXPECT_EQ(childNamesOf(trackList, trackList.getChild(0)), (std::vector<std::string>{ "B" }));
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(b)), "A");
     EXPECT_EQ(trackList.getChild(b).getProperty(IDs::name).toString().toStdString(), "B");
 }
 
-// A foreign (out-of-range) parentId is LEFT ALONE — the same rule
-// HDAW::remapTrackPositionalRefs documents. Duplicating must not index it
-// (ValueTree::getChild asserts on a negative/out-of-range index) and must not
-// invent a childIds entry anywhere.
+// A foreign (unresolvable) parentTrackID is LEFT ALONE: duplicating must not
+// index it and must not invent a childTrackIDs entry anywhere.
 TEST(Commands, DuplicateTrackLeavesForeignParentRefAlone)
 {
     AudioEngine engine;
@@ -1228,19 +1391,23 @@ TEST(Commands, DuplicateTrackLeavesForeignParentRefAlone)
     engine.drainPendingRoutingRebuild();
 
     auto trackList = engine.getProjectModel().getTrackListTree();
-    trackList.getChild(b).setProperty(IDs::parentId, 99, nullptr);   // no track 99
+    trackList.getChild(b).setProperty(IDs::parentTrackID, 99, nullptr);   // no track 99
     engine.drainPendingRoutingRebuild();
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(b)), "<none>")
+        << "the foreign parent id resolves to no track";
 
     const int copyIdx = cmds.duplicateTrack(b);
     engine.drainPendingRoutingRebuild();
 
     ASSERT_EQ(copyIdx, 2);
     ASSERT_EQ(trackList.getNumChildren(), 3);
-    // The copy carries the same foreign ref as its source, untouched.
-    EXPECT_EQ(static_cast<int>(trackList.getChild(copyIdx).getProperty(IDs::parentId, -1)), 99);
-    // No track grew a childIds property.
+    // The copy carries the same foreign ref as its source, untouched, and it
+    // still resolves to nothing.
+    EXPECT_EQ(static_cast<int>(trackList.getChild(copyIdx).getProperty(IDs::parentTrackID, -1)), 99);
+    EXPECT_EQ(parentNameOf(trackList, trackList.getChild(copyIdx)), "<none>");
+    // No track grew a childTrackIDs property.
     for (int t = 0; t < trackList.getNumChildren(); ++t)
-        EXPECT_FALSE(trackList.getChild(t).hasProperty(IDs::childIds));
+        EXPECT_FALSE(trackList.getChild(t).hasProperty(IDs::childTrackIDs));
 }
 
 // ─── Stable track/send ids (design B1) ─────────────────────────────────────

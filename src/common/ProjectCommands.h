@@ -59,9 +59,11 @@ public:
 
     // Track operations
     virtual int addTrack(const std::string& name, int color = -1, int parentBus = -1, int trackType = 0) = 0;
-    // removeTrack: splices the track out and remaps every durable POSITIONAL
-    // reference (folder parentId/childIds, SONG_PLAN cellTrack) in ONE indexed
-    // walk (see HDAW::remapTrackPositionalRefs), then reports the index shift.
+    // removeTrack: splices the track out and reports the index shift. B3: the
+    // durable references (folder membership, SONG_PLAN cell targets) are stored
+    // as STABLE track ids (src/common/TrackIdRefs.h), so the splice invalidates
+    // nothing and NO remap walk runs; `shifted` is advisory, for callers that
+    // mirror the list by position.
     // The payload both surfaces shape from this result is byte-identical on
     // MCP remove_track (compact JSON text) and RPC project.removeTrack:
     //   {"ok":true,"removed":<oldIndex>,"shifted":[{"from":N,"to":N-1},...]}

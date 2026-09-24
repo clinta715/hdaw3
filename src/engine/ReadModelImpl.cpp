@@ -11,6 +11,35 @@
 #include <map>
 #include <set>
 
+namespace {
+
+// B3: build the id -> TRACK_LIST index map ONCE per snapshot walk (lesson 30).
+// Durable references are stored as stable ids now (IDs::parentTrackID), but the
+// wire keeps TrackSnapshot.parentId as a POSITIONAL index, so every read that
+// needs the parent's position resolves through this map — never through a
+// per-node findChildByStableID sweep, which would be O(n^2) over a snapshot.
+std::map<int, int> buildTrackIDToIndex(const juce::ValueTree& trackList)
+{
+    std::map<int, int> idToIndex;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        const int id = static_cast<int>(trackList.getChild(t).getProperty(IDs::trackID, 0));
+        if (id > 0)                       // 0 = unassigned (B1); never a valid key
+            idToIndex[id] = t;
+    }
+    return idToIndex;
+}
+
+// -1 when `trackID` names no track in the list (a dangling id then behaves
+// exactly like the -1 sentinel every consumer already bounds-checks).
+inline int indexForTrackID(const std::map<int, int>& idToIndex, int trackID)
+{
+    const auto it = idToIndex.find(trackID);
+    return it == idToIndex.end() ? -1 : it->second;
+}
+
+} // namespace
+
 ReadModelImpl::ReadModelImpl(ProjectModel& model)
     : model_(model) {}
 
@@ -86,7 +115,10 @@ ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree, double b
     return cs;
 }
 
-TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
+namespace {
+
+TrackSnapshot buildTrackSnapshotFromTreeWithIDs(const juce::ValueTree& trackTree,
+                                                const std::map<int, int>& idToIndex)
 {
     TrackSnapshot ts;
     ts.index         = trackTree.getParent().indexOf(trackTree);
@@ -104,7 +136,9 @@ TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
     ts.trackType   = static_cast<int>(trackTree.getProperty(IDs::trackType, 0));
     ts.isCollapsed = trackTree.getProperty(IDs::isCollapsed, false);
     ts.isHidden    = trackTree.getProperty(IDs::isHidden, false);
-    ts.parentId    = trackTree.getProperty(IDs::parentId, -1);
+    // Durable storage is the stable id; the wire field stays the positional index.
+    ts.parentId    = indexForTrackID(idToIndex,
+                                     static_cast<int>(trackTree.getProperty(IDs::parentTrackID, -1)));
     auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
     ts.clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
 
@@ -114,7 +148,8 @@ TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
     int current = ts.index;
     while (true)
     {
-        int parentIdx = trackList.getChild(current).getProperty(IDs::parentId, -1);
+        const int parentID = static_cast<int>(trackList.getChild(current).getProperty(IDs::parentTrackID, -1));
+        const int parentIdx = indexForTrackID(idToIndex, parentID);
         if (parentIdx < 0 || parentIdx >= trackList.getNumChildren()) break;
         effMuted  = effMuted  || static_cast<bool>(trackList.getChild(parentIdx).getProperty(IDs::isMuted, false));
         effSoloed = effSoloed || static_cast<bool>(trackList.getChild(parentIdx).getProperty(IDs::isSoloed, false));
@@ -124,6 +159,18 @@ TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
     ts.effectiveSoloed = effSoloed;
 
     return ts;
+}
+
+} // namespace
+
+// Public entry point (declared in ReadModelImpl.h, used by the frontend delta
+// path): a single node arrives, so its own TRACK_LIST is walked once here and
+// the core is delegated to. snapshot() calls the core directly so the whole
+// project pays for that walk only once.
+TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
+{
+    return buildTrackSnapshotFromTreeWithIDs(trackTree,
+                                             buildTrackIDToIndex(trackTree.getParent()));
 }
 
 ProjectSnapshot ReadModelImpl::snapshot() const
@@ -144,11 +191,15 @@ ProjectSnapshot ReadModelImpl::snapshot() const
     const int numTracks = trackList.getNumChildren();
     snap.tracks.reserve(numTracks);
 
+    // ONE id -> index walk for the whole snapshot (lesson 30): both the
+    // per-track parentId resolution and the cascade loop below reuse it.
+    const auto idToIndex = buildTrackIDToIndex(trackList);
+
     double bpm = model_.getTree().getProperty(IDs::tempo, 120.0);
 
     for (int t = 0; t < numTracks; ++t) {
         auto trackTree = trackList.getChild(t);
-        snap.tracks.push_back(buildTrackSnapshotFromTree(trackTree));
+        snap.tracks.push_back(buildTrackSnapshotFromTreeWithIDs(trackTree, idToIndex));
 
         auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
         if (!clipList.isValid())
@@ -157,15 +208,9 @@ ProjectSnapshot ReadModelImpl::snapshot() const
             snap.clips.push_back(buildClipSnapshotFromTree(clipList.getChild(c), bpm));
     }
 
-    // Compute effective mute/solo by walking parent chain
+    // Compute effective mute/solo by walking the parent chain (through the
+    // stable-id map, so no positional parentId is stored anywhere any more).
     {
-        std::map<int, int> childToParent;
-        for (int t = 0; t < numTracks; ++t)
-        {
-            int parentId = trackList.getChild(t).getProperty(IDs::parentId, -1);
-            if (parentId >= 0)
-                childToParent[t] = parentId;
-        }
         for (auto& ts : snap.tracks)
         {
             bool effMuted = ts.muted;
@@ -173,9 +218,10 @@ ProjectSnapshot ReadModelImpl::snapshot() const
             int current = ts.index;
             while (true)
             {
-                auto it = childToParent.find(current);
-                if (it == childToParent.end()) break;
-                int parentIdx = it->second;
+                if (current < 0 || current >= numTracks) break;
+                const int parentID = static_cast<int>(
+                    trackList.getChild(current).getProperty(IDs::parentTrackID, -1));
+                const int parentIdx = indexForTrackID(idToIndex, parentID);
                 if (parentIdx < 0 || parentIdx >= numTracks) break;
                 const auto& parent = snap.tracks[parentIdx];
                 effMuted = effMuted || parent.muted;

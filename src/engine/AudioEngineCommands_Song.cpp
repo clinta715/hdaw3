@@ -8,6 +8,7 @@
 #include "SeededCellDefaults.h"
 #include "PatternLibrary.h"
 #include "../model/ProjectModel.h"
+#include "../common/TrackIdRefs.h"
 
 #include <juce_core/juce_core.h>
 #include <algorithm>
@@ -639,7 +640,13 @@ bool AudioEngineCommands::setCellRecipeImpl(const CellRecipe& recipe, std::strin
     }
     node.setProperty(IDs::cellSection, juce::String(recipe.section), &um);
     node.setProperty(IDs::cellRole, juce::String(recipe.role), &um);
-    node.setProperty(IDs::cellTrack, recipe.trackId, &um);
+    // B3: `recipe.trackId` stays the POSITIONAL index the API always took; the
+    // durable storage is the track's STABLE id, resolved once here
+    // (-1 when the index names no track — the cell contract's "missing track"
+    // sentinel, same value fillOneCell already refuses on).
+    node.setProperty(IDs::cellTrackID,
+                     HDAW::trackIDForIndex(engine_.getProjectModel().getTrackListTree(), recipe.trackId),
+                     &um);
     node.setProperty(IDs::cellSource, juce::String(recipe.sourceKind), &um);
     node.setProperty(IDs::cellParams, juce::String(recipe.paramsJson), &um);
     node.setProperty(IDs::cellSeed, (double) (long long) recipe.seed, &um);
@@ -689,7 +696,13 @@ std::vector<ProjectCommands::CellRecipe> AudioEngineCommands::getCells() const
         auto& r = out.emplace_back();
         r.section    = c.getProperty(IDs::cellSection, "").toString().toStdString();
         r.role       = c.getProperty(IDs::cellRole, "").toString().toStdString();
-        r.trackId    = (int) c.getProperty(IDs::cellTrack, -1);
+        // B3: the durable value is the target's STABLE id; the wire keeps the
+        // positional contract, so resolve back to an index here. -1 when the id
+        // no longer resolves — the "targets missing track" sentinel the cell
+        // contract already uses (fillOneCell refuses on it).
+        r.trackId    = HDAW::trackIndexForID(
+                           engine_.getProjectModel().getTrackListTree(),
+                           static_cast<int>(c.getProperty(IDs::cellTrackID, -1)));
         r.sourceKind = c.getProperty(IDs::cellSource, "").toString().toStdString();
         r.paramsJson = c.getProperty(IDs::cellParams, "").toString().toStdString();
         r.seed       = (uint64_t) (long long) (double) c.getProperty(IDs::cellSeed, 0.0);

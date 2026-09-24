@@ -6,6 +6,7 @@
 #include "mcp/McpTools.h"
 #include "mcp/McpTransportLoopback.h"
 #include "frontend/FrontendRouter.h"
+#include "common/TrackIdRefs.h"   // design B3: stable-id folder/cell refs
 #include "mcp/McpJsonRpc.h"
 #include <juce_core/juce_core.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -29,6 +30,36 @@ QJsonObject parseOne(const QByteArray& buf) {
     int nl = buf.indexOf('\n');
     QByteArray line = nl >= 0 ? buf.left(nl) : buf;
     return QJsonDocument::fromJson(line).object();
+}
+
+// ─── design B3: resolve-and-compare helpers ───────────────────────────────
+// Durable refs are stable ids now: a folder's childTrackIDs names children by
+// trackID, a child's parentTrackID names its folder by trackID, and a SONG_PLAN
+// cell's cellTrackID names its target by trackID. Assert on WHICH entity a ref
+// resolves to, never on a raw number (an index is a position, not an identity).
+
+// The name of the track an id currently names; "<none>" when it resolves to
+// nothing (a removed/foreign id).
+std::string nameNamedByID(const juce::ValueTree& trackList, int id)
+{
+    const int idx = HDAW::trackIndexForID(trackList, id);
+    return idx < 0 ? std::string("<none>")
+                   : trackList.getChild(idx).getProperty(IDs::name).toString().toStdString();
+}
+
+// The names a folder claims (its childTrackIDs CSV, resolved in order).
+std::vector<std::string> childNamesOf(const juce::ValueTree& trackList, const juce::ValueTree& folder)
+{
+    std::vector<std::string> names;
+    for (int id : HDAW::parseIDList(folder, IDs::childTrackIDs))
+        names.push_back(nameNamedByID(trackList, id));
+    return names;
+}
+
+// The name a track's parentTrackID names, resolved to the current index.
+std::string parentNameOf(const juce::ValueTree& trackList, const juce::ValueTree& track)
+{
+    return nameNamedByID(trackList, static_cast<int>(track.getProperty(IDs::parentTrackID, -1)));
 }
 
 // Free helpers for export-filter tests (keep these plain functions — lambdas
@@ -462,12 +493,13 @@ TEST_F(McpCoverageTest, RemoveTrackShiftPayloadMatchesRpc) {
     EXPECT_EQ(trackCount(), count - 1);
 }
 
-// ─── Handoff 7 Gate 6 seam: the MCP inline paths apply the SAME fixup ──────
+// ─── Handoff 7 Gate 6 seam: the MCP paths run the SAME command ─────────────
 // remove_track historically spliced INLINE, bypassing the only path that knew
-// about index shifts. It now runs the shared command, and move_track (still
-// inline) runs the shared remapper — both asserted on the LIVE tree after a
-// rebuild (Gate 10), folder refs AND SONG_PLAN cells included.
-TEST_F(McpCoverageTest, RemoveTrackRemapsDurableRefsOnMcpPath) {
+// about index shifts; it now runs the shared command, and move_track runs the
+// same shared command too. Both are asserted on the LIVE tree after a rebuild
+// (Gate 10), folder refs AND SONG_PLAN cells included — and, since refs are
+// stable ids now, asserted by WHAT each ref resolves to, not a raw number.
+TEST_F(McpCoverageTest, RemoveTrackKeepsDurableRefsOnMcpPath) {
     auto& cmds = engine->getProjectCommands();
     // [Track(seed, 0), A(folder, 1), B(2), C(3)] with B and C children of A.
     ASSERT_GE(cmds.addTrack("A", -1, -1, 2), 1);
@@ -501,9 +533,9 @@ TEST_F(McpCoverageTest, RemoveTrackRemapsDurableRefsOnMcpPath) {
     ASSERT_TRUE(cmds.setCellRecipe(cell("onA", 1), &err)) << err;
     ASSERT_TRUE(cmds.setCellRecipe(cell("onB", 2), &err)) << err;
 
-    // MCP removes the folder's MIDDLE child B (index 2): A.childIds drops B
-    // and decrements C's entry; the cell on B sentinel-clears; the payload
-    // reports the single shifted index.
+    // MCP removes the folder's MIDDLE child B (index 2): B's id is PRUNED from
+    // A's childTrackIDs (a dangling id could be reused by the next mint), and
+    // B's cell target is pruned to -1.
     auto r = call("remove_track", {{"trackId", 2}});
     ASSERT_FALSE(isError(r)) << text(r).toStdString();
     const QJsonObject payload = QJsonDocument::fromJson(text(r).toUtf8()).object();
@@ -517,22 +549,26 @@ TEST_F(McpCoverageTest, RemoveTrackRemapsDurableRefsOnMcpPath) {
     auto tl = engine->getProjectModel().getTrackListTree();
     ASSERT_EQ(tl.getNumChildren(), 3);
     EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "Track");
-    EXPECT_EQ(tl.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2");
-    EXPECT_EQ(static_cast<int>(tl.getChild(2).getProperty(IDs::parentId, -1)), 1);
+    // A (index 1) claims exactly C — B's id was pruned; C resolves to A.
+    EXPECT_EQ(childNamesOf(tl, tl.getChild(1)), (std::vector<std::string>{ "C" }));
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(2)), "A");
 
     auto cells = engine->getProjectModel().getTree()
                      .getChildWithName(IDs::SONG_PLAN).getChildWithName(IDs::CELLS);
     ASSERT_EQ(cells.getNumChildren(), 3);
-    EXPECT_EQ(static_cast<int>(cells.getChild(0).getProperty(IDs::cellTrack, -1)), 0);
-    EXPECT_EQ(static_cast<int>(cells.getChild(1).getProperty(IDs::cellTrack, -1)), 1);
-    EXPECT_EQ(static_cast<int>(cells.getChild(2).getProperty(IDs::cellTrack, -1)), -1);
+    EXPECT_EQ(nameNamedByID(tl, static_cast<int>(cells.getChild(0).getProperty(IDs::cellTrackID, -1))),
+              "Track") << "the cell on the seed track must still name it";
+    EXPECT_EQ(nameNamedByID(tl, static_cast<int>(cells.getChild(1).getProperty(IDs::cellTrackID, -1))),
+              "A") << "the cell on A must still name A";
+    EXPECT_EQ(static_cast<int>(cells.getChild(2).getProperty(IDs::cellTrackID, -1)), -1)
+        << "the cell on the removed track must be pruned to the -1 sentinel";
 }
 
-// move_track runs the SAME shared command as the RPC route, so the durable-ref
-// fixup is applied to the tree the permutation was derived from. Backward:
-// moving X to the front shifts every index between — without the fixup
-// B.parentId would hand mute/solo to X.
-TEST_F(McpCoverageTest, MoveTrackRemapsDurableRefsOnMcpPath) {
+// move_track runs the SAME shared command as the RPC route. Backward: moving X
+// to the front shifts every index — with stable ids no ref is touched, so
+// B.parentTrackID still names A (with a positional ref a stale 0 would hand
+// mute/solo to X).
+TEST_F(McpCoverageTest, MoveTrackKeepsDurableRefsOnMcpPath) {
     auto& cmds = engine->getProjectCommands();
     // Drop the fixture's seed track (no folder/cell refs on it) so the
     // scenario is exactly [A(folder, 0), B(child, 1), X(2)].
@@ -553,21 +589,16 @@ TEST_F(McpCoverageTest, MoveTrackRemapsDurableRefsOnMcpPath) {
     EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "X");
     EXPECT_EQ(tl.getChild(1).getProperty(IDs::name).toString().toStdString(), "A");
     EXPECT_EQ(tl.getChild(2).getProperty(IDs::name).toString().toStdString(), "B");
-    EXPECT_EQ(tl.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2");
-    EXPECT_EQ(static_cast<int>(tl.getChild(2).getProperty(IDs::parentId, -1)), 1);
+    EXPECT_EQ(childNamesOf(tl, tl.getChild(1)), (std::vector<std::string>{ "B" }));
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(2)), "A");
 
     // ── Forward move, the mirror case ──────────────────────────────────────
     // Scene, rebuilt identically before each surface runs it:
-    //   [P0, F(folder -> childIds "2"), K(parentId 1), G(folder -> "4"),
-    //    M(parentId 3), Q]  plus a SONG_PLAN cell on P0 and one on Q.
+    //   [P0, F(folder -> names K), K(parent A=F), G(folder -> M), M(parent=G),
+    //    Q]  plus a SONG_PLAN cell on P0 and one on Q.
     // Moving P0 FORWARD to newIndex 3 must give [F, K, P0, G, M, Q] on both
-    // surfaces, with F.childIds -> "1" (K followed its folder), K.parentId -> 0,
-    // G.childIds "4"/M.parentId 3 still landing on G/M at index 3/4, and the
-    // cells still landing on P0 (index 2) and Q (index 5).
-    // The old inline MCP splice inserted P0 at the un-decremented index 3
-    // (order [F, K, G, P0, M, Q]) AND ran this same permutation on that
-    // mismatched tree: M.parentId then resolved to P0 (wrong-track mute/solo
-    // cascade) and P0's cellTrack 0 resolved to G (wrong-track cell fill).
+    // surfaces, with every durable ref still resolving to the SAME entity:
+    // F -> K, K -> F, G -> M, M -> G, and the cells still targeting P0 and Q.
     ProjectCommands::SongPlanData plan;
     plan.bpm = 120.0;
     plan.keyRoot = 0;
@@ -606,12 +637,15 @@ TEST_F(McpCoverageTest, MoveTrackRemapsDurableRefsOnMcpPath) {
         EXPECT_TRUE(cmds.setCellRecipe(cellOn("onQ", 5), &cellErr)) << cellErr;
     };
 
-    // Reads the LIVE tree, not the ReadModel: order, folder links and cells.
+    // Reads the LIVE tree, not the ReadModel: order plus each durable ref
+    // RESOLVED to the entity it names. A raw index can stay numerically
+    // identical while meaning a different track (the old positional M.parentId
+    // 3 resolved to P0 under the mismatched forward splice).
     struct Snapshot {
         std::vector<std::string> names;
-        std::vector<std::string> childIds;
-        std::vector<int> parentIds;
-        std::vector<int> cellTracks;
+        std::vector<std::vector<std::string>> childNames;  // childTrackIDs, resolved
+        std::vector<std::string> parentNames;              // parentTrackID, resolved
+        std::vector<std::string> cellTargetNames;          // cellTrackID, resolved
     };
     auto snapshotOf = [&]() {
         Snapshot s;
@@ -620,21 +654,15 @@ TEST_F(McpCoverageTest, MoveTrackRemapsDurableRefsOnMcpPath) {
         {
             auto tr = list.getChild(i);
             s.names.push_back(tr.getProperty(IDs::name).toString().toStdString());
-            s.childIds.push_back(tr.getProperty(IDs::childIds, "").toString().toStdString());
-            s.parentIds.push_back(static_cast<int>(tr.getProperty(IDs::parentId, -1)));
+            s.childNames.push_back(childNamesOf(list, tr));
+            s.parentNames.push_back(parentNameOf(list, tr));
         }
         auto cells = engine->getProjectModel().getTree()
                          .getChildWithName(IDs::SONG_PLAN).getChildWithName(IDs::CELLS);
         for (int i = 0; i < cells.getNumChildren(); ++i)
-            s.cellTracks.push_back(static_cast<int>(cells.getChild(i).getProperty(IDs::cellTrack, -1)));
+            s.cellTargetNames.push_back(nameNamedByID(
+                list, static_cast<int>(cells.getChild(i).getProperty(IDs::cellTrackID, -1))));
         return s;
-    };
-    // What a durable ref actually POINTS AT once written back into the list —
-    // the raw index alone can stay numerically identical while meaning a
-    // different track (M.parentId 3 resolved to P0 under the old splice).
-    auto pointedAt = [](const Snapshot& s, int idx) -> std::string {
-        if (idx < 0 || idx >= static_cast<int>(s.names.size())) return "<none>";
-        return s.names[static_cast<size_t>(idx)];
     };
 
     buildScene();
@@ -654,37 +682,29 @@ TEST_F(McpCoverageTest, MoveTrackRemapsDurableRefsOnMcpPath) {
     const std::vector<std::string> forwardOrder{"F", "K", "P0", "G", "M", "Q"};
     ASSERT_EQ(mcpSnap.names, forwardOrder) << "MCP forward-move order";
     EXPECT_EQ(rpcSnap.names, forwardOrder) << "RPC forward-move order";
-    ASSERT_EQ(mcpSnap.childIds.size(), 6u);
-    ASSERT_EQ(mcpSnap.childIds[0], "1") << "F's child K moved 2 -> 1";
-    EXPECT_EQ(pointedAt(mcpSnap, std::stoi(mcpSnap.childIds[0])), "K")
-        << "F's childIds must still name K";
-    EXPECT_EQ(mcpSnap.parentIds[1], 0) << "K.parentId must follow F to 0";
-    EXPECT_EQ(pointedAt(mcpSnap, mcpSnap.parentIds[1]), "F")
-        << "K's parentId must still name F";
-    EXPECT_EQ(mcpSnap.parentIds[4], 3);
-    EXPECT_EQ(pointedAt(mcpSnap, mcpSnap.parentIds[4]), "G")
-        << "M's parentId must still name G, not the track it jumped";
-    ASSERT_EQ(mcpSnap.childIds[3], "4") << "G (now index 3) still lists its child M";
-    EXPECT_EQ(pointedAt(mcpSnap, std::stoi(mcpSnap.childIds[3])), "M")
-        << "G's childIds must still name M";
-    ASSERT_EQ(mcpSnap.cellTracks.size(), 2u);
-    EXPECT_EQ(pointedAt(mcpSnap, mcpSnap.cellTracks[0]), "P0")
-        << "the cell on the moved track must follow it to its new index";
-    EXPECT_EQ(pointedAt(mcpSnap, mcpSnap.cellTracks[1]), "Q")
+    ASSERT_EQ(mcpSnap.childNames.size(), 6u);
+    EXPECT_EQ(mcpSnap.childNames[0], (std::vector<std::string>{ "K" }))
+        << "F's childTrackIDs must still name K";
+    EXPECT_EQ(mcpSnap.parentNames[1], "F")
+        << "K's parentTrackID must still name F";
+    EXPECT_EQ(mcpSnap.parentNames[4], "G")
+        << "M's parentTrackID must still name G, not the track it jumped";
+    EXPECT_EQ(mcpSnap.childNames[3], (std::vector<std::string>{ "M" }))
+        << "G (now index 3) must still list its child M";
+    ASSERT_EQ(mcpSnap.cellTargetNames.size(), 2u);
+    EXPECT_EQ(mcpSnap.cellTargetNames[0], "P0")
+        << "the cell on the moved track must still target P0";
+    EXPECT_EQ(mcpSnap.cellTargetNames[1], "Q")
         << "Q did not move, so its cell must still name Q";
 
     ASSERT_EQ(rpcSnap.names, mcpSnap.names)
         << "forward move must leave the same order on both surfaces";
-    ASSERT_EQ(rpcSnap.childIds, mcpSnap.childIds)
-        << "folder childIds must match across surfaces";
-    ASSERT_EQ(rpcSnap.parentIds, mcpSnap.parentIds)
-        << "parentId must match across surfaces";
-    ASSERT_EQ(rpcSnap.cellTracks, mcpSnap.cellTracks)
-        << "SONG_PLAN cellTrack must match across surfaces";
-    for (size_t i = 0; i < rpcSnap.cellTracks.size(); ++i)
-        EXPECT_EQ(pointedAt(rpcSnap, rpcSnap.cellTracks[i]),
-                  pointedAt(mcpSnap, mcpSnap.cellTracks[i]))
-            << "cell " << i << " must point at the same track on both surfaces";
+    ASSERT_EQ(rpcSnap.childNames, mcpSnap.childNames)
+        << "every folder link must resolve to the same tracks across surfaces";
+    ASSERT_EQ(rpcSnap.parentNames, mcpSnap.parentNames)
+        << "every parentTrackID must resolve to the same track across surfaces";
+    ASSERT_EQ(rpcSnap.cellTargetNames, mcpSnap.cellTargetNames)
+        << "every SONG_PLAN cell must target the same track across surfaces";
 }
 
 TEST_F(McpCoverageTest, DuplicateTrack) {
@@ -766,9 +786,10 @@ TEST_F(McpCoverageTest, SetTrackWritesTheSixNewPropertiesOnLiveTree) {
 
 // ─── The two folder moves MCP gained (2026-09-23) ─────────────────────────
 // move_track_into_folder / move_track_out_of_folder were RPC-only, so an agent
-// could not group tracks at all. Folder membership is a PAIR of positional refs
-// (the folder's childIds CSV + the child's parentId); the assertions below are on
-// the LIVE tree after a drain, and both surfaces are driven over the same scene.
+// could not group tracks at all. Folder membership is a PAIR of STABLE-id refs
+// (the folder's childTrackIDs + the child's parentTrackID); the assertions below
+// resolve each ref to the entity it names, on the LIVE tree after a drain, and
+// both surfaces are driven over the same scene.
 TEST_F(McpCoverageTest, FolderMoveToolsLandOnLiveTree) {
     auto& cmds = engine->getProjectCommands();
     // [Track(seed, 0), Folder(1, trackType 2), Child(2)].
@@ -780,15 +801,14 @@ TEST_F(McpCoverageTest, FolderMoveToolsLandOnLiveTree) {
 
     auto tl = engine->getProjectModel().getTrackListTree();
 
-    // MCP in: both refs move together.
+    // MCP in: both halves of the membership pair move together.
     const QJsonObject into{ {"trackId", child}, {"folderId", folder} };
     auto inR = call("move_track_into_folder", into);
     ASSERT_FALSE(isError(inR)) << text(inR).toStdString();
     EXPECT_EQ(text(inR).trimmed().toStdString(), "ok");
     engine->drainPendingRoutingRebuild();
-    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(),
-              std::to_string(child));
-    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), folder);
+    EXPECT_EQ(childNamesOf(tl, tl.getChild(folder)), (std::vector<std::string>{ "Child" }));
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(child)), "Folder");
 
     // RPC out: the route mutates the same tree (the tool would be a second
     // implementation of the same membership write).
@@ -797,8 +817,8 @@ TEST_F(McpCoverageTest, FolderMoveToolsLandOnLiveTree) {
     ASSERT_FALSE(outRpc.isError)
         << outRpc.payload.toObject().value("message").toString().toStdString();
     engine->drainPendingRoutingRebuild();
-    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(), "");
-    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), -1);
+    EXPECT_TRUE(childNamesOf(tl, tl.getChild(folder)).empty());
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(child)), "<none>");
 
     // MCP out again (now a NO-OP — the track has no parent) and RPC in: the
     // final state is the folder holding the child, whichever surface wrote it.
@@ -808,9 +828,8 @@ TEST_F(McpCoverageTest, FolderMoveToolsLandOnLiveTree) {
     ASSERT_FALSE(inRpc.isError)
         << inRpc.payload.toObject().value("message").toString().toStdString();
     engine->drainPendingRoutingRebuild();
-    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(),
-              std::to_string(child));
-    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), folder);
+    EXPECT_EQ(childNamesOf(tl, tl.getChild(folder)), (std::vector<std::string>{ "Child" }));
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(child)), "Folder");
 }
 
 // ============================================================================

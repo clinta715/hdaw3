@@ -28,6 +28,7 @@
 
 #include "engine/AudioEngine.h"
 #include "frontend/FrontendRouter.h"
+#include "common/TrackIdRefs.h"   // design B3: stable-id folder refs
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
 #include "model/ProjectModel.h"
@@ -36,6 +37,29 @@
 #include <string>
 
 namespace {
+
+// ─── design B3: resolve-and-compare helpers ───────────────────────────────
+// A folder's childTrackIDs / a child's parentTrackID hold stable trackIDs; the
+// tests assert WHICH entity each ref resolves to, never a raw number.
+std::string nameNamedByID(const juce::ValueTree& trackList, int id)
+{
+    const int idx = HDAW::trackIndexForID(trackList, id);
+    return idx < 0 ? std::string("<none>")
+                   : trackList.getChild(idx).getProperty(IDs::name).toString().toStdString();
+}
+
+std::vector<std::string> childNamesOf(const juce::ValueTree& trackList, const juce::ValueTree& folder)
+{
+    std::vector<std::string> names;
+    for (int id : HDAW::parseIDList(folder, IDs::childTrackIDs))
+        names.push_back(nameNamedByID(trackList, id));
+    return names;
+}
+
+std::string parentNameOf(const juce::ValueTree& trackList, const juce::ValueTree& track)
+{
+    return nameNamedByID(trackList, static_cast<int>(track.getProperty(IDs::parentTrackID, -1)));
+}
 
 class AddFxParityTest : public ::testing::Test {
 protected:
@@ -380,8 +404,9 @@ TEST_F(AddFxParityTest, SetTrackPropertiesMirrorRouteArgumentNames) {
 // move_track_into_folder / move_track_out_of_folder had no MCP twin at all, so
 // an agent could not group tracks. The SAME argument object drives both
 // surfaces, and the assertion is on the LIVE tree — folder membership is a PAIR
-// of positional refs (the folder's childIds CSV and the child's parentId), so a
-// surface that only set one of them would still pass a "the call returned" test.
+// of STABLE-id refs (the folder's childTrackIDs and the child's parentTrackID),
+// so a surface that only set one of them would still pass a "the call returned"
+// test. Each ref is resolved to the track it names, never compared as a number.
 TEST_F(AddFxParityTest, FolderMoveTwinsShareArgumentObjectAndTreeEffect) {
     auto& cmds = engine->getProjectCommands();
     const int folder = cmds.addTrack("Folder", -1, -1, 2);   // trackType 2 = folder
@@ -397,9 +422,8 @@ TEST_F(AddFxParityTest, FolderMoveTwinsShareArgumentObjectAndTreeEffect) {
     engine->drainPendingRoutingRebuild();
 
     auto tl = engine->getProjectModel().getTrackListTree();
-    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(),
-              std::to_string(child));
-    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), folder);
+    EXPECT_EQ(childNamesOf(tl, tl.getChild(folder)), (std::vector<std::string>{ "Child" }));
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(child)), "Folder");
     // Payload-less mutation: text "ok" on MCP, Null on the route.
     EXPECT_EQ(mcpText("move_track_into_folder", intoArgs).trimmed().toStdString(), "ok");
     EXPECT_TRUE(rpc("project.moveTrackIntoFolder", intoArgs).payload.isNull());
@@ -410,10 +434,9 @@ TEST_F(AddFxParityTest, FolderMoveTwinsShareArgumentObjectAndTreeEffect) {
     EXPECT_FALSE(rpc("project.moveTrackOutOfFolder", outArgs).isError);
     engine->drainPendingRoutingRebuild();
 
-    // The folder-less sentinel is -1 on both refs (the vocabulary
-    // AudioEngineCommands_Helpers.h documents).
-    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(), "");
-    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), -1);
+    // After the move-out the folder claims nothing and the child is folder-less.
+    EXPECT_TRUE(childNamesOf(tl, tl.getChild(folder)).empty());
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(child)), "<none>");
     EXPECT_EQ(mcpText("move_track_out_of_folder", outArgs).trimmed().toStdString(), "ok");
     EXPECT_TRUE(rpc("project.moveTrackOutOfFolder", outArgs).payload.isNull());
 }
@@ -744,16 +767,20 @@ TEST_F(AddFxParityTest, FolderMoveAcceptsStableIds) {
     EXPECT_FALSE(mcpIsError("move_track_into_folder", intoById))
         << mcpText("move_track_into_folder", intoById).toStdString();
     engine->drainPendingRoutingRebuild();
-    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(),
-              std::to_string(child));
-    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), folder);
+    // The membership pair lands by identity: the folder's childTrackIDs carries
+    // the child's trackID, the child's parentTrackID the folder's trackID — and
+    // each resolves back to the track it names.
+    EXPECT_EQ(childNamesOf(tl, tl.getChild(folder)), (std::vector<std::string>{ "Child" }));
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(child)), "Folder");
+    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentTrackID, -1)), folderID);
 
     // The route mutates the same membership from the same object.
     EXPECT_FALSE(rpc("project.moveTrackOutOfFolder",
                      QJsonObject{ { "trackID", childID } }).isError);
     engine->drainPendingRoutingRebuild();
-    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(), "");
-    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), -1);
+    EXPECT_TRUE(childNamesOf(tl, tl.getChild(folder)).empty());
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(child)), "<none>");
+    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentTrackID, -1)), -1);
 
     // A disagreement between the two spellings is refused, and the folder is
     // still empty afterwards (a silent pick would have re-parented the child).
@@ -774,8 +801,8 @@ TEST_F(AddFxParityTest, FolderMoveAcceptsStableIds) {
                            QJsonObject{ { "trackID", childID }, { "folderId", notTheFolder },
                                         { "folderID", folderID } }));
     engine->drainPendingRoutingRebuild();
-    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(), "");
-    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), -1)
+    EXPECT_TRUE(childNamesOf(tl, tl.getChild(folder)).empty());
+    EXPECT_EQ(parentNameOf(tl, tl.getChild(child)), "<none>")
         << "a refused folder move must not re-parent the child";
 }
 

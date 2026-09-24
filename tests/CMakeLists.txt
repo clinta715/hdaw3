@@ -164,6 +164,7 @@ add_executable(hdaw_tests
     unit/engine/file_library_patch_test.cpp
     unit/engine/library_clusterer_test.cpp
     unit/engine/cluster_preset_store_test.cpp
+    unit/engine/durable_ref_migration_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
     unit/common/param_verity_math_test.cpp

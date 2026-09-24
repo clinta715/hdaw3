@@ -242,7 +242,7 @@ TEST(TreeDelta, FolderMuteEscalatesToFullSync) {
     ValueTree folder(IDs::TRACK);
     folder.setProperty(IDs::name, "Group", nullptr);
     folder.setProperty(IDs::trackType, 2, nullptr);
-    folder.setProperty(IDs::childIds, "1", nullptr);
+    folder.setProperty(IDs::childTrackIDs, "1", nullptr);
     folder.addChild(ValueTree(IDs::CLIP_LIST), -1, nullptr);
 
     TreeDeltaAccumulator acc;
@@ -254,7 +254,7 @@ TEST(TreeDelta, FolderSoloEscalatesToFullSync) {
     ValueTree folder(IDs::TRACK);
     folder.setProperty(IDs::name, "Group", nullptr);
     folder.setProperty(IDs::trackType, 2, nullptr);
-    folder.setProperty(IDs::childIds, "1", nullptr);
+    folder.setProperty(IDs::childTrackIDs, "1", nullptr);
     folder.addChild(ValueTree(IDs::CLIP_LIST), -1, nullptr);
 
     TreeDeltaAccumulator acc;

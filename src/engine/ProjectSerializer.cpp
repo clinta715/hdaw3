@@ -1,4 +1,5 @@
 #include "ProjectSerializer.h"
+#include "DurableRefMigration.h"
 #include "MainAudioProcessor.h"
 #include "TrackFXSlot.h"
 #include "common/Version.h"
@@ -177,6 +178,17 @@ bool ProjectSerializer::load(ProjectModel& model, const juce::File& file)
     // carries (the walk skips an entity that already has one). Runs with the
     // sibling scans, before the tree is observable, and never as an undo step.
     model.scanAndSyncTrackIDs();
+
+    // Durable references move from TRACK_LIST indices to stable track ids (B3).
+    // MUST run AFTER scanAndSyncTrackIDs: the legacy `parentId` / `childIds` /
+    // `cellTrack` values are indices, and they can only be translated into ids
+    // once every track in the list actually owns its `trackID` — a pre-B1 file
+    // has none until the backfill above mints them. It must NOT live in
+    // migrateProjectTree, which runs before clearUndoHistory AND before the id
+    // backfill (at that point the ids do not exist yet). nullptr undo manager:
+    // this is a load-time format upgrade, never undoable, and it is idempotent
+    // (a tree that already speaks ids is left alone).
+    HDAW::migrateDurableRefsToIDs(model.getTree());
 
     // Never auto-play on load — clear any stale isPlaying/position that
     // may have been serialized from a project that was playing on save.

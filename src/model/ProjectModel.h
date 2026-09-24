@@ -25,7 +25,12 @@ namespace IDs {
     DECLARE_ID(CELL)
     DECLARE_ID(cellSection)
     DECLARE_ID(cellRole)
-    DECLARE_ID(cellTrack)
+    DECLARE_ID(cellTrack)   // legacy: positional TRACK_LIST index. B3 storage
+                            // no longer writes it — only the load-time
+                            // migration (slice S2) reads it.
+    // B3 (design 2026-09-23): the cell's target track as a STABLE trackID
+    // (IDs::trackID), -1 = no target. Replaces positional cellTrack.
+    DECLARE_ID(cellTrackID)
     DECLARE_ID(cellSource)
     DECLARE_ID(cellParams)
     DECLARE_ID(cellSeed)
@@ -168,6 +173,14 @@ namespace IDs {
     DECLARE_ID(trackID)
     DECLARE_ID(sendID)
 
+    // Durable track references as STABLE ids (design B3, 2026-09-23), replacing
+    // the positional parentId / childIds below: an index is a POSITION, so every
+    // splice renumbered it and an index-remap walk had to patch it up.
+    // B3: parent folder's STABLE trackID, -1 = folder-less.
+    DECLARE_ID(parentTrackID)
+    // B3: CSV of child tracks' STABLE trackIDs (folder tracks, trackType 2, only).
+    DECLARE_ID(childTrackIDs)
+
     // Per-track FX chain
     DECLARE_ID(FX_CHAIN)
     DECLARE_ID(FX_SLOT)
@@ -231,6 +244,9 @@ namespace IDs {
     // Track UI state
     DECLARE_ID(trackHeight)
     DECLARE_ID(trackType)
+    // Legacy positional folder refs — B3 storage no longer writes these
+    // (childTrackIDs / parentTrackID above do); only the load-time migration
+    // (slice S2) reads them.
     DECLARE_ID(childIds)
     DECLARE_ID(parentId)
     DECLARE_ID(isCollapsed)
