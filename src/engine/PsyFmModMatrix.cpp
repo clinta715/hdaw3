@@ -54,7 +54,8 @@ void PsyFmModMatrix::apply (const PsyFmModSourcePool& sources,
                              const float baseRatios[6], float baseFeedback,
                              float outRatios[6], float& outFeedback)
 {
-    // Reset to base values (feedback includes the track-level LFO offset)
+    // Reset to base values (feedbackOffset is an additive offset on the base
+    // feedback, applied by the line below)
     for (int i = 0; i < 6; ++i)
         outRatios[i] = baseRatios[i];
     outFeedback = std::clamp (baseFeedback + sources.feedbackOffset, 0.0f, 1.0f);

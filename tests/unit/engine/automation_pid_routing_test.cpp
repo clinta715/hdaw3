@@ -1025,3 +1025,109 @@ TEST(AutomationSendBusPids, RemoveSendUndoRestoresSendAndLfoTargetsTogether)
     EXPECT_EQ(lfoTargetPidOf(engine, 0, 0), 2000) << "the parked LFO target is restored";
     EXPECT_EQ(lfoTargetPidOf(engine, 0, 1), 2001) << "the shifted LFO target is restored";
 }
+
+// ── Retired FM pid trap (300..308) ─────────────────────────────────────────
+// Track.cpp used to carry a legacy "FM modulation" branch for pids 300..308
+// (the deleted FM pid table in ModulationManager.h) that wrote a psy_fm
+// slot's mod-source pool — feedbackOffset for 306, modWheelValue for 300..305.
+// That branch was UNREACHABLE: the >=100 audio-FX compound is tested FIRST and
+// claims 300..308 (si = (pid-100)/100, pi = (pid-100)%100), so 306 has always
+// meant "audio fx slot 2, param 6" — never OP6Feedback. The branch is now
+// deleted (2026-09-23, docs/adr-automation-model.md); this test pins the
+// surviving decode on the LIVE processors: an LFO with targetParamID 306 must
+// drive fxChain[2] param 6 — here a psy_fm slot's Feedback BASE param, the
+// address the pid actually names — and must leave the mod-source pool's
+// feedbackOffset/modWheelValue untouched (grep proves nothing else in src/
+// writes either field, so a write here could only come from a revived trap).
+TEST(AutomationPidRouting, LfoTarget306DrivesTrackFxSlot2Param6NotFmPool)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    cmds.addFxSlot(0, "psy_fm");  // slot 0 — the FIRST psy_fm slot: a revived
+                                  // trap (which scanned the chain for the first
+                                  // psy_fm) would write THIS slot's pool
+    cmds.addFxSlot(0, "filter");  // slot 1 — must stay untouched
+    cmds.addFxSlot(0, "psy_fm");  // slot 2 — the slot pid 306 names (param 6)
+    cmds.addLfo(0);
+    // Unipolar square, depth 0.5, targeting 306. Kept DISABLED until after the
+    // rebuild: rebuildRoutingGraph's scratch processBlock drive (lesson 21)
+    // runs the modulation loop and an enabled LFO would pre-saturate the target.
+    cmds.setLfoParam(0, 0, "enabled", 0.0);
+    cmds.setLfoParam(0, 0, "waveform", 3.0);
+    cmds.setLfoParam(0, 0, "depth", 0.5);
+    cmds.setLfoParam(0, 0, "targetParamID", 306.0);
+
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 3);
+    auto* slot0 = track->getFXChain().at(0).get();
+    auto* slot1 = track->getFXChain().at(1).get();
+    auto* slot2 = track->getFXChain().at(2).get();
+    ASSERT_NE(slot0, nullptr);
+    ASSERT_NE(slot1, nullptr);
+    ASSERT_NE(slot2, nullptr);
+    ASSERT_EQ(slot0->getType().toStdString(), "psy_fm");
+    ASSERT_EQ(slot1->getType().toStdString(), "filter");
+    ASSERT_EQ(slot2->getType().toStdString(), "psy_fm");
+    auto* psyFm0 = slot0->psyFmEngine();
+    auto* psyFm2 = slot2->psyFmEngine();
+    ASSERT_NE(psyFm0, nullptr);
+    ASSERT_NE(psyFm2, nullptr);
+
+    // Live modulation source carries the pid verbatim (Track probe, not the
+    // ValueTree) — the same decode the retired branch keyed off.
+    ASSERT_EQ(track->getNumModulations(), 1);
+    EXPECT_EQ(track->getModulationSourceParamID(0), 306)
+        << "rebuilt LFO source must carry targetParamID 306 verbatim";
+
+    // Baselines AFTER the rebuild, BEFORE the LFO runs: psy_fm param 6
+    // (Feedback, def [0,1] default 0.0) and the other slots' param 0 (a
+    // non-target address on each — slot 0 OP1 Ratio, slot 1 Cutoff).
+    const float base = slot2->getAutomationParam(6);
+    const float slot0Base = slot0->getAutomationParam(0);
+    const float slot1Base = slot1->getAutomationParam(0);
+    auto& pool0 = psyFm0->getModSourcePool();
+    auto& pool2 = psyFm2->getModSourcePool();
+
+    // Enable the LFO: tree write -> MODULATION listener -> rebuildModulation
+    // re-reads enabled=true onto the live source.
+    cmds.setLfoParam(0, 0, "enabled", 1.0);
+    ASSERT_EQ(track->getModulationSourceParamID(0), 306);
+
+    FixedPlayHead ph;
+    ph.setTimeSeconds(0.0);
+    track->setPlayHead(&ph);
+    juce::AudioBuffer<float> silent(2, kBlock);
+    juce::MidiBuffer midi;
+    track->processBlock(silent, midi);
+
+    const float after = slot2->getAutomationParam(6);
+
+    // 306 = 100 + slot 2 * 100 + param 6: the track-FX compound claims the pid
+    // first, so the LFO drives that slot's param 6 (the unipolar square pushes
+    // the normalized [0,1] param up).
+    EXPECT_GT(after, base) << "LFO target 306 must modulate live fxChain[2] param 6";
+    EXPECT_NE(after, base);
+    // Only the named address moved: no other slot's param did.
+    EXPECT_FLOAT_EQ(slot0->getAutomationParam(0), slot0Base)
+        << "pid 306 names slot 2, not slot 0";
+    EXPECT_FLOAT_EQ(slot1->getAutomationParam(0), slot1Base)
+        << "pid 306 names slot 2, not slot 1";
+    // ... and it did NOT reach ANY psy_fm mod-source pool: the retired branch
+    // wrote feedbackOffset (306) / modWheelValue (300..305) on the first psy_fm
+    // slot it found, and neither field has a writer left in src/.
+    EXPECT_FLOAT_EQ(pool0.feedbackOffset, 0.0f)
+        << "the first psy_fm slot's pool must stay untouched by a track-level LFO";
+    EXPECT_FLOAT_EQ(pool2.feedbackOffset, 0.0f)
+        << "pid 306 is the track-FX compound address (slot 2 param 6), not the "
+           "retired OP6Feedback target";
+    EXPECT_FLOAT_EQ(pool2.modWheelValue, 0.0f)
+        << "the retired ratio-target pool write (300..305) must stay gone";
+}

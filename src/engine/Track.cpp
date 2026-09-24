@@ -729,9 +729,7 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                         modPan = modVal;
                     // New ranges FIRST (Gate 2) — same order as the record /
                     // lane-apply sites above: >=3000 bus, then >=2000 send,
-                    // both before >=1000 (the FM 300-308 branch further down
-                    // is untouched — its pre-existing shadowing by >=100 stays
-                    // out of scope).
+                    // both before >=1000.
                     else if (pid >= 3000)
                     {
                         if (auto* bus = busForPid((pid - 3000) / 8))
@@ -772,48 +770,14 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                                 juce::jlimit(0.0f, 1.0f, base + modVal));
                         }
                     }
-                    else if (pid >= FmModParamIDs::FirstFmParam && pid <= FmModParamIDs::LastFmParam)
-                    {
-                        // FM modulation targets — apply to PsyFm engine in the FX chain.
-                        // Find the first PsyFm slot on this track.
-                        for (auto& slot : fxChain)
-                        {
-                            if (slot && slot->getType() == "psy_fm")
-                            {
-                                auto* psyFm = slot->psyFmEngine();
-                                if (psyFm)
-                                {
-                                    auto& pool = psyFm->getModSourcePool();
-                                    switch (pid)
-                                    {
-                                        case FmModParamIDs::Op1Ratio:
-                                        case FmModParamIDs::Op2Ratio:
-                                        case FmModParamIDs::Op3Ratio:
-                                        case FmModParamIDs::Op4Ratio:
-                                        case FmModParamIDs::Op5Ratio:
-                                        case FmModParamIDs::Op6Ratio:
-                                        {
-                                            // Modulate ratio via the mod source pool's mod wheel value
-                                            // (the matrix routes modWheel → OpNRatio)
-                                            pool.modWheelValue = juce::jlimit(-1.0f, 1.0f, modVal);
-                                            break;
-                                        }
-                                        case FmModParamIDs::Op6Feedback:
-                                            pool.feedbackOffset = juce::jlimit(-1.0f, 1.0f, modVal) * 0.5f;
-                                            break;
-                                        case FmModParamIDs::OutputLevel:
-                                            psyFm->setOutputLevel(juce::jlimit(0.0f, 1.0f, 0.4f + modVal * 0.3f));
-                                            break;
-                                        case FmModParamIDs::RatioSweepRate:
-                                            pool.ratioSweepLFORateHz = 0.1f + modVal * 5.0f;
-                                            break;
-                                        default: break;
-                                    }
-                                }
-                                break; // apply to first psy_fm slot only
-                            }
-                        }
-                    }
+                    // pids 300..308 are NOT FM targets: the >=100 audio-FX
+                    // compound above claims them first (306 = slot 2 param 6).
+                    // The legacy FM pid table (300..308) branch that wrote a
+                    // psy_fm slot's mod-source pool here could never run — it
+                    // was shadowed by >=100 for every input — and was deleted
+                    // 2026-09-23 (docs/adr-automation-model.md). FM destinations
+                    // are reachable only through a psy_fm slot's own params or
+                    // psy_fm_set_mod_route.
                 }
             }
 

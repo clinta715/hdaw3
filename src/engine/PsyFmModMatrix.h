@@ -11,7 +11,7 @@ struct PsyFmModSourcePool
     float feedbackLFORateHz   = 0.1f;
     float modWheelValue = 0.0f;
     float velocityValue = 0.0f;
-    float feedbackOffset = 0.0f;  // additive feedback offset (track-level LFO target 306)
+    float feedbackOffset = 0.0f;  // additive offset on the base feedback (read by PsyFmModMatrix::apply)
 
     void advanceControlRate (int numSamples, double sampleRate);
     float getSourceValue (int sourceIndex) const;

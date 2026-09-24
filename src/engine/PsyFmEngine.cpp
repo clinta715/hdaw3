@@ -20,9 +20,11 @@ void PsyFmEngine::prepare (double sampleRate, int maxBlockSize)
         buf.resize (static_cast<size_t> (maxBlockSize), 0.0f);
     carrierMixBuffer_.resize (static_cast<size_t> (maxBlockSize), 0.0f);
 
-    // Default matrix route: feedback LFO undulates Op6 feedback, so the
-    // track-level LFO target 306 (feedbackOffset) always has audible effect
-    // even when no explicit route was configured.
+    // Default matrix route: the feedback LFO undulates Op6 feedback, so a
+    // psy_fm slot has audible feedback movement even when no explicit route
+    // was configured. THIS route is what moves the feedback — the retired
+    // track-level "LFO target 306" never reached the engine (pid 306 is the
+    // >=100 audio-FX compound's slot 2 param 6).
     if (matrix_.getRoutes().empty())
         matrix_.addRoute ({ PsyFmModRoute::Source::FeedbackLFO,
                             PsyFmModRoute::Dest::Op6Feedback, 0.35f });
