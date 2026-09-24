@@ -57,21 +57,36 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   changed: a non-zero port behaves exactly as before, and disabling with 0 is still an
   error. **No test in the suite drives a fixed port any more**, so "free the port
   first" is no longer part of any failure diagnosis here.
-- **A sandboxed shell denies `%TEMP%` writes — and that looks exactly like a broken
-  save/export (measured 2026-09-24).** When the test binary is launched by a sandboxed
-  agent shell, `%TEMP%` writes fail with `Access is denied` for the child process while
-  the *shell itself* can write there, and while the project directory stays writable.
-  Symptom: every file-writing test fails at once — `ProjectMetadata.*`,
-  `SongCells.CellsPersistAcrossSaveLoad`, `BusSendRpcTest.ListBusesMatchesMcpAndTheSavedProject`,
-  `McpCoverageTest.ExportAudioTrackIdsFiltersTracks`, `MatrixRpcParityTest.*` — with
-  `cmds.saveProject(...)` returning false, plus a stray `HDAW: Failed to open debug log
-  file` on stderr (the same denial hits the log). It is NOT a code failure:
-  `ProjectSerializer::save` is untouched by such a session, and a probe shows
-  `File::create()` → `Access is denied.` for `%TEMP%` and `ok` for the repo directory.
-  **Fix: point TEMP/TMP at a directory inside the working tree for the run**, e.g.
-  `set TEMP=D:\pdf\roo projects\hdaw3\.tmp_test & set TMP=%TEMP% & build\hdaw_tests.exe
-  --gtest_filter=…` — the same 172-test set that reported 15 failures passed 172/172
-  that way. Re-run those suites this way before blaming a change.
+- **A sandboxed agent shell denies a child process' writes OUTSIDE the working tree — and that
+  looks exactly like broken save/export/settings (measured 2026-09-24).** When `hdaw_tests.exe` is
+  launched by a sandboxed agent shell, the child's writes to `%TEMP%`, `%APPDATA%` and (observed)
+  `QSettings` are lost or refused while the *shell itself* and the project directory stay fine.
+  Symptoms, all at once, on a build where the code is innocent:
+  - `cmds.saveProject(...)` returns false and stderr shows a stray `HDAW: Failed to open debug log
+    file` (the same denial hits the log). A probe inside `ProjectSerializer::save` proves it:
+    `File::create()` on `%TEMP%` → **`Access is denied.`**, on the repo directory → `ok`, from the
+    same process.
+  - preset/template tools fail with `failed to write template file:
+    C:\Users\…\AppData\Roaming\HDAW\section-templates\…` (`McpServer.ApplySongPlan`,
+    `SongPlan.TemplateRoundTripDoesNotApply`, `McpCoverageTest.FxChainPresetRoundTrip`,
+    `McpCoverageTest.FxChainPresetRoundTrip`).
+  - QSettings-backed tests fail as if the persisted state were nailed down: the test's own
+    `remove()`/`setValue()` have no effect, so it reads the real machine values
+    (`RaveSettings.UnsetConfigReturnsEmptyValuesAndDefaultTimeout` fails while the repo's
+    `rave/models` keys are present and passes the moment they are deleted by hand;
+    `FrontendServer.SettingsNamespaceExposesMcpHttpConfig` sees the machine's `mcp/httpEnabled`).
+  - The affected set in one 12.8-minute run: `ProjectMetadata.*` (5), `SongCells.CellsPersistAcrossSaveLoad`,
+    `BusSendRpcTest.ListBusesMatchesMcpAndTheSavedProject`, `McpCoverageTest.ExportAudioTrackIdsFiltersTracks`,
+    `MatrixRpcParityTest.*` (5), `RaveSettings.*` (6), `FrontendServer.SettingsNamespaceExposesMcpHttpConfig`,
+    `McpServer.ApplySongPlan`, `SongPlan.TemplateRoundTripDoesNotApply` — plus the standard
+    `PluginIsolation.LargeStateRoundTripThroughProxy` solo-pass flake.
+  **Before blaming a change, re-run the suite with the temp area INSIDE the working tree**:
+  `set TEMP=D:\…\hdaw3\.tmp_suite & set TMP=%TEMP% & powershell -File run-tests-sharded.ps1 -Shards 4`.
+  That converts the `%TEMP%` class (save/export/render) to green immediately — the same focused set
+  went from 15 failures to **172/172**. The `%APPDATA%` (preset/template) and QSettings classes stay
+  red in a sandbox: they are environmental, independent of any session's diff, and the way to confirm
+  is that the failing test passes once its path/keys are made available (clear the keys by hand, or
+  run outside the sandbox) — never by editing the test to expect the sandbox.
 - **`RespawnPath.RealPathPassesThrough` — expectation is now platform-gated**
   (`tests/unit/proxy/crash_recovery_test.cpp:655`). It asserts that
   `PluginManager::resolveRespawnPath("/usr/lib/MyPlugin.clap", …)` returns
