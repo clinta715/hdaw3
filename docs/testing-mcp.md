@@ -46,13 +46,32 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   OS-assigned **ephemeral** port — so it can never collide with a live engine
   holding 18765. `TransportHttp::port()` returns the bound port after a successful
   `start()` on port 0 (asserted by `HttpTransport.StartStopLifecycle`,
-  transport_http_test.cpp:36), and the round-trip URL is built from that port. The
-  one fixed port left in the suite is `McpServer.EngineSettingsStartMcpHttp`, which
-  still drives `mcp/httpPort = 18766` through the real Preferences path
-  (mcp_server_test.cpp:171); fixing that needs production config plumbing, so it is
-  out of scope — if the suite ever fails there, free 18766 first (the 2026-09-22
-  "dev engine holds the port" symptom can now only hit that test, never
-  `HttpRoundTrip`).
+  transport_http_test.cpp:36), and the round-trip URL is built from that port.
+- **`McpServer.EngineSettingsStartMcpHttp` no longer binds a FIXED port (fixed
+  2026-09-23 evening).** It used to drive `mcp/httpPort = 18766` through the real
+  Preferences path, so it failed whenever a live engine held that port. The engine
+  config now supports the ephemeral form end to end: `AudioEngine::setMcpHttpConfig`
+  accepts `port == 0` while ENABLING (0 is never persisted — the bound port is read
+  back from `TransportHttp::port()` after listen and THAT is stored and reported), so
+  the test asks for 0, reads the resolved port and round-trips on it. Nothing else
+  changed: a non-zero port behaves exactly as before, and disabling with 0 is still an
+  error. **No test in the suite drives a fixed port any more**, so "free the port
+  first" is no longer part of any failure diagnosis here.
+- **A sandboxed shell denies `%TEMP%` writes — and that looks exactly like a broken
+  save/export (measured 2026-09-24).** When the test binary is launched by a sandboxed
+  agent shell, `%TEMP%` writes fail with `Access is denied` for the child process while
+  the *shell itself* can write there, and while the project directory stays writable.
+  Symptom: every file-writing test fails at once — `ProjectMetadata.*`,
+  `SongCells.CellsPersistAcrossSaveLoad`, `BusSendRpcTest.ListBusesMatchesMcpAndTheSavedProject`,
+  `McpCoverageTest.ExportAudioTrackIdsFiltersTracks`, `MatrixRpcParityTest.*` — with
+  `cmds.saveProject(...)` returning false, plus a stray `HDAW: Failed to open debug log
+  file` on stderr (the same denial hits the log). It is NOT a code failure:
+  `ProjectSerializer::save` is untouched by such a session, and a probe shows
+  `File::create()` → `Access is denied.` for `%TEMP%` and `ok` for the repo directory.
+  **Fix: point TEMP/TMP at a directory inside the working tree for the run**, e.g.
+  `set TEMP=D:\pdf\roo projects\hdaw3\.tmp_test & set TMP=%TEMP% & build\hdaw_tests.exe
+  --gtest_filter=…` — the same 172-test set that reported 15 failures passed 172/172
+  that way. Re-run those suites this way before blaming a change.
 - **`RespawnPath.RealPathPassesThrough` — expectation is now platform-gated**
   (`tests/unit/proxy/crash_recovery_test.cpp:655`). It asserts that
   `PluginManager::resolveRespawnPath("/usr/lib/MyPlugin.clap", …)` returns
