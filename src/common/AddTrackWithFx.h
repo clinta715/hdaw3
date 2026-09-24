@@ -22,9 +22,11 @@
 //
 // Payload grammar (frozen — the surface twin tests compare it value for value):
 //
-//   shapeAddTrackWithFxJson  {"trackId":3,"routed":1,"fxType":"eq"}
+//   shapeAddTrackWithFxJson  {"trackId":3,"routed":1,"trackID":4,"fxType":"eq"}
 //       Same creation shape as add_track (TrackJson.h), plus `fxType` echoed
 //       because it is INFERRED ("plugin") when only pluginId was given.
+//       `trackID` is the created track's STABLE id (design B1) — an identity
+//       that survives moveTrack/removeTrack, where `trackId` is a position.
 //
 //   the refusal            the pluginId gate's text, verbatim
 //       (HDAW::fxPluginIdError, src/common/FxPluginIdCheck.h) — MCP answers it
@@ -43,6 +45,7 @@ struct AddTrackWithFxResult
     bool ok = true;            // false => `error` carries the shared gate text
     std::string error;         // non-empty exactly when ok == false
     int trackId = -1;          // the new track's TRACK_LIST index
+    int trackID = 0;           // the new track's STABLE id (0 = nothing created)
     int trackCount = 0;        // TRACK_LIST size AFTER the insertion (routed flag)
     std::string fxType;        // echoed; inferred "plugin" when only pluginId was given
 };
@@ -76,6 +79,9 @@ inline AddTrackWithFxResult addTrackWithFx(ProjectModel& model,
     const int idx = model.getTrackListTree().getNumChildren();
 
     juce::ValueTree t(IDs::TRACK);
+    // Stable identity, minted before the node is appended — the same
+    // tree-derived allocator every other TRACK constructor uses (design B1).
+    t.setProperty(IDs::trackID, model.allocateTrackID(), &um);
     t.setProperty(IDs::name, juce::String(name), &um);
     t.setProperty(IDs::volume, 0.85, &um);
     t.setProperty(IDs::pan, 0.0, &um);
@@ -96,6 +102,9 @@ inline AddTrackWithFxResult addTrackWithFx(ProjectModel& model,
         model.addFxSlot(idx, r.fxType, -1, pluginId);
 
     r.trackId = idx;
+    // Read the id back off the node that was just inserted (never re-derived):
+    // the payload then describes the tree the caller asked to mutate.
+    r.trackID = static_cast<int>(t.getProperty(IDs::trackID, 0));
     r.trackCount = model.getTrackListTree().getNumChildren();
     return r;
 }
@@ -105,6 +114,7 @@ inline std::string shapeAddTrackWithFxJson(const AddTrackWithFxResult& r)
 {
     juce::DynamicObject::Ptr o = new juce::DynamicObject();
     o->setProperty("trackId", r.trackId);
+    o->setProperty("trackID", r.trackID);
     o->setProperty("routed", trackRoutedFlag(r.trackId, r.trackCount));
     o->setProperty("fxType", juce::String(r.fxType));
     return juce::JSON::toString(juce::var(o.get()), true).toStdString();

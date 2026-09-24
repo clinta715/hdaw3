@@ -135,6 +135,14 @@ juce::ValueTree AudioEngineCommands::findAutomationLane(int trackIndex, const st
 juce::ValueTree AudioEngineCommands::createTrackValueTree(const std::string& name, int color, int parentBus, int trackType)
 {
     juce::ValueTree track(IDs::TRACK);
+    // Stable identity, minted here because this is the constructor
+    // ProjectCommands::addTrack builds every track with (the path the RPC
+    // project.addTrack route takes). The other creation sites — MCP add_track /
+    // add_track_with_fx, the FxSlot patch probe — build their nodes inline and
+    // stamp IDs::trackID the same way, through this same tree-derived allocator.
+    // The allocator runs BEFORE the caller appends the node, so the new id is
+    // strictly greater than every id already in TRACK_LIST.
+    track.setProperty(IDs::trackID, engine_.getProjectModel().allocateTrackID(), nullptr);
     track.setProperty(IDs::name, juce::String(name), nullptr);
     track.setProperty(IDs::volume, 1.0, nullptr);
     track.setProperty(IDs::pan, 0.0, nullptr);
@@ -478,6 +486,11 @@ ProjectCommands::SendCreateResult AudioEngineCommands::createSend(int trackIndex
     }
 
     juce::ValueTree send(IDs::SEND);
+    // Stable identity, minted before the node joins SEND_LIST (project-wide id
+    // space: max sendID over every track's SEND_LIST + 1). This is the property
+    // sendIndex is missing: removing a send shifts the indices above it, while
+    // sendID is untouched — see scanAndSyncTrackIDs for the legacy backfill.
+    send.setProperty(IDs::sendID, model.allocateSendID(), nullptr);
     send.setProperty(IDs::sendTarget, busTarget, nullptr);
     send.setProperty(IDs::sendLevel, static_cast<double>(clampedLevel), nullptr);
     send.setProperty(IDs::sendMode, juce::String(isPreFader ? "pre" : "post"), nullptr);

@@ -6,6 +6,11 @@
 
 struct TrackSnapshot {
     int index = 0;
+    // Stable identity (design B1), read off the TRACK node's trackID property.
+    // 0 = unassigned (a tree that never saw scanAndSyncTrackIDs / a creation
+    // path that could not mint). `index` stays POSITIONAL — it is the argument
+    // every track command takes and it shifts when a track above is removed.
+    int trackID = 0;
     std::string name;
     int color = 0;
     double volume = 1.0;
@@ -231,6 +236,9 @@ struct InternalFxParamSnapshot {
 
 struct SendSnapshot {
     int sendIndex = 0;
+    // Stable identity (design B1): the SEND node's sendID, untouched by a
+    // removeSend splice, where sendIndex renumbers.
+    int sendID = 0;
     float level = 0.0f;
     bool isPreFader = false;
     bool bypassed = false;

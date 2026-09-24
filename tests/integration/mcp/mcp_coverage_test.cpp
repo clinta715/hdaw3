@@ -4964,4 +4964,45 @@ TEST_F(McpCoverageTest, MasterFxToolsRoundTrip) {
                          .toObject().value("value").toDouble(), 0.0);
 }
 
+// ─── Stable track ids (design B1) on the MCP surface ──────────────────────
+// add_track / duplicate_track answer with `trackID` next to the positional
+// `trackId`, and the number is the TRACK node's own property — the identity a
+// later splice cannot invalidate. A duplicate must not inherit the source's.
+TEST_F(McpCoverageTest, StableTrackIdIsEchoedAndIsNotCopied) {
+    auto& cmds = engine->getProjectCommands();
+    const int src = cmds.addTrack("Src");
+    ASSERT_GE(src, 0);
+    engine->drainPendingRoutingRebuild();
+
+    const auto srcObj = QJsonDocument::fromJson(
+        text(call("add_track", { { "name", "Plain" } })).toUtf8()).object();
+    const int plainIdx = srcObj.value("trackId").toInt(-1);
+    const int plainID = srcObj.value("trackID").toInt(0);
+    ASSERT_GE(plainIdx, 0);
+    ASSERT_GT(plainID, 0) << "add_track must echo the created track's stable id";
+    const auto tl = engine->getProjectModel().getTrackListTree();
+    ASSERT_LT(plainIdx, tl.getNumChildren());
+    EXPECT_EQ(static_cast<int>(tl.getChild(plainIdx).getProperty(IDs::trackID, 0)), plainID)
+        << "the echo is the tree's own value";
+
+    // A duplicate is a NEW entity: fresh id, and the source keeps its own.
+    const auto dupObj = QJsonDocument::fromJson(
+        text(call("duplicate_track", { { "trackId", src } })).toUtf8()).object();
+    const int dupIdx = dupObj.value("trackId").toInt(-1);
+    const int dupID = dupObj.value("trackID").toInt(0);
+    ASSERT_GE(dupIdx, 0);
+    ASSERT_GT(dupID, 0);
+    EXPECT_EQ(static_cast<int>(tl.getChild(dupIdx).getProperty(IDs::trackID, 0)), dupID);
+    EXPECT_NE(dupID, static_cast<int>(tl.getChild(src).getProperty(IDs::trackID, 0)))
+        << "a copied track must not share its source's identity";
+
+    // Removing another track shifts the index and leaves the identity alone.
+    ASSERT_TRUE(cmds.removeTrack(0).ok);
+    engine->drainPendingRoutingRebuild();
+    const int nowIdx = dupIdx - 1;
+    ASSERT_GE(nowIdx, 0);
+    EXPECT_EQ(static_cast<int>(tl.getChild(nowIdx).getProperty(IDs::trackID, 0)), dupID)
+        << "the stable id did not move with the index";
+}
+
 } // namespace

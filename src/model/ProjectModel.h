@@ -155,6 +155,19 @@ namespace IDs {
     DECLARE_ID(parentBus)
     DECLARE_ID(busID)
 
+    // Stable identity ids (design B1, 2026-09-23). A TRACK/SEND node carries one
+    // from the moment it is created, and it is echoed on the wire as trackID /
+    // sendID — the same idea as busID above, for the same reason: tree POSITION
+    // shifts (removeTrack/moveTrack renumber every index above the splice), so an
+    // index is not an identity. Deliberate differences from busID: the case is
+    // `trackID`/`sendID` (stable id) vs the existing `trackId`/`sendIndex`
+    // ARGUMENTS, which keep meaning the positional index (B2 makes the arguments
+    // accept either); the allocator is tree-derived (max existing + 1, floor 1),
+    // never a counter, so an offline render model cannot clobber the live id space;
+    // and 0 always means "unassigned" — scanAndSyncTrackIDs() fills it on load.
+    DECLARE_ID(trackID)
+    DECLARE_ID(sendID)
+
     // Per-track FX chain
     DECLARE_ID(FX_CHAIN)
     DECLARE_ID(FX_SLOT)
@@ -370,6 +383,18 @@ public:
     // source of truth, so a fresh scan can never mint a colliding id after a
     // loadProject() (which a stale counter would).
     int allocateBusID();
+    // Stable TRACK / SEND ids (design B1). Tree-derived exactly like busID —
+    // max existing id in the list + 1, floor 1 — and NEVER a per-instance
+    // counter: a counter is global state that an offline render model resets
+    // (createDefaultProject() -> resetClipIDCounter() clobbered the live
+    // project's id space and reused clip ids; docs/handoffs/
+    // 2026-08-23-test-failures-and-engine-bugs-fixed.md:47-51). A scan of the
+    // list it protects cannot drift, so there is no reset path and no
+    // cross-model hazard. `allocateSendID` is project-wide (one id space across
+    // every track's SEND_LIST) so a send id can never be ambiguous about which
+    // track's send it names. Neither allocator emits 0: an allocated id is >= 1.
+    int allocateTrackID();
+    int allocateSendID();
     juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file);
     juce::ValueTree createMidiClipEmpty(juce::String name, double start, double dur);
     juce::ValueTree createMidiNote(int note, float vel, double start, double dur);
@@ -380,6 +405,14 @@ public:
     static juce::ValueTree createTrackAutomationList();
     void scanAndSyncClipIDs();
     void scanAndSyncNoteIDs();
+    // Backfill for the stable ids: every TRACK without a trackID and every SEND
+    // without a sendID gets one (max seen + 1, so NEVER a duplicate), order and
+    // every other property untouched, entities that already carry an id left
+    // alone. Called from the load path (ProjectSerializer::load, right after
+    // scanAndSyncNoteIDs) and mirrored by the render harness, so a project saved
+    // before B1 — or a tree copied in from another model — comes out of load with
+    // the invariant B1 relies on: every track/send has a non-zero id.
+    void scanAndSyncTrackIDs();
 
     void createDefaultProject();
 

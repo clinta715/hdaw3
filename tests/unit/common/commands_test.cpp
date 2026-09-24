@@ -5,6 +5,10 @@
 #include "engine/MidiClipProcessor.h"
 #include "model/ProjectModel.h"
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 // Zero-track default contract (v0.33+): createDefaultProject() ships an empty
 // TRACK_LIST — tests own their setup. Seed exactly the tracks the test uses
 // (indices 0/1/...) and drain the coalesced routing rebuild so live-processor
@@ -1236,4 +1240,187 @@ TEST(Commands, DuplicateTrackLeavesForeignParentRefAlone)
     // No track grew a childIds property.
     for (int t = 0; t < trackList.getNumChildren(); ++t)
         EXPECT_FALSE(trackList.getChild(t).hasProperty(IDs::childIds));
+}
+
+// ─── Stable track/send ids (design B1) ─────────────────────────────────────
+// An INDEX is not an identity: TRACK_LIST / SEND_LIST positions shift under
+// removeTrack / moveTrack / removeSend, which is why every held or durable
+// reference (and the wire's positional trackId / sendIndex) can go stale. A
+// trackID / sendID is minted at creation from the tree (max existing id + 1,
+// floor 1), echoed on the wire, and NEVER renumbered by a splice.
+
+namespace {
+int trackIdAt(AudioEngine& engine, int index)
+{
+    const auto tl = engine.getProjectModel().getTrackListTree();
+    if (index < 0 || index >= tl.getNumChildren()) return -1;
+    return static_cast<int>(tl.getChild(index).getProperty(IDs::trackID, 0));
+}
+// The index that currently carries `id`, or -1 — how a reference that only knows
+// the identity finds its entity again after a splice (the whole point of B1).
+int indexOfTrackId(AudioEngine& engine, int id)
+{
+    const auto tl = engine.getProjectModel().getTrackListTree();
+    for (int i = 0; i < tl.getNumChildren(); ++i)
+        if (static_cast<int>(tl.getChild(i).getProperty(IDs::trackID, 0)) == id) return i;
+    return -1;
+}
+} // namespace
+
+// G1/G3: the id is stamped at creation, is non-zero, is what the command
+// interface reports, and SURVIVES a reorder and a removal of another track.
+TEST(Commands, StableTrackIDsSurviveMoveAndRemoval)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    const int a = seedTrack(engine, "A");
+    const int b = seedTrack(engine, "B");
+    const int c = seedTrack(engine, "C");
+
+    const int idA = trackIdAt(engine, a);
+    const int idB = trackIdAt(engine, b);
+    const int idC = trackIdAt(engine, c);
+    EXPECT_GT(idA, 0);
+    EXPECT_GT(idB, 0);
+    EXPECT_GT(idC, 0);
+    EXPECT_NE(idA, idB);
+    EXPECT_NE(idB, idC);
+    EXPECT_EQ(cmds.getTrackID(a), idA) << "the command interface reads the same id";
+    EXPECT_EQ(cmds.getTrackID(99), 0) << "an index that names no track reports 0";
+
+    // Reorder: every id follows its track (the index does not).
+    cmds.moveTrack(c, 0);
+    engine.drainPendingRoutingRebuild();
+    EXPECT_EQ(trackIdAt(engine, 0), idC);
+    EXPECT_EQ(trackIdAt(engine, 1), idA);
+    EXPECT_EQ(trackIdAt(engine, 2), idB);
+
+    // Remove one: the survivors keep their ids while their indices shift down.
+    const auto removed = cmds.removeTrack(1);   // A
+    engine.drainPendingRoutingRebuild();
+    EXPECT_TRUE(removed.ok);
+    EXPECT_EQ(indexOfTrackId(engine, idA), -1) << "A's id is gone with A";
+    EXPECT_EQ(indexOfTrackId(engine, idC), 0);
+    EXPECT_EQ(indexOfTrackId(engine, idB), 1) << "the id still names B, not B's old slot";
+}
+
+// G2: ids are unique, and a duplicate is a NEW entity — copy() must not inherit
+// the source's id (two live entities sharing one identity breaks every id-based
+// reference and the allocator's own invariant).
+TEST(Commands, DuplicateGetsAFreshIDAndAllIDsStayUnique)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    const int src = seedTrack(engine, "Source");
+    const int srcID = trackIdAt(engine, src);
+
+    ASSERT_EQ(cmds.createSend(src, 1, 0.5f, false).sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+    const int srcSendID = engine.getReadModel().getTrackSends(src).at(0).sendID;
+    ASSERT_GT(srcSendID, 0);
+
+    const int copyIdx = cmds.duplicateTrack(src);
+    engine.drainPendingRoutingRebuild();
+    ASSERT_GE(copyIdx, 0);
+    const int copyID = trackIdAt(engine, copyIdx);
+    EXPECT_GT(copyID, 0);
+    EXPECT_NE(copyID, srcID) << "the copy must not inherit the source's stable id";
+
+    // The copied SEND is a new entity too.
+    const auto copySends = engine.getReadModel().getTrackSends(copyIdx);
+    ASSERT_EQ(copySends.size(), 1u);
+    EXPECT_GT(copySends[0].sendID, 0);
+    EXPECT_NE(copySends[0].sendID, srcSendID) << "the copied send needs its own id";
+
+    // No two tracks (or sends, project-wide) share an id.
+    const auto tl = engine.getProjectModel().getTrackListTree();
+    std::vector<int> ids;
+    for (int t = 0; t < tl.getNumChildren(); ++t)
+        ids.push_back(static_cast<int>(tl.getChild(t).getProperty(IDs::trackID, 0)));
+    std::sort(ids.begin(), ids.end());
+    EXPECT_EQ(std::adjacent_find(ids.begin(), ids.end()), ids.end()) << "duplicate trackID";
+}
+
+// G5: this is the property sendIndex lacks — removing a send renumbers the ones
+// above it while every surviving send keeps its identity.
+TEST(Commands, SendIDsSurviveRemoveSendWhileSendIndexRenumbers)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine, "S"), 0);
+
+    ASSERT_EQ(cmds.createSend(0, 1, 0.25f, false).sendIndex, 0);   // A
+    ASSERT_EQ(cmds.createSend(0, 1, 0.50f, false).sendIndex, 1);   // B
+    ASSERT_EQ(cmds.createSend(0, 1, 0.75f, false).sendIndex, 2);   // C
+    engine.drainPendingRoutingRebuild();
+
+    auto sends = engine.getReadModel().getTrackSends(0);
+    ASSERT_EQ(sends.size(), 3u);
+    const int idA = sends[0].sendID, idB = sends[1].sendID, idC = sends[2].sendID;
+    ASSERT_GT(idA, 0);
+    EXPECT_NE(idA, idB);
+    EXPECT_NE(idB, idC);
+
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+    engine.drainPendingRoutingRebuild();
+
+    sends = engine.getReadModel().getTrackSends(0);
+    ASSERT_EQ(sends.size(), 2u);
+    EXPECT_EQ(sends[0].sendIndex, 0) << "B renumbers into slot 0 (positional)";
+    EXPECT_EQ(sends[1].sendIndex, 1) << "C renumbers into slot 1";
+    EXPECT_EQ(sends[0].sendID, idB) << "B's identity is untouched by the splice";
+    EXPECT_EQ(sends[1].sendID, idC);
+    EXPECT_EQ(sends[0].level, 0.50f) << "and it is still the same send";
+}
+
+// G4: the load-path backfill. A tree saved before B1 (or copied in from another
+// model) has no ids; scanAndSyncTrackIDs gives every TRACK and SEND one, keeps
+// the order, is idempotent, and never mints a duplicate of an id already present.
+TEST(Commands, ScanAndSyncTrackIDsBackfillsLegacyTrees)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine, "Keep1"), 0);
+    ASSERT_GE(seedTrack(engine, "Keep2"), 0);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.5f, false).sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto& model = engine.getProjectModel();
+    auto tl = model.getTrackListTree();
+    const int keep2ID = static_cast<int>(tl.getChild(1).getProperty(IDs::trackID, 0));
+    ASSERT_GT(keep2ID, 0);
+
+    // Simulate a pre-B1 file: every id gone, one track keeps a foreign high id
+    // (a project that carries ids from a merge must not have them collided with).
+    for (int t = 0; t < tl.getNumChildren(); ++t)
+        tl.getChild(t).removeProperty(IDs::trackID, nullptr);
+    const auto sendList = tl.getChild(0).getChildWithName(IDs::SEND_LIST);
+    ASSERT_TRUE(sendList.isValid());
+    ASSERT_EQ(sendList.getNumChildren(), 1);
+    sendList.getChild(0).removeProperty(IDs::sendID, nullptr);
+    tl.getChild(1).setProperty(IDs::trackID, keep2ID + 40, nullptr);   // foreign high id
+
+    model.scanAndSyncTrackIDs();
+
+    const int id0 = trackIdAt(engine, 0);
+    const int id1 = trackIdAt(engine, 1);
+    EXPECT_GT(id0, 0) << "a legacy track gets an id";
+    EXPECT_EQ(id1, keep2ID + 40) << "an existing id is left exactly as it was";
+    EXPECT_NE(id0, id1) << "the backfill must not mint a colliding id";
+    EXPECT_GT(static_cast<int>(sendList.getChild(0).getProperty(IDs::sendID, 0)), 0)
+        << "the legacy send gets one";
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString(), juce::String("Keep1"))
+        << "order and every other property are untouched";
+
+    // Idempotent: a second run changes nothing (no no-op churn, lesson 2).
+    const int id0Again = trackIdAt(engine, 0);
+    const int sendAgain = static_cast<int>(sendList.getChild(0).getProperty(IDs::sendID, 0));
+    model.scanAndSyncTrackIDs();
+    EXPECT_EQ(trackIdAt(engine, 0), id0Again);
+    EXPECT_EQ(static_cast<int>(sendList.getChild(0).getProperty(IDs::sendID, 0)), sendAgain);
 }

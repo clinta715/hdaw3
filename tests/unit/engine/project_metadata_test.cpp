@@ -261,3 +261,70 @@ TEST(ProjectMetadata, SnapshotExposesMetadata)
     // WebSocket assertion lives in the frontend_server_test suite which
     // already exercises read.snapshot end-to-end (SnapshotRoundTrip).
 }
+
+// ─── Stable track/send ids (design B1) through save/load ───────────────────
+// Identity has to be durable: it is what a saved reference (or an agent holding
+// an id) relies on across a reload. And a file written BEFORE B1 has no ids at
+// all, so load must not leave the project in a state where `trackID` is 0.
+TEST(ProjectMetadata, StableIdsRoundTripAndLegacyFilesAreBackfilled)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(cmds.addTrack("A"), 0);
+    ASSERT_GE(cmds.addTrack("B"), 0);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.5f, false).sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto trackId = [&engine](int i) {
+        return static_cast<int>(engine.getProjectModel().getTrackListTree()
+                                    .getChild(i).getProperty(IDs::trackID, 0));
+    };
+    const int idA = trackId(0);
+    const int idB = trackId(1);
+    ASSERT_GT(idA, 0);
+    ASSERT_NE(idA, idB);
+    const auto sendList = engine.getProjectModel().getTrackListTree()
+                              .getChild(0).getChildWithName(IDs::SEND_LIST);
+    ASSERT_TRUE(sendList.isValid());
+    const int sendID = static_cast<int>(sendList.getChild(0).getProperty(IDs::sendID, 0));
+    ASSERT_GT(sendID, 0);
+
+    // Save → drift the live ids → load: the FILE's identities win, because they
+    // are part of the project rather than something re-derived on load.
+    TempProjectFile saved("hdaw_stable_ids.hdaw");
+    ASSERT_TRUE(cmds.saveProject(saved.path().toStdString()));
+    engine.getProjectModel().getTrackListTree().getChild(0)
+        .setProperty(IDs::trackID, 9999, nullptr);
+    ASSERT_TRUE(cmds.loadProject(saved.path().toStdString()));
+    engine.drainPendingRoutingRebuild();
+    EXPECT_EQ(trackId(0), idA) << "a reloaded project keeps its track identities";
+    EXPECT_EQ(trackId(1), idB);
+    const auto reloadedSends = engine.getReadModel().getTrackSends(0);
+    ASSERT_EQ(reloadedSends.size(), 1u);
+    EXPECT_EQ(reloadedSends[0].sendID, sendID) << "and its send identities";
+
+    // A pre-B1 file: no ids anywhere. Loading it must BACKFILL (non-zero, unique,
+    // order preserved) rather than hand back a project whose identities are 0.
+    for (int t = 0; t < engine.getProjectModel().getTrackListTree().getNumChildren(); ++t)
+        engine.getProjectModel().getTrackListTree().getChild(t)
+            .removeProperty(IDs::trackID, nullptr);
+    const auto legacySendList = engine.getProjectModel().getTrackListTree()
+                                    .getChild(0).getChildWithName(IDs::SEND_LIST);
+    legacySendList.getChild(0).removeProperty(IDs::sendID, nullptr);
+    TempProjectFile legacy("hdaw_legacy_ids.hdaw");
+    ASSERT_TRUE(cmds.saveProject(legacy.path().toStdString()));
+    ASSERT_TRUE(HDAW::ProjectSerializer::load(engine.getProjectModel(), legacy.file()));
+
+    const int legacyA = trackId(0);
+    const int legacyB = trackId(1);
+    EXPECT_GT(legacyA, 0) << "a legacy track is given an identity on load";
+    EXPECT_GT(legacyB, 0);
+    EXPECT_NE(legacyA, legacyB);
+    EXPECT_EQ(engine.getProjectModel().getTrackListTree().getChild(0)
+                  .getProperty(IDs::name).toString(), juce::String("A"))
+        << "the backfill does not reorder or rename anything";
+    const auto backfilledSends = engine.getReadModel().getTrackSends(0);
+    ASSERT_EQ(backfilledSends.size(), 1u);
+    EXPECT_GT(backfilledSends[0].sendID, 0) << "and a legacy send too";
+}

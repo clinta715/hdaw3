@@ -77,8 +77,14 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         int i;
         if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required");
         const int newIdx = c.duplicateTrack(i);
+        // trackID (design B1): the COPY's own stable id, read through the command
+        // interface (this dispatcher has no engine handle — the same reason
+        // getTrackCount is a command query). duplicateTrack re-stamps the inherited
+        // id, so this is a new identity rather than the source's.
+        const int newTrackID = c.getTrackID(newIdx);
         return { false, QJsonDocument::fromJson(QString::fromStdString(
-                     HDAW::shapeTrackCreatedJson(newIdx, c.getTrackCount())).toUtf8()).object() };
+                     HDAW::shapeTrackCreatedJson(newIdx, c.getTrackCount(),
+                                                 newTrackID)).toUtf8()).object() };
     }
     if (m == "setTrackName")    { int i; std::string s; if (!requireInt(o, "trackId", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "trackId and name required"); c.setTrackName(i, s); return { false, QJsonValue::Null }; }
     if (m == "setTrackColor")   { int i, color; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "color", color, nullptr)) return makeError(-32602, "trackId and color required"); c.setTrackColor(i, color); return { false, QJsonValue::Null }; }

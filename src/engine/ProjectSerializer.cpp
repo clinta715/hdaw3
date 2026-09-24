@@ -172,6 +172,11 @@ bool ProjectSerializer::load(ProjectModel& model, const juce::File& file)
     model.getUndoManager().clearUndoHistory();
     model.scanAndSyncClipIDs();
     model.scanAndSyncNoteIDs();
+    // Stable track/send ids (design B1). A file saved before B1 has none, so the
+    // backfill mints one per TRACK/SEND; a file saved after B1 keeps the ids it
+    // carries (the walk skips an entity that already has one). Runs with the
+    // sibling scans, before the tree is observable, and never as an undo step.
+    model.scanAndSyncTrackIDs();
 
     // Never auto-play on load — clear any stale isPlaying/position that
     // may have been serialized from a project that was playing on save.

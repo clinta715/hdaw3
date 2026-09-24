@@ -5,6 +5,7 @@
 #include <atomic>
 #include <algorithm>
 #include <functional>
+#include <vector>
 
 ProjectModel::ProjectModel()
     : projectTree(IDs::PROJECT)
@@ -151,6 +152,86 @@ int ProjectModel::allocateBusID()
     for (int i = 0; i < busList.getNumChildren(); ++i)
         maxID = juce::jmax(maxID, static_cast<int>(busList.getChild(i).getProperty(IDs::busID, -1)));
     return maxID + 1;
+}
+
+int ProjectModel::allocateTrackID()
+{
+    // Tree-derived (max trackID in TRACK_LIST + 1, floor 1) — allocateBusID's
+    // contract, and for the same reason: the list IS the single source of truth,
+    // so a fresh scan can never mint an id that already exists, and a second
+    // ProjectModel (a render-local copy) cannot reset anything the live project
+    // depends on.
+    int maxID = 0;
+    auto trackList = projectTree.getChildWithName(IDs::TRACK_LIST);
+    for (int i = 0; i < trackList.getNumChildren(); ++i)
+        maxID = juce::jmax(maxID,
+                           static_cast<int>(trackList.getChild(i).getProperty(IDs::trackID, 0)));
+    return maxID + 1;
+}
+
+int ProjectModel::allocateSendID()
+{
+    // ONE id space for every send in the project (not one per track): a send is
+    // addressed as (track, send) on the wire, and a project-wide id keeps a
+    // reference unambiguous — a per-track space would let two tracks' sends share
+    // a number. Derived from the tree, like allocateTrackID: max sendID over all
+    // SEND_LISTs + 1, floor 1.
+    int maxID = 0;
+    auto trackList = projectTree.getChildWithName(IDs::TRACK_LIST);
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto sendList = trackList.getChild(t).getChildWithName(IDs::SEND_LIST);
+        if (!sendList.isValid()) continue;
+        for (int s = 0; s < sendList.getNumChildren(); ++s)
+            maxID = juce::jmax(maxID,
+                               static_cast<int>(sendList.getChild(s).getProperty(IDs::sendID, 0)));
+    }
+    return maxID + 1;
+}
+
+void ProjectModel::scanAndSyncTrackIDs()
+{
+    auto trackList = projectTree.getChildWithName(IDs::TRACK_LIST);
+    if (!trackList.isValid()) return;
+
+    // ONE indexed walk per list (lesson 30): TRACK_LIST once, each SEND_LIST once
+    // — no getChildWithProperty sweeps, no per-property walks.
+    //
+    // Missing ids are assigned AFTER the walk, from handles collected during it,
+    // never DURING it: minting mid-walk could hand out an id that a LATER entity
+    // already owns ([no-id, id=1] would give the first one 1), and re-scanning to
+    // avoid that is exactly the repeated tree walk lesson 30 forbids. An entity
+    // that already has an id is left completely alone — a no-op setProperty is
+    // churn and would land in the undo history (lesson 2).
+    int maxTrackID = 0;
+    int maxSendID = 0;
+    std::vector<juce::ValueTree> tracksMissingID;
+    std::vector<juce::ValueTree> sendsMissingID;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto track = trackList.getChild(t);
+        const int trackID = static_cast<int>(track.getProperty(IDs::trackID, 0));
+        if (trackID > 0) maxTrackID = juce::jmax(maxTrackID, trackID);
+        else             tracksMissingID.push_back(track);
+
+        auto sendList = track.getChildWithName(IDs::SEND_LIST);
+        if (!sendList.isValid()) continue;
+        for (int s = 0; s < sendList.getNumChildren(); ++s)
+        {
+            auto send = sendList.getChild(s);
+            const int sendID = static_cast<int>(send.getProperty(IDs::sendID, 0));
+            if (sendID > 0) maxSendID = juce::jmax(maxSendID, sendID);
+            else            sendsMissingID.push_back(send);
+        }
+    }
+
+    // nullptr undo manager: identity is stamped at construction, not an edit the
+    // user made, so a backfill must never be undoable (same rule as the other
+    // load-time migrations — ProjectSerializer clears the history right before).
+    for (auto& track : tracksMissingID)
+        track.setProperty(IDs::trackID, ++maxTrackID, nullptr);
+    for (auto& send : sendsMissingID)
+        send.setProperty(IDs::sendID, ++maxSendID, nullptr);
 }
 
 void ProjectModel::resetNoteIDCounter()

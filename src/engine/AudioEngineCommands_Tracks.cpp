@@ -265,6 +265,23 @@ int AudioEngineCommands::duplicateTrack(int trackIndex)
     }
 
     trackList.addChild(copy, newIdx, &um);
+
+    // ── Stable ids: a copy is a NEW entity, so it must not inherit the ─────
+    // source's ids. A verbatim copy would carry the source's trackID (and its
+    // sends' sendIDs) — two live entities sharing one id, which makes every
+    // id-based reference ambiguous and breaks the allocator's own invariant
+    // (Gate 9). createCopy() copies properties, so this is a re-stamp, not an
+    // add. The allocators are tree-derived and the copy is IN the list by now,
+    // so each call sees the inherited ids and steps past them (the max grows
+    // with every stamp — a second scan before insertion would return the same
+    // number twice). Same &um as the insertion: ONE undo drops the copy AND
+    // its fresh ids.
+    copy.setProperty(IDs::trackID, model.allocateTrackID(), &um);
+    auto copiedSends = copy.getChildWithName(IDs::SEND_LIST);
+    if (copiedSends.isValid())
+        for (int s = 0; s < copiedSends.getNumChildren(); ++s)
+            copiedSends.getChild(s).setProperty(IDs::sendID, model.allocateSendID(), &um);
+
     return newIdx;
 }
 

@@ -9,9 +9,15 @@
 // Payload grammar (frozen — the surface twin tests compare it value for value):
 //
 //   shapeSendsJson      BARE array (no wrapper, like list_tracks), one object per
-//                       send, in SEND_LIST order (position IS a send's identity):
-//     [{"sendIndex":0,"level":0.5,"isPreFader":false,"bypassed":false},
-//      {"sendIndex":1,"level":1,"isPreFader":true,"bypassed":false}]
+//                       send, in SEND_LIST order:
+//     [{"sendIndex":0,"level":0.5,"isPreFader":false,"bypassed":false,"sendID":1},
+//      {"sendIndex":1,"level":1,"isPreFader":true,"bypassed":false,"sendID":2}]
+//                       `sendIndex` stays POSITIONAL (it is the argument every
+//                       send tool takes and it renumbers when a lower send is
+//                       removed); `sendID` is the STABLE identity (design B1) —
+//                       minted at creation from the tree, untouched by
+//                       removeSend. Read a send's identity from sendID, its
+//                       address from sendIndex.
 //
 //   shapeFxSlotsJson    BARE array, one object per FX slot, in chain order. The
 //                       vocabulary is the one the FX tools already speak: slotIndex /
@@ -58,6 +64,7 @@ inline std::string shapeSendsJson(const std::vector<SendSnapshot>& sends)
     {
         juce::DynamicObject::Ptr o = new juce::DynamicObject();
         o->setProperty("sendIndex", s.sendIndex);
+        o->setProperty("sendID", s.sendID);
         o->setProperty("level", static_cast<double>(s.level));
         o->setProperty("isPreFader", s.isPreFader);
         o->setProperty("bypassed", s.bypassed);

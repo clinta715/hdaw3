@@ -237,4 +237,89 @@ re-prepared freshly added nodes), a latent routing mis-wire (a bus whose parent 
 build/hdaw_tests.exe --gtest_filter=BusSetTarget.*:KeyConflict*:KeyCheck*:McpCoverageTest.ExportAudio*:BusFxParam.*:BusSendCreate.*:BusSendRpcTest.*:TrackFxDelay.*
 ```
 (13 + the bus/filter/delay suites; last run 0 failures.) Parity ledger after any new tool:
-`node tools/rpc_parity_map.mjs` — currently 305 tools / 393 methods / mapped 197.
+`node tools/rpc_parity_map.mjs` — currently 307 tools / 396 methods / mapped 202.
+
+---
+
+# Follow-up session (2026-09-23, evening) — the six leftover items above, taken up
+
+Scope: the six "New findings" items (design B, parity debt, `duplicateTrack` folder refs,
+the `get_track_sends` shaper dedup, the LFO `targetParamID` pid space, the Gate-3
+`makePeakFilter` tension), plus two user directives — *use the native Windows toolchain,
+not WSL/MSYS* and *we do not build the frontend*.
+
+## Shipped
+
+| commit | what |
+| --- | --- |
+| `ae2e880` | **one move path**: `move_track` routes through `AudioEngineCommands::moveTrack`, so the splice, the range rule and the durable-ref remap cannot drift; `duplicateTrack` no longer clones `childIds`/`parentId` verbatim (the copy drops `childIds` and registers itself once in its folder's CSV, same undo unit); `TrackHeaders.tsx`'s double-decremented forward drop fixed |
+| `508e6f0` | **`removeSend` parks LFO targets**: `MODULATION_LIST` is walked in the same undo unit (removed send's target → `-1`, inert but preserved; survivors decrement; nothing outside `2000..2999` touched), and the three docs that advertised the unreachable FM targets / a stale modulation claim are corrected |
+| `e69362e` | **one shared send/fx-slot shaper** (`src/common/SendJson.h`) behind both surfaces — and the `list_fx` ↔ `read.getFxSlots` pair they revealed as *divergent* (not merely duplicated) is now one canonical vocabulary, `paramCount` on every slot |
+| `b770b77` | **Gate 3**: every internal-FX EQ coefficient rebuild uses `ArrayCoefficients` + array assignment instead of the allocating `Coefficients::makePeakFilter` wrapper — the per-sample allocation an LFO on an internal EQ param used to cause is gone (bit-identical coefficients) |
+| `ce56bc4` | **native-Windows tooling**: `time-sync.cmd` opt-in (no `wsl.exe` on every build), `build-fast.bat` resolves cmake itself, `run-tests-parallel.sh` / `probe-c2c/engine.sh` / `timbre-lib/*.sh` retired for the PowerShell+Python twins, AGENTS.md + the guard skill state the native toolchain, and **no frontend build/test gate anywhere** (all three `hdaw-guard` copies) |
+| `2717288` | **track parity closed**: `set_track` covers all 13 `project.setTrack*` properties (every write through the shared command), `move_track_into_folder` / `move_track_out_of_folder` + `project.addTrackWithFx` exist, `project.removeTrack` runs the MCP `dryRun`/`force` guard, one creation payload shape, and the 13 routes take `trackId` (+ `folderId`/`inputMonitor`/`midiChannel`) with the retired `trackIndex` rejected on both surfaces — **plus the parity gate itself fixed** (see finding 6) |
+| `1484d93` | the unreachable FM pid branch (300..308) deleted; `FmModParamIDs` removed; the three stale comments corrected |
+| `02b9a26` | the two vacuous `SongCells` tests now fill a real track (finding 8) |
+
+## New findings (all fixed above unless noted)
+
+1. **`move_track` forward moves were wrong on two counts.** The MCP tool re-inserted at the
+   *un-decremented* index on a forward move, so it produced a different order than
+   `project.moveTrack` **and** then ran the command's permutation on a tree that did not match
+   it — a folder `childIds` entry could survive pointing at the wrong track. Untested: the
+   existing assertions only moved backward.
+2. **`list_fx` and `read.getFxSlots` were divergent**, not just duplicated (`slot`/`type` vs
+   `slotIndex`/`fxType`, `pluginName` on one side only). One vocabulary now.
+3. **`removeSend` did not remap LFO targets.** An LFO on `2000 + sendIndex` went stale after a
+   splice and a re-created send inherited it (the lane fixup had covered lanes only).
+4. **LFO targets `2000+`/`3000+` already worked and were unvalidated** — the UI offered them
+   while the tool text said "1/2/3/100+"; and the documented FM targets 300..308 were
+   *unreachable* (the `>=100` compound claims those pids first). Decode-order trap, now documented
+   and de-coded.
+5. **An LFO targeting an internal EQ param allocated on the audio thread per sample**
+   (`Coefficients::makePeakFilter` is `*new Coefficients(...)`). The new bus consume inherited the
+   convention; all four eq sites now use the non-allocating array form.
+6. **The parity generator was lying about the project namespace.** It registered only the FIRST
+   `dispatchX(` call per `method::X` branch, so once `FrontendRouter` intercepted
+   `removeTrack`/`addTrackWithFx` *before* falling through to `dispatchProject`, regenerating
+   relabelled every `project.*` route as `settings.*`; and methods resolved in the intercept chain
+   were invisible (they read as "no route exists"). Fixed; the generator now also supports a
+   `FANOUT` classification so a one-tool-many-routes capability (`set_track`) is stated instead of
+   parked in the review queue. **Always eyeball a regenerated ledger: the ratchet only verifies
+   that mapped targets exist.**
+7. **Qt's `slots` macro bit a shared header.** Naming a `src/common/` shaper parameter `slots`
+   erased the identifier in every Qt-including TU (build failure). `SendJson.h` documents it.
+8. **Two `SongCells` tests were vacuous**: they filled cells wired to track 1 in a project that
+   ships **zero** tracks, `addMidiClip` no-opped, and `fillOneCell` still reported success. The
+   batch's new guard (never fill a cell whose track is missing) exposed them — and that guard is
+   correct; the tests were fixed.
+9. **`build-fast.bat` could not find cmake on a plain shell** (it bootstrapped MSVC but not cmake),
+   and `time-sync.cmd` spawned `wsl.exe` + printed "WSL clock synced" on *every* build of a native
+   box where no build input crosses a filesystem view.
+
+## Still open
+
+- **Design B1 shipped** (this session): every TRACK/SEND is stamped with a stable
+  `trackID`/`sendID` at creation (tree-derived allocator — max existing + 1, never a counter, so an
+  offline render model cannot clobber the id space), a `scanAndSyncTrackIDs()` backfill runs on load
+  for files written before B1, `duplicateTrack` re-stamps the copy (a copy must not inherit its
+  source's identity), and both surfaces echo the ids: `TrackSnapshot.trackID`,
+  `SendSnapshot.sendID` → `read.getTrack`/snapshot + `SendJson.h` rows, `TrackJson.h` /
+  `AddTrackWithFx.h` creation payloads. **`trackID`/`sendID` are identities; `trackId`/`sendIndex`
+  stay positional addresses.**
+  **B2** (resolvers accept id-or-index, so the shift payloads stop being load-bearing) and **B3**
+  (durable refs — folder `parentId`/`childIds`, `SONG_PLAN` `cellTrack`, lane `2000+sendIndex`, LFO
+  targets — migrate to ids) remain; B1 alone is what makes a held id survive a removal, which is the
+  bug class behind findings 1/3.
+- **The ledger's review queue is a CLASSIFICATION debt, not a reachability list.** 96 rows are
+  `unresolved`; several are reachable but name-unmatched (`add_fx` → `project.addFxSlot`,
+  `set_fx_bypass` → `project.setFxSlotBypassed`, …) and some are MCP-only by design
+  (`get_project_summary` ≈ `read.snapshot`). `node tools/rpc_parity_map.mjs --show-unresolved`
+  is the work list; classify from the router, never from the name.
+- The `*FX` CLAP editions still cannot process audio (documented cross-repo limitation, item 1 of
+  the earlier section) and `McpServer.EngineSettingsStartMcpHttp` still binds a fixed port.
+- The full-suite re-baseline of this session's commits: run
+  `powershell -File run-tests-sharded.ps1 -Shards 4`. Note the runner counts each `[  FAILED  ]`
+  **line** and gtest prints every failure twice, so its "failed" total is ~2× the real count —
+  read the `FAILED TESTS` list, and re-run those solo before blaming a change
+  (`PluginIsolation.LargeStateRoundTripThroughProxy` is the historical solo-pass flake).

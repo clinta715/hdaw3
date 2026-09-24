@@ -148,6 +148,10 @@ struct RenderHarness
         // exactly like the load path (ProjectSerializer::load).
         model.scanAndSyncClipIDs();
         model.scanAndSyncNoteIDs();
+        // The seeded track (and the clips above) came from another model, so it
+        // carries no stable ids — the same backfill the load path runs gives it
+        // one, mirroring ProjectSerializer::load before the harness mutates.
+        model.scanAndSyncTrackIDs();
 
         transport.setSampleRate(kSampleRate);
         transport.setBPM(model.getTree().getProperty(IDs::tempo, 120.0));

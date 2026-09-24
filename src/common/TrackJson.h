@@ -8,11 +8,16 @@
 //
 // Payload grammar (frozen — the surface twin tests compare it value for value):
 //
-//   shapeTrackCreatedJson   {"trackId":3,"routed":1}
-//       `trackId` is the new track's index in TRACK_LIST — track identity is
-//       POSITIONAL today (there is no stable track id), so this is the same
-//       number the MCP tools' `trackId` argument means. `routed` is 1 when that
-//       index names a track inside TRACK_LIST right now, 0 otherwise.
+//   shapeTrackCreatedJson   {"trackId":3,"routed":1,"trackID":4}
+//       `trackId` is the new track's index in TRACK_LIST — the same number the
+//       MCP tools' `trackId` argument means (an INDEX, not an identity: it
+//       shifts when a track above is removed). `trackID` is the new track's
+//       STABLE id (design B1): minted at creation from the tree (max existing
+//       id + 1), stored on the TRACK node, untouched by removeTrack/moveTrack.
+//       0 = "no track was created" (the shaper is also called with a failure
+//       sentinel by duplicateTrack) — a real created track never reports 0.
+//       `routed` is 1 when that index names a track inside TRACK_LIST right now,
+//       0 otherwise.
 //       Emitted by add_track / duplicate_track (and add_track_with_fx, which
 //       appends "fxType" — see AddTrackWithFx.h).
 //
@@ -37,11 +42,14 @@ inline int trackRoutedFlag(int trackId, int trackCount)
 
 // Compact single-line JSON (the house style for tool payloads: list_tracks,
 // list_clips, list_buses ... all emit one line). `trackCount` is the track
-// count AFTER the mutation the payload describes.
-inline std::string shapeTrackCreatedJson(int trackId, int trackCount)
+// count AFTER the mutation the payload describes; `trackID` is the created
+// track's stable id, read off the TRACK node the caller just inserted (0 when
+// no track was created).
+inline std::string shapeTrackCreatedJson(int trackId, int trackCount, int trackID)
 {
     juce::DynamicObject::Ptr o = new juce::DynamicObject();
     o->setProperty("trackId", trackId);
+    o->setProperty("trackID", trackID);
     o->setProperty("routed", trackRoutedFlag(trackId, trackCount));
     return juce::JSON::toString(juce::var(o.get()), true).toStdString();
 }

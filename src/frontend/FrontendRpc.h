@@ -101,6 +101,10 @@ inline DispatchResult makeError(int code, const QString& message) {
 inline QJsonObject toJson(const TrackSnapshot& t) {
     return QJsonObject{
         { "index",          t.index },
+        // Stable id (design B1) next to the positional index it complements:
+        // `index` is the argument every track route takes, `trackID` is the
+        // identity that survives a removeTrack/moveTrack splice.
+        { "trackID",        t.trackID },
         { "name",           QString::fromStdString(t.name) },
         { "color",          t.color },
         { "volume",         t.volume },

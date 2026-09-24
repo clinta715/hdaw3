@@ -90,6 +90,7 @@ TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
 {
     TrackSnapshot ts;
     ts.index         = trackTree.getParent().indexOf(trackTree);
+    ts.trackID       = static_cast<int>(trackTree.getProperty(IDs::trackID, 0));
     ts.name          = trackTree.getProperty(IDs::name, "Track").toString().toStdString();
     ts.color         = static_cast<int>(trackTree.getProperty(IDs::color, 0));
     ts.volume        = trackTree.getProperty(IDs::volume, 1.0);
@@ -214,6 +215,7 @@ TrackSnapshot ReadModelImpl::getTrack(int index) const
     auto trackTree = trackList.getChild(index);
     TrackSnapshot ts;
     ts.index = index;
+    ts.trackID = static_cast<int>(trackTree.getProperty(IDs::trackID, 0));
     ts.name = trackTree.getProperty(IDs::name, "Track").toString().toStdString();
     ts.color = static_cast<int>(trackTree.getProperty(IDs::color, 0));
     ts.volume = trackTree.getProperty(IDs::volume, 1.0);
@@ -994,6 +996,7 @@ std::vector<SendSnapshot> ReadModelImpl::getTrackSends(int trackIndex) const
         auto sendTree = sendList.getChild(s);
         SendSnapshot snap;
         snap.sendIndex = s;
+        snap.sendID = static_cast<int>(sendTree.getProperty(IDs::sendID, 0));
         snap.level = sendTree.getProperty(IDs::sendLevel, 0.0f);
         snap.isPreFader = sendTree.getProperty(IDs::sendMode, "post").toString() == "pre";
         snap.bypassed = sendTree.getProperty(IDs::bypassed, false);

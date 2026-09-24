@@ -104,6 +104,11 @@ public:
     // Track-count query for router-level validation. Default body returns
     // negative = unknown; router skips upper-bound check.
     virtual int getTrackCount() const { return -1; }
+    // Stable-id query (design B1) for router-level payloads: the TRACK node's
+    // trackID, or 0 when the index names no track / carries no id. The companion
+    // of getTrackCount and read from the same place, so a route that has only the
+    // command interface can echo an identity without reaching for the model.
+    virtual int getTrackID(int trackIndex) const { return 0; }
 
     // Send operations
     virtual void setTrackSendLevel(int trackIndex, int sendIndex, float level) = 0;

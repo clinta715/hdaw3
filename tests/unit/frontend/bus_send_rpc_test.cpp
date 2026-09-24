@@ -882,10 +882,17 @@ TEST_F(BusSendRpcTest, TrackSendsMatchMcpWithMixedPrePostPair) {
     for (int i = 0; i < rows.size(); ++i) {
         const QJsonObject row = rows[i].toObject();
         EXPECT_EQ(row.value("sendIndex").toInt(-1), i) << "rows are in SEND_LIST order";
-        EXPECT_EQ(row.size(), 4) << "the send vocabulary is frozen at 4 keys";
-        for (const char* key : { "sendIndex", "level", "isPreFader", "bypassed" })
+        EXPECT_EQ(row.size(), 5)
+            << "the send vocabulary: sendIndex / sendID / level / isPreFader / bypassed";
+        for (const char* key : { "sendIndex", "sendID", "level", "isPreFader", "bypassed" })
             EXPECT_TRUE(row.contains(key)) << "send row " << i << " is missing " << key;
+        // sendIndex IS positional (it is the argument every send tool takes and it
+        // renumbers when a lower send is removed); sendID is the stable identity
+        // (design B1) — read the address from one, the identity from the other.
+        EXPECT_GT(row.value("sendID").toInt(0), 0) << "a live send carries a stable id";
     }
+    EXPECT_NE(rows[0].toObject().value("sendID"), rows[1].toObject().value("sendID"))
+        << "two sends must not share an id";
     EXPECT_FALSE(rows[0].toObject().value("isPreFader").toBool()) << "send 0 is post-fader";
     EXPECT_TRUE(rows[1].toObject().value("isPreFader").toBool()) << "send 1 is pre-fader";
     EXPECT_NEAR(rows[0].toObject().value("level").toDouble(), 0.371, 1e-5);
@@ -1006,6 +1013,63 @@ TEST_F(BusSendRpcTest, SendAndFxShapingIsTheSharedBuilderOnBothSurfaces) {
         HDAW::shapeFxSlotsJson(engine->getReadModel().getFxSlots(0))));
     EXPECT_EQ(rpcPayload("read.getFxSlots", QJsonObject{ { "trackIndex", 0 } }),
               QJsonValue(QJsonDocument::fromJson(fxText.toUtf8()).array()));
+}
+
+// ── Stable ids (design B1) agree across the surfaces and survive a splice ───
+// `trackID` / `sendID` are identities, not addresses: the MCP creation echo, the
+// RPC snapshot and the ValueTree must all report the SAME number for the same
+// entity, and that number must still name it after a removal renumbers the index.
+// (`trackId` / `sendIndex` keep meaning the positional address — asserted here by
+// reading the SAME entity back through the new index and getting the old id.)
+TEST_F(BusSendRpcTest, StableIdsAgreeAcrossSurfacesAndSurviveASplice) {
+    const auto addRes = mcpValue("add_track", QJsonObject{ { "name", "Stable" } });
+    ASSERT_TRUE(addRes.isObject()) << "add_track must answer the creation payload";
+    const int idx = addRes.toObject().value("trackId").toInt(-1);
+    const int trackID = addRes.toObject().value("trackID").toInt(0);
+    ASSERT_GE(idx, 0);
+    ASSERT_GT(trackID, 0) << "a created track carries a stable id";
+
+    // Same entity, other surface, other shape: the track snapshot.
+    const auto snap = rpcPayload("read.getTrack", QJsonObject{ { "trackIndex", idx } });
+    EXPECT_EQ(snap.toObject().value("trackID").toInt(0), trackID);
+    EXPECT_EQ(snap.toObject().value("index").toInt(-1), idx)
+        << "the positional index is still reported next to the identity";
+
+    // Both are projections of the tree.
+    const auto tl = engine->getProjectModel().getTrackListTree();
+    ASSERT_LT(idx, tl.getNumChildren());
+    EXPECT_EQ(static_cast<int>(tl.getChild(idx).getProperty(IDs::trackID, 0)), trackID);
+
+    // A send: the stable id rides the shared row on both surfaces and is the
+    // SEND node's own property.
+    ASSERT_GE(engine->getProjectCommands().createSend(idx, 1, 0.4f, false).sendIndex, 0);
+    engine->drainPendingRoutingRebuild();
+    const auto sendList = tl.getChild(idx).getChildWithName(IDs::SEND_LIST);
+    ASSERT_TRUE(sendList.isValid());
+    ASSERT_EQ(sendList.getNumChildren(), 1);
+    const int treeSendID = static_cast<int>(sendList.getChild(0).getProperty(IDs::sendID, 0));
+    ASSERT_GT(treeSendID, 0);
+    const QJsonObject sendArgs{ { "trackId", idx } };
+    EXPECT_EQ(mcpValue("get_track_sends", sendArgs).toArray()[0].toObject()
+                  .value("sendID").toInt(0), treeSendID);
+    EXPECT_EQ(rpcPayload("read.getTrackSends", sendArgs).toArray()[0].toObject()
+                  .value("sendID").toInt(0), treeSendID);
+
+    // Remove a track ABOVE it: every index above the splice shifts, so the entity
+    // is now addressed one slot lower — and the id still names it. (The fixture
+    // seeds Kick + Bass, so "Stable" is at `idx` and lands at `idx - 1`.)
+    const auto rm = rpc("project.removeTrack", QJsonObject{ { "trackId", 0 }, { "force", true } });
+    ASSERT_FALSE(rm.isError);
+    engine->drainPendingRoutingRebuild();
+    const int nowIdx = idx - 1;
+    ASSERT_GE(nowIdx, 0);
+    EXPECT_EQ(static_cast<int>(tl.getChild(nowIdx).getProperty(IDs::trackID, 0)), trackID)
+        << "the stable id is unchanged by a removal that moved the track";
+    EXPECT_EQ(tl.getChild(nowIdx).getProperty(IDs::name).toString().toStdString(), "Stable")
+        << "and it is still that track (not the neighbour that shifted into the slot)";
+    const auto moved = rpcPayload("read.getTrack", QJsonObject{ { "trackIndex", nowIdx } });
+    EXPECT_EQ(moved.toObject().value("trackID").toInt(0), trackID);
+    EXPECT_EQ(moved.toObject().value("name").toString().toStdString(), "Stable");
 }
 
 } // namespace

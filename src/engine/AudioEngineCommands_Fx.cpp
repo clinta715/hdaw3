@@ -1254,6 +1254,16 @@ int AudioEngineCommands::getTrackCount() const
     return engine_.getProjectModel().getTrackListTree().getNumChildren();
 }
 
+int AudioEngineCommands::getTrackID(int trackIndex) const
+{
+    // Same tree read as getTrackCount, so a router-level payload cannot disagree
+    // with the count it is paired with. 0 for an out-of-range index or a node
+    // with no id (a tree that never saw scanAndSyncTrackIDs).
+    const auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return 0;
+    return static_cast<int>(trackList.getChild(trackIndex).getProperty(IDs::trackID, 0));
+}
+
 HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
 {
     HDAW::ChainPreset preset;

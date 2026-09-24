@@ -990,6 +990,10 @@ s.registerTool({"audition_patch",
             {
                 const int idx = tl.getNumChildren();
                 juce::ValueTree t(IDs::TRACK);
+                // Stable identity (design B1), same tree-derived allocator every
+                // other TRACK constructor uses — a probe track is a real track and
+                // must not be the one entity in the list without an id.
+                t.setProperty(IDs::trackID, m.allocateTrackID(), nullptr);
                 t.setProperty(IDs::name, "Patch Probe", nullptr);
                 t.setProperty(IDs::volume, 0.85, nullptr);
                 t.setProperty(IDs::pan, 0.0, nullptr);

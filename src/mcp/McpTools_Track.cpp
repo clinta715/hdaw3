@@ -34,7 +34,12 @@ namespace mcp {
 void registerTrackTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"add_track",
-        "Add a track; returns compact JSON {\"trackId\":N,\"routed\":1} (routed=1 when the track is registered for routing). Color defaults to the next palette color if omitted.",
+        "Add a track; returns compact JSON {\"trackId\":<index>,\"routed\":0|1,\"trackID\":<id>} "
+        "(routed=1 when the track is registered for routing). `trackId` is the new track's "
+        "TRACK_LIST INDEX — a position, so it shifts when a track above is removed or moved — "
+        "while `trackID` is its STABLE identity (design B1) and survives those splices: hold the "
+        "id, not the index, if you mean to refer to this track later. Color defaults to the next "
+        "palette color if omitted.",
         objSchema({{"name", QJsonObject{{"type","string"}}},
                   {"color", QJsonObject{{"type","integer"}}},
                   {"parentBus", QJsonObject{{"type","integer"}}}}, {"name"}),
@@ -44,6 +49,10 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             auto& um = m.getUndoManager();
             int idx = m.getTrackListTree().getNumChildren();
             juce::ValueTree t(IDs::TRACK);
+            // Stable identity (design B1): the same tree-derived allocator
+            // createTrackValueTree uses, minted before the node is appended. Not
+            // the index (`idx` shifts when a track above is removed); this does not.
+            t.setProperty(IDs::trackID, m.allocateTrackID(), nullptr);
             t.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
             t.setProperty(IDs::volume, 0.85, &um);
             t.setProperty(IDs::pan, 0.0, &um);
@@ -61,9 +70,11 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             // trackId/routed keys are semantically unchanged, so parsers that
             // look up the key by name keep working. The shape lives in
             // common/TrackJson.h — duplicate_track and the RPC route that now
-            // answers duplicateTrack emit THE SAME object.
+            // answers duplicateTrack emit THE SAME object. trackID (B1) is the
+            // created track's stable id, read off the node just inserted.
             return McpToolResult::text(QString::fromStdString(
-                HDAW::shapeTrackCreatedJson(idx, m.getTrackListTree().getNumChildren())));
+                HDAW::shapeTrackCreatedJson(idx, m.getTrackListTree().getNumChildren(),
+                                            static_cast<int>(t.getProperty(IDs::trackID, 0)))));
         }});
 
     s.registerTool({"remove_track",
@@ -208,10 +219,10 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"duplicate_track",
         "Duplicate a track (deep copy with new clip/note IDs). Returns the SAME "
-        "compact JSON as add_track — {\"trackId\":N,\"routed\":1}: `trackId` is the "
-        "new track's index (the copy is appended last), `routed` is 1 when that "
-        "index names a track in TRACK_LIST. RPC project.duplicateTrack returns that "
-        "same object (it used to answer a bare int).",
+        "compact JSON as add_track — {\"trackId\":N,\"routed\":0|1,\"trackID\":<id>}: `trackId` is "
+        "the new track's INDEX (the copy is appended last), `trackID` its STABLE identity (design "
+        "B1) — a copy is a NEW entity, so its id differs from its source's. RPC "
+        "project.duplicateTrack returns that same object (it used to answer a bare int).",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
@@ -222,8 +233,14 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             int newIdx = e->getProjectCommands().duplicateTrack(id);
             if (newIdx < 0)
                 return McpToolResult::text("duplicate failed", true);
+            // trackID (design B1): read the COPY's own stable id off the tree —
+            // duplicateTrack re-stamps it, so this is the new entity's identity,
+            // not the source's.
+            const int newTrackID = static_cast<int>(
+                m.getTrackListTree().getChild(newIdx).getProperty(IDs::trackID, 0));
             return McpToolResult::text(QString::fromStdString(
-                HDAW::shapeTrackCreatedJson(newIdx, m.getTrackListTree().getNumChildren())));
+                HDAW::shapeTrackCreatedJson(newIdx, m.getTrackListTree().getNumChildren(),
+                                            newTrackID)));
         }});
 
     // The two folder moves: RPC-only until now (project.moveTrackIntoFolder /
@@ -264,7 +281,7 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"add_track_with_fx",
-        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, or provide pluginId for a VST3/CLAP plugin (fxType is then inferred as \"plugin\"). Returns compact JSON {trackId, routed, fxType} — the same creation shape add_track returns, plus the echoed fxType. RPC project.addTrackWithFx takes these SAME argument names, runs the SAME composite (src/common/AddTrackWithFx.h) and returns the identical payload, refusing an ungateable pluginId with the identical text.",
+        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, or provide pluginId for a VST3/CLAP plugin (fxType is then inferred as \"plugin\"). Returns compact JSON {trackId, routed, trackID, fxType} — the same creation shape add_track returns, plus the echoed fxType; `trackId` is the new track's INDEX and `trackID` its STABLE identity (design B1, unchanged by a later splice). RPC project.addTrackWithFx takes these SAME argument names, runs the SAME composite (src/common/AddTrackWithFx.h) and returns the identical payload, refusing an ungateable pluginId with the identical text.",
         objSchema({{"name",     QJsonObject{{"type","string"}}},
                    {"fxType",   QJsonObject{{"type","string"},
                        {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth"}}}},
