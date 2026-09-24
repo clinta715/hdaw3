@@ -15,6 +15,7 @@
 #include "../model/ProjectModel.h"   // IDs:: namespace
 
 #include <QJsonObject>
+#include <QJsonDocument>
 #include <QString>
 
 #include <string>
@@ -162,6 +163,48 @@ inline QString setMasterFxBypassedToolText(ProjectCommands& commands,
 
     if (outOk) *outOk = true;
     return QString("ok");
+}
+
+// ONE entry point for get_master_fx_params: read the MASTER-bus FX chain as
+// the tool does (the project ValueTree is the source of truth) and return the
+// exact tool text — the compact-JSON document on success, "no MASTER_FX node"
+// (outOk=false) when the node is absent. Shared by the MCP tool and the
+// read.getMasterFxParams route, so the surfaces cannot drift.
+inline QString masterFxParamsToolText(const juce::ValueTree& masterFx,
+                                      bool* outOk = nullptr)
+{
+    if (outOk) *outOk = false;
+    if (! masterFx.isValid())
+        return QString("no MASTER_FX node");
+
+    QJsonArray slotsArr;
+    for (int i = 0; i < masterFx.getNumChildren(); ++i)
+    {
+        auto slot = masterFx.getChild(i);
+        const juce::String fxType = slot.getProperty(IDs::fxType, "").toString();
+        const auto& defs = masterFxParamDefs(fxType);
+        QJsonArray paramsArr;
+        for (int p = 0; p < static_cast<int>(defs.size()); ++p)
+        {
+            QJsonObject po;
+            po["index"] = p;
+            po["name"] = defs[(size_t) p].name;
+            po["value"] = static_cast<double>(slot.getProperty("param_" + juce::String(p), (double) defs[(size_t) p].def));
+            po["defaultValue"] = static_cast<double>(defs[(size_t) p].def);
+            po["minValue"] = static_cast<double>(defs[(size_t) p].min);
+            po["maxValue"] = static_cast<double>(defs[(size_t) p].max);
+            paramsArr.append(po);
+        }
+        QJsonObject so;
+        so["slotIndex"] = i;
+        so["fxType"] = QString::fromStdString(fxType.toStdString());
+        so["bypassed"] = static_cast<bool>(slot.getProperty("bypassed", true));
+        so["params"] = paramsArr;
+        slotsArr.append(so);
+    }
+    QJsonObject root; root["slots"] = slotsArr;
+    if (outOk) *outOk = true;
+    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
 }
 
 } // namespace HDAW

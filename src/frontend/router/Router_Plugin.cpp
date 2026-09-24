@@ -7,6 +7,7 @@
 #include "../../common/PluginParamService.h"
 #include "../../common/SettingsKeys.h"
 #include "../../common/NordBankLoader.h"
+#include "../../common/PresetApply.h"   // loadPresetFile: the shared setStateInformation loader
 #include "../../engine/AudioEngine.h"
 #include "../../model/ProjectModel.h"
 
@@ -161,6 +162,33 @@ DispatchResult dispatchPlugin(PluginService& s, AudioEngine& engine, const QStri
             });
         }
         return {false, arr};
+    }
+    if (m == "loadPresetFile") {
+        // MCP twin of load_plugin_preset_file (McpTools_FxPreset.cpp): load a
+        // preset file into a plugin FX slot via setStateInformation
+        // (.SerumPreset / .fxp / .syx). Runs the SAME shared loader the tool
+        // runs (HDAW::loadPluginPresetFileToolText, src/common/PresetApply.h)
+        // -> parsePresetFile + setStateInformation + the pluginState tree
+        // capture, so the surfaces cannot drift. Same key names as the tool.
+        //
+        // Thread note (Gate 16): the frontend router executes on the host
+        // message thread (the same thread the MCP server serves requests on),
+        // which is the lifecycle call's sanctioned context for in-process
+        // instances — identical to the pre-existing audio.swapFxSnapshot /
+        // audio.captureFxSnapshot setStateInformation routes.
+        int ti, si;
+        if (!requireInt(o, "trackId", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackId and slotIndex required");
+        std::string filePath;
+        if (!requireString(o, "filePath", filePath, nullptr))
+            return makeError(-32602, "filePath required");
+
+        bool ok = false;
+        const QString text = HDAW::loadPluginPresetFileToolText(
+            engine, ti, si, QString::fromStdString(filePath), &ok);
+        if (!ok)
+            return makeError(-32602, text);
+        return { false, text };
     }
     return makeError(-32601, "unknown plugin method: " + m);
 }

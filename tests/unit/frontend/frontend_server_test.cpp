@@ -446,7 +446,7 @@ TEST(FrontendServer, FmSynthImportSysexRpc) {
 
     // Import via RPC.
     QJsonObject importParams{
-        { "trackIndex", 0 },
+        { "trackId", 0 },
         { "slotIndex", slotIndex },
         { "filePath", syxFile.getFullPathName().toStdString().c_str() },
     };
@@ -574,7 +574,7 @@ TEST(FrontendServer, FmSynthImportSysexCartridgeVoices) {
 
     // Import voice 5 from the cartridge via RPC.
     QJsonObject importParams{
-        { "trackIndex", 0 },
+        { "trackId", 0 },
         { "slotIndex", slotIndex },
         { "filePath", syxFile.getFullPathName().toStdString().c_str() },
         { "voiceIndex", 5 },

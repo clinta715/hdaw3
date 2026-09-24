@@ -92,12 +92,23 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
     }
 
     if (m == "add") {
+        // MCP twin of add_library (McpTools_Library.cpp): SAME
+        // FileLibraryManager::addLibrary call including the "patch" library
+        // type, and the SAME failure texts, so the twin test can demand
+        // byte-identical -32602 messages (tests/unit/frontend/
+        // fm_library_parity_test.cpp). The manager whitelists the type and
+        // answers an empty id for unknown types — the surfaces shape that
+        // identically instead of the route pre-empting the manager gate.
         std::string name, path, type;
-        if (!requireString(o, "name", name, nullptr)) return makeError(-32602, "name required");
-        if (!requireString(o, "path", path, nullptr)) return makeError(-32602, "path required");
-        if (!requireString(o, "type", type, nullptr)) return makeError(-32602, "type required");
-        if (type != "midi" && type != "audio") return makeError(-32602, "type must be 'midi' or 'audio'");
+        if (!requireString(o, "name", name, nullptr) || name.empty())
+            return makeError(-32602, "name, path, and type are required");
+        if (!requireString(o, "path", path, nullptr) || path.empty())
+            return makeError(-32602, "name, path, and type are required");
+        if (!requireString(o, "type", type, nullptr) || type.empty())
+            return makeError(-32602, "name, path, and type are required");
         auto id = lib.addLibrary(juce::String(name), juce::String(path), juce::String(type));
+        if (id.isEmpty())
+            return makeError(-32602, QString("unknown library type '%1' (expected midi, audio, or patch)").arg(QString::fromStdString(type)));
         return { false, QJsonObject{ {"id", qstr(id)} } };
     }
 

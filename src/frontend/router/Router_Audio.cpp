@@ -14,12 +14,15 @@
 #include "../../engine/SongStructureAudit.h"
 #include "../../common/FxCaptureStatus.h"
 #include "../../common/SettingsKeys.h"
+#include "../../common/FmPatchLoad.h"
+#include "../../common/PresetApply.h"
 
 #include <cmath>
 #include <limits>
 #include <stdexcept>
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QSettings>
@@ -31,6 +34,15 @@
 using namespace frontend::router_helpers;
 
 namespace frontend {
+
+namespace {
+// Parse a compact-JSON tool text back into a JSON value (fm_synthImportSysex
+// returns the shared loader's text verbatim as JSON — same payload as the
+// MCP tool, parsed into the reply like the 2026-09-24 parity-wave routes).
+QJsonValue parseText(const QString& text) {
+    return QJsonDocument::fromJson(text.toUtf8()).object();
+}
+} // namespace
 
 DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonValue& params) {
     auto& dm = engine.getDeviceManager();
@@ -418,79 +430,111 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
     }
 
     if (m == "fm_synthImportSysex") {
+        // MCP twin of fm_synth_import_sysex (McpTools_FmSynth.cpp). The
+        // 2026-09-24 parity fix: run the MCP loader's PERSISTING path —
+        // parse the dump, then ProjectCommands::setFmPatch, which writes
+        // IDs::fmPatchData to the slot tree (save/tree-copy renders keep the
+        // patch) AND loads it live best-effort — instead of the old
+        // live-only slot->fmSynthEngine()->loadPatch write. The old body
+        // also rejected raw 4096-byte VMEM banks the tool accepts. The parse
+        // + persistence + success payload now come from ONE place; the MCP
+        // wrapper (runFmImportSysex, src/mcp/PresetRoute.h) wraps the same
+        // shared loader, so the surfaces cannot drift.
+        // Argument names mirror the MCP tool EXACTLY (AGENTS.md): trackId,
+        // slotIndex, filePath, voiceIndex. (The pre-fix route's trackIndex
+        // spelling predated the parity rule; the tool's trackId wins.)
         int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        if (!requireInt(o, "trackId", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackId and slotIndex required");
 
         std::string filePath;
         if (!requireString(o, "filePath", filePath, nullptr))
             return makeError(-32602, "filePath required");
 
-        auto* proc = engine.getMainProcessor();
-        if (!proc) return makeError(-32603, "audio engine not initialized");
-        auto* track = proc->getTrack(ti);
-        if (!track) return makeError(-32602, "track not found");
-        auto& chain = track->getFXChain();
-        if (si < 0 || si >= static_cast<int>(chain.size()))
-            return makeError(-32602, "slot not found");
-        auto* slot = chain[si].get();
-        if (!slot || slot->getType() != "fm_synth")
-            return makeError(-32602, "slot is not an FM synth");
-        if (!slot->fmSynthEngine())
-            return makeError(-32603, "FM synth engine not initialized");
+        const int voiceIndex = o.contains("voiceIndex") ? o.value("voiceIndex").toInt(0) : 0;
 
-        juce::File syxFile(filePath);
-        if (!syxFile.existsAsFile())
-            return makeError(-32602, "file not found: " + QString::fromStdString(filePath));
+        bool ok = false;
+        const auto text = HDAW::fmImportSysexToolText(
+            engine, ti, si, QString::fromStdString(filePath), voiceIndex, &ok);
+        if (!ok)
+            return makeError(-32602, text);
+        return { false, parseText(text) };
+    }
 
-        juce::MemoryBlock raw;
-        if (!syxFile.loadFileAsData(raw))
-            return makeError(-32603, "failed to read file");
+    if (m == "fmSynthLoadPreset") {
+        // MCP twin of fm_synth_load_preset (McpTools_FmSynth.cpp): raw DX7
+        // patch (156 bytes, 312-char hex) into an FM synth slot. Runs the
+        // SAME shared entry point as the tool (HDAW::fmLoadPresetToolText,
+        // src/common/FmPatchLoad.h) -> ProjectCommands::setFmPatch, so the
+        // patch persists to the slot tree (fmPatchData) and answers
+        // byte-identical text on both surfaces. The tool's key is trackId;
+        // this surface's historical key is trackIndex (read.getWaveformPeaks
+        // precedent: trackIndex/trackId read side by side).
+        int ti = optInt(o, "trackIndex", -1, nullptr);
+        if (ti < 0 && o.contains("trackId")) ti = o.value("trackId").toInt(-1);
+        int si;
+        if (ti < 0 || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
 
-        auto* bytes = static_cast<const uint8_t*>(raw.getData());
-        size_t fileSize = raw.getSize();
+        std::string hex;
+        if (!requireString(o, "patchData", hex, nullptr) || hex.empty())
+            return makeError(-32602, "patchData must be 312 hex characters (156 bytes)");
 
-        std::optional<HDAW::Dx7Voice> voice;
-        std::vector<HDAW::Dx7Voice> voices;
-        int resolvedVoiceIndex = 0;
+        bool ok = false;
+        const auto text = HDAW::fmLoadPresetToolText(
+            engine, ti, si, QString::fromStdString(hex), &ok);
+        if (!ok)
+            return makeError(-32602, text);
+        return { false, text };
+    }
 
-        if (fileSize >= 163 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x00) {
-            voice = HDAW::parseSingleVoiceSysex(bytes, fileSize);
-        } else if (fileSize >= 4104 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x09) {
-            voices = HDAW::parseCartridgeSysex(bytes, fileSize);
-            int vi = o.value("voiceIndex").toInt(0);
-            if (vi >= 0 && vi < static_cast<int>(voices.size())) {
-                voice = voices[vi];
-                resolvedVoiceIndex = vi;
-            }
-        } else {
-            return makeError(-32602, "not a recognized DX7 SysEx file");
-        }
+    if (m == "subSynthImportSysex") {
+        // MCP twin of sub_synth_import_sysex (McpTools_FxSlot.cpp): Virus
+        // .syx (267-byte B/C single or TI bank) into an internal sub_synth
+        // slot via AudioEngineCommands::loadVirusPatch — the command layer IS
+        // the shared entry point (src/common/PresetApply.h wraps the same
+        // call for the tool), so slot-tree writes, live load and the payload
+        // match by construction. Same key names as the tool.
+        int ti, si;
+        if (!requireInt(o, "trackId", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackId and slotIndex required");
+        std::string filePath;
+        if (!requireString(o, "filePath", filePath, nullptr))
+            return makeError(-32602, "filePath required");
+        const int voiceIndex = o.contains("voiceIndex") ? o.value("voiceIndex").toInt(0) : 0;
 
-        if (!voice.has_value())
-            return makeError(-32603, "failed to parse SysEx data");
+        bool ok = false;
+        const auto text = HDAW::subSynthImportSysexToolText(
+            engine, ti, si, QString::fromStdString(filePath), voiceIndex, &ok);
+        if (!ok)
+            return makeError(-32602, text);
+        return { false, parseText(text) };
+    }
 
-        slot->fmSynthEngine()->loadPatch(voice->patchData.data());
+    if (m == "applyPreset") {
+        // MCP twin of apply_preset — the agentic front door (McpTools_FxSlot.cpp):
+        // dispatches by slot fxType/pluginId + file header onto the shared
+        // loaders (HDAW::applyPresetToolText, src/common/PresetApply.h — the
+        // SAME body the tool runs). The whole argument object goes through,
+        // so the tool's key contract (trackId/slotIndex/filePath/program/
+        // bank/voiceIndex/channel/captureToTree) holds on both surfaces.
+        bool ok = false;
+        const auto text = HDAW::applyPresetToolText(engine, o, &ok);
+        if (!ok)
+            return makeError(-32602, text);
+        return { false, parseText(text) };
+    }
 
-        QJsonObject result;
-        result["ok"] = true;
-        result["voiceName"] = QString::fromStdString(voice->voiceName);
-        result["algorithm"] = voice->algorithm;
-        if (!voices.empty()) {
-            result["totalVoices"] = static_cast<int>(voices.size());
-            QJsonArray voicesArr;
-            for (int i = 0; i < static_cast<int>(voices.size()); ++i) {
-                QJsonObject v;
-                v["index"] = i;
-                v["name"] = QString::fromStdString(voices[i].voiceName);
-                v["algorithm"] = voices[i].algorithm;
-                voicesArr.append(v);
-            }
-            result["voices"] = voicesArr;
-            result["voiceIndex"] = resolvedVoiceIndex;
-        }
-
-        return { false, result };
+    if (m == "auditionPatch") {
+        // MCP twin of audition_patch — the composite probe (McpTools_FxSlot.cpp):
+        // probe track/clip placement + the shared patch loaders
+        // (HDAW::auditionPatchToolText, src/common/PresetApply.h — the SAME
+        // body the tool runs; path/engine/role/root/trackId keys intact).
+        bool ok = false;
+        const auto text = HDAW::auditionPatchToolText(engine, o, &ok);
+        if (!ok)
+            return makeError(-32602, text);
+        return { false, parseText(text) };
     }
 
     return makeError(-32601, "unknown audio method: " + m);

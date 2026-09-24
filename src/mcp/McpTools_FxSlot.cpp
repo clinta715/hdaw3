@@ -638,37 +638,12 @@ s.registerTool({"get_master_fx_params",
         objSchema({}, {}),
         "fx",
         [e](const QJsonObject&) -> McpToolResult {
+            // Shared shaping (src/common/MasterFxAccess.h) — the same entry
+            // point read.getMasterFxParams runs, so the surfaces cannot drift.
             auto masterFx = e->getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
-            if (! masterFx.isValid())
-                return McpToolResult::text("no MASTER_FX node", true);
-            QJsonArray slotsArr;
-            for (int i = 0; i < masterFx.getNumChildren(); ++i)
-            {
-                auto slot = masterFx.getChild(i);
-                const juce::String fxType = slot.getProperty(IDs::fxType, "").toString();
-                const auto& defs = HDAW::masterFxParamDefs(fxType);
-                QJsonArray paramsArr;
-                for (int p = 0; p < static_cast<int>(defs.size()); ++p)
-                {
-                    QJsonObject po;
-                    po["index"] = p;
-                    po["name"] = defs[(size_t) p].name;
-                    po["value"] = static_cast<double>(slot.getProperty("param_" + juce::String(p), (double) defs[(size_t) p].def));
-                    po["defaultValue"] = static_cast<double>(defs[(size_t) p].def);
-                    po["minValue"] = static_cast<double>(defs[(size_t) p].min);
-                    po["maxValue"] = static_cast<double>(defs[(size_t) p].max);
-                    paramsArr.append(po);
-                }
-                QJsonObject so;
-                so["slotIndex"] = i;
-                so["fxType"] = QString::fromStdString(fxType.toStdString());
-                so["bypassed"] = static_cast<bool>(slot.getProperty("bypassed", true));
-                so["params"] = paramsArr;
-                slotsArr.append(so);
-            }
-            QJsonObject root; root["slots"] = slotsArr;
-            return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(root).toJson(QJsonDocument::Compact)));
+            bool ok = false;
+            const QString text = HDAW::masterFxParamsToolText(masterFx, &ok);
+            return McpToolResult::text(text, !ok);
         }});
 
 s.registerTool({"set_internal_fx_param",
@@ -787,6 +762,8 @@ s.registerTool({"sub_synth_import_sysex",
                    {"trackId","slotIndex","filePath"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
+            // Shared loader (src/common/PresetApply.h) — the same entry point
+            // audio.subSynthImportSysex runs.
             return runSubSynthImportSysex(*e,
                 a.value("trackId").toInt(), a.value("slotIndex").toInt(),
                 a.value("filePath").toString(),
@@ -811,86 +788,13 @@ s.registerTool({"apply_preset",
               {"channel",     QJsonObject{{"type","integer"},{"minimum",1},{"maximum",16}}},
               {"captureToTree",QJsonObject{{"type","boolean"}}}},
              {"trackId","slotIndex"}),
-    "fx",
-    [e](const QJsonObject& a) -> McpToolResult {
-        int ti = a.value("trackId").toInt();
-        int si = a.value("slotIndex").toInt();
-        auto fxSlots = e->getReadModel().getFxSlots(ti);
-        if (si < 0 || si >= (int)fxSlots.size())
-            return McpToolResult::text("slot not found", true);
-        if (fxSlots[si].fxType == "none")
-            return McpToolResult::text("slot is empty", true);
-        const std::string fxType = fxSlots[si].fxType;
-        const std::string pluginId = fxSlots[si].pluginId;
-
-        const bool hasFile = a.contains("filePath")
-            && !a.value("filePath").toString().isEmpty();
-        juce::MemoryBlock raw;
-        const uint8_t* bytes = nullptr;
-        size_t size = 0;
-        juce::String extension;
-        if (hasFile)
-        {
-            const QString path = a.value("filePath").toString();
-            const juce::File f(juce::String::fromUTF8(path.toUtf8()));
-            if (!f.existsAsFile())
-                return McpToolResult::text("file not found: " + path, true);
-            if (!f.loadFileAsData(raw))
-                return McpToolResult::text("failed to read file", true);
-            bytes = static_cast<const uint8_t*>(raw.getData());
-            size = raw.getSize();
-            extension = f.getFileExtension().toLowerCase();
-        }
-
-        const bool hasProgram = a.contains("program");
-        if (hasProgram)
-        {
-            const int program = a.value("program").toInt(-1);
-            if (program < 0 || program > 127)
-                return McpToolResult::text("program must be 0..127", true);
-        }
-
-        const auto route = mcp::resolvePresetRoute(
-            fxType, pluginId, bytes, size, extension, hasProgram);
-        if (route.kind == PresetRouteKind::None)
-            return McpToolResult::text(jstr(route.error), true);
-
-        const bool capture = a.value("captureToTree").toBool(true);
-        const QString path = hasFile ? a.value("filePath").toString() : QString();
-        switch (route.kind)
-        {
-            case PresetRouteKind::NordBank:
-            {
-                const int program = a.contains("program")
-                    ? a.value("program").toInt(-1) : -1;
-                return runNordBankFile(*e, ti, si, path, program, capture);
-            }
-            case PresetRouteKind::Je8086Patch:
-            {
-                // program doubles as the 1-based patch unit for JP-8080 files
-                const int unit = a.contains("program") ? a.value("program").toInt(1) : 1;
-                return runJe8086PatchFile(*e, ti, si, path,
-                    unit > 0 ? unit : 1, capture);
-            }
-            case PresetRouteKind::WaldorfSysex:
-                return runWaldorfSysexFile(*e, ti, si, path, pluginId, capture);
-            case PresetRouteKind::VirusRom:
-                return runVirusRomPreset(*e, ti, si,
-                    a.value("bank").toInt(0), a.value("program").toInt(0),
-                    a.value("channel").toInt(1), capture);
-            case PresetRouteKind::FmSysex:
-                return runFmImportSysex(*e, ti, si, path,
-                    a.value("voiceIndex").toInt(0));
-            case PresetRouteKind::SubSynthVirus:
-                return runSubSynthImportSysex(*e, ti, si, path,
-                    a.value("voiceIndex").toInt(0));
-            case PresetRouteKind::PluginPresetFile:
-                return runLoadPluginPresetFile(*e, ti, si, path);
-            case PresetRouteKind::None:
-                break;
-        }
-        return McpToolResult::text(jstr(route.error), true);
-    }});
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            // Shared composite (src/common/PresetApply.h) — the same body the
+            // audio.applyPreset RPC route runs: dispatch by slot + file header
+            // onto the shared loaders, tool argument contract intact.
+            return runApplyPreset(*e, a);
+        }});
 s.registerTool({"audition_patch",
         "Load a synth patch file into a probe FX slot and place a role-appropriate "
         "probe MIDI clip, so pressing play on the probe track auditions the patch. "
@@ -910,159 +814,10 @@ s.registerTool({"audition_patch",
                   {"path"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            QString filePath = a.value("path").toString();
-            if (filePath.isEmpty())
-                return McpToolResult::text("path required", true);
-            juce::File patchFile(filePath.toStdString());
-            if (!patchFile.existsAsFile())
-                return McpToolResult::text("file not found: " + filePath, true);
-
-            // â”€â”€ resolve engine: explicit arg, else sidecar engine key, else header â”€â”€
-            std::string engine = a.value("engine").toString().toStdString();
-            if (engine.empty())
-            {
-                auto sidecarEngine = [](const juce::File& sc) -> std::string {
-                    if (!sc.existsAsFile()) return {};
-                    auto j = juce::JSON::parse(sc.loadFileAsString());
-                    auto* o = j.getDynamicObject();
-                    return o ? o->getProperty("engine").toString().toStdString()
-                             : std::string();
-                };
-                engine = sidecarEngine(juce::File(patchFile.getFullPathName() + ".virus.json"));
-                if (engine.empty())
-                    engine = sidecarEngine(juce::File(patchFile.getFullPathName() + ".dx7.json"));
-                if (engine.empty())
-                {
-                    juce::MemoryBlock raw;
-                    if (patchFile.loadFileAsData(raw))
-                    {
-                        const auto* b = static_cast<const uint8_t*>(raw.getData());
-                        const size_t n = raw.getSize();
-                        if (n >= 2 && b[0] == 0xF0 && b[1] == 0x43)
-                            engine = "fm_synth";
-                        else if (n >= 5 && b[0] == 0xF0 && b[1] == 0x00
-                                 && b[2] == 0x20 && b[3] == 0x33)
-                            engine = "sub_synth";
-                    }
-                }
-                if (engine.empty())
-                    return McpToolResult::text(
-                        "could not determine patch engine â€” pass engine explicitly "
-                        "(sub_synth or fm_synth)", true);
-            }
-
-            // â”€â”€ probe track (or reuse trackId) â”€â”€
-            auto& m = e->getProjectModel();
-            auto tl = m.getTrackListTree();
-            int trackId = a.contains("trackId") ? a.value("trackId").toInt() : -1;
-            if (trackId < 0 || trackId >= tl.getNumChildren())
-            {
-                const int idx = tl.getNumChildren();
-                juce::ValueTree t(IDs::TRACK);
-                // Stable identity (design B1), same tree-derived allocator every
-                // other TRACK constructor uses — a probe track is a real track and
-                // must not be the one entity in the list without an id.
-                t.setProperty(IDs::trackID, m.allocateTrackID(), nullptr);
-                t.setProperty(IDs::name, "Patch Probe", nullptr);
-                t.setProperty(IDs::volume, 0.85, nullptr);
-                t.setProperty(IDs::pan, 0.0, nullptr);
-                t.setProperty(IDs::isMuted, false, nullptr);
-                t.setProperty(IDs::isSoloed, false, nullptr);
-                t.setProperty(IDs::parentBus, 0, nullptr);
-                t.setProperty(IDs::color, static_cast<int>(
-                    ProjectModel::trackColorForIndex(idx)), nullptr);
-                t.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
-                t.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
-                t.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
-                tl.addChild(t, -1, &m.getUndoManager());
-                trackId = idx;
-            }
-
-            // â”€â”€ synth slot of the engine type â”€â”€
-            e->getProjectCommands().addFxSlot(trackId, engine, -1, "");
-            auto fxChain = tl.getChild(trackId).getChildWithName(IDs::FX_CHAIN);
-            const int n = fxChain.isValid() ? fxChain.getNumChildren() : 0;
-            const int slotIndex = n > 0 ? n - 1 : 0;
-
-            // â”€â”€ load the patch â”€â”€
-            QString name = QString::fromUtf8(patchFile.getFileName().toRawUTF8());
-            if (engine == "sub_synth")
-            {
-                auto r = e->getAudioEngineCommands().loadVirusPatch(
-                    trackId, slotIndex, filePath.toStdString(), 0);
-                if (!r.ok)
-                    return McpToolResult::text(QString::fromStdString(r.error), true);
-                if (!r.name.empty())
-                    name = QString::fromStdString(r.name);
-            }
-            else if (engine == "fm_synth")
-            {
-                juce::MemoryBlock raw;
-                if (!patchFile.loadFileAsData(raw))
-                    return McpToolResult::text("failed to read file", true);
-                const auto* bytes = static_cast<const uint8_t*>(raw.getData());
-                const size_t fileSize = raw.getSize();
-                std::optional<HDAW::Dx7Voice> voice;
-                if (fileSize >= 163 && bytes[0] == 0xF0 && bytes[1] == 0x43
-                    && bytes[3] == 0x00)
-                    voice = HDAW::parseSingleVoiceSysex(bytes, fileSize);
-                else if (fileSize >= 4104 && bytes[0] == 0xF0 && bytes[1] == 0x43
-                         && bytes[3] == 0x09)
-                {
-                    auto voices = HDAW::parseCartridgeSysex(bytes, fileSize);
-                    if (!voices.empty()) voice = voices[0];
-                }
-                else
-                {
-                    return McpToolResult::text(
-                        "not a recognized DX7 SysEx file (expected F0 43 00 00 or F0 43 00 09 header)", true);
-                }
-                if (!voice.has_value())
-                    return McpToolResult::text("failed to parse SysEx data (bad checksum or size)", true);
-                juce::MemoryBlock block(voice->patchData.data(), FmSynthEngine::kPatchSize);
-                e->getProjectCommands().setFmPatch(trackId, slotIndex,
-                    block.toBase64Encoding().toStdString());
-                if (!voice->voiceName.empty())
-                    name = QString::fromStdString(voice->voiceName);
-            }
-            else
-            {
-                return McpToolResult::text("unsupported engine: " + QString::fromStdString(engine), true);
-            }
-
-            // â”€â”€ role probe phrase clip â”€â”€
-            QString role = a.value("role").toString("pad");
-            const int root = a.contains("root") ? a.value("root").toInt()
-                                                : patchRoleDefaultRoot(role);
-            constexpr double kWindowBeats = 8.0;
-            const double bpm = m.getTree().getProperty(IDs::tempo, 120.0);
-            const double durSec = HDAW::beatsToSeconds(kWindowBeats, bpm);
-            auto clip = m.createMidiClipEmpty("Patch Probe", 0.0, durSec);
-            clip.setProperty(IDs::color, static_cast<int>(
-                ProjectModel::trackColorForIndex(trackId)), nullptr);
-            auto nl = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
-            for (const auto& note : buildPatchProbeNotes(role, root, kWindowBeats))
-                nl.addChild(m.createMidiNote(note.pitch, note.velocity / 127.0f,
-                                             note.start, note.duration), -1, nullptr);
-            tl.getChild(trackId).getChildWithName(IDs::CLIP_LIST).addChild(clip, -1,
-                &m.getUndoManager());
-
-            // â”€â”€ sync the live processor (Gate 2/6): the probe track must be in
-            // the routing graph with the loaded slot so pressing play is audible
-            // and the live slot values reflect the patch. rebuildRoutingGraph
-            // restores param_N / fmPatchData from the tree (Gate 1/10 path).
-            if (auto* proc = e->getMainProcessor())
-                proc->rebuildRoutingGraph();
-
-            QJsonObject result;
-            result["ok"] = true;
-            result["trackId"] = trackId;
-            result["slotIndex"] = slotIndex;
-            result["name"] = name;
-            result["engine"] = QString::fromStdString(engine);
-            result["role"] = role;
-            return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(result).toJson(QJsonDocument::Compact)));
+            // Shared composite (src/common/PresetApply.h) — the same body the
+            // audio.auditionPatch RPC route runs: probe track/clip placement
+            // + the shared patch loaders, tool argument contract intact.
+            return runAuditionPatch(*e, a);
         }});
 
 }

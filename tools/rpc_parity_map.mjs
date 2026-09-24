@@ -248,6 +248,49 @@ const ALIASES = {
   place_patterns: ['composition.placePatterns', 'shared entry point: HDAW::parsePlacePatternsRequest + placePatternsJson (src/common/PlacePatternsRequest.h) + AudioEngineCommands::placePatterns; clipId is read on the surface by both'],
   scale_note: ['composition.scaleDegreeToPitch', 'shared entry point: HDAW::resolveScaleNote / scaleNoteJson (src/common/ScaleNote.h); the route name states the primitive, the tool name the degree map'],
   session_get_clip_states: ['session.getClipStates', 'shared payload builder: HDAW::sessionClipStatesJson (src/common/SessionClipStateJson.h)'],
+
+  // ---- 2026-09-24 ledger decisions 1+2 (add_library / fm sysex + preset load) ----
+  add_library: ['library.add', 'SAME FileLibraryManager::addLibrary call on both surfaces — the route no longer '
+    + 'pre-empts the manager type gate (type="patch" accepted; empty id -> the tool\'s "unknown library type" '
+    + '-32602 text). Twin test: FmLibraryParityTest.AddLibraryPatchTypeMatchesOnBothSurfaces'],
+  fm_synth_import_sysex: ['audio.fm_synthImportSysex', 'shared entry point: HDAW::fmImportSysexToolText '
+    + '(src/common/PresetApply.h, moved from the MCP-only runFmImportSysex) — parse + ProjectCommands::setFmPatch '
+    + '(fmPatchData persist + live load) + the tool\'s payload/VMEM acceptance on BOTH surfaces; the route keeps '
+    + 'its trackIndex key. Twin test: FmLibraryParityTest.FmImportSysexRoutePersistsAndMatchesToolPayload'],
+  fm_synth_load_preset: ['audio.fmSynthLoadPreset', 'shared entry point: HDAW::fmLoadPresetToolText '
+    + '(src/common/FmPatchLoad.h) -> ProjectCommands::setFmPatch — raw 312-hex patch over RPC now persists like '
+    + 'the tool (the route also accepts the tool\'s trackId spelling). Twin test: '
+    + 'FmLibraryParityTest.FmLoadPresetRouteMatchesToolAndPersists'],
+
+  // ---- 2026-09-24 capability wave (decisions 3-9): the seven remaining rows ----
+  // All notes name the shared entry point: each route is a thin hand-off to the SAME
+  // src/common/ body the MCP tool runs, so the payloads cannot drift.
+  apply_preset: ['audio.applyPreset', 'shared entry point: HDAW::applyPresetToolText (src/common/PresetApply.h) — '
+    + 'the tool\'s own dispatch-by-slot+file-header composite, whole argument object on both surfaces (the '
+    + 'name-derived matrix.applyPreset match was a DIFFERENT family, hence the old FORCE_REVIEW). Twin test: '
+    + 'CapabilityRouteParityTest.ApplyPreset*'],
+  fm_synth_get_state: ['read.getFmSynthState', 'shared entry point: HDAW::fmSynthStateToolText '
+    + '(src/common/FmSynthStateJson.h) — the tool\'s own sources (live activeVoiceCount for the caller-chosen '
+    + 'trackId/slotIndex + the tree\'s param_0), NOT read.getFmAnalysis (different sources, documented). '
+    + 'Twin test: CapabilityRouteParityTest.FmSynthState*'],
+  get_master_fx_params: ['read.getMasterFxParams', 'shared entry point: HDAW::masterFxParamsToolText '
+    + '(src/common/MasterFxAccess.h) — reads the MASTER_FX node (the read-side accessor the ledger row asked '
+    + 'for), payload == the tool\'s parsed text. Twin test: CapabilityRouteParityTest.MasterFxParams*'],
+  list_clip_takes: ['read.getClipTakes', 'shared entry point: HDAW::clipTakesToolText (src/common/ClipTakesJson.h) '
+    + '— the tool\'s TAKE_LIST walk ({index,name,sourceFile,active} + activeTake); audioGraph keeps switching, '
+    + 'read now lists. Twin test: CapabilityRouteParityTest.ClipTakes*'],
+  sub_synth_import_sysex: ['audio.subSynthImportSysex', 'shared entry point: HDAW::subSynthImportSysexToolText '
+    + '(src/common/PresetApply.h) -> AudioEngineCommands::loadVirusPatch — the internal sub_synth engine is '
+    + 'reached through the command layer (composition.sendFxMidi stays plugin-slots-only, unchanged). '
+    + 'Twin test: CapabilityRouteParityTest.SubSynthImportSysex*'],
+  load_plugin_preset_file: ['plugin.loadPresetFile', 'shared entry point: HDAW::loadPluginPresetFileToolText '
+    + '(src/common/PresetApply.h) — parsePresetFile + setStateInformation + the pluginState tree capture, '
+    + 'same message-thread context as the tool (see the Gate 16 note in Router_Plugin.cpp). Twin test: '
+    + 'CapabilityRouteParityTest.LoadPresetFile*'],
+  audition_patch: ['audio.auditionPatch', 'shared entry point: HDAW::auditionPatchToolText '
+    + '(src/common/PresetApply.h) — the tool\'s composite (probe track/clip placement + the shared '
+    + 'sub_synth/fm_synth loaders), whole argument object on both surfaces. Twin test: '
+    + 'CapabilityRouteParityTest.AuditionPatch*'],
 };
 
 // Prefix rules: a tool family that maps onto a namespace, remainder camelCased. Verified
@@ -311,19 +354,8 @@ const rpcToks = rpcNames.map(r => ({ r, t: new Set(sig(r.split('.')[1])) }));
 // unresolved (review queue) with the reason, so the ledger never reads as a verified
 // mapping. The live-probe gate cannot catch this class — both routes exist.
 const FORCE_REVIEW = {
-  apply_preset: 'name-derived match to matrix.applyPreset is WRONG (matrix presets are a different '
-    + 'family) — this preset front door needs its own route',
-  // 2026-09-23 review pass.
-  add_library: 'library.add is the same FileLibraryManager::addLibrary call BUT its route rejects '
-    + 'type="patch" (midi|audio only) while the tool also creates patch libraries — the route is a strict '
-    + 'subset, not a twin (widen the enum or give patch libraries their own path)',
-  fm_synth_import_sysex: 'audio.fm_synthImportSysex parses the same DX7 dumps (HDAW::parseSingleVoiceSysex/'
-    + 'parseCartridgeSysex) but applies them LIVE-ONLY (slot->fmSynthEngine()->loadPatch) — it never writes '
-    + 'fmPatchData to the slot tree the way the MCP loader does (ProjectCommands::setFmPatch), so save/'
-    + 'tree-copy renders lose the patch, and it rejects the raw 4096-byte VMEM banks the tool accepts',
-  fm_synth_get_state: 'read.getFmAnalysis is close but reads DIFFERENT sources: the analysis voice count + '
-    + 'the engine algorithm for the track\'s first non-bypassed fm_synth slot, while the tool reports the '
-    + 'live activeVoiceCount + the tree\'s param_0 for a caller-chosen slotIndex',
+  // apply_preset + fm_synth_get_state drained by the 2026-09-24 capability wave
+  // (audio.applyPreset / read.getFmSynthState — mapped in ALIASES above).
 };
 
 // The reverse of an ALIAS: ONE tool whose capability is spread over MANY routes (or one
@@ -402,19 +434,9 @@ const FANOUT = {
 // Distinct from FORCE_REVIEW (a route exists but is NOT this) and MCP_ONLY (no route by
 // design, with the covering route named).
 const NO_ROUTE = {
-  get_master_fx_params: 'no route: the MASTER_FX chain is read only by this tool — read/project expose no '
-    + 'master-FX accessor (the bus routes address BUS_LIST, not the MASTER_FX node)',
-  fm_synth_load_preset: 'no route: ProjectCommands::setFmPatch has no dispatch — the only fm route '
-    + '(audio.fm_synthImportSysex) takes a FILE and applies live-only, so a raw patch cannot be written over RPC',
-  sub_synth_import_sysex: 'no route: AudioEngineCommands::loadVirusPatch has no dispatch, and composition.sendFxMidi '
-    + 'only reaches plugin slots (not the internal sub_synth engine)',
-  load_plugin_preset_file: 'no route: setStateInformation file loading (.SerumPreset/.fxp/.syx) has no plugin/'
-    + 'pluginParam twin (missing plugin.loadPresetFile)',
-  audition_patch: 'no route for the patch load: it goes through the sub_synth/fm_synth file loaders that have no '
-    + 'RPC twin (see sub_synth_import_sysex / fm_synth_load_preset); the probe track/clip placement itself is '
-    + 'reachable (project.addTrack / project.addFxSlot / project.addMidiClip)',
-  list_clip_takes: 'no route: audioGraph can SWITCH takes (switchClipTake / switchClipTakeToIndex) but nothing lists '
-    + 'them, and read.getClip omits TAKE_LIST/activeTake (missing read.getClipTakes or audioGraph.listClipTakes)',
+  // 2026-09-24 capability wave: get_master_fx_params, sub_synth_import_sysex,
+  // load_plugin_preset_file, audition_patch and list_clip_takes all gained their named
+  // routes — mapped in ALIASES above/below.
 };
 
 const rows = [];

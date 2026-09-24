@@ -34,6 +34,10 @@ std::optional<Dx7Voice> parseSingleVoiceSysex(const uint8_t* data, size_t size) 
 
     char nameBuf[11] = {};
     std::memcpy(nameBuf, data + 6 + 145, 10);
+    // NOTE: the name field is reported with trailing spaces trimmed but NUL
+    // padding left in place (the field is 10 bytes; std::string stops at the
+    // first NUL because nameBuf is zero-initialized). This matches the
+    // cartridge/VMEM paths below.
     voice.voiceName = std::string(nameBuf, 10);
     auto pos = voice.voiceName.find_last_not_of(' ');
     if (pos != std::string::npos)

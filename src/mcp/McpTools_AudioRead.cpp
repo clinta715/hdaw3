@@ -12,6 +12,7 @@
 #include "../engine/TrackFXSlot.h"
 #include "../common/ToneVerity.h"
 #include "../common/SendJson.h"
+#include "../common/ClipTakesJson.h"
 #include "../engine/Dx7SysexImport.h"
 #include "../engine/MidiFx.h"
 #include "../engine/MixReport.h"
@@ -382,33 +383,13 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
         "audio",
         [e](const QJsonObject& a) -> McpToolResult {
-            int clipId = a.value("clipId").toInt();
-            auto& model = e->getProjectModel();
-            auto trackList = model.getTrackListTree();
-
-            for (int t = 0; t < trackList.getNumChildren(); ++t) {
-                auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
-                for (int c = 0; c < clipList.getNumChildren(); ++c) {
-                    auto clip = clipList.getChild(c);
-                    if (static_cast<int>(clip.getProperty(IDs::clipID, 0)) == clipId) {
-                        auto takeList = clip.getChildWithName(IDs::TAKE_LIST);
-                        int activeIdx = static_cast<int>(clip.getProperty(IDs::activeTake, 0));
-                        QJsonArray arr;
-                        for (int i = 0; i < takeList.getNumChildren(); ++i) {
-                            auto tk = takeList.getChild(i);
-                            arr.append(QJsonObject{
-                                {"index", i},
-                                {"name", jstr(tk.getProperty(IDs::name, "").toString())},
-                                {"sourceFile", jstr(tk.getProperty(IDs::sourceFile, "").toString())},
-                                {"active", i == activeIdx}
-                            });
-                        }
-                        return McpToolResult::text(QString::fromUtf8(
-                            QJsonDocument(arr).toJson(QJsonDocument::Compact)));
-                    }
-                }
-            }
-            return McpToolResult::text("clip not found", true);
+            // Shared shaping (src/common/ClipTakesJson.h) — the same entry
+            // point read.getClipTakes runs.
+            bool ok = false;
+            const QString text = HDAW::clipTakesToolText(
+                e->getProjectModel().getTrackListTree(),
+                a.value("clipId").toInt(), &ok);
+            return McpToolResult::text(text, !ok);
         }});
 
     s.registerTool({"switch_clip_take",

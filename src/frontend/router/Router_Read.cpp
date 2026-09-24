@@ -4,6 +4,11 @@
 #include "../../common/ReadModel.h"
 #include "../../common/BusInfo.h"
 #include "../../common/SendJson.h"
+// Shared shaping for the two 2026-09-24 read routes — the SAME entry points
+// the MCP twins call (get_master_fx_params / list_clip_takes).
+#include "../../common/MasterFxAccess.h"
+#include "../../common/ClipTakesJson.h"
+#include "../../model/ProjectModel.h"   // IDs:: namespace (MASTER_FX)
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -112,6 +117,37 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& trackList,
         // The SAME shaping get_track_sends emits (common/SendJson.h).
         return { false, QJsonDocument::fromJson(
             QString::fromStdString(HDAW::shapeSendsJson(r.getTrackSends(i))).toUtf8()).array() };
+    }
+
+    // --- MASTER-bus FX + clip takes (2026-09-24 parity wave) ---
+    // Both routes are thin hand-offs to the ONE shared shaping the MCP twins
+    // (get_master_fx_params / list_clip_takes) run:
+    //   getMasterFxParams — HDAW::masterFxParamsToolText (common/MasterFxAccess.h)
+    //   getClipTakes      — HDAW::clipTakesToolText      (common/ClipTakesJson.h)
+    // so the payloads match the tools' text byte-for-byte (parsed into the
+    // reply, listBusFxParams precedent). getMasterFxParams reads the
+    // MASTER_FX node — the TRACK_LIST's sibling under the project root, the
+    // same hop dispatchProject's master-FX routes take.
+    if (m == "getMasterFxParams") {
+        const juce::ValueTree masterFx = trackList.getParent().getChildWithName(IDs::MASTER_FX);
+        bool ok = false;
+        const QString text = HDAW::masterFxParamsToolText(masterFx, &ok);
+        if (!ok)
+            return makeError(-32602, text);
+        return { false, QJsonDocument::fromJson(text.toUtf8()).object() };
+    }
+    if (m == "getClipTakes") {
+        int clipId;
+        if (!requireInt(o, "clipId", clipId, nullptr))
+            return makeError(-32602, "clipId required");
+        bool ok = false;
+        const QString text = HDAW::clipTakesToolText(trackList, clipId, &ok);
+        if (!ok)
+            return makeError(-32602, text);
+        // The takes payload is a JSON ARRAY (the tool's shape) — parse to
+        // .array(), not .object() (an object() wrap of an array document
+        // silently yields {}).
+        return { false, QJsonDocument::fromJson(text.toUtf8()).array() };
     }
 
     // --- Buses (docs/plans/2026-09-22-bus-fx-params.md, slice C) ---

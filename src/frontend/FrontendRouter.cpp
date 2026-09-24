@@ -2,9 +2,11 @@
 #include "FrontendServer.h"
 
 #include "../common/FxPluginIdCheck.h"
+#include "../common/FmSynthStateJson.h"
 #include "../engine/AudioEngine.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonValue>
 #include <QString>
 
@@ -99,6 +101,24 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
                                {"sampleRate", peaks.sampleRate},
                                {"numSamples", static_cast<qint64>(peaks.numSamples)}};
             return { false, result };
+        }
+        // getFmSynthState needs AudioEngine (the live processor's
+        // activeVoiceCount for the caller-chosen slot), not just ReadModel —
+        // the SAME shared read the MCP fm_synth_get_state tool runs
+        // (HDAW::fmSynthStateToolText, src/common/FmSynthStateJson.h).
+        // Deliberately NOT read.getFmAnalysis: different sources (the
+        // analysis voice count + the first non-bypassed slot's engine
+        // algorithm), documented in the ledger note.
+        if (m == "getFmSynthState") {
+            const auto o = paramsObject(params);
+            int ti, si;
+            if (!requireInt(o, "trackId", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+                return makeError(-32602, "trackId and slotIndex required");
+            bool ok = false;
+            const QString text = HDAW::fmSynthStateToolText(engine, ti, si, &ok);
+            if (!ok)
+                return makeError(-32602, text);
+            return { false, QJsonDocument::fromJson(text.toUtf8()).object() };
         }
         return dispatchRead(engine.getReadModel(),
                             engine.getProjectModel().getTrackListTree(),
