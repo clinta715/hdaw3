@@ -326,5 +326,5 @@ emulations (any slow-booting child captured early has the same hazard).
   — and the DT1 dumps now actually apply (the wrapper retargets UserPatch →
   `PerformanceTemp|PatchUpper`). Live verification DONE (gate
   `FxMidiInjection.Je8086UserPatchDumpChangesOfflineRender`); evidence + fixes:
-  `docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md`, `docs/hardware-va-suite.md` §9.
+  `docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md`, `docs/va-suite-status-log.md`.
 

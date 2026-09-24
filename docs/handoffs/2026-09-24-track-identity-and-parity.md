@@ -1,5 +1,10 @@
 # Handoff — track surface parity, stable ids (B1/B2), native-Windows tooling
 
+> **2026-09-24 EVENING UPDATE — read §8 first.** Three more commits landed on top of everything
+> below: the B3 migration (`ebe727c`), the send-address decision (`87040b5`), and the parity ledger
+> CLOSE (`0c96e7e` — 307 tools / 411 methods / mapped 295 / mcp-only 12 / **unresolved 0**). §5's
+> open-work list and §1's counts are superseded there.
+
 **Read this first.** It supersedes `docs/handoffs/2026-09-23-remaining-issues.md` (kept as history for
 the pre-session state; its "remaining issues" list is closed or superseded below). Everything here was
 verified against the tree at `49a531b`.
@@ -223,3 +228,116 @@ python -m graphify update . --force ; graphify explain <newSymbol>
 #   HEAD 4afe1fc until the post-commit hook rebuild (plus this explicit update) is verified with
 #   `explain <newSymbol>` — never trust the banner or the exit code.
 ```
+
+## 8. 2026-09-24 evening update — B3 shipped, ledger closed (commits ebe727c, 87040b5, 0c96e7e)
+
+### 8.1 What changed structurally (supersedes §5 and parts of §3)
+
+- **B3 — durable refs are stable ids now.** Tree storage: `parentTrackID` (int id, -1 = folder-less),
+  `childTrackIDs` (CSV of ids, same grammar), `cellTrackID` (int id, -1 = none). The legacy
+  `parentId` / `childIds` / `cellTrack` exist ONLY as read-only inputs to the one-way load-time
+  migration (`src/engine/DurableRefMigration.h`), which runs in `ProjectSerializer::load` **after**
+  `scanAndSyncTrackIDs()` (ids must exist to translate indices), with a null undo manager, and then
+  removes the legacy properties. One vocabulary per saved file; save stays verbatim.
+- **`remapTrackPositionalRefs` + `trackRemovalIndexMap` + `trackMoveIndexMap` are DELETED.**
+  `moveTrack` is a bare splice. `removeTrack` still runs ONE indexed walk that PRUNES the removed id
+  from every durable ref — mandatory because `allocateTrackID()` is `max(existing)+1`, so a dangling
+  id can silently re-point at a later minted track (remove the highest-id track → add one → same id).
+  This was the one real defect found during B3's test pass; `Commands.RemoveTrackPrunesRefsSoAReusedIdCannotRePoint`
+  pins it.
+- **Wire/API contracts that did NOT change:** `CellRecipe.trackId` (TRACK_LIST index, converted at the
+  storage boundary in `setCellRecipeImpl`/`getCells`), `TrackSnapshot.parentId` (positional index,
+  resolved via one id→index map per snapshot walk in `ReadModelImpl`), `removeTrack`'s shift payload
+  (advisory now), `moveTrack`'s splice order.
+- **Send addresses stay `2000 + sendIndex` — permanently, by user decision.** The lane/LFO target
+  remap walk in `removeSend` is the LAST positional fixup in the codebase, and it is tested. A
+  `2000 + sendID` scheme would collide with the bus range at send id 1000; revisit only if a project
+  could exceed 999 sends. Documented in `docs/architecture.md` (pid-space section) and B3 plan
+  decision 3 (CLOSED).
+- **Parity ledger CLOSED: 307 tools / 411 methods / mapped 295 / mcp-only 12 / unresolved 0.**
+  All 10 former unresolved rows are mapped with twin tests. New shared shapers (header-only, in
+  `src/common/`): `PresetApply.h` (the preset front door + fm/sub-synth/plugin loaders + audition
+  composite), `FmPatchLoad.h`, `FmSynthStateJson.h`, `ClipTakesJson.h`; `MasterFxAccess.h` gained the
+  read side. `src/mcp/PresetRoute.h` is now an adapter over the shared entries — ONE implementation,
+  two surfaces. New routes: `read.getMasterFxParams`, `read.getClipTakes`, `read.getFmSynthState`
+  (Read-ns intercept: needs the live processor), `audio.subSynthImportSysex`,
+  `audio.applyPreset`, `audio.auditionPatch`, `plugin.loadPresetFile`, `audio.fmSynthLoadPreset`;
+  `library.add` accepts `type="patch"`; `audio.fm_synthImportSysex` PERSISTS (`setFmPatch`) and
+  accepts raw 4096/4097-byte VMEM banks like the tool.
+- **Plugin-lifecycle note (Gate 16, flagged not changed):** `plugin.loadPresetFile` calls
+  `setStateInformation` on the router thread — the same context as the pre-existing
+  `audio.swapFxSnapshot`/`captureFxSnapshot` routes. If Gate 16 discipline tightens, those routes
+  change together.
+
+### 8.2 What this means for agents (the practical deltas)
+
+- **Holding a `trackID` is now durable across splices.** Remove/move tracks and folder membership,
+  song-plan cells and the read model all resolve through ids. `trackId` (positional) remains valid on
+  every surface; the shift payload tells position-mirroring clients what renumbered.
+- **`trackID` acceptance on fx/automation/plugin tools is still CUT (B2b, declined for now).** An
+  agent holding only an id must resolve it to an index for those tools.
+- **Saved projects upgrade transparently on load.** No `formatVersion` bump was needed: the
+  migration is idempotent and detects the vocabulary per node. Save→load→save is byte-stable for the
+  ref properties (`DurableRefMigration.SaveLoadSaveKeepsTheNewVocabularyByteStable`).
+- **FM patch imports from an agent are now safe over RPC** — previously the RPC route was live-only,
+  so a save or tree-copy render silently lost the patch.
+
+### 8.3 Process lessons from this session (all verified the hard way)
+
+1. **Parallel slices must NOT build or test concurrently in one `build/` tree.** Two ninja/cmake
+   invocations raced: RC1109 `manifest.res` lock, transient C1083 `Permission denied` on `.obj`s, a
+   transiently corrupt `HDAW_lib.lib` (LNK1136, fixed by deleting it and relinking), and one
+   LNK1168 on `hdaw_tests.exe`. Working rule: **slices edit only; the orchestrator runs exactly ONE
+   build + ONE focused pass after all slices land, and the full suite once at finalize.** Announce
+   the rule in the slice brief, not mid-flight.
+2. **Twin tests catch contract drift — including the test author's own.** Every red in the new
+   suites was one of: route arg name ≠ tool arg name (`trackIndex` vs `trackId`), a JSON-array
+   payload wrapped with `.object()` (silently `{}`), an out-of-range write value relying on no clamp
+   (lesson 23), a fixture name padded with NULs where the parser trims spaces, and a payload
+   containing per-call ids (clipID) that can never be object-equal across calls — assert the
+   deterministic fields instead.
+3. **A sharded `FrontendServer.*` cascade on "server failed to bind" is one failure, not sixteen.**
+   When a shard's WS server can't bind (port pressure under parallel load), every later
+   `client.connect` in that shard fails. Signature: failures cluster in one shard, all show
+   `frontend_server_test.cpp:158 server->start(0)` false; the same tests pass solo. See
+   `docs/testing-mcp.md` for the two new environmental classes (no-capture-endpoint recording,
+   FrontendServer bind cascade).
+4. **`graphify update` is a silent no-op in this environment (exit 0, nothing written)** — the
+   post-commit hook rebuild is what keeps the graph current; verify with `explain <newSymbol>`
+   (B3 symbols confirmed present after the `ebe727c` hook rebuild).
+
+### 8.4 Documentation state after this session
+
+- `docs/testing-mcp.md`: TMP recipe fixed; two new environmental classes + the 2026-09-24 clean
+  reference run recorded (1971/285, 11 environmental failures).
+- Docs split (2026-09-24, later same day): `psytrance-composition-guide.md` §4D+§5–§10 moved
+  verbatim to `docs/psytrance-va-and-production.md`; `hardware-va-suite.md` §9 moved verbatim to
+  `docs/va-suite-status-log.md`; `docs/handoffs/INDEX.md` added. Cross-references retargeted
+  repo-wide. Deliberately NOT edited (read-only file): `AGENTS.md:28` row still says
+  "per-engine status (§9)" and `AGENTS.md:180` points at `hardware-va-suite.md §9` — both now
+  resolve to `docs/va-suite-status-log.md`. **Next agent: also give the three new docs their own
+  Doc-table rows** (`psytrance-va-and-production.md`, `va-suite-status-log.md`,
+  `handoffs/INDEX.md`) once AGENTS.md is free.
+- Docs split (2026-09-24, later wave): the four MCP-server sections moved verbatim to
+  `docs/mcp-server-ops.md` (MCP server v0.3.x, file-browser audio preview, live-transport table,
+  lazy-mcp lifecycle knobs); testing-mcp.md keeps gtest + environmental catalog + deprecated
+  frontend tests, with a pointer header. Reference-audit residue that now points at moved content
+  but was deliberately NOT edited: `AGENTS.md:27` (table row description), `AGENTS.md:134` and
+  `AGENTS.md:322-326` (lesson-29 lazy-mcp pointer, fixed-port note — both moved), `README.md:416`
+  (v0.35.0 release-note entry; release notes are history), `src/mcp/McpTools_Engine.cpp:23` and
+  `tests/unit/proxy/crash_recovery_test.cpp:661` (code comments; source untouched in a docs-only
+  wave — the testing-mcp.md header pointer resolves them). Historical plan/handoff references
+  (`docs/plans/2026-09-2*`, `docs/archive/`, older handoffs) left as-is — records of where content
+  was at the time. `README.md` release notes and `docs/paths/psydub.json` were audited: the traps
+  file carries no testing-mcp reference.
+- `docs/architecture.md`: send-address decision recorded in the pid-space section.
+- `docs/plans/2026-09-23-durable-refs-to-stable-ids.md`: status IMPLEMENTED; decisions + the
+  removal-prune correction recorded.
+- `AGENTS.md` still carries the stale 2026-09-23 test baseline (1865/277) and does not mention B3 or
+  the closed ledger — its working tree has another session's uncommitted changes (graphify/DSH
+  findings + `dsh-build-fast.bat`), so those edits were deliberately NOT mixed in. **Next agent:
+  update AGENTS.md's Testing baseline (1971/285 reference run, 11 environmental failures) and the
+  Feature-parity section (ledger closed; route-addition recipe = shared `src/common/` shaper + twin
+  test + ledger regen) once that file is free — and give `docs/mcp-server-ops.md` its own row in
+  the doc table (MCP server ops, transports/timeouts, lazy-mcp lifecycle), trimming the
+  testing-mcp.md row to "gtest suite, environmental-failure catalog".**

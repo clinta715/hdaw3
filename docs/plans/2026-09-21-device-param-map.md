@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-21
 **Status:** complete (slice 1) — all gates pass (G1–G10)
-**Related:** `docs/hardware-va-suite.md` (capabilities + §9), `docs/core-synths-agentic-guide.md`,
+**Related:** `docs/hardware-va-suite.md` (capabilities; per-plugin status log = `docs/va-suite-status-log.md`), `docs/core-synths-agentic-guide.md`,
 `docs/psytrance-composition-guide.md` §4D, `docs/plans/2026-09-16-matrix-presets.md`,
 `docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md`
 

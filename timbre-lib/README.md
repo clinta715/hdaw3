@@ -172,7 +172,8 @@ writes one sheet per engine to `matrix_presets/<engine>.json` (schema
 Unlike `harvest_fx_presets.py` (which harvests FX value *distributions* for
 re-creation with HDAW's internal FX), one preset here is the full matrix/FX
 tuple of one canonical patch config. Lookup rule + apply-path table:
-`docs/hardware-va-suite.md` §9. Plan: `docs/plans/2026-09-16-matrix-presets.md`.
+`docs/va-suite-status-log.md` (moved from `hardware-va-suite.md` §9, 2026-09-24).
+Plan: `docs/plans/2026-09-16-matrix-presets.md`.
 
 Usage (roots default to the known engine libraries; stdlib only):
 

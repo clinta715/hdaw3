@@ -1,10 +1,13 @@
-# HDAW Testing & MCP Server Reference
+# HDAW Testing Reference (gtest suite)
 
 Domain-specific documentation split from AGENTS.md.
 For the original combined file, see `../AGENTS.md`.
 
-Sections: GTest Suite, TransportLoopback Test Seam, MCP Server Architecture,
-MCP Tool Safety, File Browser Audio Preview.
+The MCP-server half of this file moved verbatim to
+[`mcp-server-ops.md`](mcp-server-ops.md) on 2026-09-24: MCP server architecture
+and tool safety, engine binary update flow, file browser audio preview, the
+live-transport timeout table, and the lazy-mcp lifecycle knobs. This file keeps
+the gtest suite, the environmental-failure catalog, and the deprecated frontend tests.
 
 ## Testing
 
@@ -92,6 +95,48 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   red in a sandbox: they are environmental, independent of any session's diff, and the way to confirm
   is that the failing test passes once its path/keys are made available (clear the keys by hand, or
   run outside the sandbox) — never by editing the test to expect the sandbox.
+- **Two more environmental classes measured on 2026-09-24 full runs (do not chase either):**
+  1. **No capture endpoint → `TransportSurface.StartStopRecording` fails deterministically.**
+     This box exposes exactly one audio endpoint (RDP "Remote Audio", playback only). `beginActualRecording`
+     passes `getTotalNumInputChannels()` (0) to the recorder → `juce::WavAudioFormat::createWriterFor`
+     returns null → `isRecording()` stays false. Solo-fails consistently (~270 ms). It needs a real
+     input device, like the deviceless pattern above.
+  2. **A `FrontendServer.*` shard can cascade on "server failed to bind".** The shard's first
+     FrontendServer test that fails to bind port 0's listener (or loses the WS handshake under load)
+     turns every later `client.connect(...)` in that shard red (`server failed to bind` /
+     `client.connect → false`), which can look like 16+ unrelated failures. Signature: failures cluster
+     in one shard, all show `frontend_server_test.cpp:158 server->start(0)` false or a connect failure,
+     and the same tests pass solo or in a different shard split. Re-run the FrontendServer tests solo
+     before believing any of them.
+  With both classes accounted for, a clean reference run (2026-09-24, post ledger-close) is:
+  **1971 tests / 285 suites — 1952 passed, 39 skipped, 11 failures**, all environmental:
+  6× `RaveSettings.*` + `FrontendServer.SettingsNamespaceExposesMcpHttpConfig` (QSettings/machine state),
+  `McpServer.ApplySongPlan` + `SongPlan.TemplateRoundTripDoesNotApply` + `McpCoverageTest.FxChainPresetRoundTrip`
+  (`%APPDATA%` writes), and `TransportSurface.StartStopRecording` (no capture endpoint).
+  `PluginIsolation.LargeStateRoundTripThroughProxy` did NOT fire in that run (it remains a known flake).
+- **Clean reference baseline (2026-09-24, post ledger-close): 1971 tests / 285 suites —
+  1952 passed, 39 skipped, 11 failures, all environmental** (exact failure list in the
+  bullet above; `docs/build-and-testing.md` defers its baseline counts here). Compare any
+  later full run against this.
+- **Twin parity suites (landed with the 2026-09-24 parity + B3 waves)** — each drives the
+  SAME scenario through the MCP tool AND the frontend JSON-RPC route and asserts identical
+  payloads / failure texts:
+  - `FmLibraryParityTest` (`tests/unit/frontend/fm_library_parity_test.cpp`) — FM sysex
+    import / FM patch load persists exactly like the tool through the
+    `audio.fm_synthImportSysex` / `audio.fmSynthLoadPreset` routes (cartridge and
+    4097-byte VMEM banks, identical failure texts), plus `add_library` patch-type parity.
+  - `CapabilityRouteParityTest` (`tests/unit/frontend/capability_route_parity_test.cpp`) —
+    the shared-`src/common/` surfaces (master FX params, clip takes, FM synth state,
+    sub-synth sysex import, preset apply/audition, plugin preset files) answer on the
+    route with the tool's payload.
+  - `MissingRouteParityTest` (`tests/unit/frontend/missing_route_parity_test.cpp`) —
+    routes that had NO implementation before the wave (automation preset, movement plan,
+    master-FX writes, place_patterns, scale_note, session clip states) now return the
+    tool's own payload/failure text.
+  - `DurableRefMigration` (`tests/unit/engine/durable_ref_migration_test.cpp`) — B3
+    stable ids: legacy string-ref projects migrate through the REAL save/load path,
+    re-save is byte-stable, send-target PIDs survive, and loading an already-migrated
+    file is idempotent.
 - **`RespawnPath.RealPathPassesThrough` — expectation is now platform-gated**
   (`tests/unit/proxy/crash_recovery_test.cpp:655`). It asserts that
   `PluginManager::resolveRespawnPath("/usr/lib/MyPlugin.clap", …)` returns
@@ -166,6 +211,17 @@ is green on its own.
 directory — `LNK1104: cannot open file 'hdaw_tests.exe'` plus `LNK4076 invalid .ilk`
 (the two linkers fight over the same PDB/ILK and output exe). NEVER start a second
 build while one runs; wait for the first to exit.
+
+### Parallel agent slices: build/test ownership
+
+Working rule (measured 2026-09-24): parallel slices **EDIT ONLY** — no slice runs
+cmake/ninja/tests in the shared `build/` tree. Concurrent ninja/cmake invocations
+corrupt each other's outputs: RC1109 `manifest.res` lock, transient C1083
+`Permission denied` on `.obj`s, a corrupt `HDAW_lib.lib` (LNK1136 — fixed by
+deleting it and relinking), plus LNK1168 on a locked `hdaw_tests.exe`. The
+orchestrator owns exactly ONE build + ONE focused test pass after all slices land,
+and the full suite once at finalize. Announce the rule in the slice brief, not
+mid-flight. (This is the slice-level version of the second-build collision above.)
 
 ## Frontend Tests (v0.12.0+) — DEPRECATED (2026-09-23)
 
@@ -250,221 +306,3 @@ the test asserts banner-shown → host-respawned → banner-cleared, not a manua
 Restart click. (`PluginManager::tick()` is dead code; the live path is the
 timer callback.)
 
-## MCP server (v0.3.x)
-
-A new `src/mcp/` module exposes HDAW as an **MCP** (Model Context
-Protocol) server so an LLM client (Claude Desktop, opencode, etc.)
-can drive the DAW. 36 tools cover transport, tracks, clips, MIDI notes,
-composition (`PhraseGenerator`), FX, automation, undo, and audio export.
-
-### Engine binary update flow (`engine_info` / `engine_restart`)
-
-Rebuilding `HDAW_headless.exe` does not update a **running** engine — the
-process keeps executing the old image (lesson 21: a stale binary looks
-healthy and answers every RPC, but contains none of the fixes). The update
-flow is: rebuild → `engine_info` with `buildBinaryPath` set to the fresh
-binary (returns `stale: true` when the build tree is newer than the running
-process) → `engine_restart`, which refuses while an export renders (never
-silently cancels a long render; override with `force: true`) and then
-schedules `QCoreApplication::exit(42)` 300 ms after the tool response is
-flushed — exit code 42 means *intentional restart*, and `mcp-launch.bat`
-propagates it, re-copies the fresh binary, and size-verifies the copy before
-relaunching. The MCP client must reconnect afterwards (`mcp.reload` or a
-launcher relaunch). Both tools are read-only/restart-only by contract:
-`engine_info` never mutates, and `engine_restart` performs no engine-side
-cleanup — the normal shutdown path owns AudioEngine teardown.
-
-- **Two transports**, both behind the `Transport` interface
-  (`src/mcp/McpTransport.h`): `McpTransportStdio` (newline-delimited
-  JSON over `stdin`/`stdout`, with a dedicated reader thread that
-  posts requests to the server via `Qt::QueuedConnection`) and
-  `McpTransportHttp` (Streamable HTTP, configurable host/port via Preferences
-  `mcp/httpHost` / `mcp/httpPort`, defaults to `127.0.0.1:18765`, no auth).
-  `McpTransportLoopback` is the in-memory test transport.
-- **Tool safety**: every destructive tool (`remove_*`, `clear_notes`,
-  `duplicate_clip`, `export_audio`) accepts `dryRun: true` and reports
-  what it would do without mutating. Every mutation goes through the
-  `UndoManager` so `undo` / `redo` tools (or the GUI's `Ctrl+Z`) can
-  roll it back. `notifications/cancelled` sets a `std::atomic<bool>`
-  cancel flag (`McpServer::isCancelRequested()`); the spec's
-  worker-thread follow-up will poll this for cancellable exports.
-- **Tool-execution errors are not JSON-RPC errors.** Per the MCP
-  contract, a tool that runs but fails returns
-  `{isError: true, content: [{type:"text", text:"…"}]}` in a SUCCESSFUL
-  JSON-RPC response. JSON-RPC errors (`{code, message}`) are reserved
-  for parse/validation/method-not-found failures. `McpServer::dispatchRequest`
-  in `src/mcp/McpServer.cpp` is the single dispatch path used by both
-  the stdio transport (via the `handleRequest` slot) and the HTTP
-  transport (directly, synchronously).
-- **Every tool runs on the main thread.** This is the same
-  single-thread rule as the rest of the project: tools access the
-  engine/model directly without locks, and the audio thread is
-  never touched. Audio-thread concerns (e.g. plugin parameter
-  changes) are the tool handler's responsibility — use `SPSCBridge` for
-  audio-thread notifications, as documented in the next section.
-- **Spec / plan** documents: `docs/archive/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
-  and `docs/archive/superpowers/plans/2026-06-29-hdaw-mcp-server-phase{1,2}.md`.
-
-## File Browser Audio Preview (v0.9.2)
-
-The file browser (`frontend/src/components/FileBrowser.tsx`) supports
-audio preview at project tempo. The preview uses the engine's
-`AudioPreviewPlayer` via the `preview.*` RPC namespace.
-
-**RPC methods** (defined in `src/frontend/FrontendRouter.cpp`):
-- `preview.load` — load an audio file for preview
-- `preview.play` / `preview.stop` — playback control
-- `preview.setVolume` — volume (0–1)
-- `preview.setTempoMatch` — enable/disable with source BPM
-- `preview.setProjectBpm` — set the target project tempo
-- `preview.isPlaying` — poll playback state
-
-**UI**: Each audio file row shows a ▶ button on hover. Clicking it
-loads and plays the file. The preview bar at the bottom of the browser
-has play/stop, volume slider, "Tempo Match" checkbox (enabled by
-default), and a source BPM input. The file plays at the project tempo
-when tempo match is on.
-
-**Architecture**: `AudioEngine` owns an `AudioPreviewPlayer` instance
-(lazy-initialized in `initialize()`). The player uses the same
-`AudioDeviceManager` as the main engine but routes through its own
-`AudioSourcePlayer` to avoid interfering with the main audio graph.
-The player does not apply time-stretching — tempo matching adjusts
-playback rate (pitch changes with speed).
-
-## Which MCP transport is live — check this before blaming a timeout
-
-There are **two** independent ways hdaw's tools reach an agent, with **different
-timeouts**. Diagnose with the error the harness prints (`server:` / `transport:`),
-never by assumption:
-
-| Transport | Server name | Config that owns it | Client timeout |
-| --- | --- | --- | --- |
-| HTTP (current OMP harness) | `hdaw-http` | repo-root `.mcp.json` → `http://127.0.0.1:18765/mcp` | per-server `timeout`, else **OMP's 30 s default** |
-| stdio proxy (pi chain) | `hdaw` | `~/.config/lazy-mcp/servers.json` → `mcp-launch.bat` → engine | lazy-mcp `requestTimeout`, else **10 000 ms** |
-
-- The HTTP path does **not** go through lazy-mcp at all — editing
-  `~/.config/lazy-mcp/servers.json` cannot change its behaviour. The stdio path is
-  what `mcp-launch.bat`, `%TEMP%\hdaw_crash_captures\...\procdump.log`, and the
-  exit-code forensics below are about.
-- **Applied 2026-09-22:** `.mcp.json` now sets `"type": "http"` + `"timeout": 900000`
-  on `hdaw-http`, so a long but healthy call (full render, plugin warmup) is not cut
-  at 30 s; and `~/.config/lazy-mcp/servers.json` regained the documented
-  `requestTimeout: 900000` + `healthMonitor.idleTimeout: 0` (it had been lost — the
-  file's mtime predated the 2026-09-15 fix).
-- **Never set `timeout: 0`.** It disables the client-side deadline completely, and
-  HTTP/SSE carry **no socket-idle timeout** — an engine that accepts the connection
-  and then stalls would block the agent indefinitely. Prefer a bounded value.
-- `OMP_MCP_TIMEOUT_MS` overrides every per-server `timeout` process-wide (set it in
-  the launching environment when you need a different budget without editing a
-  committed file).
-- After editing either file: `/mcp reload` (or a new session) — a config change is
-  not picked up mid-flight. Verify with `jq` **and** by watching whether a
-  deliberately long call is cut, since a config the running client never re-read is
-  indistinguishable from one that was ignored.
-
-### Long calls: the engine keeps working after the socket drops
-
-Observed 2026-09-22 while driving the engine directly over HTTP (no harness in the
-path): calls that run for minutes return `RemoteDisconnected` — the client's response
-socket is closed — **while the engine is unaffected** (same pid, port still open).
-Three examples: `export_audio {wait:true}` on a 303 s render (the WAV was written in
-full and the export job completed), and two `auto_gain_tracks` batches (the faders
-were staged; only the reply was lost). So:
-
-- Prefer the async form where one exists (`export_audio`, `mix_report`,
-  `analyze_tuning` accept `wait:false` → poll `poll_job`).
-- After a drop, **re-read state before retrying** — the mutation very likely applied.
-  A blind retry double-applies it (the same reason lesson 29 says never blind-retry a
-  timed-out call). (The *server-side* dropped-response mechanism behind the 2026-09-22
-  observations is fixed — `TransportHttp::start` now sets a 900 s keep-alive instead of
-  Qt's 15 s default, so a long synchronous rebuild no longer discards its buffered
-  response; see `docs/composition-toolkit.md` and
-  `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`. The re-read rule stays as
-  general client hygiene — a socket can still drop for reasons outside the server.)
-- Do not run `save_project` concurrently with an export: on 2026-09-22 a render that
-  had reported "export complete" was gone from disk when the save ran alongside it.
-  Save between mutation groups, after the export job reports finished.
-
-### ~~`export_audio` reports success and writes NOTHING if the output directory is missing~~ — FIXED 2026-09-23
-
-**Fixed in two halves.** (1) `ExportManager` now creates the output **directory** before opening
-the stream (the house pattern `AudioRecorder.cpp:21` already used), and a stream that cannot be
-opened for *any* reason (permissions, path-is-a-directory, locked file) now sets `success = false`
-instead of relying on a function-scope initializer 300 lines away. (2) The **actual root cause of
-the silent `success: true`**: `McpExportTool` reported success **unconditionally** after
-`waitForIdle()` — both the `wait:true` path and the async McpJobs path — regardless of how the
-export went. Both now read `em.getLastExportMessage()` (the same check
-`AudioEngineCommands::renderTrackWindow` uses) and surface a failure through the tool's existing
-`isError` mechanism.
-
-Regression tests: `McpCoverageTest.ExportAudioCreatesMissingOutputDirectory` (exports into a
-guaranteed-nonexistent temp subdirectory; fails pre-fix) and
-`McpCoverageTest.ExportAudioStreamOpenFailureIsToolError` (the output path IS an existing
-directory, so `createDirectory` passes but the stream cannot open it; asserts `isError == true`
-and that the target is not clobbered).
-
-Historical record of the bug as it stood — two full 300 s renders were lost to it before the
-cause was found:
-
-- `dub_embers`: the first full render reported success; `ls` showed only `brief.json`.
-  Re-submitting later (after the folder existed) worked.
-- `aether_dub`: a stem export to a not-yet-created `compositions/aether_dub/` produced no
-  file; the **identical** export after the folder existed wrote 7,891,298 bytes (27.4 s).
-
-Practical rules: **create the song folder before the first export** (writing the brief
-first is enough), and treat "success + no file" as this bug rather than re-timing the
-render. This also costs real time — two full 300 s renders were lost to it before the
-cause was found.
-
-## The engine "crashes" during MCP sessions — lazy-mcp lifecycle knobs
-
-The **stdio** path runs through **lazy-mcp** (`~/.pi/agent/mcp.json` →
-npx lazy-mcp → `~/.config/lazy-mcp/servers.json` → mcp-launch.bat → the
-engine). lazy-mcp has two lifecycle defaults that silently kill the
-engine process, and each relaunch starts a FRESH EMPTY project:
-
-- **`requestTimeout` default 10 000 ms** — any tool call longer than 10 s
-  (`export_audio` with `wait:true`, a full-length `mix_report`) makes
-  lazy-mcp discard the connection; the engine keeps rendering on its
-  worker thread and exits abnormally (exit code 1) when the response can
-  no longer be delivered, or is killed outright. Symptom: the adapter
-  reports `Server timeout (10s)` and the next call relaunches an empty
-  engine (a "silent export" from a fresh engine is this exact bug).
-- **`healthMonitor.idleTimeout` default 300 000 ms (5 min)** — the engine
-  is put to sleep (clean exit 0 on stdin EOF — correct stdio behavior)
-  after 5 minutes without activity. Any pause longer than 5 minutes
-  during a composition session loses the live project.
-
-**Fix (applied 2026-09-15) in `~/.config/lazy-mcp/servers.json`**:
-
-```json
-{
-  "requestTimeout": 900000,
-  "healthMonitor": { "idleTimeout": 0 },
-  "servers": [ { "name": "hdaw", "requestTimeout": 900000, ... } ]
-}
-```
-
-**Verify the fix is actually present before trusting it.** On 2026-09-22 the live
-`~/.config/lazy-mcp/servers.json` (mtime Sep 10, *before* this fix) contained only
-the `servers` array — **neither `requestTimeout` nor `healthMonitor`** — so the
-10 000 ms default was live again and every long call could still discard the
-connection and relaunch onto an empty project:
-
-```powershell
-jq '{requestTimeout, healthMonitor}' "$env:USERPROFILE\.config\lazy-mcp\servers.json"
-```
-
-A `null` means the override is missing; re-apply the block above (it takes effect
-on the next lazy-mcp start).
-
-`idleTimeout: 0` is lazy-mcp's documented "legacy never-sleep mode" — the
-echo-friendly default is right for most servers but wrong for a DAW
-engine that holds live session state. Config changes take effect on the
-next lazy-mcp start (a new pi session); procdump exit-code forensics live
-in `%TEMP%\hdaw_crash_captures\engine_*\procdump.log` — exit 0x00000000
-= the idle/EOF path (lazy-mcp lifecycle, not an engine bug), exit 0x1
-after a long render = the response pipe died mid-render. Also relevant:
-the saved `.hdaw` is the source of truth — after ANY engine relaunch,
-`load_project` before doing anything else.

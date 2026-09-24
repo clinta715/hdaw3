@@ -89,7 +89,7 @@ Implementation contract (as shipped, 2026-09-21):
 ### C — honesty pass
 
 Correct the false claims produced by the old harness: gate headers
-(`fx_midi_injection_test.cpp`), `docs/hardware-va-suite.md` §9,
+(`fx_midi_injection_test.cpp`), `docs/va-suite-status-log.md`,
 `docs/core-synths-agentic-guide.md` (the "third structural limit"),
 `docs/psytrance-composition-guide.md`,
 `docs/skills/psy-song-session/roles/fx-automation-engineer.md`. Replace the

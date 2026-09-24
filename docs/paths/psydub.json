@@ -84,7 +84,7 @@
           "id": "hardware-virus",
           "name": "Hardware Virus via CLAP (OsTIrus/Osirus/Vavra)",
           "why": "Real firmware character; the VA suite has 148 Virus sidecars to select from. Heavier: isolated children, warmups, loader status varies per engine.",
-          "implies": { "bass": "Vavra/Osirus plugin slot", "note": "check docs/hardware-va-suite.md §9 status before trusting a preset load" },
+          "implies": { "bass": "Vavra/Osirus plugin slot", "note": "check docs/va-suite-status-log.md (moved from hardware-va-suite.md §9, 2026-09-24) before trusting a preset load" },
           "recipe": { "add_track_with_fx": [ { "pluginId": "Osirus.clap" } ], "apply_preset": {} },
           "gate": { "get_fx_capture_status": "receipt ok AND a render is audible" },
           "evidence": "documented",

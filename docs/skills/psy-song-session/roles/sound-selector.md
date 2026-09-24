@@ -60,7 +60,7 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    are rejected, not shipped. Sampler roles: `sampler_set_sample` + `sampler_get_state` to verify.
    **After any `sub_synth_import_sysex`, read the slot back and set `Cutoff`**: a
    Virus patch with a closed filter imports at 20 Hz and renders near-silent while
-   the import reports success (see the trap in `docs/psytrance-composition-guide.md` §5c).
+   the import reports success (see the trap in `docs/psytrance-va-and-production.md` §5c).
 7. **Load per-role FX chains** from `list_fx_chains` factory presets when they fit
    the role ("Kick Punch", "Bass Glue", "Acid Lead", ...). Load them BEFORE
    auditioning so the audition hears the sound through its role processing.

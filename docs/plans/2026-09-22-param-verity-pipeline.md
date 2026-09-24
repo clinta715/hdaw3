@@ -4,7 +4,7 @@ Date: 2026-09-22
 Status: Phase 1 implementation (this document's §Phase 1)
 Lessons feeding this: AGENTS.md lesson 27 (audit renders are tree-copy exports; live-only
 writes are not inputs; only multi-x separations count as audibility proof),
-docs/hardware-va-suite.md §9 (measured same-input spreads 4.1e-07 (Vavra) up to 0.0056 on
+docs/va-suite-status-log.md (measured same-input spreads 4.1e-07 (Vavra) up to 0.0056 on
 ~0.05 RMS (Xenia, ~11%); one Xenia render moved ~17% between runs).
 
 ## Goal

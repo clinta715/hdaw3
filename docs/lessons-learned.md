@@ -383,7 +383,7 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     blaming DSP timing, the OS, or the host wrapper; (c) never value-initialize a
     patch buffer that is dumped to a device verbatim — seed it from a real patch.
     F-A was subsequently RESOLVED (2026-09-20) — see lesson 26 for the decisive
-    fix (`docs/hardware-va-suite.md` §9 CORRECTION).
+    fix (`docs/va-suite-status-log.md` CORRECTION — formerly `hardware-va-suite.md` §9).
 
 26. **Isolated-child plugin state must not travel over the control pipe — the
     child's control thread blocks during the OS warmup.** F-A's last blocker:

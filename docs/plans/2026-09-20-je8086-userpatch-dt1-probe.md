@@ -356,7 +356,7 @@ This is decisive, runs in seconds, and carries **zero risk to the installed CLAP
 ## Decision rule
 
 - **L1 confirms** → implement L2, ship the wrapper fix, update
-  `docs/hardware-va-suite.md` §9 + a handoff; consider upstreaming (the empty
+  `docs/va-suite-status-log.md` + a handoff; consider upstreaming (the empty
   case is a genuine upstream gap).
 - **L1 falsifies** → abandon the wrapper fix; implement the HDAW-side
   decode→params route using the existing `je8086_patch.py`
@@ -383,7 +383,7 @@ This is decisive, runs in seconds, and carries **zero risk to the installed CLAP
    **Gates G6.**
 4. **Orchestrator:** HDAW MCP A/B + control + save/load. **Gates G2/G3/G4.**
 5. **Orchestrator:** run `FxMidiInjection` suite. **Gate G5.**
-6. **Orchestrator:** docs (`hardware-va-suite.md` §9 + handoff) and graph/dirty-tree note.
+6. **Orchestrator:** docs (`va-suite-status-log.md` + handoff) and graph/dirty-tree note.
 
 ---
 
@@ -417,5 +417,5 @@ Total ≈ 1 day. The only correctness risk is the retarget target assumption
   `CC0=1 USER + PC` recall removed, `recall` arg dropped);
   `tests/unit/engine/fx_midi_injection_test.cpp`
   (`FxMidiInjection.Je8086UserPatchDumpChangesOfflineRender`); doc updates in
-  `docs/hardware-va-suite.md` §9, `docs/core-synths-agentic-guide.md`,
+  `docs/va-suite-status-log.md`, `docs/core-synths-agentic-guide.md`,
   `docs/psytrance-composition-guide.md`, `README.md`, plus a handoff.

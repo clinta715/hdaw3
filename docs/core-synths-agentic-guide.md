@@ -296,4 +296,5 @@ host parameters) → `get_fx_capture_status` → `audition_plugin` (reference de
    `xenia_dump.resolve_parent_dump`, re-framed to bank `0x20`). Both set
    `appliesVia: waldorf_dump` + `sysex`; `apply_matrix_preset` then injects them with
    no code change.
-5. **Record the evidence** in `docs/hardware-va-suite.md` §9 and add a gate.
+5. **Record the evidence** in `docs/va-suite-status-log.md` (moved from
+   `docs/hardware-va-suite.md` §9, 2026-09-24) and add a gate.

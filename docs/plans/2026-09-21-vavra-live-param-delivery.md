@@ -4,7 +4,7 @@ Status: **DIAGNOSED — verdict reverses the Vavra-specific reading; the gap is 
 and HDAW-side.** Fix options await user sign-off (engine-adjacent: render/export paths).
 Owner: session 2026-09-21
 Related: `docs/plans/2026-09-21-device-param-map.md` (§Vavra finding — **this plan
-supersedes its Vavra conclusion**), `docs/hardware-va-suite.md` §9,
+supersedes its Vavra conclusion**), `docs/va-suite-status-log.md`,
 `docs/handoffs/2026-09-18-gearmulator-custom-builds.md`
 
 ## 1. Question
@@ -108,7 +108,7 @@ durability gap, so it must not be the only change.
 
 **C — Honesty (no engine risk).** Fix the false claims in the gate headers (Xenia /
 Nodal / "same child"), replace the local-cache reachability assertion with real
-child-delivery evidence, and correct `hardware-va-suite.md` §9 +
+child-delivery evidence, and correct `docs/va-suite-status-log.md` +
 `core-synths-agentic-guide.md` (the "third structural limit" I added 2026-09-21) to the
 general rule: **plugin-slot host-param writes are live-monitoring only unless captured
 via `pluginState` (`captureToTree`) or replayed via `appliedParamOverrides`.**

@@ -55,7 +55,7 @@ patch is too quiet for the role, not that the measurement broke.
 
 Every mutating call must stay under the wrapper's request timeout — lazy-mcp's
 `requestTimeout`, **10 000 ms by default**, and the documented override
-(`docs/testing-mcp.md`) has been observed missing from the live config, so verify
+(`docs/mcp-server-ops.md`) has been observed missing from the live config, so verify
 it before assuming a long call is safe. On timeout the wrapper discards the
 connection and the next call relaunches the engine onto a **fresh empty project**,
 wiping unsaved state. That is NOT exit 42: 42 comes only from the deliberate

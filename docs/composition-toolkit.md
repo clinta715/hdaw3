@@ -2,7 +2,7 @@
 
 Moved out of AGENTS.md (2026-09-22). The canonical deep-dive for the
 hardware VA suite is hardware-va-suite.md (§9 = per-engine measured
-status); the psytrance recipes live in psytrance-composition-guide.md.
+status — moved 2026-09-24 to va-suite-status-log.md); the psytrance recipes live in psytrance-composition-guide.md.
 This file preserves the toolkit overview + loader status verbatim.
 
 ## Generative composition, randomization & modulation
@@ -70,7 +70,8 @@ product pillar and should be reached for wherever it fits:
   (CC0 bank + PC), `load_dexed_cartridge` (.syx). Per-plugin **matrix presets + morph chains** exist
   for all five devices (`timbre-lib/matrix_presets/`); apply them via the
   `list_matrix_presets` / `apply_matrix_preset` MCP tools (xenia/nord/je8086
-  verified live; per-engine measured status in `docs/hardware-va-suite.md` §9).
+  verified live; per-engine measured status in `docs/va-suite-status-log.md` — moved
+  from `hardware-va-suite.md` §9, 2026-09-24).
   Audition workflow:
   inject → `save_project` → `export_audio` → measure — the preset lives in the
   live plugin state; the save persists it into the tree for offline renders.

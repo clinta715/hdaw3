@@ -88,8 +88,8 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
    anything. Never stack a second cutoff lane on the same pid. For gearmulator
    synths (Osirus/OsTIrus/Vavra/Xenia/JE8086), the INTERNAL FX are automatable
    CLAP params — chorus/delay/phaser/distortion/EQ movement recipes with exact
-   pids live in `psytrance-composition-guide.md` §4D "Gearmulator internal-FX
-   recipes"; prefer those over `send_fx_midi` CC sweeping.
+   pids live in `psytrance-composition-guide.md` §4D summary — full "Gearmulator
+   internal-FX recipes" in `psytrance-va-and-production.md` §4D; prefer those over `send_fx_midi` CC sweeping.
 2. **Audit local modulation/FX, do not erase identity**: layer agents own their
    parts. Use `list_fx_params` per track and tune only what collides in context
    (too dark/loud, duplicate movement, fighting pump). `load_fx_chain` a
