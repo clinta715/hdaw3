@@ -50,6 +50,11 @@ void AudioEngineCommands::moveTrack(int trackIndex, int newIndex)
     auto& um = model.getUndoManager();
     auto trackList = model.getTrackListTree();
     const int count = trackList.getNumChildren();
+    // THE reorder contract — both surfaces route here (MCP move_track, RPC
+    // project.moveTrack), so the splice, the range rule and the ref remap can
+    // never drift apart again: an out-of-range index (or index == newIndex) is a
+    // NO-OP, no clamping, and a forward move inserts before whatever sits at
+    // newIndex today (never reaching the last slot).
     if (trackIndex < 0 || trackIndex >= count) return;
     if (newIndex < 0 || newIndex >= count) return;
     if (trackIndex == newIndex) return;
@@ -205,7 +210,60 @@ int AudioEngineCommands::duplicateTrack(int trackIndex)
         }
     }
 
-    int newIdx = trackList.getNumChildren();
+    // ── Durable positional refs: the copy must not inherit the source's ────
+    // Folder membership is a PAIR of positional refs (folder childIds CSV <->
+    // child parentId). A verbatim copy breaks it in two ways: a duplicated
+    // FOLDER keeps the original's childIds, so two folders claim the same
+    // children (mute/solo cascade double-counts, folder rendering lies); a
+    // duplicated CHILD keeps parentId while the folder's CSV never learns about
+    // it, so the two refs disagree (the cascade resolves through parentId,
+    // folder semantics read childIds). The copy is APPENDED, so no existing
+    // index shifts and no HDAW::remapTrackPositionalRefs walk is needed — just
+    // these two writes, under the same &um as the insertion, so ONE undo
+    // removes the copy AND reverts the ref change.
+
+    // 1. A copy cannot claim children. createTrackValueTree never sets
+    //    childIds (a track only acquires it in moveTrackIntoFolder), so the
+    //    exact fresh-track value is the property ABSENT — not "". Guarded:
+    //    removeProperty on a missing property is a no-op, and a no-op write
+    //    must never churn the undo history.
+    if (copy.hasProperty(IDs::childIds))
+        copy.removeProperty(IDs::childIds, &um);
+
+    const int newIdx = trackList.getNumChildren();   // the copy's landing index
+
+    // 2. A copy that is itself a child re-links into its folder's CSV exactly
+    //    once. parentId is still valid — the copy is appended, so the folder it
+    //    points at has not moved. A parentId outside the list is foreign and is
+    //    left alone, exactly like HDAW::remapTrackPositionalRefs documents
+    //    ("references already outside the original range are left alone").
+    const int parentIdx = static_cast<int>(copy.getProperty(IDs::parentId, -1));
+    if (parentIdx >= 0 && parentIdx < newIdx)
+    {
+        auto folder = trackList.getChild(parentIdx);
+        const std::string csv = folder.getProperty(IDs::childIds, "").toString().toStdString();
+        bool alreadyLinked = false;
+        std::istringstream iss(csv);
+        std::string token;
+        while (std::getline(iss, token, ','))
+        {
+            int val = 0;
+            auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), val);
+            if (ec == std::errc() && ptr == token.data() + token.size() && val == newIdx)
+            {
+                alreadyLinked = true;
+                break;
+            }
+        }
+        if (!alreadyLinked)
+        {
+            std::string updated = csv;
+            if (!updated.empty()) updated += ",";
+            updated += std::to_string(newIdx);
+            folder.setProperty(IDs::childIds, juce::String(updated), &um);
+        }
+    }
+
     trackList.addChild(copy, newIdx, &um);
     return newIdx;
 }

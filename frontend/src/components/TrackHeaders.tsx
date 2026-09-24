@@ -198,9 +198,12 @@ export default function TrackHeaders() {
               if (dropTarget.position === "into" && track.trackType === 2) {
                 rpc.call("project.moveTrackIntoFolder", { trackIndex: fromIndex, folderIndex: toIndex }).catch(console.error);
               } else {
+                // `newIndex` indexes the CURRENT order (before = at the hovered
+                // row, after = one past it); project.moveTrack owns the forward
+                // -move adjustment, so pre-decrementing here would cancel it and
+                // make every forward drop land one slot early or do nothing.
                 let newIndex = toIndex;
                 if (dropTarget.position === "after") newIndex = toIndex + 1;
-                if (fromIndex < newIndex) newIndex--;
                 if (fromIndex !== newIndex) {
                   rpc.call("project.moveTrack", { trackId: fromIndex, newIndex }).catch(console.error);
                 }

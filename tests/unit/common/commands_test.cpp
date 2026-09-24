@@ -1052,3 +1052,188 @@ TEST(Commands, MoveTrackRemapsFolderRefs)
     EXPECT_EQ(trackList.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2");
     EXPECT_EQ(static_cast<int>(trackList.getChild(2).getProperty(IDs::parentId, -1)), 1);
 }
+
+// ─── Duplicate track: durable positional-ref fixup ─────────────────────────
+// duplicateTrack APPENDS its copy, so no existing index shifts and no
+// HDAW::remapTrackPositionalRefs walk is involved — but the copy must not
+// inherit the source's durable folder refs (childIds CSV / parentId): a cloned
+// childIds makes two folders claim the same children, and a cloned parentId
+// with no matching CSV entry leaves the two refs disagreeing (ReadModelImpl
+// resolves the mute/solo cascade through parentId, folder semantics read
+// childIds). Gate 10 discipline: mutate, drain the routing rebuild, assert the
+// LIVE tree plus the ReadModel projection of the cascade.
+
+TEST(Commands, DuplicateFolderCopyDoesNotClaimChildren)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // [A(folder), B, C] with B and C children of A.
+    ASSERT_EQ(cmds.addTrack("A", -1, -1, 2), 0);   // trackType 2 = folder
+    const int b = cmds.addTrack("B");
+    const int c = cmds.addTrack("C");
+    ASSERT_EQ(b, 1);
+    ASSERT_EQ(c, 2);
+    engine.drainPendingRoutingRebuild();
+    cmds.moveTrackIntoFolder(b, 0);
+    cmds.moveTrackIntoFolder(c, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    ASSERT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,2");
+
+    const int copyIdx = cmds.duplicateTrack(0);
+    engine.drainPendingRoutingRebuild();
+
+    ASSERT_EQ(copyIdx, 3);
+    ASSERT_EQ(trackList.getNumChildren(), 4);
+    auto copy = trackList.getChild(copyIdx);
+    EXPECT_EQ(static_cast<int>(copy.getProperty(IDs::trackType, 0)), 2);  // still a folder
+    EXPECT_EQ(copy.getProperty(IDs::name).toString().toStdString(), "A copy");
+
+    // The copy does NOT claim the original's children. createTrackValueTree
+    // never sets childIds (a track only acquires it in moveTrackIntoFolder), so
+    // the exact fresh-track value is the property ABSENT, not "".
+    EXPECT_FALSE(copy.hasProperty(IDs::childIds));
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+        EXPECT_NE(static_cast<int>(trackList.getChild(t).getProperty(IDs::parentId, -1)), copyIdx);
+
+    // The original folder is untouched and every original child still resolves
+    // to the ORIGINAL folder — not to the copy.
+    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,2");
+    EXPECT_EQ(static_cast<int>(trackList.getChild(b).getProperty(IDs::parentId, -1)), 0);
+    EXPECT_EQ(static_cast<int>(trackList.getChild(c).getProperty(IDs::parentId, -1)), 0);
+
+    // Cascade agreement: muting the original folder reaches exactly its own
+    // children — the copy would have double-counted them via a cloned childIds.
+    cmds.setTrackMuted(0, true);
+    engine.drainPendingRoutingRebuild();
+    const auto snap = engine.getReadModel().snapshot();
+    ASSERT_EQ(snap.tracks.size(), 4u);
+    EXPECT_TRUE(snap.tracks[b].effectiveMuted);
+    EXPECT_TRUE(snap.tracks[c].effectiveMuted);
+    EXPECT_FALSE(snap.tracks[copyIdx].effectiveMuted);
+    EXPECT_EQ(snap.tracks[copyIdx].parentId, -1);
+}
+
+TEST(Commands, DuplicateChildCopyLinksIntoFolder)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // [A(folder), B(child of A), C].
+    ASSERT_EQ(cmds.addTrack("A", -1, -1, 2), 0);
+    const int b = cmds.addTrack("B");
+    ASSERT_EQ(b, 1);
+    ASSERT_EQ(cmds.addTrack("C"), 2);
+    engine.drainPendingRoutingRebuild();
+    cmds.moveTrackIntoFolder(b, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    ASSERT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1");
+
+    const int copyIdx = cmds.duplicateTrack(b);
+    engine.drainPendingRoutingRebuild();
+
+    ASSERT_EQ(copyIdx, 3);
+    ASSERT_EQ(trackList.getNumChildren(), 4);
+    // The copy keeps the source's parentId (the folder did not move)...
+    EXPECT_EQ(static_cast<int>(trackList.getChild(copyIdx).getProperty(IDs::parentId, -1)), 0);
+    // ...and the folder's CSV learns about it exactly once.
+    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,3");
+    EXPECT_EQ(static_cast<int>(trackList.getChild(2).getProperty(IDs::parentId, -1)), -1); // C stays free
+
+    // Refs are symmetric: walk the CSV and check each entry points back.
+    const juce::String csv = trackList.getChild(0).getProperty(IDs::childIds, "").toString();
+    const auto childIds = juce::StringArray::fromTokens(csv, ",", "");
+    ASSERT_EQ(childIds.size(), 2);
+    for (const auto& tok : childIds)
+    {
+        const int child = tok.getIntValue();
+        ASSERT_GE(child, 0);
+        ASSERT_LT(child, trackList.getNumChildren());
+        EXPECT_EQ(static_cast<int>(trackList.getChild(child).getProperty(IDs::parentId, -1)), 0);
+    }
+
+    // Cascade agreement: the folder's mute reaches B and the copy, not C.
+    cmds.setTrackMuted(0, true);
+    engine.drainPendingRoutingRebuild();
+    const auto snap = engine.getReadModel().snapshot();
+    ASSERT_EQ(snap.tracks.size(), 4u);
+    EXPECT_EQ(snap.tracks[copyIdx].parentId, 0);
+    EXPECT_TRUE(snap.tracks[b].effectiveMuted);
+    EXPECT_TRUE(snap.tracks[copyIdx].effectiveMuted);
+    EXPECT_FALSE(snap.tracks[2].effectiveMuted);
+}
+
+TEST(Commands, DuplicateTrackRefWriteIsOneUndoUnit)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // [A(folder), B(child of A)].
+    ASSERT_EQ(cmds.addTrack("A", -1, -1, 2), 0);
+    const int b = cmds.addTrack("B");
+    ASSERT_EQ(b, 1);
+    engine.drainPendingRoutingRebuild();
+    cmds.moveTrackIntoFolder(b, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    ASSERT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1");
+
+    // Isolate the duplicate as ONE undo unit, then undo it once.
+    cmds.beginTransaction("Duplicate track");
+    const int copyIdx = cmds.duplicateTrack(b);
+    cmds.endTransaction();
+    engine.drainPendingRoutingRebuild();
+
+    ASSERT_EQ(copyIdx, 2);
+    ASSERT_EQ(trackList.getNumChildren(), 3);
+    ASSERT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,2");
+
+    cmds.undo();
+    engine.drainPendingRoutingRebuild();
+
+    // The copy AND the folder's CSV write are reverted together: a separate
+    // undo unit would leave the CSV pointing at a track that no longer exists.
+    EXPECT_EQ(trackList.getNumChildren(), 2);
+    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1");
+    EXPECT_EQ(static_cast<int>(trackList.getChild(b).getProperty(IDs::parentId, -1)), 0);
+    EXPECT_EQ(trackList.getChild(b).getProperty(IDs::name).toString().toStdString(), "B");
+}
+
+// A foreign (out-of-range) parentId is LEFT ALONE — the same rule
+// HDAW::remapTrackPositionalRefs documents. Duplicating must not index it
+// (ValueTree::getChild asserts on a negative/out-of-range index) and must not
+// invent a childIds entry anywhere.
+TEST(Commands, DuplicateTrackLeavesForeignParentRefAlone)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    ASSERT_GE(seedTrack(engine, "A"), 0);
+    const int b = cmds.addTrack("B");
+    ASSERT_EQ(b, 1);
+    engine.drainPendingRoutingRebuild();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    trackList.getChild(b).setProperty(IDs::parentId, 99, nullptr);   // no track 99
+    engine.drainPendingRoutingRebuild();
+
+    const int copyIdx = cmds.duplicateTrack(b);
+    engine.drainPendingRoutingRebuild();
+
+    ASSERT_EQ(copyIdx, 2);
+    ASSERT_EQ(trackList.getNumChildren(), 3);
+    // The copy carries the same foreign ref as its source, untouched.
+    EXPECT_EQ(static_cast<int>(trackList.getChild(copyIdx).getProperty(IDs::parentId, -1)), 99);
+    // No track grew a childIds property.
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+        EXPECT_FALSE(trackList.getChild(t).hasProperty(IDs::childIds));
+}

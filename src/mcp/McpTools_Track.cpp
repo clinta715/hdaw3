@@ -136,26 +136,36 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
-    s.registerTool({"move_track", "Move a track to a new index.",
+    s.registerTool({"move_track",
+        "Move a track to a new index (reorder). `newIndex` is an index into the "
+        "CURRENT track order: a forward move places the track immediately before "
+        "whatever sits at `newIndex` today, so it can never reach the last slot "
+        "that way. Range contract is the shared command's — the SAME call RPC "
+        "project.moveTrack makes: an out-of-range `newIndex` (< 0 or >= trackCount) or "
+        "newIndex == trackId is a NO-OP (no clamp, no reorder, still \"ok\"); an "
+        "out-of-range `trackId` reports \"track not found\". Returns text \"ok\" "
+        "either way. Folder parent/child links and song-plan cell track refs are "
+        "remapped by the shared command path.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"newIndex", QJsonObject{{"type","integer"}}}}, {"trackId","newIndex"}),
         "track",
         [e](const QJsonObject& a) {
-            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
-            auto tl = m.getTrackListTree();
-            int id = a.value("trackId").toInt();
-            int ni = a.value("newIndex").toInt();
-            if (id < 0 || id >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
-            ni = std::clamp(ni, 0, tl.getNumChildren() - 1);
-            auto t = tl.getChild(id);
-            const int count = tl.getNumChildren();
-            tl.removeChild(id, nullptr);
-            tl.addChild(t, ni, &um);
-            // This splice stays inline (its undo behavior is untouched), but it
-            // runs the SAME durable-ref fixup the command path runs — a reorder
-            // shifts every index between the two positions (handoff 7).
-            HDAW::remapTrackPositionalRefs(tl, m.getTree(),
-                                            HDAW::trackMoveIndexMap(count, id, ni), &um);
+            auto& m = e->getProjectModel();
+            const int id = a.value("trackId").toInt();
+            if (id < 0 || id >= m.getTrackListTree().getNumChildren())
+                return McpToolResult::text("track not found", true);
+            // ONE move path (handoff 7): the shared command owns the splice, the
+            // range contract and the durable-ref remap, so MCP and the RPC route
+            // produce the same order by construction. The inline splice this
+            // replaces re-inserted at the un-decremented index on FORWARD moves —
+            // a different order than the command's ([B,C,A] vs [B,A,C] for
+            // [A,B,C] + move 0 -> 2) — and then ran the command's permutation on
+            // a tree that did not match it, so a folder childIds entry / SONG_PLAN
+            // cellTrack could survive pointing at the wrong track (silent
+            // wrong-track mute/solo/hide/cell-fill). Undo also improves: the
+            // removal was `removeChild(id, nullptr)`, un-undoable; it now joins
+            // the command's single undo unit.
+            e->getProjectCommands().moveTrack(id, a.value("newIndex").toInt());
             return McpToolResult::text("ok");
         }});
 

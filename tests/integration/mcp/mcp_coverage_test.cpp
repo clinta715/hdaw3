@@ -380,6 +380,46 @@ TEST_F(McpCoverageTest, MoveTrack) {
 
     auto t = findTrack(0);
     EXPECT_EQ(t.value("name").toString().toStdString(), "C");
+
+    // ── Forward move (newIndex > trackId): the case the two splices disagreed
+    // on. The old inline MCP splice re-inserted at the un-decremented index, so
+    // with [C, Track, A, B] + move 0 -> 2 the MCP path gave [Track, A, C, B]
+    // while project.moveTrack gave [Track, C, A, B]. Both surfaces now run the
+    // shared command, so the order is asserted position by position on each.
+    auto treeOrder = [&]() {
+        std::vector<std::string> names;
+        auto tl = engine->getProjectModel().getTrackListTree();
+        for (int i = 0; i < tl.getNumChildren(); ++i)
+            names.push_back(tl.getChild(i).getProperty(IDs::name).toString().toStdString());
+        return names;
+    };
+    const std::vector<std::string> before{"C", "Track", "A", "B"};
+    ASSERT_EQ(treeOrder(), before) << "backward move left [C, Track, A, B]";
+
+    auto fwd = call("move_track", {{"trackId", 0}, {"newIndex", 2}});
+    ASSERT_FALSE(isError(fwd)) << text(fwd).toStdString();
+    EXPECT_EQ(text(fwd).trimmed().toStdString(), "ok")
+        << "move_track keeps its text payload";
+    const auto viaMcp = treeOrder();
+    ASSERT_EQ(viaMcp.size(), 4u);
+    EXPECT_EQ(viaMcp[0], "Track");
+    EXPECT_EQ(viaMcp[1], "C");
+    EXPECT_EQ(viaMcp[2], "A");
+    EXPECT_EQ(viaMcp[3], "B");
+
+    // Rewind with a backward move (the two splices always agreed there), then
+    // replay the SAME forward move through the RPC route.
+    const auto rewind = frontend::dispatch(*engine, "project.moveTrack",
+                                           QJsonObject{ { "trackId", 1 }, { "newIndex", 0 } });
+    ASSERT_FALSE(rewind.isError)
+        << rewind.payload.toObject().value("message").toString().toStdString();
+    ASSERT_EQ(treeOrder(), before);
+    const auto viaRpc = frontend::dispatch(*engine, "project.moveTrack",
+                                           QJsonObject{ { "trackId", 0 }, { "newIndex", 2 } });
+    ASSERT_FALSE(viaRpc.isError)
+        << viaRpc.payload.toObject().value("message").toString().toStdString();
+    EXPECT_EQ(treeOrder(), viaMcp)
+        << "a forward move must leave the same track order on both surfaces";
 }
 
 // ─── Handoff 7: shift-aware removal — MCP/RPC payload twin ─────────────────
@@ -487,9 +527,10 @@ TEST_F(McpCoverageTest, RemoveTrackRemapsDurableRefsOnMcpPath) {
     EXPECT_EQ(static_cast<int>(cells.getChild(2).getProperty(IDs::cellTrack, -1)), -1);
 }
 
-// The MCP move_track splice stays inline (its undo behavior is untouched) but
-// must run the same durable-ref remapper: moving X to the front shifts every
-// index between — without the fixup B.parentId would hand mute/solo to X.
+// move_track runs the SAME shared command as the RPC route, so the durable-ref
+// fixup is applied to the tree the permutation was derived from. Backward:
+// moving X to the front shifts every index between — without the fixup
+// B.parentId would hand mute/solo to X.
 TEST_F(McpCoverageTest, MoveTrackRemapsDurableRefsOnMcpPath) {
     auto& cmds = engine->getProjectCommands();
     // Drop the fixture's seed track (no folder/cell refs on it) so the
@@ -513,6 +554,136 @@ TEST_F(McpCoverageTest, MoveTrackRemapsDurableRefsOnMcpPath) {
     EXPECT_EQ(tl.getChild(2).getProperty(IDs::name).toString().toStdString(), "B");
     EXPECT_EQ(tl.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2");
     EXPECT_EQ(static_cast<int>(tl.getChild(2).getProperty(IDs::parentId, -1)), 1);
+
+    // ── Forward move, the mirror case ──────────────────────────────────────
+    // Scene, rebuilt identically before each surface runs it:
+    //   [P0, F(folder -> childIds "2"), K(parentId 1), G(folder -> "4"),
+    //    M(parentId 3), Q]  plus a SONG_PLAN cell on P0 and one on Q.
+    // Moving P0 FORWARD to newIndex 3 must give [F, K, P0, G, M, Q] on both
+    // surfaces, with F.childIds -> "1" (K followed its folder), K.parentId -> 0,
+    // G.childIds "4"/M.parentId 3 still landing on G/M at index 3/4, and the
+    // cells still landing on P0 (index 2) and Q (index 5).
+    // The old inline MCP splice inserted P0 at the un-decremented index 3
+    // (order [F, K, G, P0, M, Q]) AND ran this same permutation on that
+    // mismatched tree: M.parentId then resolved to P0 (wrong-track mute/solo
+    // cascade) and P0's cellTrack 0 resolved to G (wrong-track cell fill).
+    ProjectCommands::SongPlanData plan;
+    plan.bpm = 120.0;
+    plan.keyRoot = 0;
+    plan.scaleMode = 0;
+    plan.style = "test";
+    plan.seed = 7;
+    plan.totalBars = 8;
+    plan.sections = { { "intro", "intro", 8, 0.0, 32.0 } };
+    ASSERT_TRUE(cmds.setSongPlan(plan).ok);
+    auto cellOn = [](const char* role, int trackId) {
+        ProjectCommands::CellRecipe r;
+        r.section = "intro";
+        r.role = role;
+        r.trackId = trackId;
+        r.sourceKind = "phrase";
+        r.paramsJson = "{}";
+        r.seed = 1;
+        return r;
+    };
+
+    auto buildScene = [&]() {
+        while (engine->getProjectModel().getTrackListTree().getNumChildren() > 0)
+            cmds.removeTrack(0);
+        engine->drainPendingRoutingRebuild();
+        EXPECT_EQ(cmds.addTrack("P0"), 0);
+        EXPECT_EQ(cmds.addTrack("F", -1, -1, 2), 1);
+        const int k = cmds.addTrack("K");
+        EXPECT_EQ(cmds.addTrack("G", -1, -1, 2), 3);
+        const int mIdx = cmds.addTrack("M");
+        EXPECT_EQ(cmds.addTrack("Q"), 5);
+        engine->drainPendingRoutingRebuild();
+        cmds.moveTrackIntoFolder(k, 1);
+        cmds.moveTrackIntoFolder(mIdx, 3);
+        std::string cellErr;
+        EXPECT_TRUE(cmds.setCellRecipe(cellOn("onP0", 0), &cellErr)) << cellErr;
+        EXPECT_TRUE(cmds.setCellRecipe(cellOn("onQ", 5), &cellErr)) << cellErr;
+    };
+
+    // Reads the LIVE tree, not the ReadModel: order, folder links and cells.
+    struct Snapshot {
+        std::vector<std::string> names;
+        std::vector<std::string> childIds;
+        std::vector<int> parentIds;
+        std::vector<int> cellTracks;
+    };
+    auto snapshotOf = [&]() {
+        Snapshot s;
+        auto list = engine->getProjectModel().getTrackListTree();
+        for (int i = 0; i < list.getNumChildren(); ++i)
+        {
+            auto tr = list.getChild(i);
+            s.names.push_back(tr.getProperty(IDs::name).toString().toStdString());
+            s.childIds.push_back(tr.getProperty(IDs::childIds, "").toString().toStdString());
+            s.parentIds.push_back(static_cast<int>(tr.getProperty(IDs::parentId, -1)));
+        }
+        auto cells = engine->getProjectModel().getTree()
+                         .getChildWithName(IDs::SONG_PLAN).getChildWithName(IDs::CELLS);
+        for (int i = 0; i < cells.getNumChildren(); ++i)
+            s.cellTracks.push_back(static_cast<int>(cells.getChild(i).getProperty(IDs::cellTrack, -1)));
+        return s;
+    };
+    // What a durable ref actually POINTS AT once written back into the list —
+    // the raw index alone can stay numerically identical while meaning a
+    // different track (M.parentId 3 resolved to P0 under the old splice).
+    auto pointedAt = [](const Snapshot& s, int idx) -> std::string {
+        if (idx < 0 || idx >= static_cast<int>(s.names.size())) return "<none>";
+        return s.names[static_cast<size_t>(idx)];
+    };
+
+    buildScene();
+    auto viaMcp = call("move_track", {{"trackId", 0}, {"newIndex", 3}});
+    ASSERT_FALSE(isError(viaMcp)) << text(viaMcp).toStdString();
+    engine->drainPendingRoutingRebuild();
+    const auto mcpSnap = snapshotOf();
+
+    buildScene();
+    const auto viaRpc = frontend::dispatch(*engine, "project.moveTrack",
+                                           QJsonObject{ { "trackId", 0 }, { "newIndex", 3 } });
+    ASSERT_FALSE(viaRpc.isError)
+        << viaRpc.payload.toObject().value("message").toString().toStdString();
+    engine->drainPendingRoutingRebuild();
+    const auto rpcSnap = snapshotOf();
+
+    const std::vector<std::string> forwardOrder{"F", "K", "P0", "G", "M", "Q"};
+    ASSERT_EQ(mcpSnap.names, forwardOrder) << "MCP forward-move order";
+    EXPECT_EQ(rpcSnap.names, forwardOrder) << "RPC forward-move order";
+    ASSERT_EQ(mcpSnap.childIds.size(), 6u);
+    ASSERT_EQ(mcpSnap.childIds[0], "1") << "F's child K moved 2 -> 1";
+    EXPECT_EQ(pointedAt(mcpSnap, std::stoi(mcpSnap.childIds[0])), "K")
+        << "F's childIds must still name K";
+    EXPECT_EQ(mcpSnap.parentIds[1], 0) << "K.parentId must follow F to 0";
+    EXPECT_EQ(pointedAt(mcpSnap, mcpSnap.parentIds[1]), "F")
+        << "K's parentId must still name F";
+    EXPECT_EQ(mcpSnap.parentIds[4], 3);
+    EXPECT_EQ(pointedAt(mcpSnap, mcpSnap.parentIds[4]), "G")
+        << "M's parentId must still name G, not the track it jumped";
+    ASSERT_EQ(mcpSnap.childIds[3], "4") << "G (now index 3) still lists its child M";
+    EXPECT_EQ(pointedAt(mcpSnap, std::stoi(mcpSnap.childIds[3])), "M")
+        << "G's childIds must still name M";
+    ASSERT_EQ(mcpSnap.cellTracks.size(), 2u);
+    EXPECT_EQ(pointedAt(mcpSnap, mcpSnap.cellTracks[0]), "P0")
+        << "the cell on the moved track must follow it to its new index";
+    EXPECT_EQ(pointedAt(mcpSnap, mcpSnap.cellTracks[1]), "Q")
+        << "Q did not move, so its cell must still name Q";
+
+    ASSERT_EQ(rpcSnap.names, mcpSnap.names)
+        << "forward move must leave the same order on both surfaces";
+    ASSERT_EQ(rpcSnap.childIds, mcpSnap.childIds)
+        << "folder childIds must match across surfaces";
+    ASSERT_EQ(rpcSnap.parentIds, mcpSnap.parentIds)
+        << "parentId must match across surfaces";
+    ASSERT_EQ(rpcSnap.cellTracks, mcpSnap.cellTracks)
+        << "SONG_PLAN cellTrack must match across surfaces";
+    for (size_t i = 0; i < rpcSnap.cellTracks.size(); ++i)
+        EXPECT_EQ(pointedAt(rpcSnap, rpcSnap.cellTracks[i]),
+                  pointedAt(mcpSnap, mcpSnap.cellTracks[i]))
+            << "cell " << i << " must point at the same track on both surfaces";
 }
 
 TEST_F(McpCoverageTest, DuplicateTrack) {

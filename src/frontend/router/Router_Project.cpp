@@ -61,6 +61,12 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         return { false, QJsonObject{ { "ok", r.ok }, { "removed", r.removed },
                                      { "shifted", shifted } } };
     }
+    // moveTrack: the command below IS the single reorder contract — MCP
+    // move_track now routes through it too (it used to splice inline at the
+    // un-decremented index, so forward moves disagreed with this route's order
+    // and ref remap). `newIndex` indexes the CURRENT order; out-of-range or
+    // equal to `trackId` is a no-op, exactly like the command. No payload:
+    // MCP's twin answers text "ok" (AGENTS.md parity).
     if (m == "moveTrack")       { int i, n; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "newIndex", n, nullptr)) return makeError(-32602, "trackId and newIndex required"); c.moveTrack(i, n); return { false, QJsonValue::Null }; }
     if (m == "duplicateTrack")  { int i; if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required"); return { false, c.duplicateTrack(i) }; }
     if (m == "setTrackName")    { int i; std::string s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "trackIndex and name required"); c.setTrackName(i, s); return { false, QJsonValue::Null }; }
