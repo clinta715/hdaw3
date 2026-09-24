@@ -6,6 +6,7 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../common/MasterFxDefs.h"
+#include "../common/MasterFxAccess.h"
 #include "../common/ParamVerity.h"
 #include "../common/FxCaptureStatus.h"
 #include "../common/FxPluginIdCheck.h"
@@ -121,14 +122,8 @@ int internalParamIndexByName(const std::vector<HDAW::TrackFXSlot::InternalParamD
     return -1;
 }
 
-int masterParamIndexByName(const std::vector<HDAW::MasterFxParamDef>& defs,
-                           const QString& name)
-{
-    for (size_t i = 0; i < defs.size(); ++i)
-        if (QString::fromUtf8(defs[i].name).compare(name, Qt::CaseInsensitive) == 0)
-            return static_cast<int>(i);
-    return -1;
-}
+// masterParamIndexByName moved to src/common/MasterFxAccess.h so the MCP tool
+// and the JSON-RPC route resolve master-FX param names with ONE implementation.
 
 } // namespace
 
@@ -615,37 +610,14 @@ s.registerTool({"set_master_fx_param",
                   {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","value"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int si = a.value("slotIndex").toInt();
-            int pi = a.value("paramIndex").toInt();
-            float v = static_cast<float>(a.value("value").toDouble());
-            // Validate against the defs BEFORE writing (Gate 9 parity with
-            // set_internal_fx_param: out-of-range index = error, not a stray
-            // param_N property).
+            // Shared shaping/validation (src/common/MasterFxAccess.h) — the RPC
+            // twin calls the SAME entry point, so the text is identical by
+            // construction. Lesson 23: the clamped value comes from
+            // setMasterFxParam's RETURN, never from `a`.
             auto masterFx = e->getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
-            if (! masterFx.isValid())
-                return McpToolResult::text("no MASTER_FX node", true);
-            if (si < 0 || si >= masterFx.getNumChildren())
-                return McpToolResult::text("slot not found", true);
-            const juce::String fxType = masterFx.getChild(si).getProperty(IDs::fxType, "").toString();
-            const auto& defs = HDAW::masterFxParamDefs(fxType);
-            const bool hasName = a.contains("paramName") && !a.value("paramName").toString().isEmpty();
-            if (!hasName && !a.contains("paramIndex"))
-                return McpToolResult::text("paramIndex or paramName required", true);
-            if (hasName)
-            {
-                pi = masterParamIndexByName(defs, a.value("paramName").toString());
-                if (pi < 0)
-                    return McpToolResult::text("unknown paramName: " + a.value("paramName").toString(), true);
-            }
-            if (pi < 0 || pi >= static_cast<int>(defs.size()))
-                return McpToolResult::text("param index out of range", true);
-            const float written = e->getProjectCommands().setMasterFxParam(si, pi, v);
-            if (written != v)
-                return McpToolResult::text(QString("ok (paramIndex %1 clamped: %2 -> %3)")
-                    .arg(pi)
-                    .arg(QString::number(static_cast<double>(v), 'g', 6))
-                    .arg(QString::number(static_cast<double>(written), 'g', 6)));
-            return McpToolResult::text("ok");
+            bool ok = false;
+            const QString text = HDAW::setMasterFxParamToolText(e->getProjectCommands(), masterFx, a, &ok);
+            return McpToolResult::text(text, ! ok);
         }});
 
 s.registerTool({"set_master_fx_bypassed",
@@ -654,14 +626,11 @@ s.registerTool({"set_master_fx_bypassed",
                   {"bypassed",  QJsonObject{{"type","boolean"}}}}, {"slotIndex","bypassed"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int si = a.value("slotIndex").toInt();
+            // Shared shaping/validation (src/common/MasterFxAccess.h).
             auto masterFx = e->getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
-            if (! masterFx.isValid())
-                return McpToolResult::text("no MASTER_FX node", true);
-            if (si < 0 || si >= masterFx.getNumChildren())
-                return McpToolResult::text("slot not found", true);
-            e->getProjectCommands().setMasterFxBypassed(si, a.value("bypassed").toBool());
-            return McpToolResult::text("ok");
+            bool ok = false;
+            const QString text = HDAW::setMasterFxBypassedToolText(e->getProjectCommands(), masterFx, a, &ok);
+            return McpToolResult::text(text, ! ok);
         }});
 
 s.registerTool({"get_master_fx_params",

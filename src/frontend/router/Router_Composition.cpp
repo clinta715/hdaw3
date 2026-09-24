@@ -15,6 +15,8 @@
 #include "../../model/ProjectModel.h"
 #include "../../engine/SongStructureAudit.h"
 #include "../../common/AudioGraphCommands.h"
+#include "../../common/PlacePatternsRequest.h"
+#include "../../common/ScaleNote.h"
 #include "../../engine/PatternLibrary.h"
 #include "../../engine/MidiAnalyzer.h"
 
@@ -1481,6 +1483,29 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!r.error.empty())
             res["error"] = QString::fromStdString(r.error);
         return { false, res };
+    }
+
+    if (m == "placePatterns") {
+        // Same shared parser the MCP place_patterns tool runs (Gate 9 ranges);
+        // clipId is deliberately NOT in the shared struct — the tool reads it from
+        // the args too, so both surfaces pass the same value straight through.
+        const int clipId = o.value("clipId").toInt(-1);
+        auto req = HDAW::parsePlacePatternsRequest(o);
+        if (! req.ok) return makeError(-32602, QString::fromStdString(req.error));
+        AudioEngineCommands::PlaceResult out;
+        engine.getAudioEngineCommands().placePatterns(clipId, req.patterns, req.placements,
+                                                     out, req.clearExisting);
+        if (! out.ok) return makeError(-32602, QString::fromStdString(out.error));
+        return { false, QJsonValue(HDAW::placePatternsJson(out, static_cast<int>(req.placements.size()))) };
+    }
+    if (m == "scaleDegreeToPitch") {
+        // Same resolver the MCP scale_note tool runs (common/ScaleNote.h); the
+        // three error strings are shared, so the twin test can assert equality.
+        const HDAW::ScaleNoteResult r =
+            HDAW::resolveScaleNote(o.value("rootMidi").toInt(-1), o.value("scale").toString(),
+                                   o.value("degree").toInt(0), o.value("octave").toInt(0));
+        if (! r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        return { false, QJsonValue(HDAW::scaleNoteJson(r)) };
     }
 
     return makeError(-32601, "unknown composition method: " + m);

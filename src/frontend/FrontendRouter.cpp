@@ -111,7 +111,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     else if (ns == method::Export)      return dispatchExport(engine, m, params, server);
     else if (ns == method::Preview)     return dispatchPreview(engine, m, params);
     else if (ns == method::Composition) return dispatchComposition(engine, m, params);
-    else if (ns == method::Session)     return dispatchSession(engine.getProjectCommands(), m, params);
+    else if (ns == method::Session)     return dispatchSession(engine.getProjectCommands(), engine.getSessionManager(), m, params);
     else if (ns == method::Library)     return dispatchLibrary(engine.getFileLibraryManager(), m, params);
     else if (ns == method::Sampler)     return dispatchSampler(engine, m, params);
     else if (ns == method::Pool)        return dispatchPool(engine.getReadModel(), engine.getProjectPool().getFormatManager(), m, params);

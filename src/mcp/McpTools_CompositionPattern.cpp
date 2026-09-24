@@ -16,6 +16,7 @@
 #include "../engine/ProjectSerializer.h"
 #include "../engine/ProjectBackup.h"
 #include "../common/KeyConflict.h"
+#include "../common/ScaleNote.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -43,14 +44,6 @@ QString scaleModeShortName(int scaleType)
 QString scaleModeFullName(int scaleType)
 {
     return QString::fromStdString(HDAW::scaleModeFullName(scaleType));
-}
-
-// Resolve a scale-mode NAME to its PhraseGenerator index (-1 if unknown).
-// Accepts the canonical name ("Minor (Aeolian)"), the short form ("minor"),
-// and the parenthetical church-mode alias ("aeolian"), case-insensitively.
-int resolveScaleIndex(const QString& name)
-{
-    return HDAW::resolveScaleModeIndex(name.toStdString());
 }
 
 } // namespace
@@ -210,24 +203,18 @@ s.registerTool({"scale_note",
         }, {"rootMidi","scale","degree"}),
         "composition",
         [](const QJsonObject& a) -> McpToolResult {
-            const int rootMidi = a.value("rootMidi").toInt(-1);
-            const int degree  = a.value("degree").toInt(0);
-            const int octave  = a.value("octave").toInt(0);
-            if (rootMidi < 0 || rootMidi > 127)
-                return McpToolResult::text("rootMidi must be in 0..127", true);
-
-            const QString scaleName = a.value("scale").toString();
-            const int scaleIdx = resolveScaleIndex(scaleName);
-            if (scaleIdx < 0)
-                return McpToolResult::text("unknown scale: " + scaleName, true);
-
-            const int midiPitch = PhraseGenerator::scaleDegreeToPitch(rootMidi, scaleIdx, degree, octave);
-            if (midiPitch < 0)
-                return McpToolResult::text(
-                    "degree out of range: computed pitch falls outside 0..127", true);
+            // Shared shaping (src/common/ScaleNote.h) so the MCP and RPC
+            // surfaces emit identical text by construction.
+            const HDAW::ScaleNoteResult r = HDAW::resolveScaleNote(
+                a.value("rootMidi").toInt(-1),
+                a.value("scale").toString(),
+                a.value("degree").toInt(0),
+                a.value("octave").toInt(0));
+            if (!r.ok)
+                return McpToolResult::text(QString::fromStdString(r.error), true);
 
             return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(QJsonObject{{"midiPitch", midiPitch}})
+                QJsonDocument(HDAW::scaleNoteJson(r))
                     .toJson(QJsonDocument::Compact)));
         }});
 

@@ -12,6 +12,8 @@
 #include "../engine/TrackFXSlot.h"
 #include "../engine/Dx7SysexImport.h"
 #include "../engine/MidiFx.h"
+#include "../common/AutomationPresetRequest.h"
+#include "../common/MovementPlanJson.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -219,102 +221,13 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
                       {"trackId","lane"}),
             "automation",
             [e](const QJsonObject& a) -> McpToolResult {
-                const int trackId = a.value("trackId").toInt(-1);
-                auto lane = findLane(e, trackId, a.value("lane"));
-                if (!lane.isValid())
-                    return McpToolResult::text(
-                        "lane not found; create it with add_automation_lane first "
-                        "(built-in lanes like \"Volume\" work by name)", true);
-                const std::string laneName =
-                    lane.getProperty(IDs::name, "").toString().toStdString();
-
-                std::vector<HDAW::AutomationPreset::PresetWindow> windows;
-                QJsonArray applied;
-                const auto resolvePreset = [](const QString& s)
-                    -> std::optional<HDAW::AutomationPreset::Preset> {
-                    return HDAW::AutomationPreset::presetFromName(s.toStdString());
-                };
-
-                const auto sections = a.value("sections").toArray();
-                if (!sections.isEmpty())
-                {
-                    for (const auto& sv : sections)
-                    {
-                        const auto obj = sv.toObject();
-                        if (!obj.contains("start") || !obj.contains("end"))
-                            return McpToolResult::text("each section requires start and end", true);
-                        HDAW::AutomationPreset::PresetWindow w;
-                        w.start = obj.value("start").toDouble();
-                        w.end = obj.value("end").toDouble();
-                        const QString pName = obj.value("preset").toString(a.value("preset").toString());
-                        if (pName.isEmpty())
-                            return McpToolResult::text(
-                                "preset required (pump|macro|openClose|riser|sine|square|subtleLife|randomDrift|steppedGate|phaseSweep|delayThrow)", true);
-                        const auto p = resolvePreset(pName);
-                        if (!p)
-                            return McpToolResult::text("unknown preset: " + pName, true);
-                        w.preset = *p;
-                        if (obj.contains("startValue"))
-                            w.startValue = obj.value("startValue").toDouble();
-                        else if (a.contains("startValue"))
-                            w.startValue = a.value("startValue").toDouble();
-                        if (obj.contains("endValue"))
-                            w.endValue = obj.value("endValue").toDouble();
-                        else if (a.contains("endValue"))
-                            w.endValue = a.value("endValue").toDouble();
-                        if (!(w.end > w.start))
-                            return McpToolResult::text(
-                                QString("bad window: end (%1) must be > start (%2)")
-                                    .arg(w.end).arg(w.start), true);
-                        windows.push_back(w);
-                        applied.append(pName);
-                    }
-                }
-                else
-                {
-                    const QString pName = a.value("preset").toString();
-                    if (pName.isEmpty())
-                        return McpToolResult::text(
-                            "preset required (pump|macro|openClose|riser|sine|square|subtleLife|randomDrift|steppedGate|phaseSweep|delayThrow) "
-                            "when sections is absent", true);
-                    const auto p = resolvePreset(pName);
-                    if (!p)
-                        return McpToolResult::text("unknown preset: " + pName, true);
-                    if (!a.contains("start") || !a.contains("end"))
-                        return McpToolResult::text(
-                            "start and end required when sections is absent", true);
-                    HDAW::AutomationPreset::PresetWindow w;
-                    w.start = a.value("start").toDouble();
-                    w.end = a.value("end").toDouble();
-                    w.preset = *p;
-                    if (a.contains("startValue")) w.startValue = a.value("startValue").toDouble();
-                    if (a.contains("endValue"))   w.endValue   = a.value("endValue").toDouble();
-                    if (a.contains("cycles"))     w.cycles     = a.value("cycles").toDouble();
-                    if (!(w.end > w.start))
-                        return McpToolResult::text(
-                            QString("bad window: end (%1) must be > start (%2)")
-                                .arg(w.end).arg(w.start), true);
-                    windows.push_back(w);
-                    applied.append(pName);
-                }
-
-                const bool clear = a.value("clear").toBool(false);
-                const uint64_t seed = static_cast<uint64_t>(a.value("seed").toInt(12345));
-                int pointsAdded = 0;
-                const std::string err = e->getProjectCommands().applyAutomationPreset(
-                    trackId, laneName, windows, clear, seed, &pointsAdded);
-                if (!err.empty())
-                    return McpToolResult::text(QString::fromStdString(err), true);
-
-                const bool enable = a.value("enable").toBool(true);
-                if (!enable)
-                    e->getProjectCommands().setAutomationEnabled(trackId, laneName, false);
-
-                return McpToolResult::text(QString::fromUtf8(
-                    QJsonDocument(QJsonObject{
-                        {"lane", QString::fromStdString(laneName)},
-                        {"presets", applied},
-                        {"pointsAdded", pointsAdded}}).toJson(QJsonDocument::Compact)));
+                // Shared shaping + application (src/common/AutomationPresetRequest.h)
+                // — the RPC twin calls the SAME entry point, so the text is
+                // byte-identical by construction.
+                bool ok = false;
+                const QString text = HDAW::automationPresetToolText(
+                    e->getProjectCommands(), e->getProjectModel().getTrackListTree(), a, &ok);
+                return McpToolResult::text(text, ! ok);
             }});
 
     s.registerTool({"apply_movement_plan",
@@ -350,38 +263,11 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
             {"required", QJsonArray{"trackId","preset"}}}}}}}, {"events"}),
         "automation",
         [e](const QJsonObject& a) -> McpToolResult {
-            const auto eventsArr = a.value("events").toArray();
-            if (eventsArr.isEmpty())
-                return McpToolResult::text("events array required", true);
-            std::vector<ProjectCommands::MovementEvent> events;
-            for (const auto& ev : eventsArr)
-            {
-                const auto o = ev.toObject();
-                ProjectCommands::MovementEvent me;
-                me.trackIndex = o.value("trackId").toInt(-1);
-                me.startBeats = o.value("start").toDouble(0.0);
-                me.endBeats   = o.value("end").toDouble(16.0);
-                me.preset     = o.value("preset").toString().toStdString();
-                me.paramID    = o.value("paramID").toInt(-1);
-                me.laneName   = o.value("laneName").toString().toStdString();
-                if (o.contains("startValue")) me.startValue = o.value("startValue").toDouble();
-                if (o.contains("endValue"))   me.endValue   = o.value("endValue").toDouble();
-                me.seed = static_cast<uint64_t>(o.value("seed").toInt(12345));
-                events.push_back(me);
-            }
-            const auto res = e->getProjectCommands().applyMovementPlan(events);
-            QJsonArray arr;
-            for (const auto& r : res.events)
-            {
-                QJsonObject ro{ { "laneName", QString::fromStdString(r.laneName) },
-                                { "pointsWritten", r.pointsWritten },
-                                { "ok", r.ok } };
-                if (!r.error.empty()) ro["error"] = QString::fromStdString(r.error);
-                arr.append(ro);
-            }
-            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
-                { "okCount", res.okCount }, { "failCount", res.failCount },
-                { "events", arr }}).toJson(QJsonDocument::Compact)));
+            // Shared shaping + application (src/common/MovementPlanJson.h) — the
+            // RPC twin calls the SAME entry point, byte-identical by construction.
+            bool ok = false;
+            const QString text = HDAW::applyMovementPlanToolText(e->getProjectCommands(), a, &ok);
+            return McpToolResult::text(text, ! ok);
         }});
     }
 }

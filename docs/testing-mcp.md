@@ -80,8 +80,13 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
     `MatrixRpcParityTest.*` (5), `RaveSettings.*` (6), `FrontendServer.SettingsNamespaceExposesMcpHttpConfig`,
     `McpServer.ApplySongPlan`, `SongPlan.TemplateRoundTripDoesNotApply` — plus the standard
     `PluginIsolation.LargeStateRoundTripThroughProxy` solo-pass flake.
-  **Before blaming a change, re-run the suite with the temp area INSIDE the working tree**:
-  `set TEMP=D:\…\hdaw3\.tmp_suite & set TMP=%TEMP% & powershell -File run-tests-sharded.ps1 -Shards 4`.
+  **Before blaming a change, re-run the suite with the temp area INSIDE the working tree** — and set
+  BOTH vars to the literal path:
+  `cmd /c "set TEMP=D:\…\hdaw3\.tmp_suite&& set TMP=D:\…\hdaw3\.tmp_suite&& powershell -File run-tests-sharded.ps1 -Shards 4"`.
+  `set TMP=%TEMP%` inside the same cmd line is a **trap** (measured 2026-09-24): cmd expands `%TEMP%` at
+  parse time, so TMP keeps the sandbox-denied path and the save/load class stays red — 8 unrelated
+  failures (`SongCells.CellsPersistAcrossSaveLoad`, 6× `ProjectMetadata.*`,
+  `BusSendRpcTest.ListBusesMatchesMcpAndTheSavedProject`), all green once TMP is set explicitly.
   That converts the `%TEMP%` class (save/export/render) to green immediately — the same focused set
   went from 15 failures to **172/172**. The `%APPDATA%` (preset/template) and QSettings classes stay
   red in a sandbox: they are environmental, independent of any session's diff, and the way to confirm

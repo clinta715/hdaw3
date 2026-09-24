@@ -2,6 +2,7 @@
 #include "McpServer.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/SessionManager.h"
+#include "../common/SessionClipStateJson.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -57,16 +58,10 @@ void registerSessionDomain(McpServer& s, AudioEngine* e)
         objSchema({}),
         "session",
         [e](const QJsonObject&) -> McpToolResult {
-            auto states = e->getSessionManager().getClipStates();
-            QJsonArray arr;
-            for (const auto& st : states) {
-                arr.append(QJsonObject{
-                    {"clipId", st.clipId},
-                    {"sceneIndex", st.sceneIndex},
-                    {"isPlaying", st.isPlaying},
-                    {"isLaunched", st.isLaunched}
-                });
-            }
+            // Shared shaping (src/common/SessionClipStateJson.h) so the MCP
+            // and RPC surfaces emit identical payloads by construction.
+            const auto states = e->getSessionManager().getClipStates();
+            const QJsonArray arr = HDAW::sessionClipStatesJson(states);
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});

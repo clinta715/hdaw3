@@ -7,6 +7,15 @@
 #include "RouterHelpers.h"
 
 #include "../../common/ProjectCommands.h"
+// Shared bodies for the automation/master-FX routes below — the SAME entry
+// points the MCP tools call (automation_preset / apply_movement_plan /
+// set_master_fx_param / set_master_fx_bypassed), so both surfaces cannot drift:
+//   - AutomationPresetRequest.h — automation_preset parse + apply + payload
+//   - MasterFxAccess.h          — set_master_fx_param / _bypassed resolve + write
+//   - MovementPlanJson.h        — apply_movement_plan parse + apply
+#include "../../common/AutomationPresetRequest.h"
+#include "../../common/MasterFxAccess.h"
+#include "../../common/MovementPlanJson.h"
 // The two engine-context routes below (removeTrack's dryRun/force guard,
 // addTrackWithFx's composite) run the SAME shared bodies the MCP tools run, so
 // both surfaces agree by construction:
@@ -99,6 +108,24 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     if (m == "setTrackColor")   { int i, color; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err) || !requireInt(o, "color", color, nullptr)) return err.isError ? err : makeError(-32602, "trackId and color required"); c.setTrackColor(i, color); return { false, QJsonValue::Null }; }
     if (m == "setTrackVolume")  { int i; float v; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err) || !requireFloat(o, "volume", v, nullptr)) return err.isError ? err : makeError(-32602, "trackId and volume required"); c.setTrackVolume(i, v); return { false, QJsonValue::Null }; }
     if (m == "setMasterGain")   { float v;          if (!requireFloat(o, "gain", v, nullptr)) return makeError(-32602, "gain required"); c.setMasterGain(v); return { false, QJsonValue::Null }; }
+    // --- MASTER-bus FX (MASTER_FX) ---
+    // dispatchProject receives only the TRACK_LIST child; MASTER_FX is its
+    // sibling under the same project root (the node
+    // AudioEngineCommands::setMasterFxParam reads), so the hop is the full tree.
+    // Both routes call the shared entry points in common/MasterFxAccess.h — the
+    // same ones src/mcp/McpTools_FxSlot.cpp calls — so their text cannot drift
+    // (AGENTS.md parity: identical by construction, not by discipline).
+    if (m == "setMasterFxParam" || m == "setMasterFxBypassed") {
+        const juce::ValueTree masterFx = trackList.getParent().getChildWithName(IDs::MASTER_FX);
+        bool ok = false;
+        const QString text = (m == "setMasterFxParam")
+            ? HDAW::setMasterFxParamToolText(c, masterFx, o, &ok)
+            : HDAW::setMasterFxBypassedToolText(c, masterFx, o, &ok);
+        if (! ok) return makeError(-32602, text);
+        // The tool's success text IS the payload: it reports the value the command
+        // actually wrote (clamped — lesson 23), which a Null payload would drop.
+        return { false, QJsonValue(text) };
+    }
     if (m == "setTrackPan")     { int i; float v; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err) || !requireFloat(o, "pan", v, nullptr))     return err.isError ? err : makeError(-32602, "trackId and pan required"); c.setTrackPan(i, v); return { false, QJsonValue::Null }; }
     if (m == "setTrackMuted")   { int i; bool b; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err) || !requireBool(o, "muted", b, nullptr))   return err.isError ? err : makeError(-32602, "trackId and muted required"); c.setTrackMuted(i, b); return { false, QJsonValue::Null }; }
     if (m == "setTrackSoloed")  { int i; bool b; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err) || !requireBool(o, "soloed", b, nullptr))  return err.isError ? err : makeError(-32602, "trackId and soloed required"); c.setTrackSoloed(i, b); return { false, QJsonValue::Null }; }
@@ -670,6 +697,25 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     if (m == "setAutomationPointValue") { int i; std::string lane; double t; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, lane, time, value required"); c.setAutomationPointValue(i, lane, t, v); return { false, QJsonValue::Null }; }
     if (m == "setAutomationMode")       { int i; std::string ln, md; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", ln, nullptr) || !requireString(o, "mode", md, nullptr)) return makeError(-32602, "trackIndex, laneName, mode required"); c.setAutomationMode(i, ln, md); return { false, QJsonValue::Null }; }
     if (m == "notifyAutomationTouch")   { int i, pid; bool t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "paramID", pid, nullptr) || !requireBool(o, "touching", t, nullptr)) return makeError(-32602, "trackIndex, paramID, touching required"); c.notifyAutomationTouch(i, pid, t); return { false, QJsonValue::Null }; }
+    // Automation preset / movement plan: the MCP twins (automation_preset /
+    // apply_movement_plan in McpTools_Automation.cpp) call these SAME shared
+    // entry points, so an accepted write and a refusal carry one text on both
+    // surfaces by construction. The success payload is the tool's compact JSON,
+    // parsed here (read.getFxSlots precedent) rather than passed as a string.
+    if (m == "applyAutomationPreset") {
+        bool ok = false;
+        const QString text = HDAW::automationPresetToolText(c, trackList, o, &ok);
+        if (! ok) return makeError(-32602, text);
+        // Same compact JSON the tool emits; the client gets the parsed structure,
+        // not a string-quoted document (read.getFxSlots precedent).
+        return { false, QJsonDocument::fromJson(text.toUtf8()).object() };
+    }
+    if (m == "applyMovementPlan") {
+        bool ok = false;
+        const QString text = HDAW::applyMovementPlanToolText(c, o, &ok);
+        if (! ok) return makeError(-32602, text);
+        return { false, QJsonDocument::fromJson(text.toUtf8()).object() };
+    }
 
     // --- Transport properties ---
     if (m == "setTempo")            { double v; if (!requireDouble(o, "bpm", v, nullptr)) return makeError(-32602, "bpm required"); c.setTempo(v); return { false, QJsonValue::Null }; }

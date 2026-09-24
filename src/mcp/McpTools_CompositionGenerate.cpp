@@ -15,6 +15,7 @@
 #include "engine/RhythmPatternGenerator.h"
 #include "../engine/PatternLibrary.h"
 #include "../engine/PatternPlacer.h"
+#include "../common/PlacePatternsRequest.h"
 #include "../engine/MidiAnalyzer.h"
 #include "../engine/ProjectSerializer.h"
 #include "../engine/ProjectBackup.h"
@@ -468,68 +469,18 @@ s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pa
         [e](const QJsonObject& a) -> McpToolResult {
             const int clipId = a.value("clipId").toInt(-1);
 
-            // Parse + validate the pattern payload (the analyze_midi_file
-            // patterns[] shape; Gate 9 — every note field is range-checked).
-            std::vector<std::vector<PatternPlacer::PatternNote>> patterns;
-            const auto patternsArr = a.value("patterns").toArray();
-            for (const auto& pv : patternsArr)
-            {
-                std::vector<PatternPlacer::PatternNote> notes;
-                for (const auto& nv : pv.toObject().value("notes").toArray())
-                {
-                    auto no = nv.toObject();
-                    const int pitch = no.value("pitch").toInt();
-                    const double start = no.value("startBeat").toDouble();
-                    const double dur = no.value("durationBeats").toDouble();
-                    const int vel = no.value("velocity").toInt();
-                    if (pitch < 0 || pitch > 127)
-                        return McpToolResult::text("pattern note pitch must be in 0..127", true);
-                    if (vel < 1 || vel > 127)
-                        return McpToolResult::text("pattern note velocity must be in 1..127", true);
-                    if (!(dur > 0.0))
-                        return McpToolResult::text("pattern note durationBeats must be > 0", true);
-                    if (start < 0.0)
-                        return McpToolResult::text("pattern note startBeat must be >= 0", true);
-                    notes.push_back(PatternPlacer::PatternNote{pitch, start, dur, vel});
-                }
-                patterns.push_back(std::move(notes));
-            }
-            if (patterns.empty())
-                return McpToolResult::text("patterns must be non-empty", true);
-
-            // Parse + validate placements (octave/velocityScale ranges; Gate 9).
-            std::vector<PatternPlacer::Placement> placements;
-            for (const auto& plv : a.value("placements").toArray())
-            {
-                auto pl = plv.toObject();
-                const double start = pl.value("start").toDouble();
-                if (start < 0.0)
-                    return McpToolResult::text("placement start must be >= 0", true);
-                PatternPlacer::Placement p;
-                p.start = start;
-                p.octaveShift = pl.contains("octave") ? pl.value("octave").toInt() : 0;
-                if (p.octaveShift < -PatternPlacer::kMaxOctaveShift || p.octaveShift > PatternPlacer::kMaxOctaveShift)
-                    return McpToolResult::text("placement octave must be in -6..6", true);
-                p.velocityScale = pl.contains("velocityScale") ? pl.value("velocityScale").toDouble() : 1.0;
-                if (p.velocityScale < PatternPlacer::kMinVelocityScale || p.velocityScale > PatternPlacer::kMaxVelocityScale)
-                    return McpToolResult::text("placement velocityScale must be in 0.05..2.0", true);
-                p.reverse = pl.contains("reverse") ? pl.value("reverse").toBool() : false;
-                placements.push_back(p);
-            }
-            if (placements.empty())
-                return McpToolResult::text("placements must be non-empty", true);
-
-            const bool clearExisting = a.contains("clear") ? a.value("clear").toBool() : false;
+            // Shared parse/validate + payload (src/common/PlacePatternsRequest.h)
+            // so the MCP and RPC surfaces stay byte-identical by construction.
+            const HDAW::PlacePatternsRequest req = HDAW::parsePlacePatternsRequest(a);
+            if (!req.ok)
+                return McpToolResult::text(QString::fromStdString(req.error), true);
 
             AudioEngineCommands::PlaceResult out;
-            e->getAudioEngineCommands().placePatterns(clipId, patterns, placements, out, clearExisting);
+            e->getAudioEngineCommands().placePatterns(clipId, req.patterns, req.placements, out, req.clearExisting);
             if (!out.ok)
                 return McpToolResult::text(QString::fromStdString(out.error), true);
-            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
-                {"added",              out.added},
-                {"skipped",            out.skipped},
-                {"clipId",             out.clipId},
-                {"placementsApplied", static_cast<int>(placements.size())}})
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(
+                HDAW::placePatternsJson(out, static_cast<int>(req.placements.size())))
                 .toJson(QJsonDocument::Compact)));
         }});
 

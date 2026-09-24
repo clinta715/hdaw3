@@ -59,6 +59,14 @@ const nsConst = {};
 }
 const fnToNs = {};
 const intercepts = new Map();   // "ns.method" -> 'FrontendRouter.cpp'
+// A route predicate is `if (m == "…")`, but a branch may CHAIN methods:
+//   if (m == "setMasterFxParam" || m == "setMasterFxBypassed") { … }
+// (landed by the 2026-09-24 parity wave). The old single-literal pattern required the
+// literal to be immediately followed by `)` and so silently dropped BOTH chained
+// methods. Match the whole condition and harvest EVERY literal in it, so a chained
+// branch attributes all its methods instead of none.
+const METHOD_LITERAL = /"([A-Za-z0-9_]+)"/g;
+const IF_M_CHAIN     = /if\s*\(\s*(m\s*(?:==|!=)\s*"[A-Za-z0-9_]+"(?:\s*\|\|\s*m\s*(?:==|!=)\s*"[A-Za-z0-9_]+")*)\s*\)/g;
 {
   const t = fs.readFileSync(path.join(ROOT, 'src/frontend/FrontendRouter.cpp'), 'utf8');
   // Split the dispatch chain into branches at each `method::X` and take the dispatch
@@ -82,8 +90,9 @@ const intercepts = new Map();   // "ns.method" -> 'FrontendRouter.cpp'
     // does NOT spell the method name itself (removeTrack / addTrackWithFx are resolved
     // here and then delegated) never appears in a router file's `if (m == "…")` chain.
     // Record them with the branch's namespace so they stay in the ledger.
-    for (const hit of seg.matchAll(/if\s*\(\s*m\s*==\s*"([A-Za-z0-9_]+)"\s*\)/g))
-      intercepts.set(ns + '.' + hit[1], 'FrontendRouter.cpp');
+    for (const hit of seg.matchAll(IF_M_CHAIN))
+      for (const name of hit[1].matchAll(METHOD_LITERAL))
+        intercepts.set(ns + '.' + name[1], 'FrontendRouter.cpp');
   }
 }
 const rpc = new Map();   // "ns.method" -> router file
@@ -102,9 +111,9 @@ for (const f of fs.readdirSync(path.join(ROOT, 'src/frontend/router'))) {
     if (fnToNs[fm[1]]) fns.push({ at: fm.index, ns: fnToNs[fm[1]] });
   if (!fns.length) { nsUnresolved.push(f); continue; }
   const nsAt = (pos) => { let ns = fns[0].ns; for (const e of fns) if (e.at <= pos) ns = e.ns; return ns; };
-  const re = /if\s*\(\s*m\s*(?:==|!=)\s*"([A-Za-z0-9_]+)"\s*\)/g;
-  let m;
-  while ((m = re.exec(txt)) !== null) rpc.set(nsAt(m.index) + '.' + m[1], f);
+  for (const m of txt.matchAll(IF_M_CHAIN))
+    for (const name of m[1].matchAll(METHOD_LITERAL))
+      rpc.set(nsAt(m.index) + '.' + name[1], f);
 }
 // Branch-level intercepts resolved in FrontendRouter.cpp itself (see above). Only added
 // when no router file already claims the route, so a real file attribution always wins.
@@ -224,6 +233,21 @@ const ALIASES = {
   // Read views whose per-object route already carries the same data.
   list_notes: ['read.getNotes', 'read.getNotes is the clip\'s whole note list; the tool adds pitches/startGte/startLt/noteIds filters'],
   list_automation_lanes: ['read.getAutomationLanes', 'same ReadModel AutomationLane list'],
+  // 2026-09-24 parity wave: the routes these rows name were added by the RPC-parity slice
+  // (backend siblings of the ledger edit), which is what drains them from NO_ROUTE. Notes
+  // name the shared entry point, because the route is a thin hand-off to it.
+  // Measured limit of TEXT parity for the whole group (tests/unit/frontend/
+  // missing_route_parity_test.cpp): src/mcp validates a tool's JSON schema BEFORE its
+  // handler runs, so a missing/out-of-range REQUIRED argument is rejected there with
+  // "invalid params: …" while the route reaches the shared validator and answers its text.
+  // Both are -32602 and both refuse; only the wording differs on that class of input.
+  automation_preset: ['project.applyAutomationPreset', 'shared entry point: HDAW::automationPresetToolText (src/common/AutomationPresetRequest.h) — the route hands back the SAME compact JSON the tool emits, parsed into the reply'],
+  apply_movement_plan: ['project.applyMovementPlan', 'shared entry point: HDAW::applyMovementPlanToolText (src/common/MovementPlanJson.h) — same {okCount, failCount, events[]} payload, parsed into the reply'],
+  set_master_fx_param: ['project.setMasterFxParam', 'shared entry point: HDAW::setMasterFxParamToolText (src/common/MasterFxAccess.h) — the route returns the tool text itself as the payload string, clamp report included'],
+  set_master_fx_bypassed: ['project.setMasterFxBypassed', 'shared entry point: HDAW::setMasterFxBypassedToolText (src/common/MasterFxAccess.h) — same text-as-payload'],
+  place_patterns: ['composition.placePatterns', 'shared entry point: HDAW::parsePlacePatternsRequest + placePatternsJson (src/common/PlacePatternsRequest.h) + AudioEngineCommands::placePatterns; clipId is read on the surface by both'],
+  scale_note: ['composition.scaleDegreeToPitch', 'shared entry point: HDAW::resolveScaleNote / scaleNoteJson (src/common/ScaleNote.h); the route name states the primitive, the tool name the degree map'],
+  session_get_clip_states: ['session.getClipStates', 'shared payload builder: HDAW::sessionClipStatesJson (src/common/SessionClipStateJson.h)'],
 };
 
 // Prefix rules: a tool family that maps onto a namespace, remainder camelCased. Verified
@@ -372,33 +396,25 @@ const FANOUT = {
 // Rows with NO route today whose missing route can be named: the sharpened half of the
 // review queue. Emitted as unresolved (never mapped) — the ratchet's live probe cannot
 // verify a route that does not exist, so the note is where the next pass starts.
+// (The 2026-09-24 parity wave drained seven of the previously named routes —
+// set_master_fx_param, set_master_fx_bypassed, automation_preset, apply_movement_plan,
+// place_patterns, session_get_clip_states, scale_note — now mapped in ALIASES above.)
 // Distinct from FORCE_REVIEW (a route exists but is NOT this) and MCP_ONLY (no route by
 // design, with the covering route named).
 const NO_ROUTE = {
   get_master_fx_params: 'no route: the MASTER_FX chain is read only by this tool — read/project expose no '
     + 'master-FX accessor (the bus routes address BUS_LIST, not the MASTER_FX node)',
-  set_master_fx_param: 'no route: ProjectCommands::setMasterFxParam has no dispatch (missing project.setMasterFxParam)',
-  set_master_fx_bypassed: 'no route: ProjectCommands::setMasterFxBypassed has no dispatch (missing project.setMasterFxBypassed)',
   fm_synth_load_preset: 'no route: ProjectCommands::setFmPatch has no dispatch — the only fm route '
     + '(audio.fm_synthImportSysex) takes a FILE and applies live-only, so a raw patch cannot be written over RPC',
   sub_synth_import_sysex: 'no route: AudioEngineCommands::loadVirusPatch has no dispatch, and composition.sendFxMidi '
     + 'only reaches plugin slots (not the internal sub_synth engine)',
   load_plugin_preset_file: 'no route: setStateInformation file loading (.SerumPreset/.fxp/.syx) has no plugin/'
     + 'pluginParam twin (missing plugin.loadPresetFile)',
-  automation_preset: 'no route: ProjectCommands::applyAutomationPreset has no dispatch — project.addAutomationPoint / '
-    + 'setAutomationPointValue are only the point primitives (missing project.applyAutomationPreset)',
-  apply_movement_plan: 'no route: ProjectCommands::applyMovementPlan has no dispatch (missing project.applyMovementPlan)',
-  place_patterns: 'no route: AudioEngineCommands::placePatterns has no dispatch (missing composition.placePatterns)',
   audition_patch: 'no route for the patch load: it goes through the sub_synth/fm_synth file loaders that have no '
     + 'RPC twin (see sub_synth_import_sysex / fm_synth_load_preset); the probe track/clip placement itself is '
     + 'reachable (project.addTrack / project.addFxSlot / project.addMidiClip)',
-  session_get_clip_states: 'no route: SessionManager::getClipStates has no dispatch — session.* exposes only '
-    + 'createClip/launchScene/setClipScene/stopAll (missing session.getClipStates)',
   list_clip_takes: 'no route: audioGraph can SWITCH takes (switchClipTake / switchClipTakeToIndex) but nothing lists '
     + 'them, and read.getClip omits TAKE_LIST/activeTake (missing read.getClipTakes or audioGraph.listClipTakes)',
-  scale_note: 'no route: the shared implementation PhraseGenerator::scaleDegreeToPitch (commented "semantics '
-    + 'identical to the MCP scale_note tool") is dispatched nowhere — composition.getNoteName renders a pitch '
-    + 'NAME, not a scale degree (missing composition.scaleDegreeToPitch)',
 };
 
 const rows = [];
