@@ -91,7 +91,7 @@ full list of working features and the priority-ordered roadmap, see
 - Plugin process isolation is **ON by default** — every VST3/CLAP plugin
   runs in a separate `hdaw_plugin_host.exe` child process. Disable with
   `-DHDAW_PLUGIN_ISOLATION=OFF`. See `docs/realtime-safety.md` for details.
-- **Frontend build:** The React frontend is built separately with `cd frontend && npm run build`. The output (`dist/index.html`, `dist/assets/index.js`, `dist/assets/index.css`) is compiled into `HDAW.exe` via Qt resources (`src/resources/frontend.qrc`). Changes to the frontend require rebuilding the frontend, then rebuilding the C++ project.
+- **Frontend build:** The React frontend is built separately with `cd frontend; npm run build`. The output (`dist/index.html`, `dist/assets/index.js`, `dist/assets/index.css`) is compiled into `HDAW.exe` via Qt resources (`src/resources/frontend.qrc`). Changes to the frontend require rebuilding the frontend, then rebuilding the C++ project.
 
 ## Version Management
 
@@ -313,10 +313,16 @@ The modulation per-sample path runs under `stateLock.tryEnter()` in
 (see [`docs/realtime-safety.md`](realtime-safety.md)).
 
 The modulator pass iterates all unique `paramID`s from the
-`ModulationManager` source list and calls `getModulation()` for each.
-Currently only paramID 1 (volume) and 2 (pan) are applied per-sample;
-device-parameter modulation (paramID > 2) advances the LFO phase but
-defers application until a per-block parameter interface is available.
+`ModulationManager` source list and calls `getModulation()` for each. The
+decoded ranges are all applied per-sample on the live processors, not just
+volume/pan: 1 volume, 2 pan, `>=100` track FX
+(`100 + slotIndex*100 + paramIndex`), `>=1000` MIDI FX, `>=2000` send level
+(`2000 + sendIndex`), and `>=3000` bus FX (`3000 + busID*8 + paramIndex`).
+Targets are a track-wide pid space shared with the automation lanes, and a
+`paramID <= 0` (e.g. `-1`, written by `removeSend` to inert an LFO whose send
+went away) is skipped when the unique-id list is built. The legacy FM branch
+(`300..308`) sits below the `>=100` track-FX branch and is therefore
+unreachable.
 
 ### Automation Clipboard (`src/engine/AutomationClipboard.h`)
 
@@ -455,7 +461,7 @@ frontend/
 
 ### Build Pipeline
 
-1. `cd frontend && npm run build` → Vite produces `dist/index.html`, `dist/assets/index.js`, `dist/assets/index.css`
+1. `cd frontend; npm run build` → Vite produces `dist/index.html`, `dist/assets/index.js`, `dist/assets/index.css`
 2. `cmake --build build --config Debug` → C++ compiles `frontend.qrc` (Qt resource bundle) containing the dist files
 3. `HDAW.exe` serves the bundled SPA via `UiHttpServer` on port 8765
 

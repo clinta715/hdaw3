@@ -116,6 +116,43 @@ int lanePidOf(AudioEngine& engine, int trackIndex, const std::string& name)
     return -999;
 }
 
+// targetParamID of the lfoIndex-th MODULATION child on a track (-999 when the
+// index is out of range, i.e. no such LFO) — the tree-side contract of the
+// send-removal LFO remap tests below, read from MODULATION_LIST directly,
+// never a ReadModel projection.
+int lfoTargetPidOf(AudioEngine& engine, int trackIndex, int lfoIndex)
+{
+    const auto modList = engine.getProjectModel().getTrackListTree()
+                             .getChild(trackIndex)
+                             .getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid() || lfoIndex < 0 || lfoIndex >= modList.getNumChildren())
+        return -999;
+    return static_cast<int>(modList.getChild(lfoIndex).getProperty(IDs::targetParamID, 0));
+}
+
+// Number of MODULATION children on a track. Proves a parked LFO was KEPT
+// (targetParamID -1) rather than deleted.
+int modulationChildCountOf(AudioEngine& engine, int trackIndex)
+{
+    const auto modList = engine.getProjectModel().getTrackListTree()
+                             .getChild(trackIndex)
+                             .getChildWithName(IDs::MODULATION_LIST);
+    return modList.isValid() ? modList.getNumChildren() : 0;
+}
+
+// A non-target property of the lfoIndex-th MODULATION child (proves a parked
+// LFO kept its own settings). 0.0 when the index is out of range.
+double lfoPropOf(AudioEngine& engine, int trackIndex, int lfoIndex,
+                 const juce::Identifier& prop)
+{
+    const auto modList = engine.getProjectModel().getTrackListTree()
+                             .getChild(trackIndex)
+                             .getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid() || lfoIndex < 0 || lfoIndex >= modList.getNumChildren())
+        return 0.0;
+    return static_cast<double>(modList.getChild(lfoIndex).getProperty(prop, 0));
+}
+
 } // namespace
 
 // An automation lane with the AUDIO compound pid 200 (= fx slot 1, param 0)
@@ -771,4 +808,220 @@ TEST(AutomationSendBusPids, RemoveSendUndoRestoresSendAndLanePidsTogether)
     EXPECT_EQ(lanePidOf(engine, 0, "SendA"), 2000) << "deleted lane restored";
     EXPECT_EQ(lanePidOf(engine, 0, "SendB"), 2001);
     EXPECT_EQ(lanePidOf(engine, 0, "SendC"), 2002);
+}
+
+// ── removeSend LFO-target remap (the SAME positional pid space) ─────────────
+// MODULATION children carry their destination in IDs::targetParamID, decoded by
+// the SAME chain as lane paramIDs (Track.cpp: automation record, lane apply,
+// per-sample modulation apply), so an LFO aimed at 2000+sendIndex goes stale on
+// the SEND splice exactly like a lane would — and a send re-created at the freed
+// index inherits it. The fixup deliberately DIFFERS from the lane rule: the
+// removed send's LFO is KEPT and parked at targetParamID -1 (inert — Track.cpp
+// skips pid <= 0 when collecting modulation sources), because its
+// waveform/rate/depth are hand-configured state a delete would destroy, whereas
+// a lane (whose identity IS its pid) is deleted because that is lossless.
+// Gate 1/10: parked/shifted targets are proved on the LIVE ModulationManager
+// through a full rebuild, never the ReadModel.
+
+// Three sends with LFOs on 2000/2001/2002: removing send 0 must leave the
+// removed send's LFO PRESENT but inert (-1, settings intact) and decrement the
+// survivors' targets to 2000/2001 — on the tree AND on the live sources.
+TEST(AutomationSendBusPids, RemoveSendInertsRemovedLfoAndShiftsSurvivors)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 0);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 1);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 2);
+    engine.drainPendingRoutingRebuild();
+
+    for (int i = 0; i < 3; ++i)
+        cmds.addLfo(0);
+    ASSERT_EQ(modulationChildCountOf(engine, 0), 3);
+    cmds.setLfoParam(0, 0, "targetParamID", 2000.0);
+    cmds.setLfoParam(0, 1, "targetParamID", 2001.0);
+    cmds.setLfoParam(0, 2, "targetParamID", 2002.0);
+    // Hand-configured settings on the removed send's LFO: parking it must keep
+    // every one of them.
+    cmds.setLfoParam(0, 0, "waveform", 2.0);
+    cmds.setLfoParam(0, 0, "depth", 0.42);
+    cmds.setLfoParam(0, 0, "rate", 0.5);
+    engine.drainPendingRoutingRebuild();
+
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+
+    EXPECT_EQ(modulationChildCountOf(engine, 0), 3) << "no LFO may be deleted";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 0), -1)
+        << "the removed send's LFO is parked, not deleted";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 1), 2000)
+        << "survivor LFO rides reindexed send 0";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 2), 2001)
+        << "survivor LFO rides reindexed send 1";
+    EXPECT_DOUBLE_EQ(lfoPropOf(engine, 0, 0, IDs::waveform), 2.0);
+    EXPECT_DOUBLE_EQ(lfoPropOf(engine, 0, 0, IDs::depth), 0.42);
+    EXPECT_DOUBLE_EQ(lfoPropOf(engine, 0, 0, IDs::rate), 0.5);
+
+    // Gate 1/10: the same targets must be on the LIVE ModulationManager after a
+    // full rebuild — a tree-only fixup that never reached the processor would
+    // leave the stale source running.
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(track->getNumModulations(), 3);
+    EXPECT_EQ(track->getModulationSourceParamID(0), -1);
+    EXPECT_EQ(track->getModulationSourceParamID(1), 2000);
+    EXPECT_EQ(track->getModulationSourceParamID(2), 2001);
+}
+
+// The parked LFO must not hand the freed send slot to whoever takes it next:
+// re-create a send at index 0 with a zero level and PROCESS THE BLOCK — the
+// live SendProcessor's level must not move. Asserted on the LIVE processor (not
+// merely targetParamID == -1) because that is the observable the bug produced:
+// pre-fix the stale 2000 drove the NEW send's level on every sample. A control
+// then re-arms the SAME LFO onto that pid and proves the harness does see the
+// movement, so the inert assertion is not vacuous.
+TEST(AutomationSendBusPids, RemoveSendParkedLfoDoesNotDriveRecreatedSend)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 0);
+    cmds.addLfo(0);
+    cmds.setLfoParam(0, 0, "targetParamID", 2000.0);
+    cmds.setLfoParam(0, 0, "depth", 0.4);
+    engine.drainPendingRoutingRebuild();
+
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+    ASSERT_EQ(lfoTargetPidOf(engine, 0, 0), -1);
+
+    // The freed index 0 is refilled: a stale LFO would drive this new send.
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    auto* live = rm->getSend(0, 0);
+    ASSERT_NE(live, nullptr);
+
+    FixedPlayHead ph;   // bpm 120 + rate 1 (1 cycle/beat), so the LFO advances
+    track->setPlayHead(&ph);
+    juce::AudioBuffer<float> buf(2, kBlock);
+    juce::MidiBuffer midi;
+    ph.setTimeSeconds(0.0);
+    EXPECT_FLOAT_EQ(live->getSendLevel(), 0.0f);
+    track->processBlock(buf, midi);
+    EXPECT_FLOAT_EQ(live->getSendLevel(), 0.0f)
+        << "a parked LFO (targetParamID -1) is skipped when modulation sources "
+           "are collected, so it cannot move any send";
+
+    // Control: the SAME LFO re-armed onto the re-created send's pid does move it
+    // through the identical harness.
+    cmds.setLfoParam(0, 0, "targetParamID", 2000.0);
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+    track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    live = rm->getSend(0, 0);
+    ASSERT_NE(live, nullptr);
+    track->setPlayHead(&ph);
+    juce::AudioBuffer<float> buf2(2, kBlock);
+    juce::MidiBuffer midi2;
+    track->processBlock(buf2, midi2);
+    EXPECT_GT(live->getSendLevel(), 0.0f)
+        << "control: an armed LFO moves the same send's level";
+}
+
+// The LFO fixup touches ONLY the send range, exactly like the lane fixup: an
+// LFO on any other pid range — mixer 1/3, track FX, MIDI FX, stable
+// 3000+busID*8 — comes through a removal with its EXACT targetParamID (Gate 9),
+// while the send window shifts and its bottom is parked.
+TEST(AutomationSendBusPids, RemoveSendRemapsOnlySendRangeForLfoTargets)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    const auto send = cmds.createSend(0, 1, 0.0f, false);   // one send: index 0
+    ASSERT_TRUE(send.ok) << send.error;
+    ASSERT_EQ(send.sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+
+    for (int i = 0; i < 7; ++i)
+        cmds.addLfo(0);
+    ASSERT_EQ(modulationChildCountOf(engine, 0), 7);
+    cmds.setLfoParam(0, 0, "targetParamID", 2000.0);             // removed -> -1
+    cmds.setLfoParam(0, 1, "targetParamID", 2999.0);             // top of range -> 2998
+    cmds.setLfoParam(0, 2, "targetParamID", 1.0);                // volume
+    cmds.setLfoParam(0, 3, "targetParamID", 3.0);                // mute
+    cmds.setLfoParam(0, 4, "targetParamID", 300.0);              // track FX compound
+    cmds.setLfoParam(0, 5, "targetParamID", 1000.0);             // MIDI FX compound
+    cmds.setLfoParam(0, 6, "targetParamID", 3000.0 + 1 * 8 + 0); // bus 1 (Reverb) room
+    engine.drainPendingRoutingRebuild();
+
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+    engine.drainPendingRoutingRebuild();
+
+    EXPECT_EQ(modulationChildCountOf(engine, 0), 7) << "every LFO survives the removal";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 0), -1);
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 1), 2998)
+        << "the top of the send range shifts WITH the survivor window, never "
+           "parked, never pushed across 3000";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 2), 1) << "mixer pids are never remapped";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 3), 3);
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 4), 300) << "track FX pids are never remapped";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 5), 1000) << "MIDI FX pids are never remapped";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 6), 3000 + 1 * 8 + 0)
+        << "stable busID pids are never remapped";
+}
+
+// The splice, the lane fixup and the LFO fixup share the ONE "Remove send"
+// transaction: a SINGLE undo restores the send AND every LFO targetParamID —
+// including the parked -1 going back to 2000. A second undo must not be needed
+// (that would mean the LFO writes opened their own unit, or wrote outside `um`).
+TEST(AutomationSendBusPids, RemoveSendUndoRestoresSendAndLfoTargetsTogether)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 0);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 1);
+    for (int i = 0; i < 2; ++i)
+        cmds.addLfo(0);
+    cmds.setLfoParam(0, 0, "targetParamID", 2000.0);
+    cmds.setLfoParam(0, 1, "targetParamID", 2001.0);
+    engine.drainPendingRoutingRebuild();
+
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+    EXPECT_EQ(engine.getReadModel().getTrackSends(0).size(), 1u);
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 0), -1);
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 1), 2000);
+
+    ASSERT_TRUE(cmds.canUndo());
+    cmds.undo();   // ONE step, no second undo
+
+    EXPECT_EQ(engine.getReadModel().getTrackSends(0).size(), 2u)
+        << "the removed send must be back after the single undo";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 0), 2000) << "the parked LFO target is restored";
+    EXPECT_EQ(lfoTargetPidOf(engine, 0, 1), 2001) << "the shifted LFO target is restored";
 }

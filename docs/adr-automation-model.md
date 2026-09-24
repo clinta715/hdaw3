@@ -59,12 +59,37 @@ Rationale:
 
 ## pid ranges (lane `paramID` address space)
 
-Lane `paramID` is a track-wide address with three ranges (explicit since the
+Lane `paramID` is a track-wide address with five ranges (explicit since the
 2026-09-02 pid-routing fix; previously implicit):
 
 - `1` / `2` / `3` — volume / pan / mute.
 - `100..999` — audio FX chain compound: `100 + slotIndex * 100 + paramIndex`.
 - `1000..1999` — MIDI FX chain compound: `1000 + slotIndex * 100 + paramIndex`.
+- `2000..2999` — send level: `2000 + sendIndex` (positional — sends have no
+  stable id, so the index the SEND list holds at read time is the address).
+- `3000+` — bus FX compound: `3000 + busID * 8 + paramIndex` on the stable
+  `busID`; the modulus 8 is `FxBusProcessor::kMaxParams`.
+
+**LFO `targetParamID` is the SAME address space**, decoded by the same chain
+in `Track::processBlock` (`>=3000` → `>=2000` → `>=1000` → `>=100` → the `1/2/3`
+mixer ids). A modulation source and an automation lane naming the same pid
+therefore drive the same processor param, and the positional rules below apply
+to both. A `paramID <= 0` is skipped when the modulator pass builds its
+unique-id list — that is how an LFO is parked when its target disappears (see
+below).
+
+The legacy FM range `300..308` (`FmModParamIDs`) is **unreachable today**: the
+decode tests `pid >= 100` (the audio-FX compound) BEFORE the FM branch, so
+`306` resolves as audio-FX slot 2 param 6, never as `OP6Feedback`. The FM
+branch below `>=100` is dead for every target.
+
+Send-range targets are positional, so `removeSend` remaps them in the same
+undo unit as the SEND splice (as of the 2026-09-23 batch):
+lane `paramID`s in `2000..2999` above the removed index decrement and the
+removed send's own lane is deleted (a lane's identity IS its pid, so deleting
+it loses nothing), while an LFO whose `targetParamID` was `2000 + removedIndex`
+is set to `-1` — inert but preserved, because its waveform/rate/depth are
+hand-configured state that a delete would destroy.
 
 The engine decodes in `Track::processBlock` (automation record/apply, LFO
 targets); `ReadModelImpl::getAutomatableParams` encodes. The 2026-08-06

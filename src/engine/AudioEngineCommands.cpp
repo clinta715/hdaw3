@@ -577,6 +577,14 @@ bool AudioEngineCommands::removeSend(int trackIndex, int sendIndex, std::string&
     }
 
     const int sendCount = sendList.getNumChildren();   // BEFORE the splice
+    const int removedPid = 2000 + sendIndex;           // shared by the two walks below
+    // The compound 2000 + sendIndex only names a send while it stays inside
+    // 2000..2999 (1000+ sends on ONE track is the only way out, and the send
+    // range does not reach that far). Outside it no pid is a send address, so
+    // remapping on an out-of-range index would leak into the stable 3000+ bus
+    // range instead of doing nothing (Gates 2/9) — both walks below are gated
+    // on it. Always true for every sendIndex the surfaces can express.
+    const bool removedPidIsSendPid = removedPid <= 2999;
 
     auto& um = model.getUndoManager();
     um.beginNewTransaction("Remove send");
@@ -599,9 +607,8 @@ bool AudioEngineCommands::removeSend(int trackIndex, int sendIndex, std::string&
     // property writes (lesson 2). All writes take the `um` opened above: they
     // merge into the existing "Remove send" unit — zero new transactions.
     if (auto autoList = track.getChildWithName(IDs::AUTOMATION_LIST);
-        autoList.isValid())
+        autoList.isValid() && removedPidIsSendPid)
     {
-        const int removedPid = 2000 + sendIndex;
         for (int i = autoList.getNumChildren() - 1; i >= 0; --i)
         {
             auto lane = autoList.getChild(i);
@@ -612,6 +619,42 @@ bool AudioEngineCommands::removeSend(int trackIndex, int sendIndex, std::string&
                 lane.setProperty(IDs::paramID, pid - 1, &um);
         }
     }
+
+    // LFO targets live in the SAME track-wide pid address space (docs/
+    // adr-automation-model.md) and are decoded by the very same chain in
+    // Track.cpp — per-sample modulation apply reads a MODULATION child's
+    // IDs::targetParamID and dispatches it through >=3000 / >=2000 / >=1000 /
+    // >=100. An LFO aimed at 2000+sendIndex is therefore exactly as positional
+    // as the lane above: left stale it drives whichever send the splice moved
+    // into that slot, and a re-created send at the freed index inherits it.
+    // Two deliberate differences from the lane rule:
+    //   * the removed send's LFO SURVIVES as targetParamID -1 (inert) instead
+    //     of being deleted. Track.cpp skips `pid <= 0` when collecting
+    //     modulation sources, so -1 can drive nothing; deleting the LFO would
+    //     instead destroy hand-configured waveform/rate/depth. A lane is
+    //     deleted because a lane's identity IS its pid — its removal is
+    //     lossless — while an LFO's identity is its own settings.
+    //   * survivors decrement exactly like the lanes; nothing outside
+    //     2000..2999 (mixer 1/2/3, track FX 100-999, MIDI FX 1000-1999,
+    //     stable bus 3000+busID*8) is inspected at all (Gates 2/9).
+    // One forward indexed walk over this track's MODULATION children only —
+    // no removals here, so no backward iteration is needed. pid-1 != pid
+    // always, so no unchanged-value property writes (lesson 2). Same `um` as
+    // the splice: one "Remove send" unit, zero new transactions.
+    if (auto modList = track.getChildWithName(IDs::MODULATION_LIST);
+        modList.isValid() && removedPidIsSendPid)
+    {
+        for (int i = 0; i < modList.getNumChildren(); ++i)
+        {
+            auto mod = modList.getChild(i);
+            const int pid = static_cast<int>(mod.getProperty(IDs::targetParamID, 0));
+            if (pid == removedPid)
+                mod.setProperty(IDs::targetParamID, -1, &um);
+            else if (pid > removedPid && pid <= 2999)
+                mod.setProperty(IDs::targetParamID, pid - 1, &um);
+        }
+    }
+
     rebuildRoutingGraph();
     // Shift report for the mirrored {"ok","removed","shifted"} payload: every
     // send above the removed one moved down by one. Empty when the last send

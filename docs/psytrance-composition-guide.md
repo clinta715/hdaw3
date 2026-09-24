@@ -52,7 +52,7 @@ Seven principles from the production sessions. They extend §0 and inform
      "instrument filter + distortion" in one slot.
    - Add 1–2 external `filter` FX slots after for the second (and third)
      filter pass. Automate the last filter's cutoff for movement.
-   - Alternative: `psy_fm` with high feedback (param_306 = OP6Feedback)
+   - Alternative: `psy_fm` with high feedback (param_6 = base feedback)
      produces waveshaping naturally.
 
 3. **Anything can be ear candy if it's rhythmic or filtered.** A wrong-
@@ -105,16 +105,16 @@ Seven principles from the production sessions. They extend §0 and inform
 
 ```bash
 cd timbre-lib
-python3 analyze_psytrance.py   # strides each folder, DSP→CLAP→LLM sidecars,
-                               # registers each folder as an HDAW audio library
+python analyze_psytrance.py   # strides each folder, DSP→CLAP→LLM sidecars,
+                              # registers each folder as an HDAW audio library
 ```
 
 Per-folder variant (list explicit folders / just register):
 
-```bash
-python3 analyze.sh --library NAME --path "E:\samples\Some Pack"
-python3 register_library.py --path "E:\samples\Some Pack" --name Short-Name
-python3 analyze_multi.py      # multi-folder, models loaded once, strided
+```
+python lib_analyze.py "E:\samples\Some Pack" --library NAME
+python register_library.py --path "E:\samples\Some Pack" --name Short-Name
+python analyze_multi.py      # multi-folder, models loaded once, strided
 ```
 
 Sidecar records now carry `key` and `bpm` (filename tag first — `Am`,
@@ -123,7 +123,7 @@ FileLibraryManager ingests them on scan: sidecar key overrides the native
 chroma guess; sidecar bpm fills in when the entry has none. `search_library`
 key/BPM filters therefore match analyzed pads/loops directly.
 
-- `analyze.sh --library` writes the registry via script — safe only when NO
+- `lib_analyze.py --library` writes the registry via script — safe only when NO
   engine is running (an engine restart clobbers externally-written registry
   entries; while a DAW/MCP engine may run, register via MCP `add_library`).
 - Sidecars land as `<file>.timbre.json` next to each sample; `scan_library`
@@ -206,8 +206,8 @@ sampler-only render of the same length took ~10 s). Budget render time per *auto
 points x tracks*, not per minute of audio: dense envelope work can make a "5 minute
 render" a 7-minute wait, and two of them (measure + final) a quarter hour.
 
-```bash
-python3 select_psy_samples.py   # → timbre-lib/psy_sample_selection.tsv
+```
+python select_psy_samples.py   # → timbre-lib/psy_sample_selection.tsv
 ```
 
 TSV format (verified): `role<TAB>win_path<TAB>library<TAB>name`, one line per
@@ -263,7 +263,7 @@ The key tools and their shapes, distilled from the composition sessions:
 | `sampler_set_sample` | `{trackId, slotIndex, filePath, rootNote}` | `"ok"` | Must be slot 0 (add_fx first). All sampler slots on a track share MIDI. |
 | `set_internal_fx_param` | `{trackId, slotIndex, paramIndex, value}` | `"ok"` | REAL units (Hz, dB, ratio). `list_fx_params` reveals indices/min/max. |
 | `add_lfo` | `{trackId}` | `"lfoIndex"` | Then `set_lfo_param` for waveform/rate/depth/target. |
-| `set_lfo_param` | `{trackId, lfoIndex, param, value}` | `"ok"` | targetParamID: 1=Volume, 2=Pan, 100+=FX, 300+=FM (300–308). |
+| `set_lfo_param` | `{trackId, lfoIndex, param, value}` | `"ok"` | One property per call. targetParamID is a track-wide pid: 1=Volume, 2=Pan, 3=Mute, 100+slotIndex\*100+paramIndex (track FX), 1000+slotIndex\*100+paramIndex (MIDI FX), 2000+sendIndex (send level), 3000+busID\*8+paramIndex (bus FX). **FM 300–308 is NOT reachable** — pid ≥ 100 is tested first, so 306 decodes as track-FX slot 2 param 6; see the FM section below for the working route. |
 | `add_automation_lane` | `{trackId, laneName, paramID}` | `"ok"` | **Disabled by default** — must `set_automation_enabled`. |
 | `set_automation_points` | `{trackId, lane, points[{time,value}], mode:"replace"}` | `"ok"` | Key is `time` (beats). |
 | `mix_report` | `{filePath, bpm, sections[{name,start,end}], fromPlan?}` | peak/RMS/bands/pumpDepth/boundaryPeak | Band cutoffs: sub<40, bass<300, body<2000, high>6000. `fromPlan` derives windows from the song plan and CLAMPS them to the file duration (short previews measure instead of hard-erroring; clamped section names return in `clampedSections`). Per-section `boundaryPeak` = first-0.1 s peak — the drop-entry transient gate. |
@@ -1168,11 +1168,18 @@ await mcp("add_notes", {"clipId": clipId, "notes": [
     {"start": 1.5, "duration": 0.4, "pitch": 36, "velocity": 110}
 ]})
 
-# 4. Add an LFO to modulate the feedback (targetParamID 306 = OP6Feedback)
+# 4. Add an LFO to modulate the feedback. targetParamID 106 = track FX slot 0,
+#    param 6 = psy_fm base feedback. NOT 306: the advertised 300-308 FM targets
+#    are unreachable (see "Track-level modulation targets" below).
 await mcp("add_lfo", {"trackId": trackId})
 await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
-    "waveform": 0, "rateSync": true, "rate": 1, "depth": 0.4,
-    "bipolar": false, "targetParamID": 306})
+    "param": "waveform", "value": 0})
+await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
+    "param": "rate", "value": 1})
+await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
+    "param": "depth", "value": 0.4})
+await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
+    "param": "targetParamID", "value": 106})
 ```
 
 ### Available presets
@@ -1186,19 +1193,33 @@ await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
 
 ### Track-level modulation targets
 
-The track's `ModulationManager` routes LFOs to FM destinations via `targetParamID`:
+An LFO's `targetParamID` is a track-wide pid, decoded by the SAME chain the
+automation lanes use (`src/engine/Track.cpp`; `docs/adr-automation-model.md`):
 
-| targetParamID | Destination | Effect |
-| --------------- | ------------- | -------- |
-| 300 | OP1 Ratio | Modulates carrier ratio (pitch/timbre shift) |
-| 301 | OP2 Ratio | Modulates modulator 2 ratio |
-| 302 | OP3 Ratio | Modulates modulator 3 ratio |
-| 303 | OP4 Ratio | Modulates modulator 4 ratio |
-| 304 | OP5 Ratio | Modulates modulator 5 ratio |
-| 305 | OP6 Ratio | Modulates modulator 6 ratio |
-| 306 | OP6 Feedback | Modulates feedback amount (aggression/noise) |
-| 307 | Output Level | Modulates master output level |
-| 308 | Ratio Sweep Rate | Modulates the internal ratio-sweep LFO rate (nested) |
+| targetParamID | Destination |
+| --------------- | ------------- |
+| 1 / 2 / 3 | Volume / Pan / Mute |
+| `100 + slotIndex*100 + paramIndex` | Track FX param |
+| `1000 + slotIndex*100 + paramIndex` | MIDI FX param |
+| `2000 + sendIndex` | Send level |
+| `3000 + busID*8 + paramIndex` | Bus FX param |
+
+**The `300..308` FM targets listed here previously (OP1 Ratio … Ratio Sweep
+Rate) do NOT work.** `Track.cpp` tests `pid >= 100` (the track-FX compound)
+BEFORE the FM branch, so `306` decodes as track-FX slot 2 param 6 — with the
+`psy_fm` of this recipe in slot 0 it drives nothing at all, or, worse, another
+slot's param 6. That shadowing is pre-existing and deliberately out of scope,
+so the FM branch under it is unreachable from every `targetParamID`.
+
+**Reachable route for the same intent:** modulate the `psy_fm` slot's own
+automatable params with the track-FX compound — pid `100 + slotIndex*100 +
+paramIndex` where the psy_fm indices are `0..5` base ratios, `6` base feedback,
+`7..30` operator ADSR, `31` output level, `32` algorithm (see
+`src/engine/PsyFmState.h`; `list_fx_params` reports the indices). The recipe
+above is slot 0, so base feedback is pid `106` and OP6's attack is pid `127`.
+For modulation of the engine's internal *matrix* destinations
+(`op1Ratio..op6Ratio`, `op6Feedback`, `ratioSweepRate`) use
+`psy_fm_set_mod_route`, which runs inside the synth.
 
 ### Operator envelopes (set_internal_fx_param indices)
 
@@ -1217,7 +1238,10 @@ Envelope recipes: pluck = atk 0.001, dec 0.15, sus 0.0, rel 0.1; pad = atk 0.5, 
 
 ### Combining FM with the production stack
 
-- **Bass:** `psy_fm` + `growlBass` preset. LFO → OP6Feedback (306) for evolving growl.
+- **Bass:** `psy_fm` + `growlBass` preset (the preset already arms its own
+  `feedbackLFO → op6Feedback` route). A TRACK LFO on that feedback uses the
+  slot's own pid — `106` for slot 0 — never 306; see "Track-level modulation
+  targets" above.
 - **Lead:** `psy_fm` + `acidLead` preset. Mod wheel → feedback for performance control.
 - **Stabs:** `psy_fm` + `metallicPluck` preset. Fast envelope on non-integer operators.
 - **Risers:** `psy_fm` + `riser` preset. Bar clock auto-speeds ratio-sweep LFO.
@@ -1515,6 +1539,6 @@ bypasses the procdump attach.
   `timbre-lib/psy_sample_selection.tsv`).
 - **Sample tooling:** `timbre-lib/analyze_psytrance.py`,
   `select_psy_samples.py`, `register_library.py`, `analyze_multi.py`,
-  `analyze_targeted.py`, `analyze.sh`.
+  `analyze_targeted.py`, `lib_analyze.py` (the `--library` entry point).
 - **Deliverables:** `.tmp_dnb_theme/` (antinomy_*, psytrance_production_v3/4,
   psytrance_darkforest_v5.wav + .hdaw projects).
