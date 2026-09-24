@@ -96,8 +96,20 @@ never by assumption:
 
 | Transport | Server name | Config that owns it | Client timeout |
 | --- | --- | --- | --- |
-| HTTP (current OMP harness) | `hdaw-http` | repo-root `.mcp.json` → `http://127.0.0.1:18765/mcp` | per-server `timeout`, else **OMP's 30 s default** |
-| stdio proxy (pi chain) | `hdaw` | `~/.config/lazy-mcp/servers.json` → `mcp-launch.bat` → engine | lazy-mcp `requestTimeout`, else **10 000 ms** |
+| **stdio direct (preferred, 2026-09-24)** | `hdaw` | repo-root `.mcp.json` → `mcp-launch.bat` → engine (pi spawns + owns the process) | per-server `timeout: 900000`; **OMP `settings.json` sets `mcp.startupTimeoutMs: 0`** (wait until connections settle — the copy-on-launch + tool enumeration exceeds the 250 ms default discovery window) |
+| HTTP (fallback, engine must already be running) | `hdaw-http` | repo-root `.mcp.json` → `http://127.0.0.1:18765/mcp` | per-server `timeout`, else **OMP's 30 s default** |
+| stdio proxy (pi chain, legacy) | `hdaw` | `~/.config/lazy-mcp/servers.json` → `mcp-launch.bat` → engine | lazy-mcp `requestTimeout`, else **10 000 ms** |
+
+- **Why direct stdio (2026-09-24):** the HTTP entry needs an engine ALREADY serving on 18765
+  (`mcp/httpEnabled=true` in QSettings) *and* the agent session must start after that engine — pi
+  reads `.mcp.json` once at startup with a ~250 ms discovery window (`mcp.startupTimeoutMs`), so a
+  cold `mcp-launch.bat` spawn can never make the HTTP deadline and the tools silently never appear.
+  The direct stdio entry makes pi the engine's parent: `mcp-launch.bat`'s copy-on-launch guarantees
+  fresh binaries, the engine's lifetime is the session's lifetime, and no pre-running HTTP server is
+  needed. `mcp.startupTimeoutMs: 0` (OMP `settings.json`, `~/.omp/agent/settings.json`) makes the
+  discovery wait until connections settle. Both entries can coexist in `.mcp.json` — the stdio one is
+  the one that works without a pre-running engine. Takes effect on the NEXT agent session (pi reads
+  the config at startup).
 
 - The HTTP path does **not** go through lazy-mcp at all — editing
   `~/.config/lazy-mcp/servers.json` cannot change its behaviour. The stdio path is
