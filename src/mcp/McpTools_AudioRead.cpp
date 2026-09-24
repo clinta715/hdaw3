@@ -11,6 +11,7 @@
 #include "../engine/ProjectPool.h"
 #include "../engine/TrackFXSlot.h"
 #include "../common/ToneVerity.h"
+#include "../common/SendJson.h"
 #include "../engine/Dx7SysexImport.h"
 #include "../engine/MidiFx.h"
 #include "../engine/MixReport.h"
@@ -121,30 +122,21 @@ static QJsonObject computeWaveformPeaks(const juce::File& file, juce::AudioForma
 }
 void registerAudioReadTools(McpServer& s, AudioEngine* e)
 {
-    s.registerTool({"list_fx", "List FX slots on a track.",
+    s.registerTool({"list_fx", "List FX slots on a track: [{slotIndex, fxType, paramCount, "
+        "bypassed}] in chain order, plus the plugin-only fields (pluginId, pluginName, "
+        "pluginFormat) when fxType is 'plugin'. paramCount is the defs-table size for an "
+        "internal slot and the live instance count for a plugin slot (0 = not loaded). "
+        "The identical payload RPC read.getFxSlots returns; both read the same shaping "
+        "(common/SendJson.h).",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         "audio",
         [e](const QJsonObject& a) {
-            int ti = a.value("trackId").toInt(-1);
+            const int ti = a.value("trackId").toInt(-1);
             auto tl = e->getProjectModel().getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren())
                 return McpToolResult::text("track not found", true);
-            auto fxSlots = e->getReadModel().getFxSlots(ti);
-            QJsonArray arr;
-            for (const auto& s2 : fxSlots) {
-                bool isPlugin = (s2.fxType == "plugin");
-                QJsonObject o{{"slot", s2.slotIndex},
-                              {"type", QString::fromStdString(s2.fxType)}};
-                if (isPlugin) {
-                    o["pluginId"] = QString::fromStdString(s2.pluginId);
-                    o["pluginFormat"] = QString::fromStdString(s2.pluginFormat);
-                    o["paramCount"] = s2.paramCount;
-                }
-                o["bypassed"] = s2.bypassed;
-                arr.append(o);
-            }
-            return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+            return McpToolResult::text(QString::fromStdString(HDAW::shapeFxSlotsJson(
+                e->getReadModel().getFxSlots(ti))));
         }});
 
     s.registerTool({"list_automation_lanes", "List automation lanes on a track.",

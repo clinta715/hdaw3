@@ -32,6 +32,7 @@
 #include <QString>
 
 #include "common/ReadModel.h"
+#include "common/SendJson.h"
 #include "engine/AudioEngine.h"
 #include "engine/ProjectSerializer.h"   // the save a listing must agree with (G4)
 #include "frontend/FrontendRouter.h"
@@ -817,6 +818,156 @@ TEST_F(BusSendRpcTest, LegacySendRoutesRejectTrackIndexOnBothSurfaces) {
     const QJsonObject withTrackId{ { "trackId", 0 } };
     EXPECT_EQ(rpcPayload("read.getTrackSends", withTrackId),
               mcpValue("get_track_sends", withTrackId));
+}
+
+// --- Read payload parity: sends + FX slots (common/SendJson.h) ---------------
+
+// get_track_sends / read.getTrackSends were TWO hand-written serializers (the MCP
+// inline literal vs the router's toJson(SendSnapshot)) held equal only by the
+// assertion at the end of LegacySendRoutesRejectTrackIndexOnBothSurfaces. Both now
+// shape through common/SendJson.h::shapeSendsJson, so this drives both surfaces over
+// a two-send track — a mixed pre/post-fader pair, the flag a shaper is most likely to
+// drop — and requires the SAME payload, key for key and value for value.
+TEST_F(BusSendRpcTest, TrackSendsMatchMcpWithMixedPrePostPair) {
+    ASSERT_GE(engine->getProjectCommands().createSend(0, 1, 0.371f, false).sendIndex, 0);
+    ASSERT_GE(engine->getProjectCommands().createSend(0, 1, 0.75f, true).sendIndex, 0);
+    engine->drainPendingRoutingRebuild();
+
+    const QJsonObject args{ { "trackId", 0 } };
+    const QJsonValue viaMcp = mcpValue("get_track_sends", args);
+    const QJsonValue viaRpc = rpcPayload("read.getTrackSends", args);
+    EXPECT_EQ(viaRpc, viaMcp) << "both surfaces must shape ONE payload (common/SendJson.h)";
+
+    ASSERT_TRUE(viaMcp.isArray());
+    const QJsonArray rows = viaMcp.toArray();
+    ASSERT_EQ(rows.size(), 2);
+    for (int i = 0; i < rows.size(); ++i) {
+        const QJsonObject row = rows[i].toObject();
+        EXPECT_EQ(row.value("sendIndex").toInt(-1), i) << "rows are in SEND_LIST order";
+        EXPECT_EQ(row.size(), 4) << "the send vocabulary is frozen at 4 keys";
+        for (const char* key : { "sendIndex", "level", "isPreFader", "bypassed" })
+            EXPECT_TRUE(row.contains(key)) << "send row " << i << " is missing " << key;
+    }
+    EXPECT_FALSE(rows[0].toObject().value("isPreFader").toBool()) << "send 0 is post-fader";
+    EXPECT_TRUE(rows[1].toObject().value("isPreFader").toBool()) << "send 1 is pre-fader";
+    EXPECT_NEAR(rows[0].toObject().value("level").toDouble(), 0.371, 1e-5);
+    EXPECT_NEAR(rows[1].toObject().value("level").toDouble(), 0.75, 1e-5);
+    EXPECT_FALSE(rows[0].toObject().value("bypassed").toBool());
+    EXPECT_FALSE(rows[1].toObject().value("bypassed").toBool());
+
+    // Grounded in the tree both surfaces project: SEND_LIST holds exactly the two
+    // sends, in order, with the modes the payload reports.
+    const auto sendList = engine->getProjectModel().getTrackListTree()
+                              .getChild(0).getChildWithName(IDs::SEND_LIST);
+    ASSERT_EQ(sendList.getNumChildren(), 2);
+    EXPECT_EQ(sendList.getChild(0).getProperty(IDs::sendMode).toString(), juce::String("post"));
+    EXPECT_EQ(sendList.getChild(1).getProperty(IDs::sendMode).toString(), juce::String("pre"));
+}
+
+// list_fx / read.getFxSlots were DIVERGENT, not merely duplicated: MCP emitted
+// slot/type/pluginId/pluginFormat/paramCount while the router emitted
+// slotIndex/fxType/pluginId/pluginName/pluginFormat/bypassed/paramCount — different key
+// VOCABULARIES for one entity. Both now emit the ONE canonical vocabulary (slotIndex /
+// fxType / pluginId / pluginName / pluginFormat / paramCount / bypassed — the argument
+// names every FX tool takes, and what the live consumers read; the evidence is recorded
+// in common/SendJson.h), with the plugin-only conditionality preserved for the plugin
+// IDENTITY fields (pluginId / pluginName / pluginFormat) — paramCount rides every slot,
+// because an internal slot's defs-table size is exactly the "did it load" readback the
+// 2026-09-23 paramCount fix exists to provide.
+TEST_F(BusSendRpcTest, FxSlotsMatchMcpOnTheCanonicalVocabulary) {
+    ASSERT_FALSE(rpc("project.addFxSlot",
+                     QJsonObject{ { "trackIndex", 0 }, { "fxType", "eq" } }).isError);
+    ASSERT_FALSE(rpc("project.addFxSlot",
+                     QJsonObject{ { "trackIndex", 0 }, { "fxType", "reverb" } }).isError);
+    // A plugin slot WITHOUT a real plugin: setFxSlotPlugin only writes tree properties
+    // (the same fixture frontend_server_test.cpp's FxSlotPluginFormatExposed uses).
+    ASSERT_FALSE(rpc("project.setFxSlotPlugin",
+                     QJsonObject{ { "trackIndex", 0 }, { "slotIndex", 1 },
+                                   { "fxType", "plugin" }, { "pluginID", "test.plugin" },
+                                   { "pluginFormat", "VST3" },
+                                   { "pluginPath", "/path/test.vst3" } }).isError);
+    engine->drainPendingRoutingRebuild();
+
+    const QJsonValue viaMcp = mcpValue("list_fx", QJsonObject{ { "trackId", 0 } });
+    const QJsonValue viaRpc = rpcPayload("read.getFxSlots", QJsonObject{ { "trackIndex", 0 } });
+    EXPECT_EQ(viaRpc, viaMcp) << "both surfaces must shape ONE payload (common/SendJson.h)";
+
+    ASSERT_TRUE(viaMcp.isArray());
+    const QJsonArray rows = viaMcp.toArray();
+    ASSERT_EQ(rows.size(), 2);
+
+    // The internal slot: the shared keys — no plugin IDENTITY fields that would read as
+    // a loaded plugin with an empty id. paramCount IS carried: for an internal slot it
+    // is the defs-table size (the 2026-09-23 paramCount fix), which the router always
+    // reported and the MCP tool omitted — dropping it would lose that readback.
+    const QJsonObject internal = rows[0].toObject();
+    EXPECT_EQ(internal.value("slotIndex").toInt(-1), 0);
+    EXPECT_EQ(internal.value("fxType").toString().toStdString(), "eq");
+    EXPECT_FALSE(internal.value("bypassed").toBool());
+    EXPECT_EQ(internal.size(), 4) << "an internal slot reports slotIndex/fxType/paramCount/bypassed";
+    for (const char* key : { "pluginId", "pluginName", "pluginFormat" })
+        EXPECT_FALSE(internal.contains(key)) << "an internal slot must not carry " << key;
+    EXPECT_TRUE(internal.contains("paramCount"))
+        << "paramCount rides every slot, internal ones included";
+
+    // The plugin slot: the plugin-only fields ride with it (values, not just keys).
+    const QJsonObject plugin = rows[1].toObject();
+    EXPECT_EQ(plugin.value("slotIndex").toInt(-1), 1);
+    EXPECT_EQ(plugin.value("fxType").toString().toStdString(), "plugin");
+    EXPECT_EQ(plugin.value("pluginId").toString().toStdString(), "test.plugin");
+    EXPECT_EQ(plugin.value("pluginFormat").toString().toStdString(), "VST3");
+    EXPECT_FALSE(plugin.value("bypassed").toBool());
+    for (const char* key : { "pluginId", "pluginName", "pluginFormat", "paramCount" })
+        EXPECT_TRUE(plugin.contains(key)) << "a plugin slot must carry " << key;
+    EXPECT_EQ(plugin.value("paramCount").toInt(-1), 0)
+        << "no live plugin instance in this fixture, so the count is 0";
+
+    // Grounded in the tree + the LIVE chain: FX_CHAIN holds the two slots the payload
+    // describes, and the rebuild built the internal one (the plugin slot's instance is
+    // deliberately absent — setFxSlotPlugin writes tree properties only).
+    const auto fxChain = engine->getProjectModel().getTrackListTree()
+                             .getChild(0).getChildWithName(IDs::FX_CHAIN);
+    ASSERT_EQ(fxChain.getNumChildren(), 2);
+    EXPECT_EQ(fxChain.getChild(1).getProperty(IDs::fxType).toString(), juce::String("plugin"));
+    auto* proc = engine->getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    auto* track = proc->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(static_cast<int>(track->getFXChain().size()), 1);
+    ASSERT_TRUE(track->getFXChain()[0] != nullptr);
+    EXPECT_EQ(track->getFXChain()[0]->getType().toStdString(), "eq");
+    // paramCount is the LIVE slot's count, not a key that merely exists: the internal
+    // eq slot reports its defs-table size (3), so a shaper that zeroed or dropped the
+    // field fails here rather than silently mis-reporting "not loaded".
+    EXPECT_EQ(internal.value("paramCount").toInt(-1),
+              track->getFXChain()[0]->paramCount())
+        << "an internal slot's paramCount is the defs-table size, read from the live slot";
+    EXPECT_GT(internal.value("paramCount").toInt(0), 0);
+}
+
+// The shared builder IS the MCP text path — byte for byte, distinctive level included —
+// and each router payload is that same document parsed. A re-inlined serializer on
+// either side fails here even if it happens to agree today, which is the drift class
+// this slice exists to close.
+TEST_F(BusSendRpcTest, SendAndFxShapingIsTheSharedBuilderOnBothSurfaces) {
+    ASSERT_GE(engine->getProjectCommands().createSend(0, 1, 0.371f, false).sendIndex, 0);
+    ASSERT_FALSE(rpc("project.addFxSlot",
+                     QJsonObject{ { "trackIndex", 0 }, { "fxType", "delay" } }).isError);
+    engine->drainPendingRoutingRebuild();
+
+    const QJsonObject sendArgs{ { "trackId", 0 } };
+    const QString sendText = mcpText("get_track_sends", sendArgs);
+    EXPECT_EQ(sendText, QString::fromStdString(
+        HDAW::shapeSendsJson(engine->getReadModel().getTrackSends(0))));
+    EXPECT_EQ(rpcPayload("read.getTrackSends", sendArgs),
+              QJsonValue(QJsonDocument::fromJson(sendText.toUtf8()).array()));
+
+    const QJsonObject fxArgs{ { "trackId", 0 } };
+    const QString fxText = mcpText("list_fx", fxArgs);
+    EXPECT_EQ(fxText, QString::fromStdString(
+        HDAW::shapeFxSlotsJson(engine->getReadModel().getFxSlots(0))));
+    EXPECT_EQ(rpcPayload("read.getFxSlots", QJsonObject{ { "trackIndex", 0 } }),
+              QJsonValue(QJsonDocument::fromJson(fxText.toUtf8()).array()));
 }
 
 } // namespace

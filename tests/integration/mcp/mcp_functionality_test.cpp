@@ -728,7 +728,10 @@ TEST_F(GuiFuncTest, AddFxAndRemove) {
     auto fx = callText("list_fx", {{"trackId", 0}});
     auto fxArr = QJsonDocument::fromJson(fx.toString().toUtf8()).array();
     EXPECT_EQ(fxArr.size(), 1);
-    EXPECT_EQ(fxArr[0].toObject().value("type").toString().toStdString(), "eq");
+    // Canonical fx-slot vocabulary (common/SendJson.h): slotIndex / fxType are
+    // the names the whole FX tool family uses (list_fx_params, set_fx_param,
+    // add_fx) — list_fx's old `slot` / `type` keys are gone.
+    EXPECT_EQ(fxArr[0].toObject().value("fxType").toString().toStdString(), "eq");
 
     call("remove_fx", {{"trackId", 0}, {"slotIndex", 0}});
     auto fxAfter = QJsonDocument::fromJson(

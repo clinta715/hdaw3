@@ -199,18 +199,6 @@ inline QJsonObject toJson(const TransportSnapshot& t) {
     };
 }
 
-inline QJsonObject toJson(const FxSlotSnapshot& f) {
-    return QJsonObject{
-        { "slotIndex",  f.slotIndex },
-        { "fxType",     QString::fromStdString(f.fxType) },
-        { "pluginId",   QString::fromStdString(f.pluginId) },
-        { "pluginName", QString::fromStdString(f.pluginName) },
-        { "pluginFormat", QString::fromStdString(f.pluginFormat) },
-        { "bypassed",   f.bypassed },
-        { "paramCount", f.paramCount },
-    };
-}
-
 inline QJsonObject toJson(const MidiFxSlotSnapshot& f) {
     QJsonObject obj{
         { "slotIndex", f.slotIndex },
@@ -338,15 +326,6 @@ inline QJsonObject toJson(const LfoSnapshot& l) {
         { "phaseOffset",  l.phaseOffset },
         { "targetParamID", l.targetParamID },
         { "enabled",      l.enabled },
-    };
-}
-
-inline QJsonObject toJson(const SendSnapshot& s) {
-    return QJsonObject{
-        { "sendIndex",  s.sendIndex },
-        { "level",      static_cast<double>(s.level) },
-        { "isPreFader", s.isPreFader },
-        { "bypassed",   s.bypassed },
     };
 }
 

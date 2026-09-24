@@ -3,6 +3,7 @@
 
 #include "../../common/ReadModel.h"
 #include "../../common/BusInfo.h"
+#include "../../common/SendJson.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -43,8 +44,10 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& busList,
     if (m == "getScaleMode")     { return { false, r.getScaleMode() }; }
     if (m == "getFxSlots") {
         int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
-        QJsonArray arr; for (const auto& f : r.getFxSlots(i)) arr.append(toJson(f));
-        return { false, arr };
+        // The SAME shaping list_fx emits (common/SendJson.h) — the router hands the
+        // client the parsed structure rather than a string-quoted document.
+        return { false, QJsonDocument::fromJson(
+            QString::fromStdString(HDAW::shapeFxSlotsJson(r.getFxSlots(i))).toUtf8()).array() };
     }
     if (m == "getMidiFxSlots") {
         int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
@@ -101,8 +104,9 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& busList,
     if (m == "getFmAnalysis")   { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, toJson(r.getFmAnalysis(i)) }; }
     if (m == "getTrackSends") {
         int i; if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required");
-        QJsonArray arr; for (const auto& s : r.getTrackSends(i)) arr.append(toJson(s));
-        return { false, arr };
+        // The SAME shaping get_track_sends emits (common/SendJson.h).
+        return { false, QJsonDocument::fromJson(
+            QString::fromStdString(HDAW::shapeSendsJson(r.getTrackSends(i))).toUtf8()).array() };
     }
 
     // --- Buses (docs/plans/2026-09-22-bus-fx-params.md, slice C) ---

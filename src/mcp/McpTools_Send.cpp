@@ -4,6 +4,7 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../common/BusInfo.h"
+#include "../common/SendJson.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/EnvelopeGenerator.h"
@@ -22,24 +23,17 @@ namespace mcp {
 
 void registerSendTools(McpServer& s, AudioEngine* e)
 {
-    s.registerTool({"get_track_sends", "List all sends on a track.",
+    s.registerTool({"get_track_sends", "List all sends on a track: "
+        "[{sendIndex, level, isPreFader, bypassed}] in SEND_LIST order (sendIndex IS the "
+        "send's identity — removing one shifts the rest). The identical payload RPC "
+        "read.getTrackSends returns; both read the same shaping (common/SendJson.h).",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         "send",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt(-1);
+            const int ti = a.value("trackId").toInt(-1);
             if (!e->getMainProcessor()) return McpToolResult::text("engine not ready", true);
-            auto sends = e->getReadModel().getTrackSends(ti);
-            QJsonArray arr;
-            for (const auto& s : sends) {
-                arr.append(QJsonObject{
-                    {"sendIndex", s.sendIndex},
-                    {"level", static_cast<double>(s.level)},
-                    {"isPreFader", s.isPreFader},
-                    {"bypassed", s.bypassed},
-                });
-            }
-            return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+            return McpToolResult::text(QString::fromStdString(HDAW::shapeSendsJson(
+                e->getReadModel().getTrackSends(ti))));
         }});
 
     s.registerTool({"set_track_send_level", "Set the level of a send.",
