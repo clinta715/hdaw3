@@ -324,6 +324,11 @@ TEST(SongCells, LockSkipsAndRerollBumpsSeed)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // makeCell targets track 1 ("Synth (MIDI) track") — the default project
+    // ships ZERO tracks, so the fill has to have a real target or fillOneCell
+    // (correctly) refuses the cell and this test would assert nothing.
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
     ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);
     std::string err;
     ASSERT_TRUE(cmds.setCellRecipe(makeCell("intro", "bass", "phrase", R"({"style":"RandomWalk"})"), &err));
@@ -331,7 +336,12 @@ TEST(SongCells, LockSkipsAndRerollBumpsSeed)
 
     auto b1 = cmds.fillCells("all");
     ASSERT_EQ(b1.filled, 2);
+    EXPECT_TRUE(b1.cells[0].ok);
+    EXPECT_TRUE(b1.cells[1].ok);
+    EXPECT_GT(b1.cells[0].noteCount, 0) << "the phrase must land on the real target track";
+    EXPECT_TRUE(findClipNode(engine, b1.cells[0].clipId).isValid());
     const uint64_t seed0 = b1.cells[0].seedUsed;
+    (void) seed0;
 
     // Lock the first cell: fill skips it.
     auto cells = cmds.getCells();
@@ -358,6 +368,11 @@ TEST(SongCells, HarvestNotesAndRemove)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // makeCell targets track 1 — the default project ships zero tracks, so the
+    // harvest needs a real target (fillOneCell refuses a cell whose track is
+    // missing, which is what made this test vacuous before).
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
     ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);
     std::string err;
     ASSERT_TRUE(cmds.setCellRecipe(makeCell("build", "hits", "harvest",
