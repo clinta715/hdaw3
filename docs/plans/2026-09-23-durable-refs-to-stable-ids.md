@@ -99,6 +99,9 @@ Indices are also what make `remove_track`/`move_track` return a shift payload at
 3. **Scope: refs 1-3 only** (option (a) of question 3). Lane/LFO send targets keep `2000 + sendIndex`
    and `removeSend`'s remap walk stays — a send id above 999 would overflow into the bus range `3000+`,
    which is a pid-space design question of its own. Refs 4-5 are explicitly NOT migrated here.
+   **CLOSED 2026-09-24 (user decision): keep positional, permanently for now.** The `2000 + sendIndex`
+   encoding and the `removeSend` walk are the shipped contract; the collision needs >999 sends in one
+   project. Documented in `docs/architecture.md` (modulation pid-space section). B3 is fully closed.
 4. **Public/wire contracts that do NOT change:** `CellRecipe.trackId` stays a TRACK_LIST index on the
    API/wire (converted at the storage boundary in `setCellRecipeImpl`/`getCells`), and
    `TrackSnapshot.parentId` stays a positional index (resolved from `parentTrackID` at read time). Only

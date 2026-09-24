@@ -318,6 +318,14 @@ decoded ranges are all applied per-sample on the live processors, not just
 volume/pan: 1 volume, 2 pan, `>=100` track FX
 (`100 + slotIndex*100 + paramIndex`), `>=1000` MIDI FX, `>=2000` send level
 (`2000 + sendIndex`), and `>=3000` bus FX (`3000 + busID*8 + paramIndex`).
+**Send addresses stay `2000 + sendIndex` by decision (2026-09-24, closing the
+B3 follow-up question):** the send-index encoding is the one vocabulary B3 did
+NOT migrate to stable ids, because `2000..2999` shares the pid space with the
+bus range and a `2000 + sendID` scheme would collide at send id 1000
+(`docs/plans/2026-09-23-durable-refs-to-stable-ids.md`, decision 3). The
+`removeSend` remap walk (which re-points lane/LFO send targets) therefore
+remains — it is the last positional-ref fixup in the codebase, and it is
+tested. Revisit only if a project could realistically exceed 999 sends.
 Targets are a track-wide pid space shared with the automation lanes, and a
 `paramID <= 0` (e.g. `-1`, written by `removeSend` to inert an LFO whose send
 went away) is skipped when the unique-id list is built. The legacy FM branch
