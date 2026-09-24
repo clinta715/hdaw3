@@ -74,7 +74,8 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
         //                    (src/common/AddTrackWithFx.h), pluginId gate included
         if (m == "removeTrack")    return dispatchRemoveTrack(engine, params);
         if (m == "addTrackWithFx") return dispatchAddTrackWithFx(engine, params);
-        return dispatchProject(engine.getProjectCommands(), m, params);
+        return dispatchProject(engine.getProjectCommands(),
+                               engine.getProjectModel().getTrackListTree(), m, params);
     }
     else if (ns == method::Settings) return dispatchSettings(engine, m, params);
     else if (ns == method::Transport)   return dispatchTransport(engine.getTransportCommands(), m, params);
@@ -100,6 +101,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
             return { false, result };
         }
         return dispatchRead(engine.getReadModel(),
+                            engine.getProjectModel().getTrackListTree(),
                             engine.getProjectModel().getBusListTree(), m, params);
     }
     else if (ns == method::Plugin)      return dispatchPlugin(engine.getPluginService(), engine, m, params, server);

@@ -17,7 +17,8 @@ using namespace frontend::router_helpers;
 
 namespace frontend {
 
-DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& busList,
+DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& trackList,
+                            const juce::ValueTree& busList,
                             const QString& m, const QJsonValue& params) {
     const auto o = paramsObject(params);
     if (m == "snapshot")         { return { false, toJson(r.snapshot()) }; }
@@ -103,7 +104,11 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& busList,
     if (m == "getMasterMeter")  { return { false, toJson(r.getMasterMeter()) }; }
     if (m == "getFmAnalysis")   { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, toJson(r.getFmAnalysis(i)) }; }
     if (m == "getTrackSends") {
-        int i; if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required");
+        // B2: `trackId` (index) or `trackID` (stable id, design B1) — the ONE
+        // shared rule (common/StableRefResolve.h), so this route and the MCP
+        // get_track_sends resolve, succeed and FAIL with the same text.
+        int i; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err)) return err;
         // The SAME shaping get_track_sends emits (common/SendJson.h).
         return { false, QJsonDocument::fromJson(
             QString::fromStdString(HDAW::shapeSendsJson(r.getTrackSends(i))).toUtf8()).array() };

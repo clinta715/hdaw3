@@ -622,4 +622,162 @@ TEST_F(AddFxParityTest, SetTrackRoutesRejectRetiredTrackIndexOnBothSurfaces) {
     }
 }
 
+// ─── B2: the stable id drives set_track and every route it mirrors ─────────
+// set_track fans out to 13 project.setTrack* routes; B2 gives all of them (and
+// the tool) the stable `trackID` next to the positional `trackId`. Each case
+// below sends the property's own object with `trackID` ONLY — no positional key
+// at all — to the tool AND to the route, and the assertion is on the LIVE tree,
+// so a surface that kept parsing only `trackId` would write to index 0 (or fail)
+// and be caught. The fixture seeds ONE track, which is exactly the trap: index 0
+// is always valid, so a silently ignored id would land a write anyway.
+TEST_F(AddFxParityTest, StableTrackIdDrivesSetTrackAndEveryRoute) {
+    auto& cmds = engine->getProjectCommands();
+    // A second track, so the id cannot accidentally be 0's index.
+    const int other = cmds.addTrack("Other");
+    ASSERT_GE(other, 1);
+    engine->drainPendingRoutingRebuild();
+    const auto tl = engine->getProjectModel().getTrackListTree();
+    const int id0 = static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0));
+    const int id1 = static_cast<int>(tl.getChild(1).getProperty(IDs::trackID, 0));
+    ASSERT_GT(id0, 0);
+    ASSERT_NE(id0, id1);
+
+    struct Case { const char* method; QJsonObject args; };
+    const Case cases[] = {
+        { "project.setTrackName",         QJsonObject{ { "name", "ByID" } } },
+        { "project.setTrackVolume",       QJsonObject{ { "volume", 0.375 } } },
+        { "project.setTrackPan",          QJsonObject{ { "pan", -0.5 } } },
+        { "project.setTrackColor",        QJsonObject{ { "color", 0x445566 } } },
+        { "project.setTrackHidden",       QJsonObject{ { "hidden", true } } },
+        { "project.setTrackArmed",        QJsonObject{ { "armed", true } } },
+        { "project.setTrackInputMonitor", QJsonObject{ { "inputMonitor", true } } },
+        { "project.setTrackHeight",       QJsonObject{ { "height", 222 } } },
+        { "project.setTrackMidiChannel",  QJsonObject{ { "midiChannel", 9 } } },
+        { "project.setTrackType",         QJsonObject{ { "trackType", 1 } } },
+        { "project.setTrackCollapsed",    QJsonObject{ { "collapsed", true } } },
+    };
+
+    for (const auto& c : cases) {
+        // The tool: `trackID` + the property, nothing positional.
+        QJsonObject viaTool = c.args;
+        viaTool["trackID"] = id1;
+        const auto mcpR = mcpResult("set_track", viaTool);
+        EXPECT_FALSE(mcpR.value("isError").toBool())
+            << "set_track refused " << c.method << ": "
+            << mcpText("set_track", viaTool).toStdString();
+        // The route that owns the property: the SAME object.
+        const auto rpcR = rpc(c.method, viaTool);
+        EXPECT_FALSE(rpcR.isError)
+            << c.method << " refused the id-addressed object: "
+            << rpcR.payload.toObject().value("message").toString().toStdString();
+    }
+
+    // Both surfaces wrote through the ID: track 1 carries every property, and
+    // the neighbour (which a silently ignored id would have targeted) carries
+    // none of them.
+    engine->drainPendingRoutingRebuild();
+    const auto t1 = tl.getChild(1);
+    const auto t0 = tl.getChild(0);
+    EXPECT_EQ(t1.getProperty(IDs::name).toString().toStdString(), "ByID");
+    EXPECT_DOUBLE_EQ(static_cast<double>(t1.getProperty(IDs::volume)), 0.375);
+    EXPECT_DOUBLE_EQ(static_cast<double>(t1.getProperty(IDs::pan)), -0.5);
+    EXPECT_EQ(static_cast<int>(t1.getProperty(IDs::color)), 0x445566);
+    EXPECT_TRUE(static_cast<bool>(t1.getProperty(IDs::isHidden)));
+    EXPECT_TRUE(static_cast<bool>(t1.getProperty(IDs::isArm)));
+    EXPECT_TRUE(static_cast<bool>(t1.getProperty(IDs::inputMonitor)));
+    EXPECT_DOUBLE_EQ(static_cast<double>(t1.getProperty(IDs::trackHeight)), 222.0);
+    EXPECT_EQ(static_cast<int>(t1.getProperty(IDs::midiChannel)), 9);
+    EXPECT_EQ(static_cast<int>(t1.getProperty(IDs::trackType)), 1);
+    EXPECT_TRUE(static_cast<bool>(t1.getProperty(IDs::isCollapsed)));
+    EXPECT_FALSE(t0.hasProperty(IDs::isHidden)) << "track 0 must be untouched";
+    EXPECT_FALSE(static_cast<bool>(t0.getProperty(IDs::isArm)))
+        << "createTrackValueTree defaults isArm=false; the id's track set it true";
+    EXPECT_FALSE(t0.hasProperty(IDs::isCollapsed));
+    EXPECT_EQ(t0.getProperty(IDs::name).toString().toStdString(), "Track");
+    EXPECT_NE(static_cast<int>(t0.getProperty(IDs::midiChannel)), 9)
+        << "the neighbouring track keeps its own midi channel";
+}
+
+// B2's mute/solo pair on the id path, and the ID half of the "one write path"
+// claim: the tool's `mute` and the route's `muted` both accept `trackID`.
+TEST_F(AddFxParityTest, StableTrackIdDrivesMuteAndSoloOnBothSurfaces) {
+    const auto tl = engine->getProjectModel().getTrackListTree();
+    const int trackID = static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0));
+    ASSERT_GT(trackID, 0);
+
+    const QJsonObject mcpMute{ { "trackID", trackID }, { "mute", true } };
+    EXPECT_FALSE(mcpResult("set_track", mcpMute).value("isError").toBool())
+        << mcpText("set_track", mcpMute).toStdString();
+    const QJsonObject rpcMute{ { "trackID", trackID }, { "muted", false } };
+    EXPECT_FALSE(rpc("project.setTrackMuted", rpcMute).isError);
+    engine->drainPendingRoutingRebuild();
+    EXPECT_FALSE(static_cast<bool>(tl.getChild(0).getProperty(IDs::isMuted)))
+        << "the two writes landed on one property of one track";
+
+    const QJsonObject mcpSolo{ { "trackID", trackID }, { "solo", true } };
+    EXPECT_FALSE(mcpResult("set_track", mcpSolo).value("isError").toBool());
+    const QJsonObject rpcSolo{ { "trackID", trackID }, { "soloed", false } };
+    EXPECT_FALSE(rpc("project.setTrackSoloed", rpcSolo).isError);
+    engine->drainPendingRoutingRebuild();
+    EXPECT_FALSE(static_cast<bool>(tl.getChild(0).getProperty(IDs::isSoloed)));
+}
+
+// ─── B2: folder membership by stable id ────────────────────────────────────
+// The folder target resolves through the same lookup with the folder spellings,
+// so `folderID` addresses the folder and `trackID` the child — the pair that
+// makes a folder reachable for a caller that only holds identities.
+TEST_F(AddFxParityTest, FolderMoveAcceptsStableIds) {
+    auto& cmds = engine->getProjectCommands();
+    const int folder = cmds.addTrack("Folder", -1, -1, 2);   // trackType 2 = folder
+    const int child = cmds.addTrack("Child");
+    ASSERT_GE(folder, 1);
+    ASSERT_GE(child, 2);
+    engine->drainPendingRoutingRebuild();
+
+    auto tl = engine->getProjectModel().getTrackListTree();
+    const int folderID = static_cast<int>(tl.getChild(folder).getProperty(IDs::trackID, 0));
+    const int childID = static_cast<int>(tl.getChild(child).getProperty(IDs::trackID, 0));
+    ASSERT_GT(folderID, 0);
+    ASSERT_NE(folderID, childID);
+
+    const QJsonObject intoById{ { "trackID", childID }, { "folderID", folderID } };
+    EXPECT_FALSE(mcpIsError("move_track_into_folder", intoById))
+        << mcpText("move_track_into_folder", intoById).toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(),
+              std::to_string(child));
+    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), folder);
+
+    // The route mutates the same membership from the same object.
+    EXPECT_FALSE(rpc("project.moveTrackOutOfFolder",
+                     QJsonObject{ { "trackID", childID } }).isError);
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(), "");
+    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), -1);
+
+    // A disagreement between the two spellings is refused, and the folder is
+    // still empty afterwards (a silent pick would have re-parented the child).
+    // `folderId 0` names the fixture's own track, whose numeric value is NOT the
+    // folder's id — the case where "just use the number" would pick the wrong
+    // track.
+    const int notTheFolder = 0;
+    ASSERT_NE(notTheFolder, folderID);
+    const auto clash = rpc("project.moveTrackIntoFolder",
+                           QJsonObject{ { "trackID", childID }, { "folderId", notTheFolder },
+                                        { "folderID", folderID } });
+    ASSERT_TRUE(clash.isError);
+    EXPECT_EQ(clash.payload.toObject().value("code").toInt(), -32602);
+    EXPECT_EQ(clash.payload.toObject().value("message").toString().toStdString(),
+              "folderId " + std::to_string(notTheFolder) + " and folderID "
+                  + std::to_string(folderID) + " disagree");
+    EXPECT_TRUE(mcpIsError("move_track_into_folder",
+                           QJsonObject{ { "trackID", childID }, { "folderId", notTheFolder },
+                                        { "folderID", folderID } }));
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(folder).getProperty(IDs::childIds).toString().toStdString(), "");
+    EXPECT_EQ(static_cast<int>(tl.getChild(child).getProperty(IDs::parentId, -1)), -1)
+        << "a refused folder move must not re-parent the child";
+}
+
+
 } // namespace

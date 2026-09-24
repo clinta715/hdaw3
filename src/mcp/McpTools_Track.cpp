@@ -2,6 +2,10 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`, `folderId`/`folderID`)
+// — thin readers over the ONE shared rule in common/StableRefResolve.h, whose
+// error text is what the RPC twin reports for the same request.
+#include "McpArgs.h"
 // The shared bodies behind the track tools: add_track_with_fx's composite
 // (pluginId gate + created-track shape + payload), the remove-track dryRun/force
 // guard, and the creation payload shaper — all three are also what the RPC
@@ -88,14 +92,21 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         "still carries clips refuses removal unless `force:true` — RPC "
         "project.removeTrack runs the SAME guard (src/common/TrackRemoveGuard.h) and "
         "answers the same text (dryRun preview / refusal), so neither surface can "
-        "destroy clips by accident.",
+        "destroy clips by accident. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"trackID", QJsonObject{{"type","integer"}}},
                   {"dryRun",  QJsonObject{{"type","boolean"}}},
-                  {"force",   QJsonObject{{"type","boolean"}}}}, {"trackId"}),
+                  {"force",   QJsonObject{{"type","boolean"}}}}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
-            int id = a.value("trackId").toInt();
+            // B2: `trackID` (stable id) or `trackId` (TRACK_LIST index). Both
+            // halves of the guard below then run against the RESOLVED index, so
+            // a preview/refusal names the track the caller actually meant.
+            int id; std::string refErr;
+            if (!trackIndexArg(a, m.getTrackListTree(), id, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             // The dryRun preview and the clip refusal come from
             // common/TrackRemoveGuard.h — the SAME guard RPC
             // project.removeTrack now runs, so both surfaces answer the same
@@ -134,8 +145,10 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         "land the identical tree property. The property names are the route "
         "arguments' (only `mute`/`solo` keep this tool's historical spelling; the "
         "routes spell them `muted`/`soloed`). Returns text \"ok\" (RPC answers Null "
-        "— a text tool cannot return JSON null).",
+        "— a text tool cannot return JSON null). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",      QJsonObject{{"type","integer"}}},
+                  {"trackID",      QJsonObject{{"type","integer"}}},
                   {"name",         QJsonObject{{"type","string"}}},
                   {"volume",       QJsonObject{{"type","number"}}},
                   {"pan",          QJsonObject{{"type","number"}}},
@@ -148,12 +161,17 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
                   {"height",       QJsonObject{{"type","integer"}}},
                   {"midiChannel",  QJsonObject{{"type","integer"}}},
                   {"trackType",    QJsonObject{{"type","integer"}}},
-                  {"collapsed",    QJsonObject{{"type","boolean"}}}}, {"trackId"}),
+                  {"collapsed",    QJsonObject{{"type","boolean"}}}}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
             auto& cmds = e->getProjectCommands();
-            int id = a.value("trackId").toInt();
+            // B2: `trackID` (stable id) or `trackId` (index) — the SAME resolver
+            // the routes use, so the failure text is identical. The bounds check
+            // stays: it is the positional path's long-standing "track not found".
+            int id; std::string refErr;
+            if (!trackIndexArg(a, m.getTrackListTree(), id, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             if (id < 0 || id >= m.getTrackListTree().getNumChildren())
                 return McpToolResult::text("track not found", true);
             // ONE write path per property: the commands the RPC routes call.
@@ -193,13 +211,20 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         "newIndex == trackId is a NO-OP (no clamp, no reorder, still \"ok\"); an "
         "out-of-range `trackId` reports \"track not found\". Returns text \"ok\" "
         "either way. Folder parent/child links and song-plan cell track refs are "
-        "remapped by the shared command path.",
+        "remapped by the shared command path. " +
+        mcp::stableRefRuleText("trackID", "trackId") +
+        " `newIndex` stays purely positional: it is a destination, not an entity.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
-                  {"newIndex", QJsonObject{{"type","integer"}}}}, {"trackId","newIndex"}),
+                  {"trackID", QJsonObject{{"type","integer"}}},
+                  {"newIndex", QJsonObject{{"type","integer"}}}}, {"newIndex"}),
         "track",
         [e](const QJsonObject& a) {
             auto& m = e->getProjectModel();
-            const int id = a.value("trackId").toInt();
+            // B2: the track is named by `trackId` or the stable `trackID`;
+            // `newIndex` is a POSITION in the current order and stays one.
+            int id; std::string refErr;
+            if (!trackIndexArg(a, m.getTrackListTree(), id, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             if (id < 0 || id >= m.getTrackListTree().getNumChildren())
                 return McpToolResult::text("track not found", true);
             // ONE move path (handoff 7): the shared command owns the splice, the
@@ -222,12 +247,18 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         "compact JSON as add_track — {\"trackId\":N,\"routed\":0|1,\"trackID\":<id>}: `trackId` is "
         "the new track's INDEX (the copy is appended last), `trackID` its STABLE identity (design "
         "B1) — a copy is a NEW entity, so its id differs from its source's. RPC "
-        "project.duplicateTrack returns that same object (it used to answer a bare int).",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "project.duplicateTrack returns that same object (it used to answer a bare int). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"trackID", QJsonObject{{"type","integer"}}}}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
-            int id = a.value("trackId").toInt();
+            // B2: the SOURCE may be named by its stable `trackID`; the payload's
+            // `trackId` is still the COPY's index (a new position).
+            int id; std::string refErr;
+            if (!trackIndexArg(a, m.getTrackListTree(), id, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             if (id < 0 || id >= m.getTrackListTree().getNumChildren())
                 return McpToolResult::text("track not found", true);
             int newIdx = e->getProjectCommands().duplicateTrack(id);
@@ -256,13 +287,28 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         "project.moveTrackIntoFolder makes, with the same argument names. A "
         "non-folder target, an out-of-range index or trackId == folderId is the "
         "command's NO-OP (still \"ok\"). Returns text \"ok\" (RPC answers Null — a "
-        "text tool cannot return JSON null).",
+        "text tool cannot return JSON null). " +
+        mcp::stableRefRuleText("trackID", "trackId") + " " +
+        mcp::stableRefRuleText("folderID", "folderId"),
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
-                  {"folderId", QJsonObject{{"type","integer"}}}}, {"trackId","folderId"}),
+                  {"trackID",  QJsonObject{{"type","integer"}}},
+                  {"folderId", QJsonObject{{"type","integer"}}},
+                  {"folderID", QJsonObject{{"type","integer"}}}}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
-            e->getProjectCommands().moveTrackIntoFolder(a.value("trackId").toInt(),
-                                                        a.value("folderId").toInt());
+            // B2: the folder target resolves through the SAME track lookup with
+            // the folder spellings (a folder IS a track in TRACK_LIST) — so
+            // `folderID` is its stable id. Resolution order (track, then folder)
+            // matches the argument order, so the reported failure is the first
+            // thing missing.
+            const auto trackList = e->getProjectModel().getTrackListTree();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, trackList, ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            int fi;
+            if (!trackIndexArg(a, trackList, fi, refErr, HDAW::kFolderRefKeys))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            e->getProjectCommands().moveTrackIntoFolder(ti, fi);
             return McpToolResult::text("ok");
         }});
 
@@ -272,11 +318,16 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         "is a TRACK_LIST index; the SAME ProjectCommands::moveTrackOutOfFolder call "
         "RPC project.moveTrackOutOfFolder makes, with the same argument name. A track "
         "that has no parent is the command's NO-OP (still \"ok\"). Returns text "
-        "\"ok\" (RPC answers Null — a text tool cannot return JSON null).",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "\"ok\" (RPC answers Null — a text tool cannot return JSON null). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"trackID", QJsonObject{{"type","integer"}}}}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {
-            e->getProjectCommands().moveTrackOutOfFolder(a.value("trackId").toInt());
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            e->getProjectCommands().moveTrackOutOfFolder(ti);
             return McpToolResult::text("ok");
         }});
 

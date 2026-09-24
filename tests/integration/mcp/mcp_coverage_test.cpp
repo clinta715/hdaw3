@@ -5005,4 +5005,176 @@ TEST_F(McpCoverageTest, StableTrackIdIsEchoedAndIsNotCopied) {
         << "the stable id did not move with the index";
 }
 
+// ─── Stable ids as ARGUMENTS (design B2), MCP end to end ───────────────────
+// Through the server transport, so the SCHEMA is exercised too: B2's arguments
+// are only usable because each tool lists `trackID`/`sendID` as properties AND
+// no longer marks the positional key required — an id-only call that still hit
+// "invalid params" would prove the wire contract incomplete even with the
+// handler wired.
+
+// G2: `trackID` alone drives set_track, move_track, duplicate_track and the
+// guarded remove_track. Asserted on the LIVE tree, not on "the call returned".
+TEST_F(McpCoverageTest, TrackIdAloneDrivesTheTrackTools) {
+    auto& cmds = engine->getProjectCommands();
+    const int second = cmds.addTrack("Second");
+    ASSERT_EQ(second, 1);
+    engine->drainPendingRoutingRebuild();
+    auto tl = engine->getProjectModel().getTrackListTree();
+    const int idSecond = static_cast<int>(tl.getChild(1).getProperty(IDs::trackID, 0));
+    const int idFirst = static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0));
+    ASSERT_GT(idSecond, 0);
+    ASSERT_NE(idSecond, idFirst);
+
+    // set_track by id: the write lands on track 1 (index 0 is the trap — it is
+    // always valid, so a silently dropped id would write THERE).
+    auto setName = call("set_track", { { "trackID", idSecond }, { "name", "ByID" } });
+    ASSERT_FALSE(isError(setName)) << text(setName).toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(1).getProperty(IDs::name).toString().toStdString(), "ByID");
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "Track");
+
+    // move_track by id: the reorder happens to the id's track.
+    auto moved = call("move_track", { { "trackID", idSecond }, { "newIndex", 0 } });
+    ASSERT_FALSE(isError(moved)) << text(moved).toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "ByID")
+        << "the id's track moved to the front";
+    EXPECT_EQ(static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0)), idSecond)
+        << "identity and track stayed together";
+
+    // duplicate_track by id: the copy is a NEW entity appended last.
+    const auto dupObj = QJsonDocument::fromJson(
+        text(call("duplicate_track", { { "trackID", idSecond } })).toUtf8()).object();
+    ASSERT_FALSE(dupObj.isEmpty()) << "duplicate_track must answer the creation payload";
+    EXPECT_EQ(dupObj.value("trackId").toInt(-1), trackCount() - 1)
+        << "the copy is appended last";
+    EXPECT_EQ(dupObj.value("routed").toInt(0), 1);
+    EXPECT_NE(dupObj.value("trackID").toInt(0), idSecond) << "a copy is a new entity";
+
+    // remove_track by id, through the shared guard: a clip-carrying track
+    // refuses by the RESOLVED index's name, then force:true removes it.
+    ASSERT_GE(cmds.addMidiClip(0, 0.0, 4.0, "Guard"), 0);
+    engine->drainPendingRoutingRebuild();
+    auto refused = call("remove_track", { { "trackID", idSecond } });
+    ASSERT_TRUE(isError(refused));
+    EXPECT_TRUE(text(refused).contains("ByID"))
+        << "the guard must name the id's track: " << text(refused).toStdString();
+    EXPECT_EQ(trackCount(), 3) << "a refusal mutates nothing";
+
+    auto removed = call("remove_track", { { "trackID", idSecond }, { "force", true } });
+    ASSERT_FALSE(isError(removed)) << text(removed).toStdString();
+    const auto payload = QJsonDocument::fromJson(text(removed).toUtf8()).object();
+    EXPECT_TRUE(payload.value("ok").toBool());
+    EXPECT_EQ(payload.value("removed").toInt(-1), 0) << "the position the id's track occupied";
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(trackCount(), 2);
+    for (int i = 0; i < tl.getNumChildren(); ++i)
+        EXPECT_NE(static_cast<int>(tl.getChild(i).getProperty(IDs::trackID, 0)), idSecond)
+            << "the id is gone with its track";
+}
+
+// G3 + G4 on the MCP surface: an unknown id names itself, a disagreement names
+// both, and neither mutates anything.
+TEST_F(McpCoverageTest, StableIdErrorsNameTheIdAndMutateNothing) {
+    auto& cmds = engine->getProjectCommands();
+    const int second = cmds.addTrack("Second");
+    ASSERT_EQ(second, 1);
+    engine->drainPendingRoutingRebuild();
+    auto tl = engine->getProjectModel().getTrackListTree();
+    const int idFirst = static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0));
+    const int idSecond = static_cast<int>(tl.getChild(1).getProperty(IDs::trackID, 0));
+
+    // Unknown id: the tool reports the number it could not resolve (a silent
+    // fall back to the index is the failure mode this text exists to prevent).
+    auto unknown = call("set_track", { { "trackID", 4242 }, { "name", "Nope" } });
+    ASSERT_TRUE(isError(unknown));
+    EXPECT_EQ(text(unknown).toStdString(), "unknown trackID 4242");
+    auto unknownSends = call("get_track_sends", { { "trackID", 4242 } });
+    ASSERT_TRUE(isError(unknownSends));
+    EXPECT_EQ(text(unknownSends).toStdString(), "unknown trackID 4242");
+
+    // Disagreement: both numbers are reported, and NEITHER track changed.
+    auto clash = call("set_track", { { "trackId", 0 }, { "trackID", idSecond },
+                                     { "name", "Clash" } });
+    ASSERT_TRUE(isError(clash));
+    EXPECT_EQ(text(clash).toStdString(),
+              "trackId 0 and trackID " + std::to_string(idSecond) + " disagree");
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "Track");
+    EXPECT_EQ(tl.getChild(1).getProperty(IDs::name).toString().toStdString(), "Second");
+    EXPECT_EQ(trackCount(), 2);
+    EXPECT_NE(idFirst, idSecond);
+}
+
+// G5 on MCP: `sendID` alone addresses the survivor of a removal, and a removed
+// send's id is refused rather than resolving to whatever took its slot.
+TEST_F(McpCoverageTest, SendIdAloneAddressesTheSurvivorAfterASplice) {
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_EQ(cmds.createSend(0, 1, 0.25f, false).sendIndex, 0);   // A
+    ASSERT_EQ(cmds.createSend(0, 1, 0.75f, false).sendIndex, 1);   // B
+    engine->drainPendingRoutingRebuild();
+
+    auto rows = QJsonDocument::fromJson(
+        callText("get_track_sends", { { "trackId", 0 } }).toString().toUtf8()).array();
+    ASSERT_EQ(rows.size(), 2);
+    const int idA = rows[0].toObject().value("sendID").toInt(0);
+    const int idB = rows[1].toObject().value("sendID").toInt(0);
+    ASSERT_GT(idA, 0);
+    ASSERT_NE(idA, idB);
+
+    // The splice (positional, unchanged), then B is addressed by its id alone.
+    auto removed = call("remove_send", { { "trackId", 0 }, { "sendIndex", 0 } });
+    ASSERT_FALSE(isError(removed)) << text(removed).toStdString();
+    engine->drainPendingRoutingRebuild();
+    rows = QJsonDocument::fromJson(
+        callText("get_track_sends", { { "trackId", 0 } }).toString().toUtf8()).array();
+    ASSERT_EQ(rows.size(), 1);
+    EXPECT_EQ(rows[0].toObject().value("sendIndex").toInt(-1), 0) << "B renumbered to 0";
+    EXPECT_EQ(rows[0].toObject().value("sendID").toInt(0), idB) << "…keeping its identity";
+
+    auto shaped = call("set_track_send_level",
+                       { { "trackId", 0 }, { "sendID", idB }, { "level", 0.125 } });
+    EXPECT_FALSE(isError(shaped)) << text(shaped).toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_FLOAT_EQ(engine->getReadModel().getTrackSends(0)[0].level, 0.125f)
+        << "the id shaped the surviving send";
+    auto mode = call("set_track_send_mode",
+                     { { "trackId", 0 }, { "sendID", idB }, { "isPreFader", true } });
+    EXPECT_FALSE(isError(mode)) << text(mode).toStdString();
+    auto bypassed = call("set_track_send_bypassed",
+                         { { "trackId", 0 }, { "sendID", idB }, { "bypassed", true } });
+    EXPECT_FALSE(isError(bypassed)) << text(bypassed).toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_TRUE(engine->getReadModel().getTrackSends(0)[0].isPreFader);
+    EXPECT_TRUE(engine->getReadModel().getTrackSends(0)[0].bypassed);
+
+    // The removed send's id is unknown (never the send that took its slot).
+    auto gone = call("set_track_send_level",
+                     { { "trackId", 0 }, { "sendID", idA }, { "level", 0.5 } });
+    ASSERT_TRUE(isError(gone));
+    EXPECT_EQ(text(gone).toStdString(), "unknown sendID " + std::to_string(idA));
+    EXPECT_FLOAT_EQ(engine->getReadModel().getTrackSends(0)[0].level, 0.125f)
+        << "a refused write leaves the level alone";
+
+    // add_send names its source track by id too, and the send it appends is then
+    // addressable by the id its own payload's readback carries.
+    auto added = call("add_send", { { "trackID",
+                                      static_cast<int>(engine->getProjectModel()
+                                                           .getTrackListTree().getChild(0)
+                                                           .getProperty(IDs::trackID, 0)) },
+                                    { "busTarget", 1 } });
+    ASSERT_FALSE(isError(added)) << text(added).toStdString();
+    auto addPayload = QJsonDocument::fromJson(text(added).toUtf8()).object();
+    EXPECT_EQ(addPayload.value("sendIndex").toInt(-1), 1) << "the new send is appended";
+    const int newSendID = static_cast<int>(
+        engine->getProjectModel().getTrackListTree().getChild(0)
+            .getChildWithName(IDs::SEND_LIST).getChild(1).getProperty(IDs::sendID, 0));
+    ASSERT_GT(newSendID, 0);
+    auto removeById = call("remove_send", { { "trackId", 0 }, { "sendID", newSendID } });
+    ASSERT_FALSE(isError(removeById)) << text(removeById).toStdString();
+    const auto removePayload = QJsonDocument::fromJson(text(removeById).toUtf8()).object();
+    EXPECT_EQ(removePayload.value("removed").toInt(-1), 1)
+        << "remove_send reports the position the id occupied";
+}
+
 } // namespace

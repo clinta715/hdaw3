@@ -1072,4 +1072,224 @@ TEST_F(BusSendRpcTest, StableIdsAgreeAcrossSurfacesAndSurviveASplice) {
     EXPECT_EQ(moved.toObject().value("name").toString().toStdString(), "Stable");
 }
 
+// ── Stable ids as ARGUMENTS (design B2) ────────────────────────────────────
+// B1 put `trackID` / `sendID` on the wire; B2 makes the number an agent actually
+// holds usable as an ARGUMENT, additively. These tests hand `trackID`/`sendID`
+// with NO positional key and require the tool AND the route to act on that
+// entity — the SAME object to both surfaces, so a surface that quietly kept
+// parsing only the index fails here instead of mutating the wrong track.
+
+// G2: a track named ONLY by its id (no `trackId`) drives the read, a property
+// write, a reorder and the guarded removal — on both surfaces.
+TEST_F(BusSendRpcTest, StableTrackIdAloneDrivesBothSurfaces) {
+    const auto tl = engine->getProjectModel().getTrackListTree();
+    const int idKick = static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0));
+    const int idBass = static_cast<int>(tl.getChild(1).getProperty(IDs::trackID, 0));
+    ASSERT_GT(idKick, 0);
+    ASSERT_GT(idBass, 0);
+    ASSERT_NE(idKick, idBass);
+
+    // read.getTrackSends / get_track_sends: the fixture's send lives on BASS, so
+    // an id that resolves to Kick reports [] while the Bass id reports the row —
+    // which is what proves the id selected a track rather than defaulting to 0.
+    ASSERT_GE(engine->getProjectCommands().createSend(1, 1, 0.42f, false).sendIndex, 0);
+    engine->drainPendingRoutingRebuild();
+
+    const QJsonObject readById{ { "trackID", idBass } };
+    const QJsonValue viaMcp = mcpValue("get_track_sends", readById);
+    ASSERT_TRUE(viaMcp.isArray());
+    ASSERT_EQ(viaMcp.toArray().size(), 1) << "the id must select the track that HAS a send";
+    EXPECT_NEAR(viaMcp.toArray()[0].toObject().value("level").toDouble(), 0.42, 1e-5);
+    EXPECT_EQ(rpcPayload("read.getTrackSends", readById), viaMcp)
+        << "one object, two surfaces, one payload";
+    EXPECT_TRUE(mcpValue("get_track_sends", QJsonObject{ { "trackID", idKick } })
+                    .toArray().isEmpty())
+        << "…and the other track's id reports its own (empty) SEND_LIST";
+
+    // set_track / project.setTrackMuted: the write lands on the id's track. The
+    // MCP object is set_track's own spelling (`mute`), the route's is `muted` —
+    // the documented divergence; both now accept `trackID`.
+    const QJsonObject muteById{ { "trackID", idBass }, { "mute", true } };
+    EXPECT_FALSE(mcpIsError("set_track", muteById))
+        << mcpText("set_track", muteById).toStdString();
+    EXPECT_TRUE(static_cast<bool>(tl.getChild(1).getProperty(IDs::isMuted)));
+    EXPECT_FALSE(static_cast<bool>(tl.getChild(0).getProperty(IDs::isMuted)))
+        << "the neighbouring track must be untouched";
+    EXPECT_FALSE(rpc("project.setTrackMuted",
+                     QJsonObject{ { "trackID", idKick }, { "muted", true } }).isError);
+    engine->drainPendingRoutingRebuild();
+    EXPECT_TRUE(static_cast<bool>(tl.getChild(0).getProperty(IDs::isMuted)));
+
+    // move_track / project.moveTrack: reorder by id (the id survives the move).
+    const QJsonObject moveArgs{ { "trackID", idBass }, { "newIndex", 0 } };
+    EXPECT_FALSE(mcpIsError("move_track", moveArgs))
+        << mcpText("move_track", moveArgs).toStdString();
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "Bass");
+    EXPECT_EQ(static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0)), idBass)
+        << "the identity travelled with the track, the index changed";
+    EXPECT_FALSE(rpc("project.moveTrack",
+                     QJsonObject{ { "trackID", idKick }, { "newIndex", 0 } }).isError);
+    engine->drainPendingRoutingRebuild();
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "Kick");
+
+    // remove_track / project.removeTrack by id — through the SHARED guard: a
+    // clip-carrying track refuses, and the refusal names the track the id
+    // resolved to (its CURRENT index), on both surfaces with one text.
+    ASSERT_GT(engine->getProjectCommands().addMidiClip(0, 0.0, 4.0, "Guard"), 0);
+    engine->drainPendingRoutingRebuild();
+    const QJsonObject removeById{ { "trackID", idKick } };
+    expectSameFailure("remove_track", "project.removeTrack", removeById);
+    EXPECT_TRUE(mcpText("remove_track", removeById).contains("Kick"))
+        << "the guard must name the track the id named: "
+        << mcpText("remove_track", removeById).toStdString();
+    EXPECT_EQ(tl.getNumChildren(), 2) << "a refusal mutates nothing";
+
+    // dryRun by id: the preview text is the positional one (same guard path).
+    const QJsonObject dryById{ { "trackID", idKick }, { "dryRun", true } };
+    EXPECT_EQ(rpc("project.removeTrack", dryById).payload.toString(),
+              mcpText("remove_track", dryById));
+
+    // force:true removes the id's track, and the payload still speaks POSITIONS
+    // (`removed` is the index the splice took out — the caller's id is gone).
+    const QJsonObject forced{ { "trackID", idKick }, { "force", true } };
+    const QJsonValue removed = mcpValue("remove_track", forced);
+    ASSERT_TRUE(removed.isObject()) << mcpText("remove_track", forced).toStdString();
+    EXPECT_TRUE(removed.toObject().value("ok").toBool());
+    EXPECT_EQ(removed.toObject().value("removed").toInt(-1), 0);
+    engine->drainPendingRoutingRebuild();
+    ASSERT_EQ(tl.getNumChildren(), 1);
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "Bass")
+        << "the id's track was the one removed";
+}
+
+// G3 + G4: an unknown id and a disagreement fail IDENTICALLY on both surfaces
+// (the text comes from one place, common/StableRefResolve.h) and mutate NOTHING.
+TEST_F(BusSendRpcTest, StableRefFailuresMatchOnBothSurfaces) {
+    const auto tl = engine->getProjectModel().getTrackListTree();
+    const int idKick = static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0));
+    const int idBass = static_cast<int>(tl.getChild(1).getProperty(IDs::trackID, 0));
+    ASSERT_GT(idKick, 0);
+    ASSERT_NE(idKick, idBass);
+
+    // G3 on the read: `unknown trackID <id>` on both surfaces.
+    const QJsonObject readUnknown{ { "trackID", 4242 } };
+    expectSameFailure("get_track_sends", "read.getTrackSends", readUnknown);
+    EXPECT_EQ(mcpText("get_track_sends", readUnknown).toStdString(), "unknown trackID 4242");
+
+    // G3 on a mutator: the route resolves BEFORE it looks at its property, so
+    // the tool's object ({trackID, mute}) is answered by the same text the route
+    // gives it — and the write never happens.
+    const QJsonObject writeUnknown{ { "trackID", 4242 }, { "mute", true } };
+    expectSameFailure("set_track", "project.setTrackMuted", writeUnknown);
+
+    // G3 on the guarded removal (a separate entry point on the RPC side).
+    expectSameFailure("remove_track", "project.removeTrack", QJsonObject{ { "trackID", 7 } });
+
+    // G4: positional says Kick, the id says Bass. Both surfaces refuse with the
+    // text naming BOTH numbers, and neither track is muted afterwards.
+    const QJsonObject clash{ { "trackId", 0 }, { "trackID", idBass }, { "mute", true } };
+    expectSameFailure("set_track", "project.setTrackMuted", clash);
+    EXPECT_EQ(mcpText("set_track", clash).toStdString(),
+              "trackId 0 and trackID " + std::to_string(idBass) + " disagree");
+    EXPECT_FALSE(static_cast<bool>(tl.getChild(0).getProperty(IDs::isMuted)))
+        << "a disagreement must not fall back to the positional track";
+    EXPECT_FALSE(static_cast<bool>(tl.getChild(1).getProperty(IDs::isMuted)))
+        << "…nor to the id's track";
+    EXPECT_EQ(tl.getNumChildren(), 2);
+
+    // The same rule on the read path: `trackId 1` and the Kick id disagree.
+    const QJsonObject clashRead{ { "trackId", 1 }, { "trackID", idKick } };
+    expectSameFailure("get_track_sends", "read.getTrackSends", clashRead);
+
+    // …and on the sends: `sendIndex` and `sendID` name different sends.
+    ASSERT_GE(engine->getProjectCommands().createSend(0, 1, 0.25f, false).sendIndex, 0);
+    ASSERT_GE(engine->getProjectCommands().createSend(0, 1, 0.75f, false).sendIndex, 1);
+    engine->drainPendingRoutingRebuild();
+    const auto rows = mcpValue("get_track_sends", QJsonObject{ { "trackID", idKick } }).toArray();
+    ASSERT_EQ(rows.size(), 2);
+    const int sendID1 = rows[1].toObject().value("sendID").toInt(0);
+    ASSERT_GT(sendID1, 0);
+    const QJsonObject sendClash{ { "trackId", 0 }, { "sendIndex", 0 },
+                                 { "sendID", sendID1 }, { "level", 0.1 } };
+    expectSameFailure("set_track_send_level", "project.setTrackSendLevel", sendClash);
+    EXPECT_EQ(mcpText("set_track_send_level", sendClash).toStdString(),
+              "sendIndex 0 and sendID " + std::to_string(sendID1) + " disagree");
+    EXPECT_FLOAT_EQ(engine->getReadModel().getTrackSends(0)[0].level, 0.25f)
+        << "a refused write must leave the level alone";
+}
+
+// G5: `sendID` alone (no `sendIndex`) addresses the send — including after a
+// removal renumbered it, which is the property B1 gave the id and B2 now makes
+// usable. Both surfaces, and the removed send's id is refused as unknown.
+TEST_F(BusSendRpcTest, SendIdAloneAddressesTheSurvivorAfterASplice) {
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_EQ(cmds.createSend(0, 1, 0.25f, false).sendIndex, 0);   // A
+    ASSERT_EQ(cmds.createSend(0, 1, 0.75f, false).sendIndex, 1);   // B
+    engine->drainPendingRoutingRebuild();
+
+    const QJsonObject trackById{ { "trackId", 0 } };
+    auto rows = mcpValue("get_track_sends", trackById).toArray();
+    ASSERT_EQ(rows.size(), 2);
+    const int idA = rows[0].toObject().value("sendID").toInt(0);
+    const int idB = rows[1].toObject().value("sendID").toInt(0);
+    ASSERT_GT(idA, 0);
+    ASSERT_NE(idA, idB);
+
+    // The removal itself by INDEX (unchanged behaviour), so B renumbers to 0.
+    const QJsonValue removed = mcpValue("remove_send",
+                                        QJsonObject{ { "trackId", 0 }, { "sendIndex", 0 } });
+    ASSERT_TRUE(removed.isObject());
+    EXPECT_EQ(removed.toObject().value("removed").toInt(-1), 0);
+    engine->drainPendingRoutingRebuild();
+    rows = mcpValue("get_track_sends", trackById).toArray();
+    ASSERT_EQ(rows.size(), 1);
+    EXPECT_EQ(rows[0].toObject().value("sendIndex").toInt(-1), 0) << "B renumbered to 0";
+    EXPECT_EQ(rows[0].toObject().value("sendID").toInt(0), idB) << "…keeping its identity";
+
+    // Shape the survivor by ID ONLY — no `sendIndex` in the object at all.
+    const QJsonObject byId{ { "trackId", 0 }, { "sendID", idB }, { "level", 0.125 } };
+    EXPECT_FALSE(mcpIsError("set_track_send_level", byId))
+        << mcpText("set_track_send_level", byId).toStdString();
+    EXPECT_FLOAT_EQ(engine->getReadModel().getTrackSends(0)[0].level, 0.125f);
+    EXPECT_FALSE(rpc("project.setTrackSendMode",
+                     QJsonObject{ { "trackId", 0 }, { "sendID", idB }, { "isPreFader", true } })
+                     .isError);
+    engine->drainPendingRoutingRebuild();
+    EXPECT_TRUE(engine->getReadModel().getTrackSends(0)[0].isPreFader);
+    EXPECT_FALSE(mcpIsError("set_track_send_bypassed",
+                            QJsonObject{ { "trackId", 0 }, { "sendID", idB },
+                                         { "bypassed", true } }));
+    EXPECT_TRUE(engine->getReadModel().getTrackSends(0)[0].bypassed);
+
+    // The REMOVED send's id is unknown on both surfaces (never silently the send
+    // that took its slot), and remove_send can be driven by id too.
+    const QJsonObject gone{ { "trackId", 0 }, { "sendID", idA }, { "level", 0.5 } };
+    expectSameFailure("set_track_send_level", "project.setTrackSendLevel", gone);
+    EXPECT_EQ(mcpText("set_track_send_level", gone).toStdString(),
+              "unknown sendID " + std::to_string(idA));
+    const QJsonValue removedById = mcpValue("remove_send",
+                                            QJsonObject{ { "trackId", 0 }, { "sendID", idB } });
+    ASSERT_TRUE(removedById.isObject()) << mcpText("remove_send",
+                                                   QJsonObject{ { "trackId", 0 }, { "sendID", idB } })
+                                             .toStdString();
+    EXPECT_EQ(removedById.toObject().value("removed").toInt(-1), 0)
+        << "the removed send was the one the id named";
+    EXPECT_TRUE(engine->getReadModel().getTrackSends(0).empty());
+
+    // The stable id of the TRACK works in the same object as the send's.
+    ASSERT_GE(cmds.createSend(0, 1, 0.5f, false).sendIndex, 0);
+    engine->drainPendingRoutingRebuild();
+    const int sendID = mcpValue("get_track_sends", trackById).toArray()[0].toObject()
+                           .value("sendID").toInt(0);
+    const int trackID = static_cast<int>(
+        engine->getProjectModel().getTrackListTree().getChild(0).getProperty(IDs::trackID, 0));
+    const QJsonObject bothIds{ { "trackID", trackID }, { "sendID", sendID },
+                               { "isPreFader", false } };
+    EXPECT_FALSE(mcpIsError("set_track_send_mode", bothIds))
+        << mcpText("set_track_send_mode", bothIds).toStdString();
+    EXPECT_FALSE(rpc("project.setTrackSendMode", bothIds).isError)
+        << "trackID + sendID together, one object, both surfaces";
+}
+
 } // namespace

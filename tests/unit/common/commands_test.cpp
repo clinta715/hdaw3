@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "common/ProjectCommands.h"
+#include "common/StableRefResolve.h"   // design B2: the stable-id argument rule
 #include "engine/AudioEngine.h"
 #include "engine/RoutingManager.h"
 #include "engine/MidiClipProcessor.h"
@@ -1423,4 +1424,221 @@ TEST(Commands, ScanAndSyncTrackIDsBackfillsLegacyTrees)
     model.scanAndSyncTrackIDs();
     EXPECT_EQ(trackIdAt(engine, 0), id0Again);
     EXPECT_EQ(static_cast<int>(sendList.getChild(0).getProperty(IDs::sendID, 0)), sendAgain);
+}
+
+// ─── Stable ids as ARGUMENTS (design B2) ───────────────────────────────────
+// The rule itself, in isolation: `common/StableRefResolve.h` is header-only and
+// Qt-free, so it is tested here as what it is — a pure function over the tree.
+// The surfaces only pin that they CALL it (the twin tests in
+// tests/unit/frontend/ compare their payloads and failure texts); this is where
+// the four cases the rule is made of are pinned: id wins, disagreement is an
+// error, unknown id is an error (never a silent fall back), and the positional
+// argument alone keeps today's behaviour byte for byte.
+//
+// `kNoRef` is what a surface passes when the positional KEY WAS ABSENT — the
+// surfaces decide that with QJsonObject::contains(), never with the value, so an
+// explicit `trackId: 0` reaches here as index 0 (see the low-index case below).
+
+// G1 + G3 + G4 + G6: the track half of the rule.
+TEST(Commands, StableTrackRefResolverPrefersTheIdAndRefusesTheRest)
+{
+    AudioEngine engine;
+    engine.initialize();
+    const int a = seedTrack(engine, "A");
+    const int b = seedTrack(engine, "B");
+    const int c = seedTrack(engine, "C");
+    ASSERT_EQ(a, 0); ASSERT_EQ(b, 1); ASSERT_EQ(c, 2);
+    const auto tl = engine.getProjectModel().getTrackListTree();
+    const int idA = trackIdAt(engine, 0), idB = trackIdAt(engine, 1), idC = trackIdAt(engine, 2);
+    ASSERT_GT(idA, 0);
+
+    // G2 (resolver half): the id alone names the entity's CURRENT position.
+    const auto byId = HDAW::resolveTrackRef(tl, HDAW::kNoRef, idB);
+    ASSERT_TRUE(byId.ok) << byId.error;
+    EXPECT_EQ(byId.index, 1);
+
+    // The id also wins over a positional argument that agrees with it — the
+    // shape a caller rediscovers its own index in.
+    const auto agrees = HDAW::resolveTrackRef(tl, 1, idB);
+    ASSERT_TRUE(agrees.ok) << agrees.error;
+    EXPECT_EQ(agrees.index, 1);
+
+    // G1: the positional argument ALONE is passed through untouched, valid or
+    // not. B2 is additive: an out-of-range index keeps the outcome the command
+    // layer already produced for it (its own refusal / the guard's preview),
+    // which is why nothing here range-checks it.
+    const auto posOnly = HDAW::resolveTrackRef(tl, 2, 0);
+    ASSERT_TRUE(posOnly.ok) << posOnly.error;
+    EXPECT_EQ(posOnly.index, 2);
+    const auto posOutOfRange = HDAW::resolveTrackRef(tl, 99, 0);
+    ASSERT_TRUE(posOutOfRange.ok) << "an out-of-range positional index stays the command's business";
+    EXPECT_EQ(posOutOfRange.index, 99);
+
+    // `trackId: 0` — the low-index case the surfaces must NOT mistake for
+    // "absent" (they read presence with contains(), which is why this arrives as
+    // index 0 rather than kNoRef).
+    const auto firstTrack = HDAW::resolveTrackRef(tl, 0, 0);
+    ASSERT_TRUE(firstTrack.ok) << firstTrack.error;
+    EXPECT_EQ(firstTrack.index, 0);
+
+    // Neither argument: today's message, and the sentinel on the way out.
+    const auto none = HDAW::resolveTrackRef(tl, HDAW::kNoRef, 0);
+    EXPECT_FALSE(none.ok);
+    EXPECT_EQ(none.error, "trackId required");
+    EXPECT_EQ(none.index, HDAW::kNoRef);
+
+    // G3: an unknown id is an error NAMING it — never a fall back to the
+    // positional index (that is how the wrong track gets mutated: the caller's
+    // id was stale and it must hear so, not act on a neighbour).
+    const auto unknown = HDAW::resolveTrackRef(tl, HDAW::kNoRef, 4242);
+    EXPECT_FALSE(unknown.ok);
+    EXPECT_EQ(unknown.error, "unknown trackID 4242");
+    EXPECT_EQ(unknown.index, HDAW::kNoRef)
+        << "a failed resolution must not hand out an index at all";
+
+    // G6: the trap of an ambiguous single number — 3 tracks whose ids are 1,2,3,
+    // so trackID 3 is ALSO a valid index. The rule keys on WHICH KEY was sent,
+    // never on the value, and here the two agree: id 3 IS the track at index 2,
+    // so this is a legal, agreeing call, not an error. (The disagreement case
+    // below, after a move, is what actually catches a stale index.)
+    ASSERT_EQ(idA, 1) << "the construction below needs the id space to start at 1";
+    ASSERT_EQ(idB, 2);
+    ASSERT_EQ(idC, 3);
+    ASSERT_EQ(trackIdAt(engine, 2), 3) << "trackID 3 doubles as track 2's index: the trap";
+    const auto agreeing = HDAW::resolveTrackRef(tl, 2, idC);
+    ASSERT_TRUE(agreeing.ok) << agreeing.error;
+    EXPECT_EQ(agreeing.index, 2) << "id 3 names the track that index 2 already named";
+
+    // G4: the same disagreement on two DIFFERENT entities whose numbers happen
+    // to be unequal — the message reports the values that were actually sent.
+    const auto clash2 = HDAW::resolveTrackRef(tl, 0, idC);
+    ASSERT_FALSE(clash2.ok);
+    EXPECT_EQ(clash2.error, "trackId 0 and trackID 3 disagree");
+
+    // The id still names its track after a splice moved it — and the id that
+    // moved does NOT resolve to the index it used to sit at.
+    engine.getProjectCommands().moveTrack(2, 0);
+    engine.drainPendingRoutingRebuild();
+    const auto afterMove = HDAW::resolveTrackRef(tl, HDAW::kNoRef, idC);
+    ASSERT_TRUE(afterMove.ok) << afterMove.error;
+    EXPECT_EQ(afterMove.index, 0);
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "C");
+    // …and the STALE index now names a different track: the disagreement is
+    // exactly what catches that, instead of mutating A.
+    const auto stale = HDAW::resolveTrackRef(tl, 2, idC);
+    ASSERT_FALSE(stale.ok);
+    EXPECT_EQ(stale.error, "trackId 2 and trackID 3 disagree");
+
+    // A track list that is not there (an unloaded/foreign tree) is "unknown",
+    // not a crash and not a fall back to the positional argument.
+    const auto noList = HDAW::resolveTrackRef(juce::ValueTree(), HDAW::kNoRef, idA);
+    EXPECT_FALSE(noList.ok);
+    EXPECT_EQ(noList.error, "unknown trackID " + std::to_string(idA));
+}
+
+// G1 + G5: the send half — same rule, plus the one property B1 gave sendID:
+// after `removeSend(0)` the SURVIVOR is still addressed by its sendID while its
+// sendIndex has renumbered.
+TEST(Commands, StableSendRefResolverAddressesTheSurvivorByIdentity)
+{
+    AudioEngine engine;
+    engine.initialize();
+    ASSERT_GE(seedTrack(engine, "S"), 0);
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_EQ(cmds.createSend(0, 1, 0.25f, false).sendIndex, 0);   // A
+    ASSERT_EQ(cmds.createSend(0, 1, 0.50f, false).sendIndex, 1);   // B
+    ASSERT_EQ(cmds.createSend(0, 1, 0.75f, false).sendIndex, 2);   // C
+    engine.drainPendingRoutingRebuild();
+
+    const auto tl = engine.getProjectModel().getTrackListTree();
+    auto sends = engine.getReadModel().getTrackSends(0);
+    ASSERT_EQ(sends.size(), 3u);
+    const int idA = sends[0].sendID, idB = sends[1].sendID, idC = sends[2].sendID;
+    ASSERT_GT(idA, 0);
+
+    // By index (unchanged) and by identity — the same send, same position.
+    const auto byIndex = HDAW::resolveSendRef(tl, 0, 1, 0);
+    ASSERT_TRUE(byIndex.ok) << byIndex.error;
+    EXPECT_EQ(byIndex.index, 1);
+    const auto byId = HDAW::resolveSendRef(tl, 0, HDAW::kNoRef, idC);
+    ASSERT_TRUE(byId.ok) << byId.error;
+    EXPECT_EQ(byId.index, 2);
+
+    // G5: remove send 0 → C renumbers to 1 and is STILL addressed by its id.
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+    engine.drainPendingRoutingRebuild();
+    sends = engine.getReadModel().getTrackSends(0);
+    ASSERT_EQ(sends.size(), 2u);
+    EXPECT_EQ(sends[1].sendID, idC) << "C keeps its identity";
+    EXPECT_EQ(sends[1].sendIndex, 1) << "…while its address moved";
+
+    const auto afterSplice = HDAW::resolveSendRef(tl, 0, HDAW::kNoRef, idC);
+    ASSERT_TRUE(afterSplice.ok) << afterSplice.error;
+    EXPECT_EQ(afterSplice.index, 1) << "the id names C where C now sits";
+    EXPECT_DOUBLE_EQ(static_cast<double>(tl.getChild(0).getChildWithName(IDs::SEND_LIST)
+                          .getChild(1).getProperty(IDs::sendLevel, 0.0)), 0.75)
+        << "…and it is C (level 0.75), not the send that renumbered into its old slot";
+    // The disagreement case, and the removed send's id is now unknown.
+    const auto clash = HDAW::resolveSendRef(tl, 0, 0, idC);
+    EXPECT_FALSE(clash.ok);
+    EXPECT_EQ(clash.error, "sendIndex 0 and sendID " + std::to_string(idC) + " disagree");
+    const auto gone = HDAW::resolveSendRef(tl, 0, HDAW::kNoRef, idA);
+    EXPECT_FALSE(gone.ok);
+    EXPECT_EQ(gone.error, "unknown sendID " + std::to_string(idA));
+
+    // Neither argument → today's message. `sendIndex: 0` is a real argument (the
+    // surfaces read presence with contains()), so it resolves rather than erroring.
+    const auto neither = HDAW::resolveSendRef(tl, 0, HDAW::kNoRef, 0);
+    EXPECT_FALSE(neither.ok);
+    EXPECT_EQ(neither.error, "sendIndex required");
+    const auto zeroIndex = HDAW::resolveSendRef(tl, 0, 0, 0);
+    ASSERT_TRUE(zeroIndex.ok) << zeroIndex.error;
+    EXPECT_EQ(zeroIndex.index, 0);
+
+    // The sendID space is project-wide but the ADDRESS is (track, send): the same
+    // id asked for on a track that does not hold it — or on a track index that
+    // does not exist — is unknown, never "found elsewhere".
+    ASSERT_GE(seedTrack(engine, "T2"), 0);
+    ASSERT_EQ(cmds.createSend(1, 1, 0.5f, false).sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+    const auto wrongTrack = HDAW::resolveSendRef(tl, 1, HDAW::kNoRef, idB);
+    EXPECT_FALSE(wrongTrack.ok);
+    EXPECT_EQ(wrongTrack.error, "unknown sendID " + std::to_string(idB));
+    const auto noTrack = HDAW::resolveSendRef(tl, 99, HDAW::kNoRef, idB);
+    EXPECT_FALSE(noTrack.ok);
+    EXPECT_EQ(noTrack.error, "unknown sendID " + std::to_string(idB));
+    const auto onRightTrack = HDAW::resolveSendRef(tl, 0, HDAW::kNoRef, idB);
+    ASSERT_TRUE(onRightTrack.ok) << onRightTrack.error;
+    EXPECT_EQ(onRightTrack.index, 0) << "B is track 0's only remaining send";
+}
+
+// The folder target resolves through the SAME lookup with its own key names
+// (`folderId` / `folderID`) — a folder IS a track in TRACK_LIST, and the message
+// must name the FOLDER argument, not the track one (the surfaces hand a missing
+// folder argument straight through, so the text is the whole UX).
+TEST(Commands, StableFolderRefUsesTheFolderKeyNames)
+{
+    AudioEngine engine;
+    engine.initialize();
+    ASSERT_GE(seedTrack(engine, "Folder"), 0);
+    ASSERT_GE(seedTrack(engine, "Child"), 0);
+    const auto tl = engine.getProjectModel().getTrackListTree();
+    const int folderID = trackIdAt(engine, 0);
+
+    const auto byId = HDAW::resolveTrackRef(tl, HDAW::kNoRef, folderID, HDAW::kFolderRefKeys);
+    ASSERT_TRUE(byId.ok) << byId.error;
+    EXPECT_EQ(byId.index, 0);
+
+    const auto unknown = HDAW::resolveTrackRef(tl, HDAW::kNoRef, 4242, HDAW::kFolderRefKeys);
+    EXPECT_FALSE(unknown.ok);
+    EXPECT_EQ(unknown.error, "unknown folderID 4242");
+
+    const auto clash = HDAW::resolveTrackRef(tl, 1, folderID, HDAW::kFolderRefKeys);
+    EXPECT_FALSE(clash.ok);
+    EXPECT_EQ(clash.error, "folderId 1 and folderID " + std::to_string(folderID) + " disagree");
+
+    const auto neither = HDAW::resolveTrackRef(tl, HDAW::kNoRef, 0, HDAW::kFolderRefKeys);
+    EXPECT_FALSE(neither.ok);
+    EXPECT_EQ(neither.error, "folderId required");
 }

@@ -2,6 +2,10 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`, `sendIndex`/`sendID`)
+// — thin readers over the ONE shared rule in common/StableRefResolve.h, whose
+// error text is what the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "../model/ProjectModel.h"
 #include "../common/BusInfo.h"
 #include "../common/SendJson.h"
@@ -24,52 +28,93 @@ namespace mcp {
 void registerSendTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"get_track_sends", "List all sends on a track: "
-        "[{sendIndex, level, isPreFader, bypassed}] in SEND_LIST order (sendIndex IS the "
-        "send's identity — removing one shifts the rest). The identical payload RPC "
-        "read.getTrackSends returns; both read the same shaping (common/SendJson.h).",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "[{sendIndex, level, isPreFader, bypassed, sendID}] in SEND_LIST order. "
+        "`sendIndex` is the send's ADDRESS (removing one shifts the rest) while "
+        "`sendID` is its STABLE identity (design B1), untouched by that splice — "
+        "hand the id back to the send tools to address a send you read earlier. "
+        "The identical payload RPC read.getTrackSends returns; both read the same "
+        "shaping (common/SendJson.h). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"trackID", QJsonObject{{"type","integer"}}}}),
         "send",
         [e](const QJsonObject& a) -> McpToolResult {
-            const int ti = a.value("trackId").toInt(-1);
+            // B2: the track may be named by its stable `trackID`. An out-of-range
+            // positional index keeps answering [] — B2 is additive, and only the
+            // new argument can fail with "unknown trackID".
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             if (!e->getMainProcessor()) return McpToolResult::text("engine not ready", true);
             return McpToolResult::text(QString::fromStdString(HDAW::shapeSendsJson(
                 e->getReadModel().getTrackSends(ti))));
         }});
 
-    s.registerTool({"set_track_send_level", "Set the level of a send.",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+    // B2: the three send shapers and the two others below take the track by
+    // `trackId`/`trackID` and the send by `sendIndex`/`sendID` — the SAME shared
+    // resolution the RPC twins run, so an id-holding caller can shape a send it
+    // read earlier even after a splice renumbered it.
+    s.registerTool({"set_track_send_level", "Set the level of a send. " +
+        mcp::stableRefRuleText("trackID", "trackId") + " " +
+        mcp::stableRefRuleText("sendID", "sendIndex"),
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"sendIndex", QJsonObject{{"type","integer"}}},
-                  {"level", QJsonObject{{"type","number"}}}}, {"trackId","sendIndex","level"}),
+                  {"sendID",    QJsonObject{{"type","integer"}}},
+                  {"level",     QJsonObject{{"type","number"}}}}),
         "send",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt(-1);
-            int si = a.value("sendIndex").toInt(-1);
+            const auto trackList = e->getProjectModel().getTrackListTree();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, trackList, ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            int si;
+            if (!sendIndexArg(a, trackList, ti, si, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             float lv = static_cast<float>(a.value("level").toDouble());
             e->getProjectCommands().setTrackSendLevel(ti, si, lv);
             return McpToolResult::text("ok");
         }});
 
-    s.registerTool({"set_track_send_mode", "Set send mode: pre or post fader.",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
-                  {"sendIndex", QJsonObject{{"type","integer"}}},
-                  {"isPreFader", QJsonObject{{"type","boolean"}}}}, {"trackId","sendIndex","isPreFader"}),
+    s.registerTool({"set_track_send_mode", "Set send mode: pre or post fader. " +
+        mcp::stableRefRuleText("trackID", "trackId") + " " +
+        mcp::stableRefRuleText("sendID", "sendIndex"),
+        objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
+                  {"trackID",     QJsonObject{{"type","integer"}}},
+                  {"sendIndex",   QJsonObject{{"type","integer"}}},
+                  {"sendID",      QJsonObject{{"type","integer"}}},
+                  {"isPreFader",  QJsonObject{{"type","boolean"}}}}),
         "send",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt(-1);
-            int si = a.value("sendIndex").toInt(-1);
+            const auto trackList = e->getProjectModel().getTrackListTree();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, trackList, ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            int si;
+            if (!sendIndexArg(a, trackList, ti, si, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             bool pre = a.value("isPreFader").toBool();
             e->getProjectCommands().setTrackSendMode(ti, si, pre);
             return McpToolResult::text("ok");
         }});
 
-    s.registerTool({"set_track_send_bypassed", "Bypass or unbypass a send.",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+    s.registerTool({"set_track_send_bypassed", "Bypass or unbypass a send. " +
+        mcp::stableRefRuleText("trackID", "trackId") + " " +
+        mcp::stableRefRuleText("sendID", "sendIndex"),
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"sendIndex", QJsonObject{{"type","integer"}}},
-                  {"bypassed", QJsonObject{{"type","boolean"}}}}, {"trackId","sendIndex","bypassed"}),
+                  {"sendID",    QJsonObject{{"type","integer"}}},
+                  {"bypassed",  QJsonObject{{"type","boolean"}}}}),
         "send",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt(-1);
-            int si = a.value("sendIndex").toInt(-1);
+            const auto trackList = e->getProjectModel().getTrackListTree();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, trackList, ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            int si;
+            if (!sendIndexArg(a, trackList, ti, si, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             bool b = a.value("bypassed").toBool();
             e->getProjectCommands().setTrackSendBypassed(ti, si, b);
             return McpToolResult::text("ok");
@@ -131,15 +176,23 @@ void registerSendTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"add_send", "Create a send from a track to a bus and return its sendIndex. "
-        "Defaults: level 1.0, post-fader.",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+        "Defaults: level 1.0, post-fader. The returned sendIndex is the new send's "
+        "ADDRESS; read the send's stable `sendID` from get_track_sends and hold that "
+        "if you mean to shape this send after another one is removed. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"busTarget", QJsonObject{{"type","integer"}}},
                   {"level", QJsonObject{{"type","number"},{"default",1.0}}},
                   {"isPreFader", QJsonObject{{"type","boolean"},{"default",false}}}},
-                 {"trackId","busTarget"}),
+                 {"busTarget"}),
         "send",
         [e](const QJsonObject& a) -> McpToolResult {
-            const int ti = a.value("trackId").toInt(-1);
+            // B2: the source track may be named by its stable `trackID`.
+            // `busTarget` is a busID (already an identity, not a position).
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             const int busTarget = a.value("busTarget").toInt(-1);
             const float level = static_cast<float>(a.value("level").toDouble(1.0));
             const bool pre = a.value("isPreFader").toBool(false);
@@ -154,13 +207,27 @@ void registerSendTools(McpServer& s, AudioEngine* e)
         "{\"ok\":true,\"removed\":<sendIndex>,\"shifted\":[{\"from\":N,\"to\":N-1},...]}: "
         "`shifted` lists the sends above the removed one re-indexed down by one "
         "([] when the last send was removed) — the identical payload RPC "
-        "project.removeSend returns. (Was the bare text \"ok\" before the shift report.)",
-        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
-                  {"sendIndex", QJsonObject{{"type","integer"}}}}, {"trackId","sendIndex"}),
+        "project.removeSend returns. (Was the bare text \"ok\" before the shift report.) "
+        "`removed` is the position that was spliced out, so a send named by its "
+        "`sendID` reports the index it still occupied at removal time. " +
+        mcp::stableRefRuleText("trackID", "trackId") + " " +
+        mcp::stableRefRuleText("sendID", "sendIndex"),
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
+                  {"sendIndex", QJsonObject{{"type","integer"}}},
+                  {"sendID",    QJsonObject{{"type","integer"}}}}),
         "send",
         [e](const QJsonObject& a) -> McpToolResult {
-            const int ti = a.value("trackId").toInt(-1);
-            const int si = a.value("sendIndex").toInt(-1);
+            // B2: the track by `trackId`/`trackID`, the send by
+            // `sendIndex`/`sendID` — the sendID path is what makes a send read
+            // before a splice removable after it.
+            const auto trackList = e->getProjectModel().getTrackListTree();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, trackList, ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            int si;
+            if (!sendIndexArg(a, trackList, ti, si, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             std::string error;
             std::vector<std::pair<int, int>> shifted;
             if (!e->getProjectCommands().removeSend(ti, si, error, &shifted))
