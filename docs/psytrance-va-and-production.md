@@ -443,6 +443,8 @@ await mcp("add_notes", {"clipId": clipId, "notes": [
 # 4. Add an LFO to modulate the feedback. targetParamID 106 = track FX slot 0,
 #    param 6 = psy_fm base feedback. NOT 306: the advertised 300-308 FM targets
 #    are unreachable (see "Track-level modulation targets" below).
+#    (2026-09-24: psy_fm_load_preset / psy_fm_set_mod_route are deviceless-safe
+#    now — the "track not found" workaround is retired, see trap #15.)
 await mcp("add_lfo", {"trackId": trackId})
 await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
     "param": "waveform", "value": 0})
@@ -785,13 +787,12 @@ bypasses the procdump attach.
     role (growl OWNS the low offbeats in its sections; sample bass rests or
     moves register). Solo-probe each synth layer (`export_audio trackIds`)
     before judging it in the full mix.
-15. **`psy_fm` live-engine MCP tools fail with "track not found"** (open bug
-    2026-09-01): `psy_fm_load_preset` and friends go through
-    `getMainProcessor()->getTrack()` → null, while the ValueTree path
-    (`set_internal_fx_param`) works. Workaround: configure via
-    `set_internal_fx_param` indices (see §5b). The frontend Router_PsyFm
-    shares the same pattern and likely fails the same way. See
-    `docs/handoffs/2026-09-01-psyfm-bugs-handoff.md`.
+15. ~~**`psy_fm` live-engine MCP tools fail with "track not found"**~~ **FIXED (verified
+    2026-09-24):** `psy_fm_load_preset` is tree-first (`setFxSlotPsyFmPreset` writes the 33
+    params + matrix to the slot tree, deviceless-safe); `psy_fm_get_analysis` degrades to
+    `live:false` when the processor/track is unavailable; `psy_fm_mod_matrix_debug` tolerates a
+    null processor. The `set_internal_fx_param` workaround is no longer needed. (The 2026-09-01
+    handoff's diagnosis described a code path that has since been reworked.)
 16. **Don't trust response-less side effects.** A tool call whose result you
     don't inspect may have errored (`remove_notes` silently no-oped once —
     wrong assumption, breakdown stayed full). Check the response text ("removed
