@@ -427,7 +427,13 @@ bool AudioEngine::setMcpHttpConfig(bool enabled, const QString& host, quint16 po
         if (error) *error = msg;
         return false;
     }
-    if (port == 0)
+    // Port 0 = "let the OS pick one" (TransportHttp binds it and reports the bound
+    // port after start()). Only meaningful while starting a server, so 0 is never
+    // PERSISTED: an ephemeral port resolved at start is written back instead, so a
+    // later session (or the Preferences dialog) shows a real port rather than 0.
+    // The fixed-port alternative is what made McpServer.EngineSettingsStartMcpHttp
+    // fail whenever a live engine held 18766.
+    if (port == 0 && !enabled)
     {
         const QString msg = QStringLiteral("MCP HTTP port must be between 1 and 65535");
         mcpHttpLastError_ = msg;
@@ -439,11 +445,13 @@ bool AudioEngine::setMcpHttpConfig(bool enabled, const QString& host, quint16 po
     QSettings s;
     s.setValue(SettingsKeys::kKeyMcpHttpEnabled, enabled);
     s.setValue(SettingsKeys::kKeyMcpHttpHost, normalizedHost);
-    s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(port));
+    if (port != 0)
+        s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(port));
 
     mcpHttpEnabled_ = enabled;
     mcpHttpHost_ = normalizedHost;
-    mcpHttpPort_ = port;
+    if (port != 0)
+        mcpHttpPort_ = port;
 
     if (!enabled)
     {
@@ -453,7 +461,18 @@ bool AudioEngine::setMcpHttpConfig(bool enabled, const QString& host, quint16 po
         return true;
     }
 
-    return startMcpHttp(normalizedHost, port, error);
+    if (!startMcpHttp(normalizedHost, port, error))
+        return false;
+
+    // startMcpHttp resolved the port (OS-assigned when it was 0) — keep the LIVE
+    // value and persist that, not the request.
+    if (mcpHttpTransport)
+        mcpHttpPort_ = mcpHttpTransport->port();
+    if (mcpHttpPort_ != 0)
+        s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(mcpHttpPort_));
+    mcpHttpLastError_.clear();
+    if (error) error->clear();
+    return true;
 }
 
 void AudioEngine::syncMcpHttpFromSettings()

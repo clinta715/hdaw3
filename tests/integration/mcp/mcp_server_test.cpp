@@ -181,7 +181,10 @@ TEST(McpServer, EngineSettingsStartMcpHttp) {
 
     settings.setValue(SettingsKeys::kKeyMcpHttpEnabled, true);
     settings.setValue(SettingsKeys::kKeyMcpHttpHost, QStringLiteral("127.0.0.1"));
-    settings.setValue(SettingsKeys::kKeyMcpHttpPort, 18766);
+    // Port 0 = let the OS assign one. The suite used to drive a FIXED 18766, so it
+    // failed whenever a live engine (or another test process) held that port - the
+    // same collision class HttpRoundTrip had before it moved to an ephemeral port.
+    settings.setValue(SettingsKeys::kKeyMcpHttpPort, 0);
     settings.sync();
 
     AudioEngine engine;
@@ -191,11 +194,12 @@ TEST(McpServer, EngineSettingsStartMcpHttp) {
     EXPECT_TRUE(cfg.enabled);
     EXPECT_TRUE(cfg.running);
     EXPECT_EQ(cfg.host, QStringLiteral("127.0.0.1"));
-    EXPECT_EQ(cfg.port, 18766);
+    EXPECT_GT(cfg.port, 0) << "an OS-assigned port must be resolved and reported";
+    EXPECT_NE(cfg.port, 18766) << "and it must not be the old fixed port";
     EXPECT_TRUE(cfg.lastError.isEmpty()) << cfg.lastError.toStdString();
 
     QNetworkAccessManager nam;
-    QNetworkRequest req(QUrl("http://127.0.0.1:18766/mcp"));
+    QNetworkRequest req(QUrl(QStringLiteral("http://127.0.0.1:%1/mcp").arg(cfg.port)));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     QByteArray body = R"({"jsonrpc":"2.0","id":1,"method":"ping"})";
 
