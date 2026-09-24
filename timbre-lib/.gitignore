@@ -24,7 +24,7 @@ __pycache__/
 # HDAW project auto-backups
 auto-backups/
 
-# TimbreLib per-folder analysis cache + index (regenerate with analyze.sh)
+# TimbreLib per-folder analysis cache + index (regenerate with lib_analyze.py)
 .timbre_cache/
 samples/timbre_index.json
 

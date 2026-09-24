@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Register a folder as an HDAW audio library in registry.json.
 
-Called by analyze.sh --library NAME. Deduplicates by path, prunes dead
+Called by lib_analyze.py --library NAME. Deduplicates by path, prunes dead
 hdaw_tests temp entries, and never touches entries for live paths. The
 engine loads the registry at construction, so a running engine must be
 restarted (or a new session started) to see the new entry; scan_library

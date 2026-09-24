@@ -42,7 +42,7 @@ def score(rec, toks):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("query")
-    ap.add_argument("--lib", default="/mnt/d/pdf/roo projects/hdaw3/timbre-lib/samples")
+    ap.add_argument("--lib", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples"))
     ap.add_argument("--limit", type=int, default=8)
     ap.add_argument("--min-dur", type=float, default=None)
     ap.add_argument("--max-dur", type=float, default=None)

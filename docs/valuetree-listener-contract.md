@@ -99,9 +99,9 @@ These must follow the root-tree pattern from §2.
 
 Every `addListener(this)` call in the codebase should be verified:
 
-```bash
+```powershell
 # Find all listener registrations:
-grep -rn "\.addListener(this)" src/ --include="*.cpp"
+Get-ChildItem -Recurse src -Filter *.cpp | Select-String -Pattern '\.addListener\(this\)'
 ```
 
 For each result, verify:

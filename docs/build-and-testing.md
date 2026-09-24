@@ -5,16 +5,20 @@ and one-line rules; the full narratives live here.
 
 # Build
 
-
-- Configure/build: `cmake --build build --config Debug`
+- **Canonical (native Windows, from a plain shell):** `build-fast.bat` builds
+  `HDAW.exe` (RelWithDebInfo), `build-fast.bat test` builds `hdaw_tests.exe`,
+  `build-fast.bat all` builds everything, `build-fast.bat debug` builds Debug.
+  The script bootstraps MSVC (`vcvars64.bat`) and resolves the VS-bundled CMake
+  when neither is on PATH — no developer prompt required.
+- Raw configure/build: `cmake --build build --config Debug`
 - Outputs: `build/Debug/HDAW.exe`, `build/Debug/HDAW_headless.exe`, `build/Debug/hdaw_tests.exe`
 - Do NOT run `build/Release/HDAW.exe` — stale binary, contains none of the fixes.
 - **Two launch modes:** Default (browser), Headless (Electron).
-- **Frontend build:** `cd frontend; npm run build`, then rebuild the C++ project.
-  **DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
-  date — do NOT build it (`npm run build`, `frontend\build.bat`). Engine-only
-  verification: `build/hdaw_tests.exe` (gtest) + the MCP surface. See the dated banner
-  on "How frontend changes reach the running app" below.
+- **Frontend build — DEPRECATED (2026-09-23):** the Electron frontend is a separate
+  project; do NOT build it as part of engine work (`npm run build`,
+  `frontend\build.bat`). Engine-only verification: `build/hdaw_tests.exe` (gtest) +
+  the MCP surface. See the dated banner on "How frontend changes reach the running
+  app" below.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
 
 ### Build speed: the `.ninja_deps` trap (2026-09-21) — 285 s → 2 s
@@ -74,15 +78,18 @@ the *build graph* is stale:
 
 ### Test speed: shard the suite across processes (2026-09-21)
 
-`scripts/run-tests-parallel.sh [N] [suite-regex]` shards the gtest list across N
+`run-tests-sharded.ps1 [-Shards N] [-Filter <regex>] [-SerialSuites <regex>]`
+(repo root) shards the gtest list across N
 concurrent `hdaw_tests.exe` processes (the engine is a singleton *per process* and
 proxy children get a unique namespace per manager instance, so concurrent runs are
-safe). It shards small suites whole and large ones per test.
+safe). It shards small suites whole and large ones per test. Run it with
+`powershell -File run-tests-sharded.ps1 -Shards 4` (or `pwsh`).
 
-- **Forward the env:** the binary is a Windows exe launched from WSL — interop
-  only passes variables listed in `WSLENV`, so without
-  `WSLENV=HDAW_REAL_PLUGIN_TESTS` every real-plugin gate silently **SKIPs** (the
-  script sets this itself).
+- **Native, no env forwarding:** the child processes are launched by PowerShell and
+  inherit this shell's environment directly — `$env:HDAW_REAL_PLUGIN_TESTS=1`
+  before invoking it, and the real-plugin gates run. (The retired WSL wrapper
+  `scripts/run-tests-parallel.sh` needed `WSLENV=HDAW_REAL_PLUGIN_TESTS` to push
+  the variable through interop; that constraint is gone with the file.)
 - **Measured:** the 20-gate `FxMidiInjection` suite (the heaviest) runs **600 s
   serial → 307 s with 4 shards** (~2x; the shards contend on the CPU-heavy
   emulations, so the longest shard dominates).
@@ -97,17 +104,18 @@ safe). It shards small suites whole and large ones per test.
   identical 4-shard sweep is **24/24**. Keep any new temp target process-unique as
   well — `%TEMP%\hdaw_paramtrace_<pid>.log` and the proxy state files already are;
   a per-process counter alone is not enough when one suite runs in several processes.
-- **Pre-build time sync (WSL/Windows clock drift):** before ANY build/compile
-  in this repo (`cmake --build`, `build-fast.bat`, `frontend\build.bat`, bare
-  `ninja`, `npm run build`), invoke `skill: "pre-build-time-sync"` — it snaps
-  the WSL clock to the Windows host (`sudo ntpdate -b time.windows.com`) so
-  ninja/MSBuild never misjudge file mtimes through drvfs/9p under WSL2 clock
-  drift (lesson 15 / the WSL-side-edit sync recipe). `build-fast.bat` and
-  `frontend\build.bat` call `scripts\time-sync.cmd` automatically, and CMake
-  adds a `hdaw_time_sync` ALL target covering bare `cmake --build`; direct
-  `ninja` / `npm run build` runs need the explicit `scripts/time-sync.sh`.
-  The hook is a fast no-op outside WSL and NEVER fails a build. See
-  `docs/archive/plans/2026-09-05-time-sync-build-hook.md` and
+- **Pre-build time sync (WSL/Windows clock drift) — OPT-IN, no-op on a native
+  box.** `scripts\time-sync.cmd` exits 0 immediately and prints nothing unless
+  `HDAW_TIME_SYNC=1` is set, so the native Windows build path pays no WSL spawn.
+  `build-fast.bat` and CMake (`hdaw_time_sync` ALL target, via
+  `cmake/RunTimeSync.cmake`) still call it — that is intentional and free. Set
+  `HDAW_TIME_SYNC=1` (cmd: `set HDAW_TIME_SYNC=1`, PowerShell:
+  `$env:HDAW_TIME_SYNC=1`) only when the source tree is reached through WSL's
+  drvfs/9p view; the hook then snaps the WSL clock to the Windows host
+  (`sudo ntpdate -b time.windows.com`) so ninja/MSBuild never misjudge mtimes
+  under WSL2 clock drift (lesson 15 / the WSL-side-edit sync recipe). WSL users
+  can also run `scripts/time-sync.sh` directly. The hook NEVER fails a build on
+  any path. See `docs/archive/plans/2026-09-05-time-sync-build-hook.md` and
   `docs/skills/pre-build-time-sync/SKILL.md`.
   **DEPRECATED (2026-09-23):** the `frontend\build.bat` / `npm run build` entries
   above are deprecated with the Electron frontend (see the frontend banner below);
@@ -208,14 +216,14 @@ engines first — so the build-dir exes stay free for the linker.
 
 - **C++ engine tests (gtest):** `build/hdaw_tests.exe` (flat Ninja RelWithDebInfo layout — there is no `build/Debug/`; `build-fast.bat test` builds it, `build-fast.bat all` also builds `hdaw_plugin_host.exe` which the PluginIsolation/CrashRecovery suites require)
   - Filter: `--gtest_filter=SuiteName.*`
-  - Full suite: **1768 tests / 264 suites, ~44 min serial** (measured 2026-09-21; the suite keeps growing — it was 1328/216 on 2026-09-02). Fast iteration tier: `run_fast_tests.bat` (~3.3 min; excludes the render/recipe/spawn-heavy suites — run the full suite before delivery). A native **shard runner** exists — `run-tests-sharded.ps1 [-Shards N] [-Filter ...]` (PowerShell twin of the WSL-only `scripts/run-tests-parallel.sh`): it splits the gtest list, keeps the device/plugin-dependent suites in ONE extra serial process, aggregates per-shard logs, and exits non-zero on failure. Its shard count is **not validated** — see the caveat below.
+  - Full suite: **1768 tests / 264 suites, ~44 min serial** (measured 2026-09-21; the suite keeps growing — it was 1328/216 on 2026-09-02). Fast iteration tier: `run_fast_tests.bat` (~3.3 min; excludes the render/recipe/spawn-heavy suites — run the full suite before delivery). A native **shard runner** exists — `run-tests-sharded.ps1 [-Shards N] [-Filter ...]` (the canonical parallel runner; it replaced the WSL-only `scripts/run-tests-parallel.sh`): it splits the gtest list, keeps the device/plugin-dependent suites in ONE extra serial process, aggregates per-shard logs, and exits non-zero on failure. Its shard count is **not validated** — see the caveat below.
   - **Device-dependent suites need a working audio route; when it is missing they fail with `getTrack() == nullptr` / `tr == nullptr` even SOLO.** That is the documented deviceless pattern (lessons 9/17: no device → `rebuildRoutingGraph` no-ops → `getTrack()` nulls), and it hits `InternalFx`, `MasterGain`, `MasterBusFx`, `AudioPoolDedup`, `AudioEngineReadFacadeTest`, `AutomationPidRouting`, `RenderSequenceRelease`, `McpCoverageTest` and the export/plugin-spawn suites. **Diagnostic rule:** if every failing assertion is a null track/processor, the run is environmental (check the audio device) — do not blame parallel runs, the runner, or your change. Observed 2026-09-21: a device-healthy serial run passed all of them, and the same binary failed them an hour later.
   - Sharding caveat: the calibration runs for `run-tests-sharded.ps1` were contaminated by exactly that environmental failure (its failures were all null-track ones), so **no safe shard count has been established** — the default is a conservative 2. Re-measure on a device-healthy machine before trusting a higher `-Shards`. What *is* independently true: concurrent runs cannot collide on proxy pipe/shm names (unique namespace per manager instance, lesson 20) or on render temp targets (pid-tagged since 2026-09-21).
   - **The audio route also disappears in a disconnected RDP session (2026-09-23).** The deviceless pattern above can appear even when `Get-CimInstance Win32_SoundDevice` reports the hardware fine — a **disconnected** RDP session exposes no routable endpoint, so `rebuildRoutingGraph` still no-ops and every live-graph/render suite fails with the identical null `(track)`/`(rm)`/`(tr)` signature. Observed 2026-09-23: `query session` showed the active session as `> hapbt 2 Disc` (`rdp-tcp … Listen`) while Realtek/Focusrite/NVIDIA sound devices all reported Status OK, yet `TrackFxRebuildRace.*` (11), `TrackMixerState.*` (2), `MasterBusFx` (6, some as SEH `0xc0000005` inside the test body), `AudioPoolDedup.*` (3), `InternalFx.*` (7), `MasterGain.SurvivesRebuild`, `AudioEngineReadFacadeTest.GetFxProgramList*`, `RenderSequenceRelease.RebuildReleasesPreviousGraphChildren` ("no new `hdaw_plugin_host.exe` after `addFxSlot`"), `StreamingPoolDedup.EngineWires…` (`openCount 0`) and `SongCells.LockSkipsAndRerollBumpsSeed`/`HarvestNotesAndRemove` (`filled == 0`) all failed. **Diagnostic recipe:** (1) `query session` — is the active session `Disc`?; (2) run an **untouched** device-dependent control suite (`MasterGain.SurvivesRebuild`, `InternalFx.FilterLowpassAttenuatesAboveCutoff`, `AudioPoolDedup.EngineWires…`) — if those fail null-track too, the run is environmental, not change-induced; (3) if the failures land in **40–70 ms** instead of the ~**1900 ms** they take with a healthy route, the graph never settled — no route. Timing discriminator: the same binary passed live-graph tests minutes earlier (`AutomationSendBusPids` asserting on LIVE `rm->getSend`/`rm->getFxBus` + `processBlock`; `VerifyPart` renders), so a device-regression is the cause, not the batch. **Rule:** verify a batch's engine changes in a session with a live route (or compare against a pre-change log) and never attribute null-track failures to the change without that untouched control.
   - Current baseline (2026-09-21, full serial run): **1768 tests / 264 suites -> 1728 passed, 39 skipped, 1 failed**. The single failure `PluginIsolation.LargeStateRoundTripThroughProxy` (a 0-byte read of a 100 KB chunked state) passes solo and the whole `PluginIsolation.*:CrashRecovery.*` set (57 tests) is green solo — a load flake in the state-chunk path (lessons 14/26), not a regression. Real-plugin `FxMidiInjection.*` was verified separately: 22/23, the single failure being the cross-shard temp-file collision documented above, since fixed with a pid-tagged temp name (the identical sharded sweep is 24/24 post-fix).
   - Previous baseline (2026-09-02, post DISABLED-test rewrite pass): 0 failed; 4 RealtimeSafety detector tests SKIP in release configs (`BufferCheck` is `#if JUCE_DEBUG`-only by design); 0 DISABLED — every formerly `DISABLED_` test is either re-enabled against current contracts (PluginIsolation ×4, ExportVolumeBypass.RealProjectVolumeSensitivity, TrackFXSlotShowEditor — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md`) or re-enabled after its fix (`ExportAudioWithMultipleIsolatedInstances`, commit abf8a3d).
   - Build sequentially: two concurrent `build-fast` invocations on the same `build/` dir overwrite each other's `.ninja_log`, and the next build re-runs as near-full. One build at a time.
-  - WSL-side edits must be synced for the Windows compiler (drvfs/9p attribute cache shows stale content/mtimes for minutes): after editing from WSL, `cp <file> /mnt/c/temp/sync_tmp.cpp`, then from Windows `Copy-Item C:\temp\sync_tmp.cpp -> <D: path> -Force`, then touch `(Get-Item <path>).LastWriteTime = Get-Date`, and verify with PowerShell `Select-String`/`Get-Content` (never findstr through bash→cmd quoting). Symptom if skipped: ninja rebuilds "succeed" against stale sources. Verified recipe — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md` outcome.
+  - **(WSL-only — does not apply on the native Windows dev box; there, edit the file directly and the mtimes are correct.)** WSL-side edits must be synced for the Windows compiler (drvfs/9p attribute cache shows stale content/mtimes for minutes): after editing from WSL, `cp <file> /mnt/c/temp/sync_tmp.cpp`, then from Windows `Copy-Item C:\temp\sync_tmp.cpp -> <D: path> -Force`, then touch `(Get-Item <path>).LastWriteTime = Get-Date`, and verify with PowerShell `Select-String`/`Get-Content` (never findstr through bash→cmd quoting). Symptom if skipped: ninja rebuilds "succeed" against stale sources. Verified recipe — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md` outcome.
   - 1015→1768 tests across 182→264 suites: MCP tools/server, transport, tracks, clips,
     notes, FX, automation, undo, save/load, phrase generation, slicing, merge,
     ripple delete, ghost clips, stretch, markers, error conditions, batch ops,
@@ -235,14 +243,14 @@ engines first — so the build-dir exes stay free for the linker.
   `npm run test:coverage`, `cd frontend; npm run test:e2e`). Retained below for the
   day it returns; engine-only verification is `build/hdaw_tests.exe` (gtest) + the
   MCP surface.
-- **Frontend unit tests (Vitest):** `cd frontend; npm test` — **DEPRECATED (2026-09-23)**
+- **Frontend unit tests (Vitest) — DEPRECATED (2026-09-23):** do NOT run (`cd frontend; npm test`)
   - ~177 tests: Zustand stores (transport, ui, project, notify, meter, browser),
     hooks (useTimelineDrag), utils (rowLayout, theme, grooveUtils), and
     components (StatusBar, Toaster, BottomTabs, MidiFxChain, WaveformCanvas,
     MidiThumbnailCanvas, StepSequencer, TimelineContextMenu, MixerStrip,
     TrackHeaders, Icons).
   - Watch: `npm run test:watch` · Coverage: `npm run test:coverage`
-- **Frontend E2E tests (Playwright):** `cd frontend; npm run test:e2e` — **DEPRECATED (2026-09-23)**
+- **Frontend E2E tests (Playwright) — DEPRECATED (2026-09-23):** do NOT run (`cd frontend; npm run test:e2e`)
   - ~197 tests in `e2e/*.spec.ts`. `app.spec.ts` = render smoke; the rest are
     user-journey regressions that drive the real app (click/drag/keyboard) and
     assert on DOM/canvas/snapshot state — the layer that catches the recurring

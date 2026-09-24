@@ -3,6 +3,9 @@
 """Build/search a timbre-analyzed sample library for HDAW.
 Usage:
     python lib_analyze.py <folder> [--limit N] [--no-llm] [--sidecars]
+                                       [--out PATH] [--library NAME]
+Run with an interpreter that has the ML stack (librosa/torch/transformers;
+llama-cpp-python optional - --no-llm runs without it).
 Reads every audio file in <folder> (recursive), runs:
     stage 1: DSP descriptors           (timbre.py, numpy/scipy, fast)
     stage 2: CLAP captions + tags      (CUDA CLAP via transformers)
@@ -13,7 +16,7 @@ WSL and Windows paths (so HDAW MCP tools on the Windows side can use them).
 With --sidecars, also writes <file>.timbre.json next to each audio file
 (for the planned native HDAW FileLibraryManager sidecar ingestion).
 """
-import argparse, hashlib, json, os, re, sys, time, traceback
+import argparse, hashlib, json, os, re, subprocess, sys, time, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -201,7 +204,15 @@ if __name__ == "__main__":
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--sidecars", action="store_true")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--library", default=None, metavar="NAME",
+                    help="after analysis, register <folder> as an HDAW audio "
+                         "library named NAME (runs register_library.py)")
     a = ap.parse_args()
+    # Ported from the retired analyze.sh wrapper: --library registers a FOLDER,
+    # so a single-file run is a usage error (the wrapper rejected it too).
+    if a.library and not os.path.isdir(a.folder):
+        print(f"error: --library needs a folder (got: {a.folder!r})", file=sys.stderr)
+        sys.exit(1)
     files = [a.folder] if os.path.isfile(a.folder) else collect(a.folder)
     if a.limit:
         files = files[:a.limit]
@@ -215,3 +226,8 @@ if __name__ == "__main__":
     out_path = a.out or os.path.join(base, "timbre_index.json")
     json.dump(recs, open(out_path, "w"), indent=1)
     print(f"done -> {out_path} ({len(recs)} entries)")
+    if a.library:
+        # Same interpreter, same directory: no venv wrapper needed.
+        sys.exit(subprocess.call(
+            [sys.executable, os.path.join(HERE, "register_library.py"),
+             "--path", a.folder, "--name", a.library]))

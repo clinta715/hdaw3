@@ -203,9 +203,15 @@ DumpFolder), and the capture-tree sweep globs `engine_*` only — a bare
 
 ## Shell: PowerShell only (no `&&` or `&`)
 
-Windows PowerShell 5.1 — `&&`/`&` are invalid separators. Use `cmd1; if ($?) { cmd2 }`,
-`Start-Job { ... }`, or the `workdir` parameter on tool calls. Update bash-legacy
-`&&` in docs on sight.
+**Native Windows 11 dev box:** MSVC (VS 18 Community), VS-bundled CMake, Ninja,
+Node and Python are installed; **WSL/MSYS are NOT required by any documented
+workflow**. Build from a plain shell with `build-fast.bat test|all|debug` — it
+bootstraps MSVC and resolves the VS-bundled CMake itself (no PATH setup needed).
+The shell is **Windows PowerShell 5.1 / cmd**: `&&`/`&` are invalid separators —
+use `cmd1; if ($?) { cmd2 }`, `Start-Job { ... }`, or the `workdir` parameter on
+tool calls, and update bash-legacy `&&` in docs on sight. `cmake --build` never
+re-runs CMake here (`CMAKE_SUPPRESS_REGENERATION=ON`): after editing
+`CMakeLists.txt`, run `cmake -S . -B build` explicitly.
 
 ## How frontend changes reach the running app
 

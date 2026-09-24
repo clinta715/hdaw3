@@ -19,9 +19,11 @@ cmake --build build --config RelWithDebInfo
 build\RelWithDebInfo\HDAW.exe
 ```
 
-Or use the build scripts: `frontend\build.bat` (full pipeline) or
-`build-fast.bat` (incremental). Both default to RelWithDebInfo;
-pass `Debug` for breakpoint debugging.
+Or use the build script: `build-fast.bat` (incremental, bootstraps MSVC + the
+VS-bundled CMake; `build-fast.bat test|all|debug` for the other targets). It
+defaults to RelWithDebInfo; pass `Debug` for breakpoint debugging. The Electron
+frontend is a separate project (AGENTS.md "DEPRECATED 2026-09-23") — engine work
+never builds it.
 
 ## What works today (v0.37.0)
 

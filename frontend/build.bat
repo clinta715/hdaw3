@@ -60,10 +60,12 @@ if not exist "%BUILD_DIR%\CMakeCache.txt" goto :gen_detect_done
 findstr /C:"CMAKE_GENERATOR:INTERNAL=Ninja" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
 if not errorlevel 1 set "NATIVE_BUILD_ARGS="
 :gen_detect_done
-:: ── WSL time-sync hook: snap the WSL clock to the Windows host before any
-::    build (clock drift -> ninja/MSBuild misjudge mtimes through drvfs/9p ->
-::    stale-`.obj`/stale-bundle traps - AGENTS.md lessons 15/21). Never fails
-::    the build; no-op when not in WSL or synced within HDAW_TIME_SYNC_INTERVAL.
+:: ── WSL time-sync hook (opt-in; no-op on a native box). scripts\time-sync.cmd
+::    exits 0 silently unless HDAW_TIME_SYNC=1 is set, so the native build pays
+::    nothing. WSL users reaching the tree through drvfs/9p set HDAW_TIME_SYNC=1
+::    to snap the WSL clock first (clock drift -> ninja/MSBuild misjudge mtimes
+::    -> stale-`.obj`/stale-bundle traps - AGENTS.md lessons 15/21). Never fails
+::    the build on any path.
 call "%ROOT%\scripts\time-sync.cmd"
 
 :: ── 1. Frontend (React SPA + Electron main/preload). prebuild regenerates

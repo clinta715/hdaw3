@@ -27,8 +27,9 @@ DSP descriptors (timbre.py, numpy/scipy)
     clap_stage.py        stage 2 CLAP captions/tags
     llm_stage.py         stage 3 LLM prose (Qwen2.5-3B GGUF)
     lib_analyze.py       orchestration, incremental cache, index/sidecar writer
+                         (+ --library NAME -> register_library.py)
     lib_search.py        text search over timbre_index.json
-    analyze.sh / search.sh   wrappers using the ML venv python
+    register_library.py  HDAW library-registry writer (--library)
     samples/             the analyzed library (17 files, index inside)
     sampler_demo.hdaw3   8s/4-bar demo: 6 sampler tracks (kick/hat/stabs/bass/pad/bells)
     sampler_demo_long.hdaw3   66s/32-bar composition (the main deliverable)
@@ -36,9 +37,10 @@ DSP descriptors (timbre.py, numpy/scipy)
 
 ## 3. Running the pipeline
 
-    ./analyze.sh <folder> [--limit N] [--no-llm] [--sidecars]
-    ./search.sh "dark gritty pad" [--min-dur S] [--max-dur S]
-    TIMBRE_PY=/home/hapbt/.prime/agent/kernel-venv/bin/python   (default, has ML stack)
+    py -3.14 lib_analyze.py <folder> [--limit N] [--no-llm] [--sidecars] [--library NAME]
+    py -3.14 lib_search.py "dark gritty pad" [--min-dur S] [--max-dur S]
+    (any python with the ML stack works; the old ./analyze.sh + TIMBRE_PY
+     wrappers are retired)
     Re-analyze everything: delete <folder>/.timbre_cache/ and re-run.
     Per-file output keys: dsp (20 descriptors), dsp_words, captions, tags, prose,
     durationSeconds, sampleRate, channels, format, size, mtime, wsl_path, win_path.

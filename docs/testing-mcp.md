@@ -128,7 +128,7 @@ directory — `LNK1104: cannot open file 'hdaw_tests.exe'` plus `LNK4076 invalid
 (the two linkers fight over the same PDB/ILK and output exe). NEVER start a second
 build while one runs; wait for the first to exit.
 
-## Frontend Tests (v0.12.0+)
+## Frontend Tests (v0.12.0+) — DEPRECATED (2026-09-23)
 
 **DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
 date — the repo no longer builds or tests it. Do NOT run these suites (`npm test`,
@@ -141,7 +141,7 @@ unit/component tests and **Playwright** for E2E tests.
 
 ### Unit & Component Tests (Vitest) — **DEPRECATED (2026-09-23)**
 
-- **Run**: `cd frontend && npm test`
+- **Run**: `cd frontend; npm test`
 - **Watch mode**: `npm run test:watch`
 - **Coverage**: `npm run test:coverage`
 - **Config**: `frontend/vitest.config.ts` (jsdom environment)
@@ -169,7 +169,7 @@ Total: **~78 frontend tests** covering all Zustand stores and key UI components.
 
 ### E2E Tests (Playwright) — **DEPRECATED (2026-09-23)**
 
-- **Run**: `cd frontend && npm run test:e2e`
+- **Run**: `cd frontend; npm run test:e2e`
 - **Interactive UI**: `npm run test:e2e:ui`
 - **Config**: `frontend/playwright.config.ts`
 - **Tests**: `frontend/e2e/*.spec.ts`

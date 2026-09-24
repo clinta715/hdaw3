@@ -30,11 +30,13 @@ set "ROOT=%~dp0"
 set "BUILD_DIR=%ROOT%build"
 if not "%HDAW_BUILD_DIR%"=="" set "BUILD_DIR=%HDAW_BUILD_DIR%"
 set CONFIG=RelWithDebInfo
-REM ── WSL time-sync hook ─────────────────────────────────────────────────────
-REM Snap the WSL clock to the Windows host before ANY build. WSL2 clock drift
-REM makes ninja/MSBuild misjudge mtimes through drvfs/9p (stale-`.obj` / stale-
-REM bundle traps - AGENTS.md lessons 15/21). Never fails the build; no-op when
-REM not in WSL or when synced within HDAW_TIME_SYNC_INTERVAL seconds.
+REM ── WSL time-sync hook (opt-in, no-op on a native box) ─────────────────────
+REM scripts\time-sync.cmd exits 0 immediately unless HDAW_TIME_SYNC=1 is set in
+REM the environment, so a native Windows build pays nothing. WSL users who
+REM reach the source tree through drvfs/9p set HDAW_TIME_SYNC=1 to snap the WSL
+REM clock to the Windows host first (WSL2 clock drift makes ninja/MSBuild
+REM misjudge mtimes - stale-`.obj` / stale-bundle traps, AGENTS.md lessons
+REM 15/21). Never fails the build on any path.
 call "%~dp0scripts\time-sync.cmd"
 
 REM Auto-bootstrap the MSVC toolchain when cl.exe is not on PATH so this
@@ -53,6 +55,32 @@ if errorlevel 1 (
         call "!VSB!" >nul
         if errorlevel 1 echo [build-fast] WARN: vcvars64.bat failed ^(rc=!errorlevel!^) — the build will likely fail.
     )
+)
+
+REM Auto-discover cmake.exe the same way, for the same reason: a plain shell
+REM (Explorer-launched cmd, CI, a fresh terminal) has cl.exe AND cmake missing
+REM from PATH, while the VS-bundled CMake (and Qt's copy) are always installed.
+REM When cmake IS on PATH nothing changes — !CMAKE_EXE! stays "cmake". When it
+REM is not, probe the known install roots and fall through ONLY if all miss, so
+REM the failure is a clear message instead of "cmake is not recognized".
+REM The failure exit is deliberately NOT nested inside the probe block: cmd.exe
+REM drops the exit code of an `exit /b` that sits two parentheses deep, which
+REM would make a missing cmake look like a successful build.
+set "CMAKE_EXE=cmake"
+where cmake.exe >nul 2>nul
+if errorlevel 1 (
+    set "CMAKE_EXE="
+    if exist "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" set "CMAKE_EXE=C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+    if exist "C:\Program Files\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" set "CMAKE_EXE=C:\Program Files\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+    if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" set "CMAKE_EXE=C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+    if exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" set "CMAKE_EXE=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+    if exist "C:\Qt\Tools\CMake_64\bin\cmake.exe" set "CMAKE_EXE=C:\Qt\Tools\CMake_64\bin\cmake.exe"
+    if defined CMAKE_EXE echo [build-fast] cmake not on PATH - using !CMAKE_EXE!
+)
+if not defined CMAKE_EXE (
+    echo [build-fast] ERROR: cmake.exe is not on PATH and none of the known VS/Qt install roots has it.
+    echo [build-fast]        Install CMake, or run from a VS developer prompt that puts it on PATH.
+    exit /b 1
 )
 
 if "%1"=="debug" set CONFIG=Debug
@@ -92,15 +120,15 @@ REM presence in the build dir. %1 optional target name (empty = all).
 :build_target
 if exist "%BUILD_DIR%\build.ninja" (
     if "%1"=="" (
-        cmake --build "%BUILD_DIR%" 2>&1
+        "!CMAKE_EXE!" --build "%BUILD_DIR%" 2>&1
     ) else (
-        cmake --build "%BUILD_DIR%" --target %1 2>&1
+        "!CMAKE_EXE!" --build "%BUILD_DIR%" --target %1 2>&1
     )
 ) else (
     if "%1"=="" (
-        cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
+        "!CMAKE_EXE!" --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
     ) else (
-        cmake --build "%BUILD_DIR%" --config %CONFIG% --target %1 -- /m /v:minimal 2>&1
+        "!CMAKE_EXE!" --build "%BUILD_DIR%" --config %CONFIG% --target %1 -- /m /v:minimal 2>&1
     )
 )
 exit /b !errorlevel!
@@ -151,7 +179,7 @@ goto :eof
 :ninja
 echo [build-fast] Reconfiguring with Ninja (one-time)...
 if "%CMAKE_PREFIX_PATH%"=="" if exist "C:\Qt\6.11.2\msvc2022_64" set "CMAKE_PREFIX_PATH=C:\Qt\6.11.2\msvc2022_64"
-cmake -S "%~dp0." -B "%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%CONFIG% -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH%
+"!CMAKE_EXE!" -S "%~dp0." -B "%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%CONFIG% -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH%
 if %errorlevel% neq 0 (
     echo [build-fast] Ninja configure failed. Falling back to Visual Studio.
     echo [build-fast] Make sure ninja.exe is on PATH and a VS developer prompt is active.

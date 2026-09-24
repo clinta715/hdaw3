@@ -3,8 +3,9 @@
   Shard the HDAW gtest suite across N concurrent processes.
 
 .DESCRIPTION
-  Native Windows/PowerShell twin of scripts/run-tests-parallel.sh (which needs WSL bash
-  and WSLENV forwarding). The suite is serial by default and takes ~44 min on a dev box
+  Native Windows/PowerShell shard runner - the canonical parallel test runner.
+  It replaced scripts/run-tests-parallel.sh (retired: that one needed WSL bash and
+  WSLENV forwarding; this one needs neither). The suite is serial by default and takes ~44 min on a dev box
   (1768 tests / 264 suites, measured 2026-09-21); this splits the gtest LIST across N
   processes: small suites stay whole (one filter per suite), large ones are sharded per
   test, and the units are dealt round-robin into N buckets. Every bucket runs as its own
@@ -38,7 +39,8 @@
   targets (pid-tagged, fixed 2026-09-21).
 
   Real-plugin gates run only when HDAW_REAL_PLUGIN_TESTS=1 is set in THIS shell — the
-  child processes inherit the environment directly (no WSL/WSLENV forwarding involved).
+  child processes inherit the environment directly (no WSL/WSLENV forwarding involved,
+  unlike the retired scripts/run-tests-parallel.sh).
 
 .EXAMPLE
   powershell -File run-tests-sharded.ps1                     # full suite, 4 shards

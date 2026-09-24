@@ -178,13 +178,15 @@ Check EVERY change against these. They are ranked by historical frequency.
 
 **Rule:**
 - After C++ changes, verify the binary under test is the one just built (check timestamp/size).
-- New executables must appear in `electron-builder.yml` `extraResources`.
-- `frontend\build.bat` is the canonical full pipeline.
 - NEVER test against `build/Release/HDAW.exe` (stale).
+- The engine path is `build-fast.bat [test|all]` + `build/hdaw_tests.exe`: a new `.exe` counts as delivered only once that path builds and exercises it.
+- **(DEPRECATED 2026-09-23)** the Electron packaging rules (`electron-builder.yml` `extraResources`, `frontend\build.bat` as the "canonical full pipeline") went with the Electron client — see AGENTS.md "DEPRECATED (2026-09-23)". No frontend build is part of engine work.
 
-**Alert if:** A new `.exe` is produced by CMake but not listed in `electron-builder.yml`.
+**Alert if:** A new `.exe` is produced by CMake but never built/verified by the engine path (`build-fast.bat test` / `build/hdaw_tests.exe`).
 
 ### Gate 5: Frontend Stale Closures / Missing Hook Deps
+
+**(Frontend reference only — the Electron client is not a delivery target, so this is not a build/test gate. AGENTS.md "DEPRECATED (2026-09-23)".)**
 
 **Trigger:** Any `useMemo`, `useCallback`, `useEffect`, or event handler in React/TS code.
 
@@ -220,7 +222,7 @@ Check EVERY change against these. They are ranked by historical frequency.
 - Respect `prefers-reduced-motion`.
 - No hardcoded spacing that bypasses the token system.
 
-**Verification:** `grep -rn "#[0-9a-fA-F]\{3,8\}" frontend/src/**/*.css` returns zero hits in new code.
+**Verification:** `Get-ChildItem -Recurse frontend/src -Filter *.css | Select-String -Pattern '#[0-9a-fA-F]{3,8}'` returns zero hits in new code.
 
 **Alert if:** You see a raw hex color, an undefined CSS variable, or a missing reduced-motion query.
 
@@ -410,11 +412,11 @@ Before modifying ANY function, class, property, or RPC method:
 - **Beats vs seconds:** Frontend speaks beats; clip ValueTree and processors speak seconds. Convert at boundaries.
 - **Batch RPCs:** One batch call, not N loops. Coalesces into one delta + one rebuild + one undo unit.
 - **Incremental deltas:** Express changes as clip/track deltas. Reserve fullSync for restructures.
-- **Test discipline:** Engine change → identify affected gtest suites → update/add tests → run `hdaw_tests.exe`. UI change → identify Vitest/Playwright tests → update/add → run.
+- **Test discipline:** Engine change → identify affected gtest suites → update/add tests → run `build/hdaw_tests.exe` (or `build-fast.bat test`). There is no frontend test gate: the Vitest/Playwright suites went with the Electron client (AGENTS.md "DEPRECATED (2026-09-23)").
 - **MCP parity:** Any user-facing feature must also be an MCP tool.
 - **Generative toolkit:** Ask whether PhraseGenerator / humanize / modulation applies.
 - **UI idiom:** Bitwig Arranger + Ableton fixed-tile flow. Spatial stability is sacred. No floating windows. Bottom panel tabs for detail views.
-- **Version sync:** `CMakeLists.txt` and `frontend/package.json` must match.
+- **Version sync:** `CMakeLists.txt` and `frontend/package.json` must match — still enforced by the `check_version` target (`cmake/CheckVersionSync.cmake`), but that is tooling hygiene, NOT a frontend delivery rule (AGENTS.md "DEPRECATED (2026-09-23)").
 
 ---
 
@@ -423,11 +425,11 @@ Before modifying ANY function, class, property, or RPC method:
 Work is complete ONLY when:
 
 1. All success gates from the plan pass with evidence.
-2. Relevant test suites run and pass (`hdaw_tests.exe`, `npm test`, `npm run test:e2e` as applicable).
+2. Relevant engine test suites run and pass (`build/hdaw_tests.exe`; the frontend suites `npm test` / `npm run test:e2e` are NOT applicable — the client is not a delivery target).
 3. No new anti-patterns introduced (scan your diff).
 4. Dependency map confirmed — no silent breakage upstream/downstream.
-5. If C++ changed: `cmake --build build --config Debug` succeeds.
-6. If frontend changed: `cd frontend && npm run build` succeeds.
+5. If C++ changed: `build-fast.bat` (or `cmake --build build`) succeeds and the affected `build/hdaw_tests.exe` suites pass.
+6. Engine-facing verification covers the MCP surface: any new/changed tool or RPC is exercised end-to-end.
 7. If new RPC/command: MCP tool exists (parity rule).
 8. If structural change (new files/classes/RPC methods): knowledge graph refreshed (`graphify . --update`) so it stays current.
 9. Graph path integrity re-verified for any new wiring (`graphify path "source" "sink"` shows a complete chain).

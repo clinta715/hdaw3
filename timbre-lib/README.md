@@ -248,9 +248,12 @@ Live apply status (measured 2026-09-16/17; evidence:
 | vavra | 40 | blueprint-only | **MEASURED NOT APPLYING** — queued=1 but captureStatus=unchanged, render identical; puppetry not pursued |
 
 ## Analyze a folder
-    ./analyze.sh <folder> [--limit N] [--no-llm] [--sidecars]
-(plain `python` on this WSL box has no ML toolchain; use ./analyze.sh, or set
-TIMBRE_PY to a venv python that has librosa/torch/transformers/llama-cpp)
+    py -3.14 lib_analyze.py <folder> [--limit N] [--no-llm] [--sidecars]
+                             [--out PATH] [--library NAME]
+Run it with any interpreter that has the ML stack (numpy/librosa/torch/
+transformers; llama-cpp-python optional). `--library NAME` registers <folder>
+in the HDAW library registry after the analysis (via register_library.py).
+(The old `./analyze.sh` wrapper — WSL venv + TIMBRE_PY — is retired.)
 Writes <folder>/timbre_index.json (per-file: dsp, dsp_words, captions, tags,
 prose, key, bpm, wsl_path, win_path). Incremental cache in <folder>/.timbre_cache/.
 --sidecars also writes <file>.timbre.json next to each audio file; HDAW's
@@ -260,13 +263,15 @@ key/bpm: filename tag first (Am, F#m, C min, 128 BPM, 126_BPM ...), then
 audio estimation (Krumhansl chroma match / onset tempo). Best-effort — fields
 may be absent (key) or 0 (bpm) when nothing plausible is found.
 
-Runtime: needs python with numpy/librosa/torch/transformers. The WSL
-prime-agent kernel venv is NOT for this — use the Windows python
-(`py -3.14 "D:\...\timbre-lib\lib_analyze.py" "E:\samples\<pack>" --no-llm --sidecars`)
-or point TIMBRE_PY at a venv that has the stack.
+Runtime: needs python with numpy/librosa/torch/transformers. Use the Windows
+python (`py -3.14 "D:\...\timbre-lib\lib_analyze.py" "E:\samples\<pack>" --no-llm --sidecars`);
+the retired WSL wrapper's venv/TIMBRE_PY indirection is gone — you pass the
+interpreter yourself.
 
 ## Search (timbre layer)
-    ./search.sh "dark gritty pad" [--limit N] [--min-dur S] [--max-dur S]
+    py -3.14 lib_search.py "dark gritty pad" [--limit N] [--min-dur S] [--max-dur S]
+Default library is `timbre-lib/samples` (relative to lib_search.py); `--lib`
+takes a folder or a timbre_index.json.
 Scores: dsp_words x3, captions x2, tags x1, prose x1, filename x0.5.
 Prints Windows paths ready for HDAW MCP.
 

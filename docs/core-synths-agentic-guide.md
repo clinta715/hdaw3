@@ -255,7 +255,7 @@ host parameters) → `get_fx_capture_status` → `audition_plugin` (reference de
    `Xenia/VavraEditBufferDumpChangesOfflineRender`,
    `NordBankLoadChangesNodalRed2xRender`, `MatrixPresetAudibilityVirusVavra`,
    `Je8086UserPatchDumpChangesOfflineRender`.
-   Run them with `scripts/run-tests-parallel.sh [N] [suite]` or `run_fast_tests.bat`.
+   Run them with `run-tests-sharded.ps1 -Shards N -Filter <suite>` or `run_fast_tests.bat`.
 6. **"The source says X" is not evidence.** Two incidents: an unclamped internal FX
    parameter that silenced every export at exactly 0.6 s, and a truncated
    `build/.ninja_deps` that made a no-op build take 285 s (both 2026-09). Verify the

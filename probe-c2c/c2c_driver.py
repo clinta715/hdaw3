@@ -15,7 +15,10 @@ Writes probe-c2c/results.json; saves projects to C:\temp.
 import json, os, re, sys, time, urllib.request, hashlib
 
 URL = 'http://127.0.0.1:18765/mcp'
-SCR  = '/mnt/d/pdf/roo projects/hdaw3/probe-c2c'
+# Native Windows scratch dir: this directory (probe-c2c next to c2c_driver.py).
+# The launcher is probe-c2c/engine.ps1 (native PowerShell; the WSL engine.sh it
+# replaced hardcoded /mnt/d/pdf/roo projects/hdaw3/probe-c2c).
+SCR  = os.path.dirname(os.path.abspath(__file__))
 WINOUT = 'C:\\temp'
 SETTLE = 12        # bake settle after apply (warm 800 blocks ~1.6s + idle ~2.5s + margin)
 SIX = [
@@ -92,7 +95,7 @@ def state_md5_from_save(m, winpath, tag):
     ev('save:' + tag, {'resp': r['text'], 'isError': r['isError']})
     md5 = nbytes = None
     try:
-        lx = winpath.replace('\\', '/').replace('C:/', '/mnt/c/')
+        lx = winpath  # native Windows path; the open() below reads it directly
         with open(lx, 'r', encoding='utf-8', errors='replace') as fh: data = fh.read()
         blobs = re.findall(r'pluginState="([^"]*)"', data)
         if blobs:
@@ -147,7 +150,6 @@ def g3_round(m, pid, rep, pre_path, pre_state):
     """Load pre-focused project (saved baked state) and verify md5 fidelity."""
     ev('g3_round', {'rep': rep})
     mm = re.search(r'trackIndex(?:["\s:=]+)(\d+)', pre_path['text']) if False else None
-    lx = pre_path.replace('\\', '/').replace('C:/', '/mnt/c/')
     r = m.call('load_project', {'filePath': pre_path})
     ev('load_project', {'resp': r['text'], 'isError': r['isError']})
     time.sleep(8.0)  # child spawn + settle
