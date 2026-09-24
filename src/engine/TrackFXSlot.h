@@ -783,7 +783,11 @@ public:
                     // 4th arg is a LINEAR factor (0.0 = silence) - converting
                     // dB->linear made the DEFAULT gain (0 dB) silence every
                     // track carrying an EQ (2026-08-27, psytrance v3).
-                    *eq->state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter(
+                    // ArrayCoefficients + array assignment: identical
+                    // coefficients, no heap allocation (prepare() runs off the
+                    // audio thread, but the same helper backs the audio-thread
+                    // applyInternalParamToDsp EQ case below).
+                    *eq->state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter(
                         spec.sampleRate, freq, Qval, juce::Decibels::decibelsToGain(gDb));
                 }
                 break;
@@ -1801,8 +1805,10 @@ private:
                 float gainDb = internalParamValues[2];
                 // Reconstruct all three coeffs from stored values (dB -> linear,
                 // see prepare() - passing raw dB as the linear factor silenced
-                // the EQ at the default 0 dB gain).
-                *eq->state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter(
+                // the EQ at the default 0 dB gain). ArrayCoefficients + array
+                // assignment: this branch is reached PER SAMPLE when an LFO
+                // targets an internal EQ param, so it must not allocate.
+                *eq->state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter(
                     sampleRate_, freq, Qval, juce::Decibels::decibelsToGain(gainDb));
                 break;
             }

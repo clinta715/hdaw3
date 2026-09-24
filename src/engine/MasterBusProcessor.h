@@ -155,13 +155,15 @@ public:
                     const float freq = slotParams[(size_t) i][0].load(std::memory_order_relaxed);
                     const float q    = slotParams[(size_t) i][1].load(std::memory_order_relaxed);
                     const float gDb  = slotParams[(size_t) i][2].load(std::memory_order_relaxed);
-                    auto coeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter(
-                        currentSampleRate, freq, q, juce::Decibels::decibelsToGain(gDb));
                     // Stereo-linked via ProcessorDuplicator: identical shared
                     // coefficients on every channel (TrackFXSlot EQ pattern;
                     // note makePeakFilter takes a LINEAR gain factor, dB-converted
-                    // here — 2026-08-27 pitfall).
-                    *eq[(size_t) i].state = *coeffs;
+                    // here — 2026-08-27 pitfall). ArrayCoefficients + array
+                    // assignment: the same coefficients the allocating
+                    // Coefficients wrapper is built from, allocation-free —
+                    // this runs on the audio thread every block (Gate 3).
+                    *eq[(size_t) i].state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter(
+                        currentSampleRate, freq, q, juce::Decibels::decibelsToGain(gDb));
                     juce::dsp::AudioBlock<float> block(buffer);
                     juce::dsp::ProcessContextReplacing<float> ctx(block);
                     eq[(size_t) i].process(ctx);

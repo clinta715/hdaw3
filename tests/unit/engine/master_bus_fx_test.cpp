@@ -18,6 +18,7 @@
 #include "engine/AudioEngine.h"
 #include "engine/MainAudioProcessor.h"
 #include "engine/MasterBusProcessor.h"
+#include "engine/FxBusProcessor.h"
 #include "common/MasterFxDefs.h"
 
 namespace {
@@ -91,6 +92,47 @@ float renderRms(double sampleRate, int samples, float freqHz, float amplitude,
         for (int ch = 0; ch < 2; ++ch)
             chunk.copyFrom(ch, 0, buf, ch, start, n);
         master.processBlock(chunk, midi);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < n; ++i)
+                buf.setSample(ch, start + i, chunk.getSample(ch, i));
+    }
+    double sum = 0.0;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int s = 0; s < samples; ++s)
+            sum += (double) buf.getSample(ch, s) * (double) buf.getSample(ch, s);
+    return (float) std::sqrt(sum / (2.0 * (double) samples));
+}
+
+// Render a stereo sine through an EQ RETURN BUS (FxBusProcessor) and return
+// RMS. The three EQ params are pushed through the AUDIO-THREAD automation
+// entry (setAutomationValue, real units), so the coefficients are built by
+// processBlock's dirty-consume pass -> applyParamToDsp — the exact path an
+// automated/LFO-driven EQ return takes.
+float renderEqBusRms(double sampleRate, int samples, float freqHz, float amplitude,
+                     float gainDb)
+{
+    HDAW::FxBusProcessor bus("EQ", "eq");
+    bus.prepareToPlay(sampleRate, 512);
+    bus.setAutomationValue(0, freqHz);
+    bus.setAutomationValue(1, 0.7f);
+    bus.setAutomationValue(2, gainDb);
+
+    juce::AudioBuffer<float> buf(2, samples);
+    const double twoPi = 6.28318530717958647692;
+    for (int s = 0; s < samples; ++s)
+    {
+        const float v = amplitude * (float) std::sin(twoPi * (double) freqHz * (double) s / sampleRate);
+        buf.setSample(0, s, v);
+        buf.setSample(1, s, v);
+    }
+    juce::MidiBuffer midi;
+    for (int start = 0; start < samples; start += 512)
+    {
+        const int n = std::min(512, samples - start);
+        juce::AudioBuffer<float> chunk(2, n);
+        for (int ch = 0; ch < 2; ++ch)
+            chunk.copyFrom(ch, 0, buf, ch, start, n);
+        bus.processBlock(chunk, midi);
         for (int ch = 0; ch < 2; ++ch)
             for (int i = 0; i < n; ++i)
                 buf.setSample(ch, start + i, chunk.getSample(ch, i));
@@ -230,6 +272,67 @@ TEST(MasterBusFx, EqCutLowersRmsAtBandCenter)
     const float bypassedRms = renderRms(44100.0, 44100, 4000.0f, 0.5f, 0, true, eqParams, "eq");
     const float cutRms      = renderRms(44100.0, 44100, 4000.0f, 0.5f, 0, false, eqParams, "eq");
     EXPECT_LT(cutRms, bypassedRms * 0.45f);
+}
+
+// ---- EQ coefficients: array path == allocating wrapper ---------------------
+
+TEST(MasterBusFx, EqCoefficientsMatchAllocatingWrapper)
+{
+    // The three EQ rebuild sites (FxBusProcessor, MasterBusProcessor,
+    // TrackFXSlot) assign
+    // juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter(...) straight
+    // into the persistent Coefficients object instead of dereferencing the
+    // allocating Coefficients::makePeakFilter wrapper (one heap allocation per
+    // call — juce_IIRFilter.cpp). This pins that the array path stores the SAME
+    // coefficients the wrapper stored, so no behaviour can shift: the 0 dB
+    // default (the 2026-08-27 silence pitfall) and both +/-24 dB gain extremes
+    // included.
+    //
+    // Compared on `coefficients` (== getRawCoefficients()): the wrapper is
+    // itself built from ArrayCoefficients::makePeakFilter and both paths run
+    // Coefficients::assignImpl, so the a0-normalized storage must be
+    // bit-identical — a biquad keeps 5 of the 6 array values.
+    const double sr = 44100.0;
+    const struct { float f, q, g; } cases[] = {
+        {  1000.0f,  0.7f,   0.0f },   // default gain: 0 dB == unity
+        {  4000.0f,  0.7f,  12.0f },
+        {   120.0f,  4.0f, -24.0f },   // bottom of the gain def range
+        { 12000.0f,  0.1f,  24.0f },   // top of the gain def range
+        { 20000.0f, 10.0f, -24.0f },   // def-range edges for frequency/Q too
+    };
+
+    for (const auto& c : cases)
+    {
+        auto wrapper = juce::dsp::IIR::Coefficients<float>::makePeakFilter(
+            sr, c.f, c.q, juce::Decibels::decibelsToGain(c.g));
+
+        // The production form: the array assigned into the persistent object.
+        juce::dsp::IIR::Coefficients<float> viaArray;
+        viaArray = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter(
+            sr, c.f, c.q, juce::Decibels::decibelsToGain(c.g));
+
+        ASSERT_EQ(viaArray.getFilterOrder(), wrapper->getFilterOrder());
+        ASSERT_EQ(viaArray.coefficients.size(), wrapper->coefficients.size());
+        for (int i = 0; i < viaArray.coefficients.size(); ++i)
+            EXPECT_EQ(viaArray.coefficients[i], wrapper->coefficients[i])
+                << "f=" << c.f << " q=" << c.q << " g=" << c.g << " coeff " << i;
+    }
+}
+
+// ---- Gate 2: EQ RETURN BUS automation path is observable -------------------
+
+TEST(MasterBusFx, EqBusAutomationRebuildRaisesRmsAtBandCenter)
+{
+    // FxBusProcessor rebuilds its EQ coefficients inside processBlock's
+    // dirty-consume pass from the AUDIO-THREAD automation entry
+    // (setAutomationValue) — the same rebuild the new allocation-free array
+    // assignment serves. +12 dB at 4 kHz must boost a 4 kHz sine, and the 0 dB
+    // default must stay unity rather than silence (2026-08-27 pitfall).
+    const float unityRms   = renderEqBusRms(44100.0, 44100, 4000.0f, 0.5f, 0.0f);
+    const float boostedRms = renderEqBusRms(44100.0, 44100, 4000.0f, 0.5f, 12.0f);
+
+    EXPECT_NEAR(unityRms, 0.354f, 0.03f) << "0 dB peak filter must be unity, not silence";
+    EXPECT_GT(boostedRms, unityRms * 1.6f) << "+12 dB at the band centre must boost";
 }
 
 // ---- Gate 4: lesson-23 clamp at the command entry --------------------------

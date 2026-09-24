@@ -19,6 +19,13 @@ dropouts, xruns, and hard-to-reproduce crashes.
 - **Never allocate.** No `new`, `malloc`, `std::vector::push_back`,
   `std::string` construction, or `juce::String` construction inside
   `processBlock` or any function called from it.
+- **Internal-FX EQ coefficient updates are allocation-free.** Every EQ
+  rebuild site (`FxBusProcessor`, `MasterBusProcessor`, `TrackFXSlot`)
+  assigns `juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter(...)`
+  into the persistent `Coefficients` object instead of dereferencing the
+  allocating `Coefficients::makePeakFilter` wrapper (one `new` per call).
+  This covers the audio-thread automation/LFO paths: an LFO targeting an
+  internal EQ param reaches the rebuild once per sample.
 - **Never lock.** No `std::mutex`, `juce::SpinLock` (write path),
   `juce::CriticalSection`, or any blocking wait. The
   `AutomationManager` uses `SpinLock` only for the *write* path

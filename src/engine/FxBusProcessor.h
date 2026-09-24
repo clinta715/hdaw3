@@ -187,11 +187,13 @@ public:
 
         // Consume DSP-dirty params flagged by audio-thread automation writes
         // (setAutomationValue) and by control writers that lost
-        // dspStateLock.tryEnter(). tryEnter-or-skip — never block the audio
-        // thread; the lock excludes prepareToPlay/resetFxChain recreating the
-        // DSP objects under us (Gate 13), and exchange() keeps bits re-set
-        // concurrently for the next block. Fast path is one atomic load; no
-        // allocation, no blocking lock inside processBlock (Gate 3).
+        // dspStateLock.tryEnter(). tryEnter-or-skip — the audio thread never
+        // blocks: when the lock is busy (prepareToPlay/resetFxChain recreating
+        // the DSP objects under us, Gate 13) the push is skipped and the bits
+        // stay set for the next block, and exchange() keeps bits re-set
+        // concurrently too. The push itself is allocation-free — the EQ
+        // coefficients go through ArrayCoefficients + array assignment, not
+        // the allocating Coefficients wrapper (Gate 3).
         if (dspDirty.load(std::memory_order_acquire) != 0 && dspStateLock.tryEnter())
         {
             const uint32_t dirty = dspDirty.exchange(0, std::memory_order_acq_rel);
@@ -394,7 +396,11 @@ private:
             const float freq   = params[0].load(std::memory_order_relaxed);
             const float q      = params[1].load(std::memory_order_relaxed);
             const float gainDb = params[2].load(std::memory_order_relaxed);
-            *eqProcess.state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter(
+            // ArrayCoefficients + array assignment: the same coefficients the
+            // allocating Coefficients::makePeakFilter wrapper is built from,
+            // without the heap allocation (this runs on the audio thread, once
+            // per dirty param per block).
+            *eqProcess.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter(
                 spec.sampleRate, freq, q, juce::Decibels::decibelsToGain(gainDb));
         }
         else if (currentFxType == "compressor")
