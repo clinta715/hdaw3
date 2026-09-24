@@ -307,17 +307,46 @@ not WSL/MSYS* and *we do not build the frontend*.
   `SendSnapshot.sendID` → `read.getTrack`/snapshot + `SendJson.h` rows, `TrackJson.h` /
   `AddTrackWithFx.h` creation payloads. **`trackID`/`sendID` are identities; `trackId`/`sendIndex`
   stay positional addresses.**
-  **B2** (resolvers accept id-or-index, so the shift payloads stop being load-bearing) and **B3**
-  (durable refs — folder `parentId`/`childIds`, `SONG_PLAN` `cellTrack`, lane `2000+sendIndex`, LFO
-  targets — migrate to ids) remain; B1 alone is what makes a held id survive a removal, which is the
-  bug class behind findings 1/3.
-- **The ledger's review queue is a CLASSIFICATION debt, not a reachability list.** 96 rows are
-  `unresolved`; several are reachable but name-unmatched (`add_fx` → `project.addFxSlot`,
-  `set_fx_bypass` → `project.setFxSlotBypassed`, …) and some are MCP-only by design
-  (`get_project_summary` ≈ `read.snapshot`). `node tools/rpc_parity_map.mjs --show-unresolved`
-  is the work list; classify from the router, never from the name.
+- **Design B2 shipped** (same session): the ids are now ACCEPTED as arguments —
+  `trackId`/`trackID`, `folderId`/`folderID`, `sendIndex`/`sendID` on the track + send CRUD the ids
+  are held for (MCP: set_track, move/remove/duplicate_track, the two folder moves, add/remove_send,
+  the send setters, get_track_sends; RPC: the 13 `project.setTrack*`, move/remove/duplicateTrack, the
+  folder moves, add/removeSend, the send setters, `read.getTrackSends`). One rule, in
+  `src/common/StableRefResolve.h` and shared by both surfaces: the stable id wins, an unknown id is
+  an error naming it, a positional argument naming a different entity is an error naming both,
+  positional-alone is byte-for-byte the old behaviour. **NOT wired on the fx/automation/plugin tools
+  that take `trackId`** — they still take the index, so an agent that holds an id for those must
+  still resolve it (deliberate scope; do not assume otherwise).
+- **Parity ledger classified**: 96 `unresolved` rows → 278 mapped / 12 mcp-only / **17 unresolved**,
+  each mapped row naming the shared entry point it reaches (307 tools / 396 methods). The 17 that
+  remain are a real work list — several are genuinely MISSING routes whose command already exists
+  (`project.applyMovementPlan`, `project.applyAutomationPreset`, `project.setMasterFxParam`,
+  `project.setMasterFxBypassed`, `composition.placePatterns`, `composition.scaleDegreeToPitch`,
+  `session.getClipStates`), and two are near-miss twins worth a decision rather than a rename
+  (`add_library`'s route rejects `type="patch"`; `audio.fm_synthImportSysex` applies live-only where
+  the tool persists the patch). **The ratchet verifies a mapped target EXISTS, never that it means
+  the same thing** — read a regenerated ledger.
+- **The last fixed-port test is gone** (`McpServer.EngineSettingsStartMcpHttp`): the engine config
+  takes `port == 0` while enabling, never persists 0, and reports/persists the bound port.
+- **Design B3 is planned, not built** — `docs/plans/2026-09-23-durable-refs-to-stable-ids.md`
+  migrates the four durable positional vocabularies (folder `parentId`/`childIds`, `SONG_PLAN`
+  `cellTrack`, lane/LFO send addresses) to ids and deletes the remap machinery. It needs a decision
+  on four open questions (keep or drop the shift payloads; migrate-and-drop vs keep both
+  vocabularies; the `2000 + sendIndex` arithmetic hazard above 999 sends; scope/priority). **B1 + B2
+  already make a held id durable and usable**, so B3 is robustness and deletion of machinery, not a
+  prerequisite.
+- **Environment, not code:** running the suite from a sandboxed agent shell loses the child's writes
+  outside the working tree — save/export/render fail with `Access is denied` on `%TEMP%`,
+  preset/template writes fail on `%APPDATA%`, and QSettings-backed tests read the machine's real
+  values. Re-run with `TEMP`/`TMP` inside the repo (15 failures → 172/172 on one focused set); the
+  `%APPDATA%`/QSettings classes stay red in a sandbox. Full recipe + evidence:
+  `docs/testing-mcp.md` ("sandboxed agent shell").
 - The `*FX` CLAP editions still cannot process audio (documented cross-repo limitation, item 1 of
-  the earlier section) and `McpServer.EngineSettingsStartMcpHttp` still binds a fixed port.
+  the earlier section).
+- **Uncommitted files belonging to ANOTHER session are sitting in the tree** (`.gitignore` `.agents/`
+  junction entry, `AGENTS.md` graphify/DSH findings, `docs/skills/README.md` +
+  `docs/skills/psy-song-session/SKILL.md`). They were deliberately left for their author — do not
+  sweep them into an unrelated commit.
 - The full-suite re-baseline of this session's commits: run
   `powershell -File run-tests-sharded.ps1 -Shards 4`. Note the runner counts each `[  FAILED  ]`
   **line** and gtest prints every failure twice, so its "failed" total is ~2× the real count —
