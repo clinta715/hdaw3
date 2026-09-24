@@ -478,7 +478,7 @@ export function TimelineContextMenu({
           <div className="ctx-separator" />
           <button className="ctx-danger" onMouseDown={(e) => {
             e.stopPropagation();
-            rpc.call("project.removeTrack", { trackIndex: emptyContextMenu.trackIndex }).catch(() => {});
+            rpc.call("project.removeTrack", { trackId: emptyContextMenu.trackIndex }).catch(() => {});
             useProjectStore.setState({ isDirty: true });
             onClose();
           }}>

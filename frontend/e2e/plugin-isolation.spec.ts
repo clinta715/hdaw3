@@ -24,7 +24,13 @@ async function waitForPlugins(page: Page, timeoutMs = 30_000): Promise<PluginInf
 async function addFirstAvailablePlugin(page: Page): Promise<string | null> {
   const plugins = await waitForPlugins(page);
   if (plugins.length === 0) return null;
-  const plugin = plugins[0];
+  // plugin.getPlugins is the RAW scan inventory (the Plugin Manager dialog
+  // needs everything), but project.addFxSlot rejects the four gearmulator
+  // *FX shadow editions since 2026-09-23 (synth-only builds that would
+  // silence an FX slot) — pick the first plugin that is not one of them.
+  const shadowFx = ["OsirusFX", "OsTIrusFX", "VavraFX", "XeniaFX"];
+  const plugin = plugins.find((p) => !shadowFx.includes(p.name));
+  if (!plugin) return null;
   await rpcCall(page, "project.addFxSlot", {
     trackIndex: 0,
     type: "plugin",

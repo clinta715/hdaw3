@@ -1,4 +1,6 @@
 #include "Track.h"
+#include "SendProcessor.h"
+#include "FxBusProcessor.h"
 #include "../common/DebugLog.h"
 #include "../common/BufferCheck.h"
 #include "../common/ProjectCommands.h"
@@ -177,6 +179,15 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
                 desc.pluginFormatName = "CLAP";
             else
             {
+                // Unknown/absent pluginFormat degrades the slot to a 'none'
+                // placeholder — name the track, the id no format could be
+                // resolved for, and the slot so the substitution is observable
+                // (lesson 28 / Gate 2). Control thread (rebuild path) — legal
+                // here; never log from processBlock.
+                HDAW_LOG("FXRebuild", (juce::String("rebuildFXChain trackIndex=") + juce::String(trackIndex)
+                    + " pluginId=" + pluginID
+                    + " fmt=" + (pluginFormat.isEmpty() ? juce::String("<empty>") : pluginFormat)
+                    + " slot " + juce::String(i) + " -> none placeholder").toStdString());
                 fxChain.push_back(std::make_unique<TrackFXSlot>("none"));
                 continue;
             }
@@ -414,6 +425,42 @@ void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
     }
 }
 
+// ── Automation handle registration (contract: see the comment on
+// Track::registerSendProcessor in Track.h; the caller hooks live in
+// RoutingManager::addTrack / addSend / removeSend — every rebuild and every
+// incremental send change refreshes these, so the decode sites below always
+// see LIVE processors, Gate 1/10). ──
+void Track::registerSendProcessor(int sendIndex, SendProcessor* send)
+{
+    if (sendIndex < 0) return;
+    // stateLock guards the vector against processBlock's three decode reads
+    // (each runs inside a stateLock.tryEnter() section); block briefly like
+    // rebuildModulation rather than dropping a registration.
+    juce::SpinLock::ScopedLockType lock(stateLock);
+    if (sendIndex >= static_cast<int>(sendHandles.size()))
+        sendHandles.resize(static_cast<size_t>(sendIndex) + 1, nullptr);
+    sendHandles[static_cast<size_t>(sendIndex)] = send;
+}
+
+void Track::setBusRegistry(const std::map<int, FxBusProcessor*>* registry)
+{
+    juce::SpinLock::ScopedLockType lock(stateLock);
+    busRegistry = registry;
+}
+
+SendProcessor* Track::sendForPid(int sendIndex) const
+{
+    if (sendIndex < 0) return nullptr;
+    return getRegisteredSend(sendIndex); // bounds-checked past the count -> no-op
+}
+
+FxBusProcessor* Track::busForPid(int busID) const
+{
+    if (busRegistry == nullptr || busID < 0) return nullptr;
+    const auto it = busRegistry->find(busID);
+    return it != busRegistry->end() ? it->second : nullptr;
+}
+
 void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     static const bool audioDiag = juce::SystemStats::getEnvironmentVariable("HDAW_AUDIO_THREAD_DIAG", "") == "1";
@@ -474,6 +521,21 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                             currentVal = panPosition.getCurrentValue() * 0.5f + 0.5f;
                         else if (pid == 3)
                             currentVal = isMuted.load() ? 1.0f : 0.0f;
+                        // New ranges FIRST (Gate 2): >=3000 bus, then >=2000
+                        // send, both before >=1000 or they would decode as
+                        // out-of-range midiFx. Helpers own the bounds/null
+                        // checks (Gates 2/9); an unregistered pid records the
+                        // 0.0 default, same as a missing fx slot.
+                        else if (pid >= 3000)
+                        {
+                            if (auto* bus = busForPid((pid - 3000) / 8))
+                                currentVal = bus->getParam((pid - 3000) % 8);
+                        }
+                        else if (pid >= 2000)
+                        {
+                            if (auto* send = sendForPid(pid - 2000))
+                                currentVal = send->getSendLevel();
+                        }
                         else if (pid >= 1000)
                         {
                             int si = (pid - 1000) / 100;
@@ -501,6 +563,26 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                                 panPosition.setTargetValue(static_cast<float>(value * 2.0f - 1.0f));
                             else if (pid == 3)
                                 isMuted.store(value >= 0.5f);
+                            // New ranges FIRST (Gate 2) — same order as the
+                            // record site: >=3000 bus, then >=2000 send, both
+                            // before >=1000.
+                            else if (pid >= 3000)
+                            {
+                                // Audio thread: atomics + dirty flag only —
+                                // never FxBusProcessor::setParam's lock path.
+                                if (auto* bus = busForPid((pid - 3000) / 8))
+                                    bus->setAutomationValue((pid - 3000) % 8,
+                                                            static_cast<float>(value));
+                            }
+                            else if (pid >= 2000)
+                            {
+                                // Raw send-gain domain, exactly like the
+                                // setTrackSendLevel command path (no clamp):
+                                // setSendLevel is a lock-free atomic store,
+                                // safe from this audio thread.
+                                if (auto* send = sendForPid(pid - 2000))
+                                    send->setSendLevel(static_cast<float>(value));
+                            }
                             else if (pid >= 1000)
                             {
                                 int si = (pid - 1000) / 100;
@@ -645,6 +727,29 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                         modGain = modVal;
                     else if (pid == 2)
                         modPan = modVal;
+                    // New ranges FIRST (Gate 2) — same order as the record /
+                    // lane-apply sites above: >=3000 bus, then >=2000 send,
+                    // both before >=1000 (the FM 300-308 branch further down
+                    // is untouched — its pre-existing shadowing by >=100 stays
+                    // out of scope).
+                    else if (pid >= 3000)
+                    {
+                        if (auto* bus = busForPid((pid - 3000) / 8))
+                        {
+                            const int p = (pid - 3000) % 8;
+                            // Real-unit additive; setAutomationValue clamps to
+                            // the def range (audio thread: atomics only, the
+                            // DSP push rides the dirty consume).
+                            bus->setAutomationValue(p, bus->getParam(p) + modVal);
+                        }
+                    }
+                    else if (pid >= 2000)
+                    {
+                        // Level modulation: additive with a 0 floor — a full
+                        // negative swing silences the send, never inverts it.
+                        if (auto* send = sendForPid(pid - 2000))
+                            send->setSendLevel(juce::jmax(0.0f, send->getSendLevel() + modVal));
+                    }
                     else if (pid >= 1000)
                     {
                         int si = (pid - 1000) / 100;

@@ -259,6 +259,16 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
                               { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
     }
 
+    // Automation handle registration — the contract comment lives on
+    // Track::registerSendProcessor / Track::setBusRegistry (both ends
+    // greppable): every rebuild hands the fresh Track the LIVE bus-registry
+    // map and, via addSend below, each LIVE SendProcessor, so pid
+    // 2000+sendIndex / 3000+busID*8+paramIndex automation always decodes to
+    // live processors after createSend / removeSend / remove_track /
+    // set_bus_target rebuilds (Gates 1/2/10). Null/bounds-safe downstream: an
+    // unregistered pid is a silent no-op in Track's decode.
+    trackProcessors[trackIndex]->setBusRegistry(&fxBusProcessors);
+
     auto sendList = trackTree.getChildWithName(IDs::SEND_LIST);
     if (sendList.isValid())
     {
@@ -325,6 +335,12 @@ void RoutingManager::removeSendsForTrack(int trackIndex)
         if (it->first.first == trackIndex)
         {
             graph.removeNode(it->second.node.get());
+            // Keep the Track's registration in step with sendConnections
+            // (contract: see Track::registerSendProcessor) — the Track is
+            // still alive here (removeTrack erases it after this call).
+            if (auto tIt = trackProcessors.find(trackIndex);
+                tIt != trackProcessors.end() && tIt->second != nullptr)
+                tIt->second->registerSendProcessor(it->first.second, nullptr);
             it = sendConnections.erase(it);
         }
         else
@@ -473,10 +489,15 @@ void RoutingManager::addSend(int trackIndex, int sendIndex, const juce::ValueTre
     sendProc->setBypassed(sendTree.getProperty(IDs::bypassed, false));
 
     auto sendNode = graph.addNode(std::move(sendProc));
-    sendConnections[{trackIndex, sendIndex}] = {
-        sendNode,
-        static_cast<SendProcessor*>(sendNode->getProcessor())
-    };
+    auto* liveSend = static_cast<SendProcessor*>(sendNode->getProcessor());
+    sendConnections[{trackIndex, sendIndex}] = { sendNode, liveSend };
+    // Registration contract (see Track::registerSendProcessor): the Track's
+    // decode vector mirrors sendConnections by sendIndex — refreshed here for
+    // incremental createSend AND, through addTrack's sendList loop, on every
+    // full rebuild (Gates 1/2/10). removeSend nulls the slot.
+    if (auto tIt = trackProcessors.find(trackIndex);
+        tIt != trackProcessors.end() && tIt->second != nullptr)
+        tIt->second->registerSendProcessor(sendIndex, liveSend);
 
     graph.addConnection({ { trackIt->second->nodeID, 0 }, { sendNode->nodeID, 0 } });
     graph.addConnection({ { trackIt->second->nodeID, 1 }, { sendNode->nodeID, 1 } });
@@ -492,6 +513,21 @@ void RoutingManager::removeSend(int trackIndex, int sendIndex)
         graph.removeNode(it->second.node.get());
         sendConnections.erase(it);
     }
+    // Mirror the removal into the Track's registration (contract: see
+    // Track::registerSendProcessor) so a stale pid 2000+sendIndex decodes to
+    // a null slot — silent no-op, never a dangling pointer. No-op when the
+    // Track is already gone (remove_track's rebuild re-registers everything).
+    if (auto tIt = trackProcessors.find(trackIndex);
+        tIt != trackProcessors.end() && tIt->second != nullptr)
+        tIt->second->registerSendProcessor(sendIndex, nullptr);
+}
+
+// Live send processor for a (trackIndex, sendIndex) — readback/tests mirror of
+// setSendLevel's lookup (nullptr when absent).
+SendProcessor* RoutingManager::getSend(int trackIndex, int sendIndex) const
+{
+    const auto it = sendConnections.find({trackIndex, sendIndex});
+    return it != sendConnections.end() ? it->second.processor : nullptr;
 }
 
 void RoutingManager::setSendLevel(int trackIndex, int sendIndex, float level)

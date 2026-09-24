@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
+#include "common/ProjectCommands.h"
 #include "engine/AudioEngine.h"
 #include "engine/RoutingManager.h"
 #include "engine/MidiClipProcessor.h"
+#include "model/ProjectModel.h"
 
 // Zero-track default contract (v0.33+): createDefaultProject() ships an empty
 // TRACK_LIST — tests own their setup. Seed exactly the tracks the test uses
@@ -879,4 +881,174 @@ TEST(Commands, MidiNoteRecordingFlushOnDisarm)
         }
     }
     EXPECT_TRUE(found);
+}
+
+// ─── Handoff 7: shift-aware removal — durable positional-ref fixup ─────────
+// Tracks are positional: folder parentId/childIds and SONG_PLAN cellTrack hold
+// TRACK_LIST indices. Every test below follows Gate 10 discipline — mutate,
+// drain the routing rebuild, assert the LIVE tree (never ReadModel-only).
+
+namespace {
+ProjectCommands::SongPlanData shiftRefsPlan()
+{
+    ProjectCommands::SongPlanData plan;
+    plan.bpm = 138.0;
+    plan.keyRoot = 5;
+    plan.scaleMode = 7;
+    plan.style = "test";
+    plan.seed = 42;
+    plan.totalBars = 8;
+    plan.sections = { { "intro", "intro", 8, 0.0, 32.0 } };
+    return plan;
+}
+
+ProjectCommands::CellRecipe shiftRefsCell(const char* role, int trackId)
+{
+    ProjectCommands::CellRecipe r;
+    r.section = "intro";
+    r.role = role;
+    r.trackId = trackId;
+    r.sourceKind = "phrase";
+    r.paramsJson = "{}";
+    r.seed = 1;
+    return r;
+}
+} // namespace
+
+TEST(Commands, RemoveTrackRemapsFolderRefsAndReportsShift)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // [X, A(folder), B, C] with B and C children of A.
+    ASSERT_EQ(cmds.addTrack("X"), 0);
+    ASSERT_EQ(cmds.addTrack("A", -1, -1, 2), 1);   // trackType 2 = folder
+    const int b = cmds.addTrack("B");
+    const int c = cmds.addTrack("C");
+    engine.drainPendingRoutingRebuild();
+    cmds.moveTrackIntoFolder(b, 1);
+    cmds.moveTrackIntoFolder(c, 1);
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    ASSERT_EQ(trackList.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2,3");
+
+    // Phase 1: remove X (index 0) — every index above decrements, in ONE walk.
+    auto r = cmds.removeTrack(0);
+    engine.drainPendingRoutingRebuild();
+    EXPECT_TRUE(r.ok);
+    EXPECT_EQ(r.removed, 0);
+    ASSERT_EQ(r.shifted.size(), 3u);
+    EXPECT_EQ(r.shifted[0], std::make_pair(1, 0));
+    EXPECT_EQ(r.shifted[1], std::make_pair(2, 1));
+    EXPECT_EQ(r.shifted[2], std::make_pair(3, 2));
+
+    EXPECT_EQ(trackList.getNumChildren(), 3);
+    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::name).toString().toStdString(), "A");
+    // A's childIds followed B and C down; B/C still point at A (now index 0).
+    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1,2");
+    EXPECT_EQ(static_cast<int>(trackList.getChild(1).getProperty(IDs::parentId, -1)), 0);
+    EXPECT_EQ(static_cast<int>(trackList.getChild(2).getProperty(IDs::parentId, -1)), 0);
+
+    // Phase 2: remove the folder's MIDDLE child (B at index 1) — childIds
+    // drops B and decrements C's entry; C.parentId (0) is untouched.
+    r = cmds.removeTrack(1);
+    engine.drainPendingRoutingRebuild();
+    EXPECT_TRUE(r.ok);
+    EXPECT_EQ(r.removed, 1);
+    ASSERT_EQ(r.shifted.size(), 1u);
+    EXPECT_EQ(r.shifted[0], std::make_pair(2, 1));
+    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::childIds).toString().toStdString(), "1");
+    EXPECT_EQ(static_cast<int>(trackList.getChild(1).getProperty(IDs::parentId, -1)), 0);
+
+    // Phase 3: remove the FOLDER itself — its children fall back to the -1
+    // folder-less sentinel (the exact vocabulary moveTrackOutOfFolder writes).
+    r = cmds.removeTrack(0);
+    engine.drainPendingRoutingRebuild();
+    EXPECT_TRUE(r.ok);
+    ASSERT_EQ(trackList.getNumChildren(), 1);
+    EXPECT_FALSE(trackList.getChild(0).hasProperty(IDs::childIds));
+    EXPECT_EQ(static_cast<int>(trackList.getChild(0).getProperty(IDs::parentId, -1)), -1);
+}
+
+TEST(Commands, RemoveTrackRemapsSongPlanCells)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    ASSERT_GE(cmds.addTrack("T0"), 0);
+    ASSERT_GE(cmds.addTrack("T1"), 0);
+    ASSERT_GE(cmds.addTrack("T2"), 0);
+    engine.drainPendingRoutingRebuild();
+
+    ASSERT_TRUE(cmds.setSongPlan(shiftRefsPlan()).ok);
+    std::string err;
+    ASSERT_TRUE(cmds.setCellRecipe(shiftRefsCell("onT0", 0), &err)) << err;
+    ASSERT_TRUE(cmds.setCellRecipe(shiftRefsCell("onT1", 1), &err)) << err;
+    ASSERT_TRUE(cmds.setCellRecipe(shiftRefsCell("onT2", 2), &err)) << err;
+
+    // Remove the MIDDLE track: the cell on it sentinel-clears to -1, the cell
+    // above it decrements, the cell below is untouched.
+    auto r = cmds.removeTrack(1);
+    engine.drainPendingRoutingRebuild();
+    EXPECT_TRUE(r.ok);
+    EXPECT_EQ(r.removed, 1);
+    ASSERT_EQ(r.shifted.size(), 1u);
+
+    auto cells = engine.getProjectModel().getTree()
+                     .getChildWithName(IDs::SONG_PLAN).getChildWithName(IDs::CELLS);
+    ASSERT_EQ(cells.getNumChildren(), 3);
+    EXPECT_EQ(static_cast<int>(cells.getChild(0).getProperty(IDs::cellTrack, -1)), 0);
+    EXPECT_EQ(static_cast<int>(cells.getChild(1).getProperty(IDs::cellTrack, -1)), -1);
+    EXPECT_EQ(static_cast<int>(cells.getChild(2).getProperty(IDs::cellTrack, -1)), 1);
+
+    // The command-level view agrees.
+    const auto view = cmds.getCells();
+    ASSERT_EQ(view.size(), 3u);
+    EXPECT_EQ(view[1].trackId, -1);
+    EXPECT_EQ(view[2].trackId, 1);
+
+    // Gate 2: a fill over the sentinel cell FAILS with a reason and lands no
+    // clip on the wrong track — the two live cells fill exactly one clip each.
+    auto batch = cmds.fillCells("all");
+    EXPECT_FALSE(batch.ok);
+    EXPECT_EQ(batch.filled, 2);
+    EXPECT_EQ(batch.failed, 1);
+    ASSERT_EQ(batch.cells.size(), 3u);
+    EXPECT_FALSE(batch.cells[1].ok);
+    EXPECT_TRUE(batch.cells[1].error.find("missing track") != std::string::npos)
+        << batch.cells[1].error;
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    ASSERT_EQ(trackList.getNumChildren(), 2);
+    EXPECT_EQ(trackList.getChild(0).getChildWithName(IDs::CLIP_LIST).getNumChildren(), 1);
+    EXPECT_EQ(trackList.getChild(1).getChildWithName(IDs::CLIP_LIST).getNumChildren(), 1);
+}
+
+TEST(Commands, MoveTrackRemapsFolderRefs)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // [A(folder), B(child of A), X].
+    ASSERT_EQ(cmds.addTrack("A", -1, -1, 2), 0);
+    const int b = cmds.addTrack("B");
+    ASSERT_EQ(cmds.addTrack("X"), 2);
+    engine.drainPendingRoutingRebuild();
+    cmds.moveTrackIntoFolder(b, 0);
+
+    // Move X to the front -> [X, A, B]. A's childIds entry (B: 1) and B's
+    // parentId (A: 0) both shift through the permutation. Without the fixup
+    // B.parentId would stay 0 and hand mute/solo to X.
+    cmds.moveTrack(2, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    ASSERT_EQ(trackList.getNumChildren(), 3);
+    EXPECT_EQ(trackList.getChild(0).getProperty(IDs::name).toString().toStdString(), "X");
+    EXPECT_EQ(trackList.getChild(1).getProperty(IDs::name).toString().toStdString(), "A");
+    EXPECT_EQ(trackList.getChild(2).getProperty(IDs::name).toString().toStdString(), "B");
+    EXPECT_EQ(trackList.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2");
+    EXPECT_EQ(static_cast<int>(trackList.getChild(2).getProperty(IDs::parentId, -1)), 1);
 }

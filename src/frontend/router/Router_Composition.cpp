@@ -278,10 +278,18 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         // READ-ONLY arrangement-variety audit (Mix Verifier boredom/static-span gates).
         // Same payload as the MCP tool audit_song_structure via the shared
         // HDAW::structureAuditJson — no render, no mutation.
+        // Optional expectBackbeat (default true): the drop backbeat gate is
+        // psytrance-shaped (clap/snare on 2-and-4) — pass false for dub/one-drop
+        // styles; the gate then reports true with dropChecks.backbeatChecked=false
+        // and dropsMissingBackbeat listed informationally. (Mirrors the MCP
+        // audit_song_structure description.)
+        DispatchResult beErr;
+        const bool expectBackbeat = optBool(o, "expectBackbeat", true, &beErr);
+        if (beErr.isError) return beErr;
         const auto plan = c.getSongPlan();
         const double bpm = engine.getProjectModel().getTree().getProperty(IDs::tempo, 0.0);
         const auto audit = HDAW::auditSongStructure(
-            engine.getProjectModel().getTrackListTree(), plan, bpm);
+            engine.getProjectModel().getTrackListTree(), plan, bpm, expectBackbeat);
         return { false, HDAW::structureAuditJson(audit) };
     }
     if (m == "generateChoppedBreak") {
@@ -1209,8 +1217,11 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
 
     if (m == "verifyPart") {
         // Self-verify a composed part: solo + full-mix render of the track's
-        // window. Synchronous RPC that blocks for both renders. Errors return
+        // window. Synchronous RPC that blocks for the render(s). Errors return
         // in-band via the result's error field like the cases above.
+        // Optional soloOnly (default false): skip the full-mix render; halves
+        // cost / avoids plugin-spawn warmup — mix metrics then report
+        // mixMeasured=false. (Mirrors the MCP verify_part description.)
         int trackIndex;
         if (!requireInt(o, "trackIndex", trackIndex, nullptr))
             return makeError(-32602, "trackIndex required");
@@ -1218,14 +1229,18 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         // B8: optional explicit window in beats. 0/0 = absent (earliest-clip fallback).
         const double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
         const double endBeat = optDouble(o, "endBeat", 0.0, nullptr);
+        DispatchResult boolErr;
+        const bool soloOnly = optBool(o, "soloOnly", false, &boolErr);
+        if (boolErr.isError) return boolErr;
 
-        auto r = c.verifyPart(trackIndex, windowSeconds, startBeat, endBeat);
+        auto r = c.verifyPart(trackIndex, windowSeconds, startBeat, endBeat, soloOnly);
         QJsonObject res{
             { "ok", r.ok },
             { "soloRms", static_cast<double>(r.soloRms) },
             { "soloPeak", static_cast<double>(r.soloPeak) },
             { "mixRms", static_cast<double>(r.mixRms) },
             { "mixPeak", static_cast<double>(r.mixPeak) },
+            { "mixMeasured", r.mixMeasured },
             { "nonClipping", r.nonClipping },
             { "audible", r.audible },
             { "bandsPresent", r.bandsPresent },

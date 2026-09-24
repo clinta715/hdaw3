@@ -68,9 +68,17 @@ protected:
     }
 
     void addPluginSlot() {
-        const QJsonObject args { { "trackId", 0 }, { "pluginId", "fixture.test" } };
-        const auto r = call("add_fx", args);
-        ASSERT_FALSE(isError(r)) << callText("add_fx", args).toStdString();
+        // Built via the COMMAND layer since the 2026-09-23 add_fx gate: the
+        // MCP surface now rejects unresolvable pluginIds (fixture.test is in
+        // no scan cache — that rejection itself is asserted by
+        // unit/frontend/add_fx_parity_test), and this fixture wants the inert
+        // slot, not the surface gate. This is the exact command the MCP
+        // handler ran before (same args: type "plugin" derived from the
+        // pluginId, position -1 append), so the slot is identical:
+        // fxType "plugin", pluginID "fixture.test", pluginFormat "" —
+        // matrix_presets_rpc_test.cpp:58 is the same precedent.
+        engine->getProjectCommands().addFxSlot(0, "plugin", -1, "fixture.test");
+        ASSERT_TRUE(slotTree().isValid()) << "the fixture slot must exist";
     }
 
     QJsonObject call(const char* method, const QJsonObject& args = {}) {

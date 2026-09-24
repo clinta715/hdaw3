@@ -127,6 +127,10 @@ struct FxSlotSnapshot {
     std::string pluginName;
     std::string pluginFormat;
     bool bypassed = false;
+    // Params this slot exposes: internal FX = its defs-table size, plugin =
+    // the loaded instance's parameter count (in-process or isolated proxy),
+    // 0 while the slot has no live instance (unloaded / "none" / pending
+    // rebuild). Computed by TrackFXSlot::paramCount().
     int paramCount = 0;
 };
 

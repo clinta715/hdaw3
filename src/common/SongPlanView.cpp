@@ -123,13 +123,18 @@ QJsonObject structureAuditJson(const SongStructureAudit& audit)
         { "hasPlan", true },
         { "gates", QJsonObject{
             { "boredomSpans", static_cast<int>(audit.spans.size()) },
-            { "allDropsHaveBackbeat", audit.dropNamesMissingBackbeat.empty() },
+            // expectBackbeat=false (backbeatChecked=false): the gate is
+            // treated as satisfied — true — while dropsMissingBackbeat below
+            // stays informational.
+            { "allDropsHaveBackbeat",
+              !audit.backbeatChecked || audit.dropNamesMissingBackbeat.empty() },
             { "dropsAtLeastBuildLoad", audit.dropNamesThinnerThanBuild.empty() },
             { "firstDropHasMotif", !audit.anyDrop || audit.firstDropHasMotif } } },
         { "dropChecks", QJsonObject{
             { "anyDrop", audit.anyDrop },
             { "firstDrop", QString::fromStdString(audit.firstDropName) },
             { "firstDropHasMotif", audit.firstDropHasMotif },
+            { "backbeatChecked", audit.backbeatChecked },
             { "dropsMissingBackbeat", dropsMissing },
             { "dropsThinnerThanBuild", dropsThinner } } },
         { "sections", sections },

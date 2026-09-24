@@ -237,3 +237,30 @@ TEST(SongStructureAudit, NoPlanIsReported)
     EXPECT_FALSE(audit.hasPlan);
     EXPECT_FALSE(audit.ok);
 }
+
+// The backbeat gate is psytrance-shaped (clap/snare on 2-and-4); a faithful dub
+// one-drop (rim = texture, no clap/snare role) fails ONLY that gate by default
+// and passes with expectBackbeat=false — the drops list stays as informational
+// evidence either way, and no other gate changes.
+TEST(SongStructureAudit, DubOneDropFailsDefaultPassesWithoutBackbeatExpectation)
+{
+    SongPlanData p = plan3();
+    auto list = trackListWith({ "kick", "bass", "rim", "hats", "lead" });
+
+    auto def = HDAW::auditSongStructure(list, p, 0.0);
+    EXPECT_TRUE(def.backbeatChecked);
+    EXPECT_FALSE(def.ok) << "default (psytrance) must fail a drop with no backbeat role";
+    EXPECT_EQ(def.dropNamesMissingBackbeat, std::vector<std::string>{ "dropA" });
+    // Backbeat is the ONLY failing gate: spans empty, motif present, load proxy clear.
+    EXPECT_TRUE(def.spans.empty());
+    EXPECT_TRUE(def.firstDropHasMotif);
+    EXPECT_TRUE(def.dropNamesThinnerThanBuild.empty());
+
+    auto off = HDAW::auditSongStructure(list, p, 0.0, /*expectBackbeat=*/false);
+    EXPECT_FALSE(off.backbeatChecked);
+    EXPECT_TRUE(off.ok) << "dub one-drop must pass when the gate is not expected";
+    EXPECT_EQ(off.dropNamesMissingBackbeat, def.dropNamesMissingBackbeat)
+        << "the skipped gate's drops stay informational, identical to the default audit";
+    EXPECT_TRUE(off.spans.empty());
+    EXPECT_TRUE(off.firstDropHasMotif);
+}

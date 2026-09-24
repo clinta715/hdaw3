@@ -11,10 +11,13 @@
 #include "../model/ProjectModel.h"
 #include <vector>
 #include <memory>
+#include <map>
 
 namespace HDAW {
 
 class DecodedSoundPool;
+class SendProcessor;
+class FxBusProcessor;
 
 class Track : public juce::AudioProcessor
 {
@@ -81,6 +84,30 @@ public:
 
     void rebuildModulation(const juce::ValueTree& modulationListTree);
 
+    // ── Automation handle registration (contract, mirrored in the
+    // RoutingManager.cpp addTrack/addSend/removeSend hooks) ──
+    // RoutingManager registers on EVERY rebuild (and on incremental
+    // createSend/removeSend): sendHandles[sendIndex] = the LIVE SendProcessor
+    // behind pid 2000 + sendIndex; busRegistry = RoutingManager's live
+    // FxBusProcessor map behind pid 3000 + busID*8 + paramIndex. Writers take
+    // stateLock; processBlock's three decode sites (automation record, lane
+    // apply, LFO) read these under their existing stateLock.tryEnter()
+    // sections. Behavior: an unregistered index, a null slot, or a registry
+    // miss is a SILENT NO-OP — a pid can never crash and never decodes into
+    // another pid range (Gates 2/9).
+    void registerSendProcessor(int sendIndex, SendProcessor* send);
+    void setBusRegistry(const std::map<int, FxBusProcessor*>* registry);
+
+    // Live-processor probes for tests/readback (unlocked; call after a drained
+    // rebuild).
+    int getNumRegisteredSends() const { return static_cast<int>(sendHandles.size()); }
+    SendProcessor* getRegisteredSend(int sendIndex) const
+    {
+        if (sendIndex < 0 || sendIndex >= static_cast<int>(sendHandles.size())) return nullptr;
+        return sendHandles[static_cast<size_t>(sendIndex)];
+    }
+    const std::map<int, FxBusProcessor*>* getBusRegistry() const { return busRegistry; }
+
     // Back-pointer to the project model + the track's index. Set once at track
     // creation by RoutingManager::addTrack. Used by the FX-mutation methods so
     // they can locate and modify the track's FX_CHAIN subtree in the model.
@@ -129,6 +156,20 @@ private:
 
     ProjectModel* projectModel = nullptr;
     int trackIndex = -1;
+
+    // Registered by RoutingManager (contract: see registerSendProcessor) —
+    // indexed by sendIndex; nullptr slots are unregistered/no-op pids.
+    std::vector<SendProcessor*> sendHandles;
+    const std::map<int, FxBusProcessor*>* busRegistry = nullptr;
+
+    // Pid decode helpers for the three automation sites in processBlock
+    // (record / lane-apply / LFO). Callers hold stateLock (every site runs
+    // inside a stateLock.tryEnter() section). Bounds/null-safe: an index past
+    // sendHandles.size() or a busID missing from busRegistry returns nullptr
+    // and the site no-ops — arithmetic bounds live here so no site can leak
+    // into another pid range (Gates 2/9).
+    SendProcessor* sendForPid(int sendIndex) const;
+    FxBusProcessor* busForPid(int busID) const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Track)
 };

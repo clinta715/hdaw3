@@ -202,7 +202,7 @@ export default function TrackHeaders() {
                 if (dropTarget.position === "after") newIndex = toIndex + 1;
                 if (fromIndex < newIndex) newIndex--;
                 if (fromIndex !== newIndex) {
-                  rpc.call("project.moveTrack", { trackIndex: fromIndex, newIndex }).catch(console.error);
+                  rpc.call("project.moveTrack", { trackId: fromIndex, newIndex }).catch(console.error);
                 }
               }
               setDragIndex(null);
@@ -395,7 +395,7 @@ export default function TrackHeaders() {
             <>
               <button onMouseDown={(e) => {
                 e.stopPropagation();
-                rpc.call("project.duplicateTrack", { trackIndex: headerMenu.trackIndex }).catch(() => {});
+                rpc.call("project.duplicateTrack", { trackId: headerMenu.trackIndex }).catch(() => {});
                 setHeaderMenu(null);
               }}>
                 Duplicate Track
@@ -446,7 +446,7 @@ export default function TrackHeaders() {
               <div className="ctx-separator" />
               <button className="ctx-danger" onMouseDown={(e) => {
                 e.stopPropagation();
-                rpc.call("project.removeTrack", { trackIndex: headerMenu.trackIndex }).catch(() => {});
+                rpc.call("project.removeTrack", { trackId: headerMenu.trackIndex }).catch(() => {});
                 setHeaderMenu(null);
               }}>
                 Delete Track

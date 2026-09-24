@@ -557,7 +557,8 @@ bool AudioEngineCommands::setBusFxParam(int busID, int paramIndex, float value,
     return true;
 }
 
-bool AudioEngineCommands::removeSend(int trackIndex, int sendIndex, std::string& error)
+bool AudioEngineCommands::removeSend(int trackIndex, int sendIndex, std::string& error,
+                                     std::vector<std::pair<int, int>>* shifted)
 {
     auto& model = engine_.getProjectModel();
     auto trackList = model.getTrackListTree();
@@ -575,10 +576,51 @@ bool AudioEngineCommands::removeSend(int trackIndex, int sendIndex, std::string&
         return false;
     }
 
+    const int sendCount = sendList.getNumChildren();   // BEFORE the splice
+
     auto& um = model.getUndoManager();
     um.beginNewTransaction("Remove send");
     sendList.removeChild(sendIndex, &um);
+
+    // Automation lanes durably encode the POSITIONAL sendIndex as paramID
+    // 2000 + sendIndex (pid ranges, docs/adr-automation-model.md: sends fill
+    // 2000..2999, so a sendIndex <= 999). The splice above renumbered every
+    // send above the removed one, so the lanes riding them must follow or
+    // (Gate 2) they silently drive the wrong send / a null registration. The
+    // removed send's own lane is DELETED, not left stale: no removal path
+    // cleans lanes up today (removeFxSlot leaves its 100+slot*100+param lanes
+    // behind — AudioEngineCommands_Fx.cpp:275), but a stale 2000+sendIndex
+    // would hand THIS send's automation to the next send created at that
+    // index — a re-created send must not inherit another device's automation.
+    // One indexed walk over this track's AUTOMATION children only, backward so
+    // removeChild cannot skip the lane that falls into index i; every other
+    // pid range (mixer 1/2/3, track FX 100-999, MIDI FX 1000-1999, stable bus
+    // 3000+busID*8) is untouched. pid-1 != pid always, so no unchanged-value
+    // property writes (lesson 2). All writes take the `um` opened above: they
+    // merge into the existing "Remove send" unit — zero new transactions.
+    if (auto autoList = track.getChildWithName(IDs::AUTOMATION_LIST);
+        autoList.isValid())
+    {
+        const int removedPid = 2000 + sendIndex;
+        for (int i = autoList.getNumChildren() - 1; i >= 0; --i)
+        {
+            auto lane = autoList.getChild(i);
+            const int pid = static_cast<int>(lane.getProperty(IDs::paramID, 0));
+            if (pid == removedPid)
+                autoList.removeChild(i, &um);
+            else if (pid > removedPid && pid <= 2999)
+                lane.setProperty(IDs::paramID, pid - 1, &um);
+        }
+    }
     rebuildRoutingGraph();
+    // Shift report for the mirrored {"ok","removed","shifted"} payload: every
+    // send above the removed one moved down by one. Empty when the last send
+    // went. (The one tree-stored sendIndex — a lane's paramID 2000+idx — was
+    // remapped above; SEND children carry none — see the interface note in
+    // common/ProjectCommands.h.)
+    if (shifted != nullptr)
+        for (int i = sendIndex + 1; i < sendCount; ++i)
+            shifted->emplace_back(i, i - 1);
     return true;
 }
 

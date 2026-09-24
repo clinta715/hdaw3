@@ -8,10 +8,11 @@
 // track FX of the same type agree on what "Room Size 0.5" or "Ratio 4" means:
 // ONE parameter space for the surfaces, not two.
 //
-// The delay return is the FULL 5-param delay since slice C3 of
-// docs/plans/2026-09-22-bus-fx-params.md: FxBusProcessor's delay runs the shared
+// The delay return is the FULL 6-param delay since slice C3 of
+// docs/plans/2026-09-22-bus-fx-params.md (param 5, Damping, added 2026-09-23):
+// FxBusProcessor's delay runs the shared
 // internal delay DSP (engine/InternalDelay.h, the same class TrackFXSlot uses),
-// which genuinely honors Feedback, Mix, SyncToTempo and Division — so
+// which genuinely honors Feedback, Mix, SyncToTempo, Division and Damping — so
 // advertising them is not a fake param (G5). The defs below are pinned to
 // TrackFXSlot::getParamDefsForType("delay") (which derives from
 // InternalDelay::paramDefs()) by BusFxParam.DefTableMatchesTrackFxDefs.
@@ -59,20 +60,22 @@ inline const std::vector<BusFxParamDef>& busFxParamDefs(const juce::String& fxTy
         {"Gain",         0.0f, -24.0f,   24.0f},
     };
     static const std::vector<BusFxParamDef> comp = {
-        {"Threshold", -20.0f, -80.0f,     0.0f},
-        {"Ratio",       4.0f,   1.0f,    40.0f},
+        {"Threshold",  -6.0f, -80.0f,     0.0f},
+        {"Ratio",       2.0f,   1.0f,    40.0f},
         {"Attack",      5.0f,   0.1f,   100.0f},
         {"Release",   100.0f,   1.0f,  2000.0f},
     };
     static const std::vector<BusFxParamDef> delay = {
         // The track delay's defs verbatim: Delay Time (manual seconds) plus the
         // feedback / mix / tempo-sync controls the shared InternalDelay DSP now
-        // really applies on a return. Feedback's 0.99 top is the runaway guard.
+        // really applies on a return, and Damping — the dub feedback-loop
+        // lowpass (0 = hard bypass). Feedback's 0.99 top is the runaway guard.
         {"Delay Time",   0.5f, 0.01f,  5.0f  },
         {"Feedback",     0.3f, 0.0f,   0.99f },
         {"Mix",          0.5f, 0.0f,   1.0f  },
         {"SyncToTempo",  0.0f, 0.0f,   1.0f  },
         {"Division",     0.0f, 0.0f,   6.0f  },
+        {"Damping",      0.0f, 0.0f,   1.0f  },
     };
     static const std::vector<BusFxParamDef> filter = {
         // The track filter's defs verbatim (TrackFXSlot::getParamDefsForType,

@@ -81,7 +81,7 @@ describe("TrackHeaders", () => {
     const { container } = render(<TrackHeaders />);
     fireEvent.contextMenu(container.querySelectorAll(".th-row")[1]);
     fireEvent.mouseDown(screen.getByText("Delete Track"));
-    expect(mockedCall).toHaveBeenCalledWith("project.removeTrack", { trackIndex: 1 });
+    expect(mockedCall).toHaveBeenCalledWith("project.removeTrack", { trackId: 1 });
   });
 
   it("Duplicate Track from the header menu duplicates that track", () => {
@@ -89,7 +89,7 @@ describe("TrackHeaders", () => {
     const { container } = render(<TrackHeaders />);
     fireEvent.contextMenu(container.querySelectorAll(".th-row")[0]);
     fireEvent.mouseDown(screen.getByText("Duplicate Track"));
-    expect(mockedCall).toHaveBeenCalledWith("project.duplicateTrack", { trackIndex: 0 });
+    expect(mockedCall).toHaveBeenCalledWith("project.duplicateTrack", { trackId: 0 });
   });
 
   it("Set Type: MIDI from the header menu retypes the track", () => {

@@ -41,28 +41,36 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   flaky at the start of iteration 2. A comment in the test file
   documents this. A future fix is to make the test order-independent
   (e.g. by isolating the audio device).
-- **`McpServer.HttpRoundTrip` also binds a FIXED port** — `TransportHttp
-  t(18765)` and `http://127.0.0.1:18765/mcp` (mcp_server_test.cpp:115,122).
-  So it fails for a second, unrelated reason whenever anything else holds
-  18765: running the suite while a dev engine is up (observed 2026-09-22,
-  engine held 18765 → this test failed in the full run, then passed in
-  isolation and in a filtered run with the port free). Before blaming a
-  change for this test, free the port and re-run it alone.
-- **Pre-existing failure (deterministic, unrelated to any change):
-  `RespawnPath.RealPathPassesThrough`** (`tests/unit/proxy/crash_recovery_test.cpp:655`,
-  file last touched 2026-08-20). It asserts that
+- **`McpServer.HttpRoundTrip` no longer binds a FIXED port (fixed 2026-09-23).**
+  The test now starts `TransportHttp t(0)` (mcp_server_test.cpp:118) — an
+  OS-assigned **ephemeral** port — so it can never collide with a live engine
+  holding 18765. `TransportHttp::port()` returns the bound port after a successful
+  `start()` on port 0 (asserted by `HttpTransport.StartStopLifecycle`,
+  transport_http_test.cpp:36), and the round-trip URL is built from that port. The
+  one fixed port left in the suite is `McpServer.EngineSettingsStartMcpHttp`, which
+  still drives `mcp/httpPort = 18766` through the real Preferences path
+  (mcp_server_test.cpp:171); fixing that needs production config plumbing, so it is
+  out of scope — if the suite ever fails there, free 18766 first (the 2026-09-22
+  "dev engine holds the port" symptom can now only hit that test, never
+  `HttpRoundTrip`).
+- **`RespawnPath.RealPathPassesThrough` — expectation is now platform-gated**
+  (`tests/unit/proxy/crash_recovery_test.cpp:655`). It asserts that
   `PluginManager::resolveRespawnPath("/usr/lib/MyPlugin.clap", …)` returns
-  that Unix-style path unchanged, and fails on this Windows environment
-  (the `EXPECT_EQ` also renders the `const char*` operand as a pointer —
-  a gtest/JUCE-`String` typing artifact). It does not involve any
-  command/model code. Treat it as a known red test when running the full
-  suite, and note that the "1 flake" baseline recorded in `AGENTS.md`
+  that Unix-style path unchanged. That was a deterministic red on Windows:
+  JUCE's `File::isAbsolutePath` rejects Unix-style paths there, so the
+  resolver correctly returns empty (refusing to spawn a child with a
+  foreign-platform path) — the test now runs the `C:\...` passthrough
+  assert under `#ifdef _WIN32` and the `/usr/...` passthrough assert
+  under `#else`, so it is no longer a known red. It does not involve any
+  command/model code. The "1 flake" baseline recorded in `AGENTS.md`
   (2026-09-21) is stale — a full run on 2026-09-22 showed 4 failures, of
   which 3 clear when the port is free / the tests are run in a filtered
   order (2 of them `McpServer.*`) and the 4th is the documented
   `PluginIsolation.LargeStateRoundTripThroughProxy` flake. **Two full runs on
   2026-09-22 pin this down: with a dev engine holding 18765 → 4 failures (the two
-  `McpServer.*` above included); with the port free → exactly 2, the two
+  `McpServer.*` above included — that half is now historical: `HttpRoundTrip` binds
+  an ephemeral port since 2026-09-23, only `EngineSettingsStartMcpHttp`'s fixed
+  18766 remains); with the port free → exactly 2, the two
   pre-existing ones listed here. So the "1 flake" baseline in `AGENTS.md`
   (2026-09-21) is stale, and the two `McpServer.*` failures are an artifact of
   running the suite alongside a live engine, not a regression.**
@@ -100,12 +108,38 @@ touching live processors (`getMainProcessor()`) MUST call
 message thread, and must not hold a `MessageManagerLock`
 (`callFunctionOnMessageThread` jasserts).
 
+### Render-suite bake starvation under heavy preceding suites (2026-09-23)
+
+`export failed: Render graph bake timed out after 15000ms` is a **budget** symptom,
+not a correctness one. In the 2026-09-23 full gate matrix (563 tests / 42 suites →
+545 passed, 3 skipped) **14 render/verify tests failed with exactly that message and
+ALL passed in isolation** — a heavy preceding CLAP-suite run exhausts the render
+bake's fixed 15 s budget floor. Example: `VerifyPart.ComposedPartPasses` renders in
+**373 ms solo vs ~17 s in the same full run**. Do NOT attribute these failures to a
+code change without a **solo confirmation** first.
+
+**Rule:** when diagnosing render/verify failures, run those suites in a **lighter
+batch or solo** — preceding suites can starve the bake budget even though the suite
+is green on its own.
+
+**Related self-inflicted hazard (same session):** starting a **second
+`build-fast.bat` while one is already running** collides in the shared build
+directory — `LNK1104: cannot open file 'hdaw_tests.exe'` plus `LNK4076 invalid .ilk`
+(the two linkers fight over the same PDB/ILK and output exe). NEVER start a second
+build while one runs; wait for the first to exit.
+
 ## Frontend Tests (v0.12.0+)
+
+**DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
+date — the repo no longer builds or tests it. Do NOT run these suites (`npm test`,
+`npm run test:watch`, `npm run test:coverage`, `npm run test:e2e`,
+`npm run test:e2e:ui`); the commands and listings below are retained for reference.
+Engine-only verification: `build/hdaw_tests.exe` (gtest) + the MCP surface.
 
 The React frontend has a comprehensive test suite using **Vitest** for
 unit/component tests and **Playwright** for E2E tests.
 
-### Unit & Component Tests (Vitest)
+### Unit & Component Tests (Vitest) — **DEPRECATED (2026-09-23)**
 
 - **Run**: `cd frontend && npm test`
 - **Watch mode**: `npm run test:watch`
@@ -133,7 +167,7 @@ unit/component tests and **Playwright** for E2E tests.
 
 Total: **~78 frontend tests** covering all Zustand stores and key UI components.
 
-### E2E Tests (Playwright)
+### E2E Tests (Playwright) — **DEPRECATED (2026-09-23)**
 
 - **Run**: `cd frontend && npm run test:e2e`
 - **Interactive UI**: `npm run test:e2e:ui`
@@ -303,7 +337,12 @@ were staged; only the reply was lost). So:
   `analyze_tuning` accept `wait:false` → poll `poll_job`).
 - After a drop, **re-read state before retrying** — the mutation very likely applied.
   A blind retry double-applies it (the same reason lesson 29 says never blind-retry a
-  timed-out call).
+  timed-out call). (The *server-side* dropped-response mechanism behind the 2026-09-22
+  observations is fixed — `TransportHttp::start` now sets a 900 s keep-alive instead of
+  Qt's 15 s default, so a long synchronous rebuild no longer discards its buffered
+  response; see `docs/composition-toolkit.md` and
+  `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`. The re-read rule stays as
+  general client hygiene — a socket can still drop for reasons outside the server.)
 - Do not run `save_project` concurrently with an export: on 2026-09-22 a render that
   had reported "export complete" was gone from disk when the save ran alongside it.
   Save between mutation groups, after the export job reports finished.

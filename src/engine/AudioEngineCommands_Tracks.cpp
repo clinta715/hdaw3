@@ -1,4 +1,5 @@
 #include "AudioEngineCommands.h"
+#include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
 #include "../model/ProjectModel.h"
 #include "../common/MasterFxDefs.h"
@@ -17,25 +18,50 @@ int AudioEngineCommands::addTrack(const std::string& name, int color, int parent
     return idx;
 }
 
-void AudioEngineCommands::removeTrack(int trackIndex)
+ProjectCommands::TrackRemovalResult AudioEngineCommands::removeTrack(int trackIndex)
 {
-    auto& um = engine_.getProjectModel().getUndoManager();
-    auto trackList = engine_.getProjectModel().getTrackListTree();
-    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
-        trackList.removeChild(trackIndex, &um);
+    ProjectCommands::TrackRemovalResult result;
+    auto& model = engine_.getProjectModel();
+    auto& um = model.getUndoManager();
+    auto trackList = model.getTrackListTree();
+    const int count = trackList.getNumChildren();
+    if (trackIndex < 0 || trackIndex >= count)
+        return result;   // ok=false, removed=-1: NO tree change
+
+    trackList.removeChild(trackIndex, &um);
+    // Durable positional refs (folder parentId/childIds, SONG_PLAN cellTrack)
+    // still hold PRE-removal indices — remap them in ONE indexed walk so
+    // mute/solo cascades, timeline hiding and cell fills keep landing on the
+    // right track (handoff 7 design A). Same undo manager as the splice, so
+    // remove + fixup coalesce into one undo unit like the splice always did.
+    HDAW::remapTrackPositionalRefs(trackList, model.getTree(),
+                                    HDAW::trackRemovalIndexMap(count, trackIndex), &um);
+
+    result.ok = true;
+    result.removed = trackIndex;
+    for (int i = trackIndex + 1; i < count; ++i)
+        result.shifted.emplace_back(i, i - 1);
+    return result;
 }
 
 void AudioEngineCommands::moveTrack(int trackIndex, int newIndex)
 {
-    auto& um = engine_.getProjectModel().getUndoManager();
-    auto trackList = engine_.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
-    if (newIndex < 0 || newIndex >= trackList.getNumChildren()) return;
+    auto& model = engine_.getProjectModel();
+    auto& um = model.getUndoManager();
+    auto trackList = model.getTrackListTree();
+    const int count = trackList.getNumChildren();
+    if (trackIndex < 0 || trackIndex >= count) return;
+    if (newIndex < 0 || newIndex >= count) return;
     if (trackIndex == newIndex) return;
     auto track = trackList.getChild(trackIndex);
+    const int to = newIndex;
     trackList.removeChild(trackIndex, &um);
-    if (newIndex > trackIndex) --newIndex;
+    if (to > trackIndex) --newIndex;
     trackList.addChild(track, newIndex, &um);
+    // A reorder shifts every index between the two positions: remap the same
+    // durable refs through the move permutation (one indexed walk).
+    HDAW::remapTrackPositionalRefs(trackList, model.getTree(),
+                                    HDAW::trackMoveIndexMap(count, trackIndex, to), &um);
 }
 
 void AudioEngineCommands::setTrackName(int trackIndex, const std::string& name)

@@ -492,14 +492,23 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
         "consecutive non-build sections with no melodic and no backbeat role — hats-only / "
         "bass-hat-only / silence), drop sections missing a clap/snare backbeat, and whether the "
         "first drop carries a lead/stab/motif. Gates: boredomSpans, allDropsHaveBackbeat, "
-        "firstDropHasMotif, dropsAtLeastBuildLoad. Never mutates; no render.",
-        objSchema({}, {}),
+        "firstDropHasMotif, dropsAtLeastBuildLoad. Never mutates; no render. Optional "
+        "expectBackbeat (default true): the drop backbeat gate is psytrance-shaped (clap/snare "
+        "on 2-and-4) — pass false for dub/one-drop styles; the gate then reports true with "
+        "dropChecks.backbeatChecked=false and dropsMissingBackbeat listed informationally. "
+        "Calls the same shaper as the composition.auditSongStructure RPC.",
+        objSchema({{"expectBackbeat", QJsonObject{{"type","boolean"},{"default",true},
+                     {"description","false skips the psytrance-shaped allDropsHaveBackbeat "
+                        "gate (dub/one-drop styles): the gate then reports true with "
+                        "dropChecks.backbeatChecked=false and dropsMissingBackbeat listed "
+                        "informationally"}}}}, {}),
         "composition",
-        [e](const QJsonObject&) -> McpToolResult {
+        [e](const QJsonObject& a) -> McpToolResult {
             const auto plan = e->getProjectCommands().getSongPlan();
             const double bpm = e->getProjectModel().getTree().getProperty(IDs::tempo, 0.0);
+            const bool expectBackbeat = a.value("expectBackbeat").toBool(true);
             const auto audit = HDAW::auditSongStructure(
-                e->getProjectModel().getTrackListTree(), plan, bpm);
+                e->getProjectModel().getTrackListTree(), plan, bpm, expectBackbeat);
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(HDAW::structureAuditJson(audit)).toJson(QJsonDocument::Compact)));
         } });

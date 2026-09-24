@@ -21,7 +21,7 @@ public:
 
     // ProjectCommands — Track operations
     int addTrack(const std::string& name, int color, int parentBus, int trackType) override;
-    void removeTrack(int trackIndex) override;
+    TrackRemovalResult removeTrack(int trackIndex) override;
     void moveTrack(int trackIndex, int newIndex) override;
     void setTrackName(int trackIndex, const std::string& name) override;
     void setTrackColor(int trackIndex, int color) override;
@@ -57,7 +57,8 @@ public:
     BusRetargetResult setBusTarget(int busID, int busTarget) override;
     SendCreateResult createSend(int trackIndex, int busTarget, float level,
                                 bool isPreFader) override;
-    bool removeSend(int trackIndex, int sendIndex, std::string& error) override;
+    bool removeSend(int trackIndex, int sendIndex, std::string& error,
+                    std::vector<std::pair<int, int>>* shifted) override;
 
     // ProjectCommands — Bus FX params (defs in common/BusFxDefs.h; clamped tree
     // write + live apply; rejects an unknown bus / non-fx bus / unknown fxType /
@@ -141,7 +142,8 @@ public:
                                       const juce::String& status,
                                       int stateBytes);
     VerifyPartResult verifyPart(int trackIndex, double windowSeconds,
-                                double startBeat = 0.0, double endBeat = 0.0) override;
+                                double startBeat = 0.0, double endBeat = 0.0,
+                                bool soloOnly = false) override;
 
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;

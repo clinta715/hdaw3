@@ -655,14 +655,19 @@ TEST(RespawnPath, ResolveKnownIdentifier) {
 TEST(RespawnPath, RealPathPassesThrough) {
     juce::KnownPluginList knownList;
 
-    // Real file paths pass through unchanged.
+    // Real file paths pass through unchanged — but path absoluteness is
+    // platform-specific (JUCE File::isAbsolutePath) and resolveRespawnPath
+    // returning empty for a foreign-platform path is correct (refuse-to-
+    // spawn); docs/testing-mcp.md:51-57 documented the old deterministic red.
+#ifdef _WIN32
     auto vst3 = HDAW::PluginManager::resolveRespawnPath(
         "C:\\plugins\\MyPlugin.vst3", knownList);
     EXPECT_EQ(vst3, "C:\\plugins\\MyPlugin.vst3");
-
+#else
     auto clap = HDAW::PluginManager::resolveRespawnPath(
         "/usr/lib/MyPlugin.clap", knownList);
     EXPECT_EQ(clap, "/usr/lib/MyPlugin.clap");
+#endif
 }
 
 TEST(RespawnPath, TestSentinelPassesThrough) {

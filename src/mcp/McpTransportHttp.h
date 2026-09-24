@@ -12,6 +12,8 @@ public:
     void stop() override;
     void send(const QByteArray& jsonLine) override;
     void notify(const QByteArray& jsonLine) override;
+    // Bound port after start(), requested port before (0 = OS-assigned
+    // ephemeral, exposed once start() succeeds).
     quint16 port() const { return port_; }
     QString lastError() const { return lastError_; }
 private:

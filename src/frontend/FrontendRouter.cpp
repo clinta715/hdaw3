@@ -1,6 +1,7 @@
 #include "FrontendRouter.h"
 #include "FrontendServer.h"
 
+#include "../common/FxPluginIdCheck.h"
 #include "../engine/AudioEngine.h"
 
 #include <QJsonArray>
@@ -53,6 +54,17 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
             QJsonArray arr;
             for (int id : clipIds) arr.append(id);
             return { false, QJsonObject{ { "clipIds", arr }, { "trackCount", static_cast<int>(clipIds.size()) } } };
+        }
+        // RPC twin of the MCP add_fx pluginId gate: dispatchProject receives
+        // only ProjectCommands& (no plugin/model access), so the check runs
+        // here — the same engine-context precedent as importMidiFile above.
+        // HDAW::fxPluginIdError is shared with src/mcp/McpTools_FxSlot.cpp,
+        // so both surfaces fail with byte-identical text (add_fx parity test).
+        if (m == "addFxSlot") {
+            const auto pluginId = optString(paramsObject(params), "pluginId", "");
+            if (const auto err = HDAW::fxPluginIdError(pluginId, engine.getProjectModel());
+                !err.empty())
+                return makeError(-32602, QString::fromStdString(err));
         }
         return dispatchProject(engine.getProjectCommands(), m, params);
     }

@@ -2,6 +2,7 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+#include "../common/FxPluginIdCheck.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -58,7 +59,13 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
                 QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
-    s.registerTool({"remove_track", "Remove a track (destructive).",
+    s.registerTool({"remove_track",
+        "Remove a track (destructive). Returns compact JSON "
+        "{\"ok\":true,\"removed\":<oldIndex>,\"shifted\":[{\"from\":N,\"to\":N-1},...]}: "
+        "`removed` is the deleted track's old index and `shifted` lists every track "
+        "index above it moved down by one ([] when the last track was removed) — the "
+        "identical payload RPC project.removeTrack returns. Folder parent/child links "
+        "and song-plan cell track refs are remapped by the shared command path.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"dryRun",  QJsonObject{{"type","boolean"}}},
                   {"force",   QJsonObject{{"type","boolean"}}}}, {"trackId"}),
@@ -81,12 +88,18 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             }
             if (clipCount > 0 && !a.value("force").toBool(false))
                 return McpToolResult::text(QString("track %1 (%2) has %3 clips. Pass force:true to confirm deletion.").arg(id).arg(name).arg(clipCount), true);
-            tl.removeChild(id, &m.getUndoManager());
-            int totalTracks = tl.getNumChildren();
-            QString result = QString("removed track %1 (%2)").arg(id).arg(name);
-            if (id < totalTracks)
-                result += QString(". Note: track IDs above %1 have shifted down by 1.").arg(id);
-            return McpToolResult::text(result);
+            // ONE removal path (handoff 7): the shared command splices AND
+            // remaps the durable positional refs, and returns the shift report.
+            // Undo semantics are unchanged — the command's removeChild(&um) is
+            // exactly what this inline path did before.
+            const auto res = e->getProjectCommands().removeTrack(id);
+            QJsonArray shifted;
+            for (const auto& p : res.shifted)
+                shifted.append(QJsonObject{{"from", p.first}, {"to", p.second}});
+            const QJsonObject result{{"ok", res.ok}, {"removed", res.removed},
+                                     {"shifted", shifted}};
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"set_track", "Update track properties (partial).",
@@ -135,8 +148,14 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             if (id < 0 || id >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
             ni = std::clamp(ni, 0, tl.getNumChildren() - 1);
             auto t = tl.getChild(id);
+            const int count = tl.getNumChildren();
             tl.removeChild(id, nullptr);
             tl.addChild(t, ni, &um);
+            // This splice stays inline (its undo behavior is untouched), but it
+            // runs the SAME durable-ref fixup the command path runs — a reorder
+            // shifts every index between the two positions (handoff 7).
+            HDAW::remapTrackPositionalRefs(tl, m.getTree(),
+                                            HDAW::trackMoveIndexMap(count, id, ni), &um);
             return McpToolResult::text("ok");
         }});
 
@@ -170,6 +189,16 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
             auto& um = m.getUndoManager();
+            // Gate pluginId BEFORE the track exists: a shadow-edition or
+            // unresolvable id must not silently slot a 'none' placeholder
+            // through this composite tool (item-1 hole). The SAME shared
+            // validator as add_fx / the project.addFxSlot intercept formats
+            // the text, so both surfaces fail byte-identically
+            // (src/common/FxPluginIdCheck.h). Empty pluginId (track without
+            // a plugin) passes untouched — the add_fx accept rules.
+            const std::string pluginId = a.value("pluginId").toString().toStdString();
+            if (const auto err = HDAW::fxPluginIdError(pluginId, m); !err.empty())
+                return McpToolResult::text(QString::fromStdString(err), true);
             int idx = m.getTrackListTree().getNumChildren();
 
             juce::ValueTree t(IDs::TRACK);
@@ -188,7 +217,6 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             m.getTrackListTree().addChild(t, -1, &um);
 
             std::string fxType = a.value("fxType").toString().toStdString();
-            std::string pluginId = a.value("pluginId").toString().toStdString();
             if (fxType.empty() && !pluginId.empty()) fxType = "plugin";
             if (!fxType.empty())
                 m.addFxSlot(idx, fxType, -1, pluginId);

@@ -29,7 +29,7 @@
         "a kick in EVERY section collapses the arc to 1.1 dB; removing it from intro/outro/breakdown restored 14.1 dB (arrangement node)",
         "element-level transient shaping does not move the crest (+0.23 dB, peak x0.989)",
         "RAVE print -> transform -> re-import works: export_audio a stem (seconds), rave_transform_file (5 s), re-import as a sampler layer",
-        "buses/sends have no agent surface \u2014 shared returns are impossible, so the space node is per-track FX + lanes"
+        "buses/sends have no agent surface \u2014 shared returns are impossible, so the space node is per-track FX + lanes [UPDATED 2026-09-23: now false \u2014 buses/sends have a full agent surface (add_bus / add_send / remove_bus / remove_send / list_buses) and send levels are automatable (paramID 2000 + sendIndex); shared returns are buildable and measured (aether_dub: +2.85 dB on the send). Original ledger entry kept as history.]"
       ]
     },
     "phrygian_embers": {
@@ -224,9 +224,40 @@
       },
       "taught": [
         "A bus return's Mix defaults to 0.5, which re-adds a doubled dry signal - set Mix 1.0 for a pure return (trap: bus-return-mix).",
-        "Send levels are NOT automatable (no paramID range), so a per-phrase throw must come from a per-track delay slot (trap: send-levels-not-automatable).",
+        "Send levels are NOT automatable (no paramID range), so a per-phrase throw must come from a per-track delay slot (trap: send-levels-not-automatable). [UPDATED 2026-09-23: send levels ARE automatable - paramID 2000 + sendIndex; measured in walk_minimal_3track below.]",
         "A bus created after the graph was last prepared is never prepared itself, and processing it corrupted memory until FxBusProcessor::processBlock grew a fail-safe guard.",
         "A rebuild that connects while creating silently fell back to master for a parent later in BUS_LIST - fixed by the two-phase rebuild in set_bus_target."
+      ]
+    },
+    "walk_minimal_3track": {
+      "date": "2026-09-23",
+      "tree": "docs/paths/psydub.json",
+      "seed": 2026092302,
+      "walked": "Deliberate minimal 3-track walk (sub_synth / fm_synth / psy_fm internal instruments, 24 notes, tempo 120, 16 beats) driven over MCP stdio to prove the two unproven branches. Offline renders only (disconnected RDP session - no live audio route); audibility proven before any gate (peaks to +/-0.755).",
+      "path": {
+        "movement": "movement-plan",
+        "rides": "arc-pass + return-ride + staging-pass (all three, as a node, for the first time)"
+      },
+      "verdict": {
+        "audible": true,
+        "peak": 0.755,
+        "gates": "movement-plan PASS; return-ride PASS; arc-pass PASS; staging-pass PROVEN WITH CAVEAT (interaction, below)"
+      },
+      "branch_results": {
+        "movement-plan": "PROVEN - apply_movement_plan {trackId, preset: subtleLife/openClose/pump, start 0, end 16} wrote 16/64/64 Volume points in ONE undo unit (okCount 3, failCount 0); gate audit_modulation_coverage -> attentionRequiredIds == [], fullyCovered 3/3. CAVEAT: preset events default to paramID 1 (Volume), which makes every touched track faderOverridden - see staging-pass.",
+        "return-ride": "PROVEN - delay bus (busID 2) + send (sendIndex 0) + return Mix 1.0 / Feedback 0.65; A/B export send 0.0 vs 1.0 -> mix_diff rmsDb -3.59 (|delta| >= the +1.5 measured bar). The per-phrase RIDE itself: add_automation_lane {paramID 2000} + automation_preset {preset macro, 64 points} -> ride export vs static send-1.0 mix_diff rmsDb -1.47 (audible per-phrase movement).",
+        "arc-pass": "PROVEN (with a pid caveat) - add_automation_lane {paramID 100, laneName Arc, replace true} + automation_preset {preset openClose, clear true, 64 points}; gate tone_verity: baselineAudible true, centroidStart 264.1 -> centroidEnd 284.2, amDepth 2.69. CAVEAT: the filter landed in FX slot 1, so its cutoff pid was 200 - the arc on pid 100 modulated the instrument slot's first param instead, and STILL moved the centroid measurably. Address params by the slot the effect actually landed in.",
+        "staging-pass": "PROVEN WITH CAVEAT - set_track {volume 0.8} applies, but the gate as written (no unintended track in faderOverriddenIds) reports [0,1,2]: movement-plan's default Volume lanes claim fader authority on every track they touch. The two branches interact - run movement-plan with an explicit paramID (not the Volume default) if staging by fader is planned afterwards."
+      },
+      "cost": {
+        "renders": 5,
+        "note": "five 8 s offline exports + one tone_verity; all offline (no live audio route needed)"
+      },
+      "taught": [
+        "apply_movement_plan's preset events default to paramID 1 (the built-in Volume lane): convenient for coverage, but every touched track becomes faderOverridden - plan staging around it.",
+        "Send levels ARE automatable now: the return-ride A/B and the 64-point macro lane on paramID 2000 both measured (closes the aether_dub_returns lesson above).",
+        "add_fx fxType enum has internal INSTRUMENTS (sub_synth / fm_synth / psy_fm / sampler / psyarp / growl_bass) - a minimal audible walk needs no CLAP plugins and no audio route, only offline exports.",
+        "Internal-synth instrument slots occupy FX slot 0: the first insert FX lands in slot 1, so its compound pid starts at 200, not 100."
       ]
     }
   },
@@ -234,6 +265,7 @@
     "_note": "derived view for select_path: how often a branch has been walked and whether it held its gate",
     "measured_ok": [
       "analysed-corpus-riff",
+      "arc-pass",
       "broken-midtempo",
       "c-minor-corpus-match",
       "canary-master",
@@ -252,10 +284,12 @@
       "internal-core",
       "kickless-breakdown",
       "measure-dont-guess",
+      "movement-plan",
       "none",
       "one-drop-holes-and-drum-dropout",
       "per-track-lfo",
       "rave-only",
+      "return-ride",
       "rolling-sub",
       "sample-led",
       "seven-layer-seeded",
@@ -273,12 +307,11 @@
       "sample-led",
       "seven-layer-seeded",
       "slow-burn",
+      "staging-pass",
       "sub-only",
       "three-sixteenth-rhodes-tape-echo",
       "window-probe"
     ],
-    "never_walked": [
-      "movement-plan"
-    ]
+    "never_walked": []
   }
 }

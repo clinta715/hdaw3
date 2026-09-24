@@ -155,7 +155,12 @@ void registerSendTools(McpServer& s, AudioEngine* e)
                 {"ok", true}, {"sendIndex", r.sendIndex}}).toJson(QJsonDocument::Compact)));
         }});
 
-    s.registerTool({"remove_send", "Remove a send from a track by its index.",
+    s.registerTool({"remove_send",
+        "Remove a send from a track by its index. Returns compact JSON "
+        "{\"ok\":true,\"removed\":<sendIndex>,\"shifted\":[{\"from\":N,\"to\":N-1},...]}: "
+        "`shifted` lists the sends above the removed one re-indexed down by one "
+        "([] when the last send was removed) — the identical payload RPC "
+        "project.removeSend returns. (Was the bare text \"ok\" before the shift report.)",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"sendIndex", QJsonObject{{"type","integer"}}}}, {"trackId","sendIndex"}),
         "send",
@@ -163,9 +168,16 @@ void registerSendTools(McpServer& s, AudioEngine* e)
             const int ti = a.value("trackId").toInt(-1);
             const int si = a.value("sendIndex").toInt(-1);
             std::string error;
-            if (!e->getProjectCommands().removeSend(ti, si, error))
+            std::vector<std::pair<int, int>> shifted;
+            if (!e->getProjectCommands().removeSend(ti, si, error, &shifted))
                 return McpToolResult::text(QString::fromStdString(error), true);
-            return McpToolResult::text("ok");
+            QJsonArray shiftedArr;
+            for (const auto& p : shifted)
+                shiftedArr.append(QJsonObject{{"from", p.first}, {"to", p.second}});
+            const QJsonObject result{{"ok", true}, {"removed", si},
+                                     {"shifted", shiftedArr}};
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
     // --- Bus FX params + bus discovery (docs/plans/2026-09-22-bus-fx-params.md, slice C) ---

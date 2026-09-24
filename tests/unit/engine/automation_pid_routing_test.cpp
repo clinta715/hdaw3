@@ -99,6 +99,23 @@ juce::AudioBuffer<float> makeSineMix()
     return buf;
 }
 
+// paramID of the named automation lane on a track (-999 when no lane owns the
+// name) — the tree-side contract of the send-removal remap tests below assert
+// exact paramIDs on the AUTOMATION_LIST, never a ReadModel projection.
+int lanePidOf(AudioEngine& engine, int trackIndex, const std::string& name)
+{
+    const auto autoList = engine.getProjectModel().getTrackListTree()
+                              .getChild(trackIndex)
+                              .getChildWithName(IDs::AUTOMATION_LIST);
+    for (int i = 0; i < autoList.getNumChildren(); ++i)
+    {
+        const auto lane = autoList.getChild(i);
+        if (lane.getProperty(IDs::name, "").toString().toStdString() == name)
+            return static_cast<int>(lane.getProperty(IDs::paramID, 0));
+    }
+    return -999;
+}
+
 } // namespace
 
 // An automation lane with the AUDIO compound pid 200 (= fx slot 1, param 0)
@@ -306,4 +323,452 @@ TEST(AutomationPidRouting, LfoTarget1000ModulatesLiveArp)
     EXPECT_GT(after, base) << "LFO target 1000 must modulate live midiFx[0] param 0";
     // Pre-fix, pid 1000 decoded as midiFx slot 8 (out of range) -> no change.
     EXPECT_NE(after, base);
+}
+
+// ── Send-level (2000+) and bus-FX (3000+) automatable pids ───────────────
+// Same discipline as the tests above: decode is pinned on the LIVE processors
+// (getMainProcessor()->getTrack / getRoutingManager()), through a full
+// rebuildRoutingGraph — mutate -> rebuild -> apply -> LIVE assert, never
+// ReadModel-only (Gates 1/2/9/10).
+
+// A lane bound to pid 2000 + sendIndex drives the LIVE SendProcessor's level
+// in the raw send-gain domain, and the registration survives a full rebuild:
+// the post-rebuild apply must move the NEW live SendProcessor, asserted from
+// BOTH ends of the registration contract (RoutingManager::getSend and the
+// Track's registered handle are the same object).
+TEST(AutomationSendBusPids, SendLaneDrivesLiveSendLevelAcrossRebuild)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    // The default project ships bus 1 = "Reverb" (fx) — route a send there.
+    const auto send = cmds.createSend(0, 1, 0.0f, false);
+    ASSERT_TRUE(send.ok) << send.error;
+    ASSERT_EQ(send.sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+
+    // Lane bound to pid 2000 + sendIndex(0). Points are in BEATS: 0 -> 0.25,
+    // 16 beats @120 BPM = 8 s -> 1.0, holding after that.
+    ASSERT_TRUE(cmds.addAutomationLane(0, "SendLevel", 2000));
+    cmds.addAutomationPoint(0, "SendLevel", 0.0, 0.25f);
+    cmds.addAutomationPoint(0, "SendLevel", 16.0, 1.0f);
+
+    // Gate 10: the full rebuild must re-register the FRESH Track's handles.
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+
+    // Both ends of the registration contract point at the SAME live object.
+    ASSERT_EQ(track->getNumRegisteredSends(), 1);
+    auto* registered = track->getRegisteredSend(0);
+    ASSERT_NE(registered, nullptr);
+    auto* live = rm->getSend(0, send.sendIndex);
+    ASSERT_NE(live, nullptr);
+    ASSERT_EQ(registered, live);
+
+    FixedPlayHead ph;
+    track->setPlayHead(&ph);
+    juce::AudioBuffer<float> buf(2, kBlock);
+    juce::MidiBuffer midi;
+
+    ph.setTimeSeconds(0.0);
+    track->processBlock(buf, midi);
+    EXPECT_FLOAT_EQ(live->getSendLevel(), 0.25f)
+        << "pid 2000 lane must reach the live SendProcessor (raw level domain)";
+
+    ph.setTimeSeconds(10.0); // past the 8 s point -> the lane holds 1.0
+    buf.clear();
+    track->processBlock(buf, midi);
+    EXPECT_FLOAT_EQ(live->getSendLevel(), 1.0f);
+    EXPECT_FLOAT_EQ(registered->getSendLevel(), 1.0f)
+        << "registered handle and RoutingManager state are one object";
+}
+
+// A lane bound to pid 3000 + busID*8 + paramIndex drives the LIVE
+// FxBusProcessor param in the def's REAL units (Q 2.0 -> 5.0; a normalized
+// decode would clamp to 1.0 and fail this), touches ONLY paramIndex 1, and
+// the registration survives a full rebuild (Gate 1/10).
+TEST(AutomationSendBusPids, BusLaneDrivesLiveBusParamAcrossRebuild)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    const auto bus = cmds.createBus("fx", "Auto EQ", "eq", 0);
+    ASSERT_TRUE(bus.ok) << bus.error;
+    engine.drainPendingRoutingRebuild();
+
+    // pid = 3000 + busID*8 + 1 -> this bus's Q; index 0 (Frequency) must not move.
+    ASSERT_TRUE(cmds.addAutomationLane(0, "BusQ", 3000 + bus.busID * 8 + 1));
+    cmds.addAutomationPoint(0, "BusQ", 0.0, 2.0f);
+    cmds.addAutomationPoint(0, "BusQ", 16.0, 5.0f);
+
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    auto* fx = rm->getFxBus(bus.busID);
+    ASSERT_NE(fx, nullptr);
+
+    // Registration contract end 2: the Track's registry maps busID to the
+    // SAME live processor.
+    const auto* registry = track->getBusRegistry();
+    ASSERT_NE(registry, nullptr);
+    const auto regIt = registry->find(bus.busID);
+    ASSERT_NE(regIt, registry->end());
+    EXPECT_EQ(regIt->second, fx);
+
+    // eq default restored by the rebuild's applyFromTree — also the
+    // untouched-index baseline for the paramIndex precision check.
+    EXPECT_FLOAT_EQ(fx->getParam(0), 1000.0f);
+
+    FixedPlayHead ph;
+    track->setPlayHead(&ph);
+    juce::AudioBuffer<float> buf(2, kBlock);
+    juce::MidiBuffer midi;
+
+    ph.setTimeSeconds(0.0);
+    track->processBlock(buf, midi);
+    EXPECT_FLOAT_EQ(fx->getParam(1), 2.0f)
+        << "bus lane rides the def's REAL units — a normalized decode would be 1.0";
+    EXPECT_FLOAT_EQ(fx->getParam(0), 1000.0f)
+        << "paramIndex 1 must not leak into paramIndex 0";
+
+    ph.setTimeSeconds(10.0);
+    buf.clear();
+    track->processBlock(buf, midi);
+    EXPECT_FLOAT_EQ(fx->getParam(1), 5.0f);
+}
+
+// Range isolation + bounds (Gates 2/9): pid 2000+ moves ONLY sends, pid 3000+
+// ONLY bus params — neither may fall into the >=1000 midiFx or >=100 audio-FX
+// decode (the shadow hazard) — while out-of-range sends/params, a just-below
+// pid and a negative pid are silent no-ops that leave everything untouched.
+TEST(AutomationSendBusPids, SendAndBusPidsDoNotShadowFxAndOutOfRangeNoOp)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    const auto bus = cmds.createBus("fx", "Auto Rev", "reverb", 0);
+    ASSERT_TRUE(bus.ok) << bus.error;
+    engine.drainPendingRoutingRebuild();
+    const auto send = cmds.createSend(0, bus.busID, 0.0f, false);
+    ASSERT_TRUE(send.ok) << send.error;
+    engine.drainPendingRoutingRebuild();
+
+    // Coexisting FX chains whose params must NOT move (shadow probes).
+    cmds.addFxSlot(0, "filter");          // audio FX slot 0
+    cmds.setFxSlotParam(0, 0, 0, 440.0f); // Cutoff = 440 Hz (real units)
+    cmds.addMidiFxSlot(0, "arpeggiator", 0); // midiFx slot 0
+    engine.drainPendingRoutingRebuild();
+
+    // In-range lanes: one send, one bus param.
+    ASSERT_TRUE(cmds.addAutomationLane(0, "SendLvl", 2000 + send.sendIndex));
+    cmds.addAutomationPoint(0, "SendLvl", 0.0, 0.75f);
+    cmds.addAutomationPoint(0, "SendLvl", 16.0, 0.75f);
+    ASSERT_TRUE(cmds.addAutomationLane(0, "BusRoom", 3000 + bus.busID * 8 + 0));
+    cmds.addAutomationPoint(0, "BusRoom", 0.0, 0.9f);
+    cmds.addAutomationPoint(0, "BusRoom", 16.0, 0.9f);
+
+    // Boundary lanes (Gate 9), all silent no-ops:
+    //  - 2999: sendIndex 999 > the one registered send — near 3000 it must
+    //    NOT decode as a bus and must not touch send 0;
+    //  - 3000+busID*8+6: paramIndex 6 >= reverb's defs count;
+    //  - 1999: just below the send range -> the pre-existing midiFx decode
+    //    (slot 9, absent here -> no-op), never the send;
+    //  - -5: negative pid matches no branch at all.
+    ASSERT_TRUE(cmds.addAutomationLane(0, "GhostSend", 2999));
+    cmds.addAutomationPoint(0, "GhostSend", 0.0, 0.0f);
+    cmds.addAutomationPoint(0, "GhostSend", 16.0, 0.0f);
+    ASSERT_TRUE(cmds.addAutomationLane(0, "GhostBus", 3000 + bus.busID * 8 + 6));
+    cmds.addAutomationPoint(0, "GhostBus", 0.0, 0.0f);
+    cmds.addAutomationPoint(0, "GhostBus", 16.0, 0.0f);
+    ASSERT_TRUE(cmds.addAutomationLane(0, "BelowSend", 1999));
+    cmds.addAutomationPoint(0, "BelowSend", 0.0, 1.0f);
+    cmds.addAutomationPoint(0, "BelowSend", 16.0, 1.0f);
+    ASSERT_TRUE(cmds.addAutomationLane(0, "NegPid", -5));
+    cmds.addAutomationPoint(0, "NegPid", 0.0, 1.0f);
+    cmds.addAutomationPoint(0, "NegPid", 16.0, 1.0f);
+
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    auto* fx = rm->getFxBus(bus.busID);
+    ASSERT_NE(fx, nullptr);
+    auto* liveSend = rm->getSend(0, send.sendIndex);
+    ASSERT_NE(liveSend, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+    ASSERT_EQ(track->getMidiFxChain().size(), 1u);
+    auto* audioSlot = track->getFXChain().at(0).get();
+    auto* midiFx = track->getMidiFxChain().at(0).get();
+
+    // Baselines AFTER the rebuild, BEFORE the lane run: the rebuild restores
+    // the filter's 440 Hz from the tree; the arp carries its load default.
+    const float audioBaseline = audioSlot->getAutomationParam(0);
+    const float midiBaseline = midiFx->getAutomationParam(0);
+
+    FixedPlayHead ph;
+    track->setPlayHead(&ph);
+    ph.setTimeSeconds(5.0); // between both constant points -> steady values
+    juce::AudioBuffer<float> buf(2, kBlock);
+    juce::MidiBuffer midi;
+    track->processBlock(buf, midi);
+
+    // In-range lanes moved their targets...
+    EXPECT_FLOAT_EQ(liveSend->getSendLevel(), 0.75f);
+    EXPECT_FLOAT_EQ(fx->getParam(0), 0.9f);
+    // ...the FX chains and the boundary lanes' would-be targets did not.
+    EXPECT_FLOAT_EQ(audioSlot->getAutomationParam(0), audioBaseline)
+        << "pid 2000+/3000+ lanes must not decode into the audio fx range";
+    EXPECT_FLOAT_EQ(midiFx->getAutomationParam(0), midiBaseline)
+        << "pid 2000+/3000+ lanes must not decode into midiFx (>=1000 shadow)";
+    EXPECT_FLOAT_EQ(fx->getParam(1), 0.5f)
+        << "paramIndex 6 is out of the reverb defs: Damping default untouched";
+}
+
+// Encoder contract: getAutomatableParams advertises the new ranges with FULL
+// pids (pass-through >= 1000, composePid-safe), names resolved from the send
+// list and the BusFxDefs.h tables, and no non-fx bus leaking in.
+TEST(AutomationSendBusPids, AutomatableParamsCarryFullSendAndBusPids)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    const auto bus = cmds.createBus("fx", "Auto EQ", "eq", 0);
+    ASSERT_TRUE(bus.ok) << bus.error;
+    engine.drainPendingRoutingRebuild();
+    const auto send = cmds.createSend(0, bus.busID, 0.5f, false);
+    ASSERT_TRUE(send.ok) << send.error;
+    engine.drainPendingRoutingRebuild();
+
+    const auto params = engine.getReadModel().getAutomatableParams(0);
+
+    const AutomatableParamSnapshot* sendEntry = nullptr;
+    const AutomatableParamSnapshot* freqEntry = nullptr;
+    const AutomatableParamSnapshot* qEntry = nullptr;
+    int sendEntries = 0, busEntries = 0;
+    for (const auto& p : params)
+    {
+        if (p.paramIndex >= 2000 && p.paramIndex < 3000)
+        {
+            ++sendEntries;
+            if (p.paramIndex == 2000 + send.sendIndex) sendEntry = &p;
+        }
+        else if (p.paramIndex >= 3000)
+        {
+            ++busEntries;
+            if (p.paramIndex == 3000 + bus.busID * 8 + 0) freqEntry = &p;
+            if (p.paramIndex == 3000 + bus.busID * 8 + 1) qEntry = &p;
+        }
+    }
+
+    // Send entry: full pid, indexed by sendIndex, positionally named.
+    ASSERT_NE(sendEntry, nullptr);
+    EXPECT_EQ(sendEntry->slotIndex, send.sendIndex);
+    EXPECT_TRUE(sendEntry->automatable);
+    EXPECT_EQ(sendEntry->name, "Send 1");
+
+    // Bus entries: full pid 3000 + busID*8 + p for every eq def, named
+    // "<bus>.<param>" from the BusFxDefs table.
+    ASSERT_NE(freqEntry, nullptr);
+    ASSERT_NE(qEntry, nullptr);
+    EXPECT_EQ(freqEntry->slotIndex, bus.busID);
+    EXPECT_TRUE(freqEntry->automatable);
+    EXPECT_EQ(freqEntry->name, "Auto EQ.Frequency");
+    EXPECT_EQ(qEntry->name, "Auto EQ.Q");
+    // The shipped default return (busID 1, reverb, 5 defs) is advertised too.
+    bool hasReverbRoomSize = false;
+    for (const auto& p : params)
+        if (p.paramIndex == 3000 + 1 * 8 + 0) hasReverbRoomSize = true;
+    EXPECT_TRUE(hasReverbRoomSize) << "the default Reverb return must be listed";
+
+    // Exactly the track's one send, and bus params of exactly the two fx
+    // buses (eq 3 defs + shipped reverb 5 defs) — the master/group buses
+    // (busType != "fx") contribute nothing.
+    EXPECT_EQ(sendEntries, 1);
+    EXPECT_EQ(busEntries, 8);
+}
+
+// ── removeSend lane remap (item-7 inventory gap) ────────────────────────────
+// removeSend must splice the SEND list AND the durable sendIndex encoded in
+// lane paramIDs (2000 + sendIndex) — both surfaces reach this ONE command.
+// Three sends A/B/C with lanes 2000/2001/2002 (held values 0.25/0.5/0.75):
+// removing send 0 reindexes B->0, C->1, so B's and C's lanes must decrement
+// and A's own lane must be DELETED (a re-created send at index 0 must not
+// inherit A's automation). Gate 1/10: the shifted lanes are proved on the
+// LIVE sends through a full extra rebuild + processBlock, never the ReadModel.
+
+TEST(AutomationSendBusPids, RemoveSendShiftsSurvivorLanesOntoReindexedSends)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    // A/B/C on the default Reverb bus, tree baseline 0.0 so a stale lane
+    // (wrong pid) and a correctly shifted one are distinguishable.
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 0);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 1);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 2);
+    engine.drainPendingRoutingRebuild();
+
+    // One lane per send, distinct HELD values (flat points at 0 and 16 beats).
+    ASSERT_TRUE(cmds.addAutomationLane(0, "SendA", 2000));
+    cmds.addAutomationPoint(0, "SendA", 0.0, 0.25f);
+    cmds.addAutomationPoint(0, "SendA", 16.0, 0.25f);
+    ASSERT_TRUE(cmds.addAutomationLane(0, "SendB", 2001));
+    cmds.addAutomationPoint(0, "SendB", 0.0, 0.5f);
+    cmds.addAutomationPoint(0, "SendB", 16.0, 0.5f);
+    ASSERT_TRUE(cmds.addAutomationLane(0, "SendC", 2002));
+    cmds.addAutomationPoint(0, "SendC", 0.0, 0.75f);
+    cmds.addAutomationPoint(0, "SendC", 16.0, 0.75f);
+    engine.drainPendingRoutingRebuild();
+
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+
+    // Tree contract after the splice: survivors decremented, the removed
+    // send's lane gone.
+    EXPECT_EQ(lanePidOf(engine, 0, "SendB"), 2000) << "B's lane rides reindexed send 0";
+    EXPECT_EQ(lanePidOf(engine, 0, "SendC"), 2001) << "C's lane rides reindexed send 1";
+    EXPECT_EQ(lanePidOf(engine, 0, "SendA"), -999) << "the removed send's lane must not survive";
+
+    // Gate 1/10: the remap is tree state — it must survive a full rebuild and
+    // then drive the LIVE processors.
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    EXPECT_EQ(engine.getReadModel().getTrackSends(0).size(), 2u);
+
+    // Both ends of the registration contract on the two survivors; the third
+    // send is gone.
+    ASSERT_EQ(track->getNumRegisteredSends(), 2);
+    auto* live0 = rm->getSend(0, 0);
+    auto* live1 = rm->getSend(0, 1);
+    ASSERT_NE(live0, nullptr);
+    ASSERT_NE(live1, nullptr);
+    EXPECT_EQ(track->getRegisteredSend(0), live0);
+    EXPECT_EQ(track->getRegisteredSend(1), live1);
+    EXPECT_EQ(rm->getSend(0, 2), nullptr) << "send index 2 no longer exists";
+
+    FixedPlayHead ph;
+    track->setPlayHead(&ph);
+    juce::AudioBuffer<float> buf(2, kBlock);
+    juce::MidiBuffer midi;
+    ph.setTimeSeconds(0.0);
+    track->processBlock(buf, midi);
+
+    EXPECT_FLOAT_EQ(live0->getSendLevel(), 0.5f)
+        << "the SHIFTED lane (2001 -> 2000) must drive the reindexed send 0 (old B)";
+    EXPECT_FLOAT_EQ(live1->getSendLevel(), 0.75f)
+        << "lane 2002 -> 2001 must still drive its target (old C, now send 1)";
+}
+
+// The remap touches ONLY the send range: the removed send's own lane and the
+// survivor window [2000+R+1, 2999]. Every other pid range on the SAME track —
+// mixer 1/2/3, track FX 100-999, MIDI FX 1000-1999, stable bus 3000+busID*8 —
+// must come through a removal with its exact paramID (Gate 9), while the top
+// of the send range (2999 = sendIndex 999) shifts WITH the survivor window
+// and never gets deleted, never crosses into the 3000+ bus range.
+TEST(AutomationSendBusPids, RemoveSendRemapsOnlySendRangeLeavingOtherPids)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    const auto send = cmds.createSend(0, 1, 0.0f, false);   // one send: index 0
+    ASSERT_TRUE(send.ok) << send.error;
+    ASSERT_EQ(send.sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+
+    // Lanes in every pid range on the owning track. Default Volume/Pan/Mute
+    // (1/2/3) ship with the track (createTrackAutomationList); add the rest.
+    ASSERT_TRUE(cmds.addAutomationLane(0, "RemovedSend", 2000));          // deleted with R=0
+    ASSERT_TRUE(cmds.addAutomationLane(0, "Ghost999", 2999));             // top of send range
+    ASSERT_TRUE(cmds.addAutomationLane(0, "FxTone", 300));                // track FX compound
+    ASSERT_TRUE(cmds.addAutomationLane(0, "MidiFxLvl", 1000));            // midi FX compound
+    ASSERT_TRUE(cmds.addAutomationLane(0, "BusRoom", 3000 + 1 * 8 + 0));  // bus 1 (Reverb) room
+    engine.drainPendingRoutingRebuild();
+
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+    engine.drainPendingRoutingRebuild();
+
+    // Send range: the removed send's lane is gone; 2999 rides the survivor
+    // window down to 2998 (still a ghost — sendIndex 998 doesn't exist — and
+    // never deleted, never pushed across the 3000+ bus boundary).
+    EXPECT_EQ(lanePidOf(engine, 0, "RemovedSend"), -999);
+    EXPECT_EQ(lanePidOf(engine, 0, "Ghost999"), 2998);
+    // Every other range keeps its exact paramID.
+    EXPECT_EQ(lanePidOf(engine, 0, "Volume"), 1);
+    EXPECT_EQ(lanePidOf(engine, 0, "Pan"), 2);
+    EXPECT_EQ(lanePidOf(engine, 0, "Mute"), 3);
+    EXPECT_EQ(lanePidOf(engine, 0, "FxTone"), 300);
+    EXPECT_EQ(lanePidOf(engine, 0, "MidiFxLvl"), 1000);
+    EXPECT_EQ(lanePidOf(engine, 0, "BusRoom"), 3000 + 1 * 8 + 0)
+        << "stable busID pids are NEVER remapped";
+}
+
+// The splice and the lane fixup share the ONE "Remove send" transaction
+// (same UndoManager, zero new units): a SINGLE undo restores the send AND
+// every lane paramID — including re-creating the removed send's deleted lane.
+// If the remap had opened its own transaction (or written outside `um`), one
+// undo would come back with sends restored but lanes still shifted.
+TEST(AutomationSendBusPids, RemoveSendUndoRestoresSendAndLanePidsTogether)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 0);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 1);
+    ASSERT_EQ(cmds.createSend(0, 1, 0.0f, false).sendIndex, 2);
+    ASSERT_TRUE(cmds.addAutomationLane(0, "SendA", 2000));
+    ASSERT_TRUE(cmds.addAutomationLane(0, "SendB", 2001));
+    ASSERT_TRUE(cmds.addAutomationLane(0, "SendC", 2002));
+    engine.drainPendingRoutingRebuild();
+
+    std::string error;
+    ASSERT_TRUE(cmds.removeSend(0, 0, error)) << error;
+    EXPECT_EQ(engine.getReadModel().getTrackSends(0).size(), 2u);
+    EXPECT_EQ(lanePidOf(engine, 0, "SendA"), -999);
+    EXPECT_EQ(lanePidOf(engine, 0, "SendB"), 2000);
+    EXPECT_EQ(lanePidOf(engine, 0, "SendC"), 2001);
+
+    ASSERT_TRUE(cmds.canUndo());
+    cmds.undo();   // ONE step, no second undo
+
+    EXPECT_EQ(engine.getReadModel().getTrackSends(0).size(), 3u)
+        << "the removed send must be back after the single undo";
+    EXPECT_EQ(lanePidOf(engine, 0, "SendA"), 2000) << "deleted lane restored";
+    EXPECT_EQ(lanePidOf(engine, 0, "SendB"), 2001);
+    EXPECT_EQ(lanePidOf(engine, 0, "SendC"), 2002);
 }

@@ -267,7 +267,7 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
                 .arg(static_cast<int>(pm.getPlugins().size())));
         }});
 
-    s.registerTool({"list_plugins", "List scanned plugins. Optional kind filter: effect (audio FX) | instrument (synths/samplers) | all (default). Each entry reports its kind so agents can find installable effects without guessing.",
+    s.registerTool({"list_plugins", "List scanned plugins. Optional kind filter: effect (audio FX) | instrument (synths/samplers) | all (default). Each entry reports its kind so agents can find installable effects without guessing. *FX shadow editions are excluded — synth-only devices, unusable as FX slots.",
         objSchema({{"kind", QJsonObject{{"type","string"},{"enum",QJsonArray{"effect","instrument","all"}}}}}),
         "project",
         [e](const QJsonObject& a) {
@@ -278,6 +278,13 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
             QJsonArray arr;
             for (const auto& pd : pm.getPlugins()) {
                 const bool isInstr = pd.isInstrument;
+                // The *FX shadow editions never appear under ANY kind:
+                // kind:effect would advertise a slot that silences the track
+                // and kind:all feeds agents the same unusable ids
+                // (isInstrument=0, so the instrument filter never covered
+                // them — they would be mislabeled "effect" even under
+                // kind:all). See PluginManager::isShadowFxEdition.
+                if (HDAW::PluginManager::isShadowFxEdition(pd.name)) continue;
                 if (kind == "effect" && isInstr) continue;
                 if (kind == "instrument" && !isInstr) continue;
                 QJsonObject o;

@@ -88,7 +88,7 @@
         {
           "id": "pure-one-drop",
           "name": "Pure one-drop (no kick on beat 1, rim on 3)",
-          "why": "The authentic roots groove: beat 1 stays open. Expect `allDropsHaveBackbeat` to FAIL — record it in the brief rather than distorting the groove.",
+          "why": "The authentic roots groove: beat 1 stays open. Expect `allDropsHaveBackbeat` to FAIL under the default — record it in the brief rather than distorting the groove, or audit with `expectBackbeat:false` (2026-09-23) to skip the psytrance-shaped gate.",
           "recipe": { "kick": "beat 3 only", "rim": "beat 3 only (doubled)", "hats": "offbeat 8ths" },
           "gate": { "mix_report": "arc gates ok", "acknowledge": "structure backbeat gate will fail by design" },
           "evidence": "documented"
@@ -249,9 +249,9 @@
     "tonal-balance-recipe": "When the mix bands come out bass-dominant (measured 38,983 bass vs 1,330 high = 29:1), the fix is four moves at once, not a master change: (1) trim where kick and bass FIGHT — kick -4 dB @42 Hz (below its punch) plus fader 0.82, bass Sub Level 0.85 -> 0.60 and Cutoff 600 -> 450; (2) lift the highs at source — closed hat +3.5 dB @9 kHz, shaker +2.5 dB @7 kHz; (3) add body — +2 dB @500 Hz on the pad voices, skank LPF 3.2k -> 10k; (4) NARROW the modal filter envelopes (0.15-0.95 of the sweep range -> 0.55-0.85) so the riffs sit in a clear band instead of washing across it.",
     "label-trust": "MIDI pack filenames lie. 104 files named '[C] [Natural Minor]' produced only 55 that analysed as C + Natural Minor; 2 analysed as MAJOR. Always gate on analyze_midi_file's fingerprint (rootNote % 12 == 0 and scaleType == 1).",
     "loop-vs-oneshot": "Seeded random sample picks return LOOPS unless filtered. A 105 BPM hat loop, a 162 BPM shaker break and a kick+snare+tom loop were all picked before the duration/name filter went in — each would have imported a stray tempo or overlapped other layers.",
-    "backbeat-gate-vs-dub": "`audit_song_structure.allDropsHaveBackbeat` wants 2-and-4; a roots one-drop (rim on beat 3) fails it by design. Hybridise with a clap on 2-and-4, or record the failure as intentional. Never move the rim to 2-and-4.",
+    "backbeat-gate-vs-dub": "`audit_song_structure.allDropsHaveBackbeat` wants 2-and-4; a roots one-drop (rim on beat 3) fails it by design. Hybridise with a clap on 2-and-4, record the failure as intentional, or pass `expectBackbeat:false` to the audit (2026-09-23) to skip the gate. Never move the rim to 2-and-4.",
     "no-in-loop-filter": "HDAW's delay has no filter inside the feedback loop (params: Time, Feedback, Mix, Sync, Division), so tape-echo repeats cannot be progressively darkened. Put a filter AFTER the delay and accept one-generation darkening; use lower feedback (<= 0.62) to stop low-end build-up instead.",
-    "no-sends": "buses/sends still have no agent surface, so the research's send-based dub routing cannot be built; per-track FX + gesture lanes only (docs/composition-toolkit.md, 'Known capability gap').",
+    "no-sends": "RESOLVED 2026-09-22/23 - buses/sends ARE creatable and listable (add_bus / add_send / remove_bus / remove_send, list_buses) and send levels are AUTOMATABLE as of 2026-09-23 (paramID 2000 + sendIndex), so the research's send-based dub routing CAN be built on a shared bus return - not just per-track FX + gesture lanes. Original gap (docs/composition-toolkit.md, 'Known capability gap'): buses/sends had no agent surface.",
     "render-time": "Render time scales with automation density: 300 s of a 14-track / ~6k-note / ~15k-automation-point arrangement took 410 s (slower than realtime), where a 9-track sampler-only render of the same length took ~10 s. Budget two renders (measure + final) as a quarter hour on a dense dub arrangement.",
     "sysex-cutoff": "Same trap as psydub.json: after sub_synth_import_sysex the virus filter lands as-is, so a closed patch renders near-silent at Cutoff 20 Hz. Set it per role (bass ~260, pad ~1800) before auditioning."
   },

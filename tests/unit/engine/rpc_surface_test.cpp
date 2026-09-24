@@ -26,6 +26,7 @@
 #include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
 #include "engine/ProjectBackup.h"
+#include "engine/TrackFXSlot.h"
 #include "model/ProjectModel.h"
 
 #include <QDir>
@@ -849,6 +850,43 @@ TEST(FxSurface, AddMultipleInternalFxTypes)
 
     EXPECT_GE(static_cast<int>(engine.getReadModel().getFxSlots(0).size()), 4);
     EXPECT_EQ(engine.getReadModel().getFxSlots(0)[3].fxType, "saturator");
+}
+
+// handoff-9: FxSlotSnapshot::paramCount reports the params the slot exposes —
+// internal FX = defs-table size (>0), unloaded plugin / no live instance = 0 —
+// instead of the FX_SLOT tree children count, which is deterministically 0
+// (slots are properties-only; params ride param_N properties).
+TEST(FxSurface, ParamCountReportsInternalDefsNotTreeChildren)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
+    engine.drainPendingRoutingRebuild();
+
+    // Empty chain: nothing reported at all.
+    EXPECT_TRUE(engine.getReadModel().getFxSlots(0).empty());
+
+    // Internal slot: paramCount == the defs table's size (>0) — the live
+    // slot's TrackFXSlot::paramCount(), not the tree child count (0).
+    cmds.addFxSlot(0, "eq");
+    auto fxSlots = engine.getReadModel().getFxSlots(0);
+    ASSERT_EQ(fxSlots.size(), 1u);
+    const auto eqDefs = HDAW::TrackFXSlot::getParamDefsForType("eq");
+    ASSERT_GT(eqDefs.size(), 0u);
+    EXPECT_EQ(fxSlots[0].paramCount, static_cast<int>(eqDefs.size()))
+        << "internal slot must report its defs count, not the tree children count";
+
+    // Unloaded plugin (fake id, no scan cache): rebuildFXChain pushes a
+    // "none" slot — paramCount stays 0 until a real instance exists.
+    cmds.setFxSlotPlugin(0, 0, "plugin", "test.plugin", "VST3", "/path/test.vst3");
+    fxSlots = engine.getReadModel().getFxSlots(0);
+    ASSERT_EQ(fxSlots.size(), 1u);
+    EXPECT_EQ(fxSlots[0].paramCount, 0);
+
+    // Back to an empty chain: nothing reported.
+    cmds.removeFxSlot(0, 0);
+    EXPECT_TRUE(engine.getReadModel().getFxSlots(0).empty());
 }
 
 TEST(FxSurface, BypassMidiFxSlot)

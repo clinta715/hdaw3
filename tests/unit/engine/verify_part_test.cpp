@@ -388,3 +388,44 @@ TEST(VerifyPart, OfflineRenderDoesNotClobberClipIds)
     EXPECT_TRUE(vB.ok) << vB.error;
     EXPECT_GT(vB.soloRms, 0.0f) << "part B must be audible after prior offline render";
 }
+
+// soloOnly skips the full-mix render (the cost that scales with plugin
+// instances — every render spawns/warms a fresh child per slot) while staying
+// HONEST: solo metrics measured, mixMeasured=false, mix fields 0/false, and
+// nonClipping must NOT read as a measured pass. The default path (arg absent)
+// still measures both renders.
+TEST(VerifyPart, SoloOnlySkipsMixRenderHonestly)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "SoloOnly";
+    params.style = "Standard";
+    params.lengthBeats = 4.0;
+    params.seed = 7;
+    params.targetRms = 0.15f;
+    params.windowSeconds = 4.0;
+
+    auto res = engine.getProjectCommands().addInstrumentPart(params);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+    ASSERT_GE(res.trackIndex, 0);
+
+    // Default (absent arg): BOTH renders are measured.
+    auto d = engine.getProjectCommands().verifyPart(res.trackIndex, 4.0);
+    ASSERT_TRUE(d.ok) << d.error;
+    EXPECT_TRUE(d.mixMeasured);
+    EXPECT_GT(d.mixPeak, 0.0f) << "default path must render the full mix";
+    EXPECT_TRUE(d.nonClipping);
+
+    // soloOnly=true: solo measured, mix honestly NOT measured.
+    auto v = engine.getProjectCommands().verifyPart(res.trackIndex, 4.0, 0.0, 0.0, true);
+    ASSERT_TRUE(v.ok) << v.error;
+    EXPECT_FALSE(v.mixMeasured);
+    EXPECT_GT(v.soloPeak, 1e-4f) << "solo metrics must still be measured";
+    EXPECT_TRUE(v.audible);
+    EXPECT_TRUE(v.bandLow) << "band analysis rides the solo render";
+    EXPECT_FLOAT_EQ(v.mixRms, 0.0f);
+    EXPECT_FLOAT_EQ(v.mixPeak, 0.0f);
+    EXPECT_FALSE(v.nonClipping) << "a skipped mix must never report a pass";
+}

@@ -1,6 +1,12 @@
 {
   "configVersion": 4,
   "agents": {
-    "transport": "process"
+    "transport": "process",
+    "runner": "pi"
+  },
+  "executor": {
+    "pythonRuntime": "monty",
+    "kernel": "typescript",
+    "runtime": "node-process"
   }
 }

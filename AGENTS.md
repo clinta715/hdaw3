@@ -121,6 +121,12 @@ exactly; give each route a twin test asserting the same failure on both surfaces
 Adding a tool requires `node tools/rpc_parity_map.mjs` — the ratchet gate fails
 otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
 
+**DEPRECATED (2026-09-23):** this parity rule still binds the **engine** surfaces —
+`src/mcp/` and the JSON-RPC router in `src/frontend/router/` (namespace constants
+in `src/frontend/FrontendRpc.h`, parity ledger, `RpcNamespaceCoverage` gate, twin
+tests) remain live and must still be maintained. The Electron **client** is now a
+separate project and is no longer a delivery target.
+
 ## Composition toolkit (full overview: [`docs/composition-toolkit.md`](docs/composition-toolkit.md))
 
 - **Generative**: PhraseGenerator styles, chord/progression generation, rhythm
@@ -170,6 +176,10 @@ otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
   `cmake -S . -B build` explicitly — suppressed-regeneration trap.
 - Never hard-kill a build (truncates `.ninja_deps` → full rebuild).
 - **Frontend:** `cd frontend; npm run build`, then rebuild the C++ project.
+  **DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
+  date — do NOT build it (`npm run build`, `frontend\build.bat`). Engine-only
+  verification: `build/hdaw_tests.exe` (gtest) + the MCP surface. The source tree
+  remains in-repo for reference.
   Full details of the traps: [`docs/build-and-testing.md`](docs/build-and-testing.md).
 
 ## Disk housekeeping
@@ -199,6 +209,11 @@ Windows PowerShell 5.1 — `&&`/`&` are invalid separators. Use `cmd1; if ($?) {
 
 ## How frontend changes reach the running app
 
+**DEPRECATED (2026-09-23):** the Electron frontend is a separate project — do NOT
+build or repackage it (`frontend\build.bat`, `npm run build`, `npm run dev`). The
+table below is retained for reference; engine-only verification
+(`build/hdaw_tests.exe` gtest + the MCP surface) is the live path.
+
 | Run mode | To pick up frontend changes |
 | --- | --- |
 | Packaged Electron (`frontend/release/win-unpacked/HDAW.exe`) | **Repackage:** `frontend\build.bat` — app.asar is frozen |
@@ -224,9 +239,12 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
   on the port, 2 with it free). The earlier "1 flake" note (2026-09-21) is stale.
 - **Deviceless pattern:** suites needing an audio route fail with `getTrack() ==
   nullptr` when no device — environmental, don't blame your change (lessons 9/17).
-- **Frontend (Vitest):** `cd frontend; npm test` · **E2E (Playwright):**
-  `npm run test:e2e` — auto-starts engine + Vite; `workers: 1`; clip-position
-  assertions must poll with `expect.toPass()`.
+- **DEPRECATED (2026-09-23):** the Electron frontend is a separate project — do NOT
+  run its suites. Commands retained for reference: **Frontend (Vitest)**
+  `cd frontend; npm test` · **E2E (Playwright)** `npm run test:e2e` (auto-starts
+  engine + Vite; `workers: 1`; clip-position assertions must poll with
+  `expect.toPass()`). Engine-only verification: `build/hdaw_tests.exe` (gtest) +
+  the MCP surface.
 - **Engine change test discipline:** identify affected gtest suites before
   finishing; new RPC method/command with no coverage → add a gtest. Full details:
   [`docs/build-and-testing.md`](docs/build-and-testing.md).

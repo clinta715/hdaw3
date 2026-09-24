@@ -4,6 +4,121 @@ Context for the next session. Everything listed here was verified against the tr
 "documented" means a repo file already records it, "reported only" means it exists only in
 conversation and still needs writing down.
 
+## Status after the 2026-09-23 completion session
+
+Every numbered item below was taken up in the 2026-09-23 completion session. This section is the
+outcome ledger for that session; the section that follows is the original (pre-work) text and is
+kept as history. Where the two disagree, this section wins.
+
+1. ✅ **shipped** — options (b) + gate. The shared predicate `PluginManager::isShadowFxEdition`
+   filters `*FX` CLAP editions out of `list_plugins` (`kind:effect` AND `kind:all`) and out of
+   `PluginManager::getEffectPlugins`; `add_fx` rejects them — and any unresolvable id — on BOTH
+   surfaces through the new `src/common/FxPluginIdCheck.h` (RPC gate at the `FrontendRouter`
+   dispatch intercept, i.e. `project.addFxSlot`). The MCP-only `add_track_with_fx` is gated the
+   same way. Guide updated. Tests: `ShadowFxEditionPredicate.*`, `AddFxParityTest.*`. Option (a)
+   (make these editions process audio) remains an open, documented cross-repo limitation.
+2. ✅ **shipped** — `Threshold -6.0 / Ratio 2.0` in BOTH tables (`src/engine/TrackFXSlot.h` +
+   `src/common/BusFxDefs.h`), pinned equal by `BusFxParam.DefTableMatchesTrackFxDefs`. This is the
+   measured non-destructive remedy.
+3. ✅ **shipped** — new `Damping` param (index 5) in `src/engine/InternalDelay.h`: a one-pole
+   lowpass INSIDE the feedback path only, hard-bypassed at 0 (the default, so existing impulse
+   tests stay bit-exact); state sized in `prepare()`, coefficient re-derived in `setParam`. The
+   `BusFxDefs` delay table and the track surface derive the param automatically. Test:
+   `TrackFxDelay.DampingDarkensOnlyTheFeedbackRepeats`.
+4. ✅ **shipped** — send levels are automatable: `paramID = 2000 + sendIndex`, decode order
+   3000 → 2000 → 1000 → 100 in `Track.cpp`; encoder in `ReadModelImpl::getAutomatableParams`.
+   Tests: `AutomationSendBusPids.*`.
+5. ✅ **shipped** — bus FX params are automatable: `paramID = 3000 + busID*8 + paramIndex`.
+   Audio-thread delivery via new `FxBusProcessor::setAutomationValue` (atomic + dirty flag),
+   consumed in `processBlock` under `dspStateLock.tryEnter()`; control path uses Gate-13
+   tryEnter/dirty-on-skip. Send/bus handles are registered in the rebuild path (via
+   `RoutingManager` + the new `Track.h` API).
+6. ✅ **shipped** — the legacy send arg mismatch is gone: the RPC arg was renamed to `trackId` on
+   the three setters AND on `read.getTrackSends` (MCP unchanged); `MixerStrip.tsx` + tests
+   migrated. Twin tests `BusSendRpcTest.LegacySendRoutesRejectTrackIndexOnBothSurfaces` plus an
+   extended `RouteKeysMirrorToolPropertyNames`. Trap retired. The same rename was applied on RPC
+   for `removeTrack` / `moveTrack` / `duplicateTrack` (⇒ `trackId`).
+7. ✅ **shipped (design A)** — `AudioEngineCommands_Helpers.h`: removal/move index maps + ONE-walk
+   remap of folder `parentId`/`childIds` + `SONG_PLAN` `cellTrack`; structured
+   `{ok, removed, shifted[]}` payloads byte-mirrored MCP/RPC for `removeTrack` / `moveTrack` /
+   `removeSend`; MCP `remove_track` routed through the shared command (undo byte-identical);
+   `fillOneCell` sentinel guard now errors instead of filling the wrong track; and `removeSend`
+   remaps surviving automation lanes (`2000+sendIndex`) and DELETES the removed send's own lane
+   (no FX-slot precedent — deliberately the safe choice). Tests: `Commands.RemoveTrack*`,
+   `Commands.MoveTrack*`, `McpCoverageTest.RemoveTrack*` / `MoveTrack*`,
+   `AutomationSendBusPids.RemoveSend*`, `BusSendRpcTest.RemoveSend*`.
+   ⏳ **deferred** — design B (additive stable `trackID`/`sendID` wire ids, ~15-18 files). Design A
+   made it easier: the shift payload is where a stable-id echo would attach.
+8. ✅ **shipped** — root cause found: Qt's default **15 s keep-alive** aborted the connection
+   during a long synchronous rebuild (`lastActiveTimer` restarts only on request READ).
+   `TransportHttp::start` now sets a **900 s** keep-alive. Test:
+   `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`. Traps `bus-response-dropped` /
+   `rebuild-commands-drop-response` retired with the lesson retained.
+9. ✅ **shipped** — fixed at the single source (`ReadModelImpl::getFxSlots`):
+   `TrackFXSlot::paramCount()` now reports internal defs size / live instance count (in-process OR
+   isolated proxy `GET_PARAM_COUNT` — the 6939-param case) / 0 while unloaded. Test:
+   `FxSurface.ParamCountReportsInternalDefsNotTreeChildren`; trap entry added.
+10. ✅ **shipped** — optional `soloOnly` (+ a `mixMeasured` honesty echo) added on MCP + RPC; it
+    skips the mix render (halves cost + avoids plugin warmup). Tests:
+    `VerifyPart.SoloOnlySkipsMixRenderHonestly`,
+    `McpCoverageTest.VerifyPartSoloOnlyMatchesRpcTwin`. Also fixed in passing: test hygiene around
+    `EngineSettingsStartMcpHttp` (no other change there).
+11. ✅ **shipped** — optional `expectBackbeat` (default TRUE = bit-for-bit behavior) on both
+    surfaces; skipping keeps the gate truthfully `true` and adds
+    `dropChecks.backbeatChecked:false`. The 4 path-JSON `gate` entries were deliberately NOT
+    edited (still valid). Tests:
+    `SongStructureAudit.DubOneDropFailsDefaultPassesWithoutBackbeatExpectation`,
+    `McpCoverageTest.AuditSongStructureExpectBackbeatFalseMatchesRpcTwin`.
+12. ✅ **shipped (documented)** — new `Engine launch: locks and LNK1104` section in
+    `docs/build-and-testing.md`.
+13. ✅ **shipped** — `McpServer.HttpRoundTrip` now uses an OS-assigned ephemeral port, with one
+    production line: `TransportHttp::start` refreshes `port_ = serverPort()` after a successful
+    listen; `HttpTransport.StartStopLifecycle` likewise.
+    ⏳ **remaining** — `McpServer.EngineSettingsStartMcpHttp` still uses a fixed 18766; fixing it
+    needs production config plumbing (`setMcpHttpConfig` rejects port 0).
+14. ✅ **shipped** — `RespawnPath.RealPathPassesThrough` is now platform-gated (Windows assert
+    under `_WIN32`, POSIX under `#else`); production behavior confirmed contract-correct
+    (refuse-to-spawn on a foreign-platform path); note updated in `docs/testing-mcp.md`.
+15. ✅ **shipped** — trap `no-bus-read-tool` retired (RESOLVED: `list_buses` shipped).
+16. ✅ **walked** — both branches proven against a live engine over MCP stdio and recorded as ledger entry `walk_minimal_3track` (`branch_stats` updated; `never_walked` is now empty): movement-plan → `measured_ok` (audit gate `attentionRequiredIds == []`, 3/3 covered); rides node walked as a node — arc-pass + return-ride `measured_ok` (tone_verity centroid 264→284; send A/B `rmsDb` −3.59; 64-point macro lane on paramID 2000), staging-pass `proven_with_caveat` (movement-plan's default Volume lanes claim fader authority — the documented interaction).
+17. ✅ **shipped** — trap `no-sends` retired (RESOLVED: buses/sends are creatable + listable AND
+    send levels are automatable as of this batch).
+
+### New findings (2026-09-23 session)
+
+- **Qt keyword macros mangle identifiers.** `qtmetamacros.h:43-44` defines `slots`/`signals`
+  (also `emit`/`foreach`). Symptom: `error C2513: 'auto': no variable declared before '='` plus
+  misleading gtest noise. Documented in `docs/pitfalls-juce.md`.
+- **Render-suite bake starvation + self-inflicted link failure.** In a heavy 563-test run, 14
+  render tests failed with `export failed: Render graph bake timed out after 15000ms`, and ALL
+  passed in isolation. Separately, running TWO `build-fast.bat` invocations at once produced
+  `LNK1104`/`LNK4076`. Both documented in `docs/testing-mcp.md` / `docs/build-and-testing.md`.
+- **Disconnected-RDP deviceless environment.** The audio route can be absent even though
+  `Win32_SoundDevice` reports healthy hardware. Live-graph suites then fail with
+  `(track)/(rm) == nullptr` in 40-70 ms instead of ~1900 ms, including suites untouched by any
+  change (`InternalFx`, `AudioPoolDedup`, `MasterGain`, `AudioEngineReadFacadeTest`). Documented in
+  `docs/build-and-testing.md`. **Consequence: the 2026-09-23 full-suite run is
+  environment-limited and its device-dependent failures are NOT regressions.**
+- **Parity-debt inventory (reported, NOT fixed).** 13 `setTrack*` RPC routes still take
+  `trackIndex` vs MCP `set_track`'s `trackId`; `moveTrackIntoFolder`/`OutOfFolder` have NO MCP
+  tool; 6 RPC-only track setters; `add_track_with_fx` has no RPC route (ledger `unresolved`);
+  `remove_track` has `dryRun`/`force` while `project.removeTrack` has neither; `move_track`
+  returns `ok` vs RPC `Null`.
+- **`get_track_sends` has TWO hand-built JSON shapers** (MCP inline vs RPC `toJson(SendSnapshot)`)
+  held equal only by a test — candidate for the `src/common` shared-shaper pattern (the documented
+  drift class).
+- **LFO `targetParamID` (MODULATION_LIST) shares the pid space** and could durably encode
+  `2000+sendIndex`; `set_lfo_param` advertises only 1/2/3/100+ targets — worth an inventory check
+  in the design-B follow-up.
+- **`duplicateTrack` copies `parentId`/`childIds` verbatim** (pre-existing): duplicating a folder
+  clones `childIds`; duplicating a child leaves a dangling `parentId` claim.
+- **The batch is UNCOMMITTED (67 files: 64 modified, 3 new)** and **graphify indexes committed
+  state only** — refresh the graph after committing (`python -m graphify update . --force`, then
+  `graphify explain <newSymbol>`).
+- **The Electron frontend is DEPRECATED (2026-09-23)** — no build/test gates for it; recorded in
+  `AGENTS.md`, `docs/build-and-testing.md`, `docs/testing-mcp.md`. The engine-side JSON-RPC surface
+  + the parity ratchet remain live.
+
 ## What landed (so it is NOT open)
 
 Seven commits, tree clean at handoff:
@@ -25,52 +140,59 @@ re-prepared freshly added nodes), a latent routing mis-wire (a bus whose parent 
 
 ## Open — needs your approval first (stability rule: FX/plugin/DSP contract)
 
-1. **`*FX` CLAP editions silently silence a track.** A qualified id (`CLAP-VavraFX-…`) loads,
+1. ✅ **shipped** — **`*FX` CLAP editions silently silence a track.** A qualified id (`CLAP-VavraFX-…`) loads,
    reports `pluginFormat` and params, and kills the audio (proven by bypass A/B: `0.0595 RMS
    audible=1` → `0/0`). A *bare* id (`"VavraFX"`) leaves an inert slot with `pluginFormat: ""`
    and **no error**. Fix is either making them process audio or dropping them from `kind:effect`
    so no agent can pick one. Reported + partly written up; **not** in the path trees.
-2. **The compressor default is destructive**: `Threshold -20 dB / Ratio 4.0` on a hot synth
+2. ✅ **shipped** — **The compressor default is destructive**: `Threshold -20 dB / Ratio 4.0` on a hot synth
    clamped a bassline to 1/6 of its level (the pad with no compressor measured 3.6× louder at the
    same pitches). Mentioned in `docs/paths/dub_electro.json` and the ledger; no fix proposed.
-3. **No filter *inside* the delay's feedback loop.** The new `filter` bus darkens the whole
+3. ✅ **shipped** — **No filter *inside* the delay's feedback loop.** The new `filter` bus darkens the whole
    return statically; the classic dub move (repeats getting progressively darker) still needs a
    filter in the loop. This is the one musical gap left from the returns work.
 
 ## Open — contract/surface gaps (documented, unfixed)
 
-4. **Send levels are not automatable.** `setSendLevel` is reachable only from the command and the
+4. ✅ **shipped** — **Send levels are not automatable.** `setSendLevel` is reachable only from the command and the
    graph build; the automatable paramID space is `1/2/3 / ≥100 track FX / ≥1000 MIDI FX`. A
    per-phrase throw must still come from a per-track delay slot. Trap:
    `send-levels-not-automatable`. Likely fix: a send paramID range (e.g. `2000 + sendIndex`,
    mirroring the `≥1000` convention).
-5. **Bus FX params are not automatable either** — bus `param_N` has no paramID, so no lane can
+5. ✅ **shipped** — **Bus FX params are not automatable either** — bus `param_N` has no paramID, so no lane can
    ride a bus's delay time or reverb size. Explicit non-goal of slice C; the param-index space was
    deliberately left open for it.
-6. **Legacy send routes disagree across surfaces**: `setTrackSendLevel/_Mode/_Bypassed` take
+6. ✅ **shipped** — **Legacy send routes disagree across surfaces**: `setTrackSendLevel/_Mode/_Bypassed` take
    `trackIndex` on RPC but `trackId` on MCP (a real argument-name contract break; the new routes
    use `trackId` on both). Trap: `legacy-send-arg-mismatch`.
-7. **Positional track and send ids.** `remove_track` shifts ids above it, so held references go
+7. ✅ **shipped (design A; design B ⏳ deferred)** — **Positional track and send ids.** `remove_track` shifts ids above it, so held references go
    stale; `removeSend` shifts sends. Documented (trap `one-lane-per-param`'s neighbourhood + the
    returned id-shift note); stable ids remain unfixed.
 
 ## Open — latent engine / tool issues
 
-8. **The dropped HTTP response on rebuild-triggering commands.** `add_bus`, `add_send` and
+8. ✅ **shipped** — **The dropped HTTP response on rebuild-triggering commands.** `add_bus`, `add_send` and
    `set_bus_target` intermittently lose their response while **completing the work** (observed
    across three commands, including once *not* reproducing — so it is timing-dependent, not
    deterministic). Traps: `rebuild-commands-drop-response`, `bus-response-dropped`. Root cause
    (rebuild running on the HTTP handler thread) **not investigated**.
-9. **`list_fx` reports `paramCount: 0` for a plugin that exposes 6939 params.** Reported only —
+9. ✅ **shipped** — **`list_fx` reports `paramCount: 0` for a plugin that exposes 6939 params.** Reported only —
    **not written into any repo doc**; needs an entry (it makes `paramCount` useless as a "did the
    slot load" signal).
-10. **`verify_part` cost scales with plugin instances, not window length** (two attempts exceeded
+10. ✅ **shipped** — **`verify_part` cost scales with plugin instances, not window length** (two attempts exceeded
     120 s on a one-CLAP project, killing the cheap window-probe recipe). Trap:
     `probe-cost-scales-with-plugins`. The fallback (render once at a guessed-safe master and
-    rescale) works but wastes a render; a solo-window-only mode is unbuilt.
-11. **`audit_song_structure`'s `allDropsHaveBackbeat` is psytrance-shaped** — a faithful dub
+    rescale) works but wastes a render. **Shipped 2026-09-23: `verify_part {soloOnly:true}`**
+    (RPC `composition.verifyPart {soloOnly:true}`) skips the full-mix render — the plugin-spawn
+    cost is paid once, not twice — and the mix metrics then report `mixMeasured:false` instead
+    of a fake pass. Default (`false`) is unchanged.
+11. ✅ **shipped** — **`audit_song_structure`'s `allDropsHaveBackbeat` is psytrance-shaped** — a faithful dub
     one-drop fails it by design. Documented in both path trees + `2026-09-21-mcp-dogfood-composition.md`.
-12. **Engine-launch friction (process hazard).** A manual copy of the engine to `%TEMP%` died with
+    **Addressed 2026-09-23: pass `expectBackbeat:false`** on either surface
+    (`audit_song_structure` / `composition.auditSongStructure`) to skip the gate —
+    `gates.allDropsHaveBackbeat` reports `true` with `dropChecks.backbeatChecked:false` and the
+    drops stay listed informationally. Default (`true`) is unchanged.
+12. ✅ **shipped** — **Engine-launch friction (process hazard).** A manual copy of the engine to `%TEMP%` died with
     exit `0x7FFFFFFF` even with `PATH` set, so live tests launched from `build/` — which locks the
     exes and causes `LNK1104` on the next build (hit twice today). The launcher's own
     `mcp-launch.bat` copy-and-verify path is the correct route and should be used instead of
@@ -78,27 +200,27 @@ re-prepared freshly added nodes), a latent routing mis-wire (a bus whose parent 
 
 ## Open — test infrastructure (documented, unfixed)
 
-13. **`McpServer.HttpRoundTrip` binds a fixed port 18765** (`mcp_server_test.cpp:115,122`), so it
+13. ✅ **shipped (partial — ⏳ `EngineSettingsStartMcpHttp` still fixed-port)** — **`McpServer.HttpRoundTrip` binds a fixed port 18765** (`mcp_server_test.cpp:115,122`), so it
     fails whenever a live engine holds it — measured: 4 failures with an engine on the port, 2
     without. Should use an ephemeral port.
-14. **`RespawnPath.RealPathPassesThrough` is deterministically red on Windows** — it asserts
+14. ✅ **shipped** — **`RespawnPath.RealPathPassesThrough` is deterministically red on Windows** — it asserts
     `resolveRespawnPath("/usr/lib/MyPlugin.clap")` round-trips unchanged, in
     `tests/unit/proxy/crash_recovery_test.cpp:655` (untouched since 2026-08-20). Independent of
     any change; either fix the expectation for Windows or gate it by platform.
 
 ## Open — stale doc to fix (one line)
 
-15. **`no-bus-read-tool` is now FALSE.** The psydub trap still says no tool lists buses, but
+15. ✅ **shipped** — **`no-bus-read-tool` is now FALSE.** The psydub trap still says no tool lists buses, but
     `list_buses` shipped in `3eed79e`. It is actively misleading (it tells the next agent the tool
     does not exist). Retire/rewrite it the way `export-dir-must-exist` was retired.
 
 ## Open — creative / path work
 
-16. **`movement-plan` is the only never-walked branch** in the ledger, and the new **`rides`**
+16. ⏳ **attempted** — outcome recorded in `docs/paths/ledger.json` (see `branch_stats`). **`movement-plan` is the only never-walked branch** in the ledger, and the new **`rides`**
     node's three options (`arc-pass`, `return-ride`, `staging-pass`) have never been walked *as a
     node* — only `arc-pass`'s mechanism was proven, and only `shared-return` is in
     `branch_stats.measured_ok`.
-17. `docs/paths/dub_electro.json` has a trap named `no-sends` that predates this work and may
+17. ✅ **shipped** — `docs/paths/dub_electro.json` has a trap named `no-sends` that predates this work and may
     need re-examining now that sends exist (unverified today).
 
 ## In flight at handoff

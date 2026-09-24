@@ -98,7 +98,6 @@ void registerCompositionTools(McpServer& s, AudioEngine* e)
             {"key", QJsonObject{{"type","string"}}},
             {"scaleRoot", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
             {"scaleMode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
-            {"samplePool", QJsonObject{{"type","string"}}},
             {"structure", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","string"}}}}},
             {"sectionLengthBeats", QJsonObject{{"type","number"},{"minimum",0.25}}}
         }),
@@ -147,7 +146,6 @@ void registerCompositionTools(McpServer& s, AudioEngine* e)
             QJsonObject out{{"tempo", bpm > 0.0 ? bpm : e->getReadModel().getTransport().bpm},
                             {"scaleRoot", root},
                             {"scaleMode", mode},
-                            {"samplePool", a.value("samplePool").toString()},
                             {"regionsCreated", regions.size()},
                             {"regions", regions}};
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact)));

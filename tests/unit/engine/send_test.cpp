@@ -835,8 +835,8 @@ TEST(BusFxParam, ClampsOutOfRangeAndRejectsBadTargets)
     EXPECT_FLOAT_EQ(eqBus.getParam(7), 0.0f);
 }
 
-// The delay bus is the full 5-param delay (the shared InternalDelay DSP backs
-// all five), the line's capacity is sized so the def's 5 s top is reachable
+// The delay bus is the full 6-param delay (the shared InternalDelay DSP backs
+// all six), the line's capacity is sized so the def's 5 s top is reachable
 // rather than silently clipped, and it adds no PDC latency.
 TEST(BusFxParam, DelayBusHoldsTheFullDefRange)
 {
@@ -1080,17 +1080,18 @@ TEST(BusFxParam, DefTableMatchesTrackFxDefs)
     }
 
     // The delay return advertises the FULL track delay table (slice C3): the
-    // shared InternalDelay DSP applies all five, so nothing here is a fake
+    // shared InternalDelay DSP applies all six, so nothing here is a fake
     // param (G5) — including the 0.99 feedback top that guards the recursion.
     const auto trackDelayDefs = HDAW::TrackFXSlot::getParamDefsForType("delay");
     const auto& busDelayDefs = HDAW::busFxParamDefs("delay");
-    ASSERT_EQ(trackDelayDefs.size(), 5u) << "the track delay is the 5-param one";
-    ASSERT_EQ(busDelayDefs.size(), 5u) << "the delay return must expose the same 5 params";
+    ASSERT_EQ(trackDelayDefs.size(), 6u) << "the track delay is the 6-param one";
+    ASSERT_EQ(busDelayDefs.size(), 6u) << "the delay return must expose the same 6 params";
     EXPECT_EQ(juce::String(busDelayDefs[0].name), juce::String("Delay Time"));
     EXPECT_EQ(juce::String(busDelayDefs[1].name), juce::String("Feedback"));
     EXPECT_EQ(juce::String(busDelayDefs[2].name), juce::String("Mix"));
     EXPECT_EQ(juce::String(busDelayDefs[3].name), juce::String("SyncToTempo"));
     EXPECT_EQ(juce::String(busDelayDefs[4].name), juce::String("Division"));
+    EXPECT_EQ(juce::String(busDelayDefs[5].name), juce::String("Damping"));
     EXPECT_FLOAT_EQ(busDelayDefs[1].max, 0.99f);
     EXPECT_FLOAT_EQ(busDelayDefs[4].max, 6.0f);
 

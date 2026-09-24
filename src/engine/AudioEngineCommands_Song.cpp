@@ -727,6 +727,19 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
     res.section = cell.section;
     res.role = cell.role;
     res.trackId = cell.trackId;
+    // Gate 9: removeTrack's fixup parks a cell whose track was removed on the
+    // -1 sentinel (out-of-range can pre-date the fixup too) — fail the cell
+    // with a reason instead of resolving an invalid/wrong track (addMidiClip /
+    // fill must never write to the wrong track).
+    {
+        const int trackCount = engine_.getProjectModel().getTrackListTree().getNumChildren();
+        if (cell.trackId < 0 || cell.trackId >= trackCount)
+        {
+            res.error = "cell targets missing track " + std::to_string(cell.trackId)
+                      + " (removed?) — set_cell_recipe to re-target it";
+            return res;
+        }
+    }
     auto& um = engine_.getProjectModel().getUndoManager();
 
     const SongPlanSection* sec = nullptr;

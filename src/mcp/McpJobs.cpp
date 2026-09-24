@@ -108,7 +108,7 @@ void McpJobs::evictOldestCompletedLocked()
 void registerJobTools(McpServer& s)
 {
     s.registerTool({"poll_job",
-        "Poll an asynchronous MCP analysis job created by analyze_tuning or mix_report with wait:false. "
+        "Poll an asynchronous MCP job created by analyze_tuning, mix_report, export_audio, or scan_plugins with wait:false. "
         "Returns {jobId,label,state} while running and includes result on finished or error on failed.",
         objSchema({{"jobId", QJsonObject{{"type","integer"}}}}, {"jobId"}),
         "audio",

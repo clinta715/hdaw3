@@ -133,6 +133,33 @@ public:
     void loadBlacklist();
     void saveBlacklist();
 
+    // The four gearmulator *FX shadow editions (scout evidence 2026-09-23):
+    // synth devices built with isSynth=FALSE under gearmulator_BUILD_FX_PLUGIN
+    // (D:/pdf/gearmulator-git/source/juce.cmake:378-384). The scan cache
+    // records isInstrument=0, so they publish as kind:effect — but a CLAP FX
+    // slot processes in-place on the shared track buffer, each CLAP slot
+    // clears the shared MidiBuffer after processing (CLAPPluginInstance.cpp:
+    // :959), and the device engine overwrites the buffer with its own silent
+    // synth output (processor.cpp:775-780) → an *FX slot after the instrument
+    // measured 0/0 RMS; before it the isSynth=TRUE build clears all output
+    // channels first (processor.cpp:748-760) → measured no-op. Fix (a) —
+    // making them process audio — needs a cross-repo gearmulator rebuild +
+    // audio-thread MIDI forwarding (FEATURES.md:42 limitation), so they are
+    // EXCLUDED instead. Wired at every publisher/consumer of this decision:
+    // list_plugins kind:effect/all, getEffectPlugins (RPC
+    // plugin.getEffectPlugins + frontend FX picker), and the shared add_fx
+    // pluginId gate (src/common/FxPluginIdCheck.h, called from MCP add_fx and
+    // the project.addFxSlot dispatch intercept).
+    //
+    // Matching: an explicit four-name family list — NEVER a generic "*FX"
+    // suffix filter (Gate 9: unrelated plugins ending in "FX" must not match).
+    // Each name may appear bare ("VavraFX"), inside a format-qualified id
+    // ("CLAP-VavraFX-a405fdaa-0"), or in an install path
+    // (".../VavraFX.clap"), so the token must sit at non-alphanumeric
+    // boundaries on BOTH sides; comparison is case-insensitive (cache casing
+    // is vendor-defined).
+    static bool isShadowFxEdition(const juce::String& nameOrId);
+
     using ScanCallback = std::function<void()>;
     void setScanCompleteCallback(ScanCallback cb) { scanCallback = cb; }
     ScanCallback getScanCompleteCallback() const { return scanCallback; }

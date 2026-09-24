@@ -17,7 +17,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
   const [sends, setSends] = useState<SendSnapshot[]>([]);
 
   useEffect(() => {
-    rpc.call("read.getTrackSends", { trackIndex: track.index })
+    rpc.call("read.getTrackSends", { trackId: track.index })
       .then((data: SendSnapshot[]) => setSends(data))
       .catch(() => {});
   }, [track.index]);
@@ -42,7 +42,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
 
   const setSendLevel = (si: number, level: number) => {
     setSends((prev) => prev.map((s) => (s.sendIndex === si ? { ...s, level } : s)));
-    rpc.call("project.setTrackSendLevel", { trackIndex: track.index, sendIndex: si, level }).catch(console.error);
+    rpc.call("project.setTrackSendLevel", { trackId: track.index, sendIndex: si, level }).catch(console.error);
   };
 
   const toggleSendMode = (si: number) => {
@@ -50,7 +50,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
     if (!s) return;
     const newMode = !s.isPreFader;
     setSends((prev) => prev.map((x) => (x.sendIndex === si ? { ...x, isPreFader: newMode } : x)));
-    rpc.call("project.setTrackSendMode", { trackIndex: track.index, sendIndex: si, isPreFader: newMode }).catch(console.error);
+    rpc.call("project.setTrackSendMode", { trackId: track.index, sendIndex: si, isPreFader: newMode }).catch(console.error);
   };
 
   const toggleSendBypass = (si: number) => {
@@ -58,7 +58,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
     if (!s) return;
     const newBypass = !s.bypassed;
     setSends((prev) => prev.map((x) => (x.sendIndex === si ? { ...x, bypassed: newBypass } : x)));
-    rpc.call("project.setTrackSendBypassed", { trackIndex: track.index, sendIndex: si, bypassed: newBypass }).catch(console.error);
+    rpc.call("project.setTrackSendBypassed", { trackId: track.index, sendIndex: si, bypassed: newBypass }).catch(console.error);
   };
 
   return (

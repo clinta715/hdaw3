@@ -19,7 +19,12 @@
 //     texture/percussion roles), bass-hat-only (only floor + texture), or
 //     silence. Build sections are tension markers and never flagged.
 //   * drop backbeat  — every drop-kind section (mainA/mainB/finale/drop)
-//     must have a backbeat role (clap/snare/backbeat) sounding.
+//     must have a backbeat role (clap/snare/backbeat) sounding. GATE IS
+//     GENRE-SHAPED (psytrance 2-and-4): callers pass expectBackbeat=false for
+//     dub/one-drop styles — the gate is then removed from the failing
+//     conjunction (backbeatChecked=false), while dropNamesMissingBackbeat
+//     stays populated as INFORMATIONAL evidence. Default expectBackbeat=true =
+//     the original behavior, bit-for-bit.
 //   * first-drop motif — the FIRST drop-kind section must have a melodic
 //     role (lead/stab/arp/pad/chord/pluck/...) sounding.
 //
@@ -101,7 +106,12 @@ struct SongStructureAudit {
     bool hasPlan = false;
     std::vector<StructureSectionAudit> sections;
     std::vector<StructureSpan> spans;
+    // Drops lacking a backbeat role. Always computed; it FAILS ok only when
+    // backbeatChecked is true (expectBackbeat=false: informational only).
     std::vector<std::string> dropNamesMissingBackbeat;
+    // Whether the genre-shaped backbeat gate was enforced (expectBackbeat).
+    // false => ok ignores dropNamesMissingBackbeat (dub/one-drop styles).
+    bool backbeatChecked = true;
     // Structural load proxy for the drop-vs-build loudness gate: a drop whose
     // sounding-role count is SMALLER than the build that precedes it is almost
     // always the quieter payoff (the audio-level check lives in mix_report
@@ -126,12 +136,13 @@ inline bool isBuildKind(const juce::String& kindLower)
 
 inline SongStructureAudit auditSongStructure(const juce::ValueTree& trackList,
                                              const ProjectCommands::SongPlanData& plan,
-                                             double bpm)
+                                             double bpm, bool expectBackbeat = true)
 {
     SongStructureAudit audit;
     if (plan.sections.empty())
         return audit; // hasPlan stays false
     audit.hasPlan = true;
+    audit.backbeatChecked = expectBackbeat;
 
     const double effBpm = (plan.bpm > 0.0) ? plan.bpm : (bpm > 0.0 ? bpm : 120.0);
     const double spb = 60.0 / effBpm;
@@ -286,6 +297,7 @@ inline SongStructureAudit auditSongStructure(const juce::ValueTree& trackList,
             audit.firstDropName = sa.name;
             audit.firstDropHasMotif = sa.hasMelodic;
         }
+        // Computed unconditionally — informational when backbeatChecked=false.
         if (!sa.hasBackbeat)
             audit.dropNamesMissingBackbeat.push_back(sa.name);
         // Load proxy: fewer sounding roles than the build that precedes it.
@@ -298,7 +310,8 @@ inline SongStructureAudit auditSongStructure(const juce::ValueTree& trackList,
         }
     }
 
-    audit.ok = audit.spans.empty() && audit.dropNamesMissingBackbeat.empty()
+    audit.ok = audit.spans.empty()
+        && (audit.dropNamesMissingBackbeat.empty() || !audit.backbeatChecked)
         && audit.dropNamesThinnerThanBuild.empty()
         && (!audit.anyDrop || audit.firstDropHasMotif);
     return audit;

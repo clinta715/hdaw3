@@ -4,6 +4,7 @@
 #include "MainAudioProcessor.h"
 #include "Track.h"
 #include "TrackFXSlot.h"
+#include "../common/BusFxDefs.h"
 #include "../model/ProjectModel.h"
 
 #include <algorithm>
@@ -461,6 +462,19 @@ std::vector<FxSlotSnapshot> ReadModelImpl::getFxSlots(int trackIndex) const
     if (!fxChain.isValid())
         return result;
 
+    // paramCount comes from the LIVE slot — FX_SLOT ValueTree nodes are
+    // properties-only (params ride param_N properties), so the tree's child
+    // count is always 0. Same null-guard chain as getAutomatableParams:
+    // engine -> main processor -> track -> live FX chain; slots with no live
+    // projection yet keep paramCount 0.
+    const std::vector<std::unique_ptr<HDAW::TrackFXSlot>>* liveChain = nullptr;
+    if (engine_ != nullptr)
+    {
+        if (auto* proc = engine_->getMainProcessor())
+            if (auto* track = proc->getTrack(trackIndex))
+                liveChain = &track->getFXChain();
+    }
+
     for (int i = 0; i < fxChain.getNumChildren(); ++i)
     {
         auto slot = fxChain.getChild(i);
@@ -471,7 +485,8 @@ std::vector<FxSlotSnapshot> ReadModelImpl::getFxSlots(int trackIndex) const
         s.pluginName = slot.getProperty(IDs::name, "").toString().toStdString();
         s.pluginFormat = slot.getProperty(IDs::pluginFormat, "").toString().toStdString();
         s.bypassed = slot.getProperty(IDs::bypassed, false);
-        s.paramCount = slot.getNumChildren();
+        if (liveChain != nullptr && i < static_cast<int>(liveChain->size()) && (*liveChain)[i])
+            s.paramCount = (*liveChain)[i]->paramCount();
         result.push_back(s);
     }
     return result;
@@ -779,7 +794,9 @@ std::vector<AutomatableParamSnapshot> ReadModelImpl::getAutomatableParams(int tr
     // preserved so callers can reconstruct the compound paramID
     // (100 + slotIndex*100 + paramIndex) used by the automation system.
     // pid ranges (see docs/adr-automation-model.md): 1/2/3 = volume/pan/mute,
-    // 100..999 = fxChain slot*100+param, 1000..1999 = midiFxChain slot*100+param.
+    // 100..999 = fxChain slot*100+param, 1000..1999 = midiFxChain slot*100+param,
+    // 2000+ = send level (2000 + sendIndex), 3000+ = bus FX param
+    // (3000 + busID*8 + paramIndex, FxBusProcessor::kMaxParams = 8).
     auto& fxChain = track->getFXChain();
     for (int si = 0; si < static_cast<int>(fxChain.size()); ++si)
     {
@@ -818,6 +835,50 @@ std::vector<AutomatableParamSnapshot> ReadModelImpl::getAutomatableParams(int tr
             aps.name = slot->getType().toStdString() + "." + p.name.toStdString();
             aps.automatable = true;
             result.push_back(aps);
+        }
+    }
+
+    // Send-level entries: FULL pid 2000 + sendIndex, pass-through like the
+    // midiFx walk above (composePid keeps any paramIndex >= 1000 unchanged).
+    // Shape follows getTrackSends — one entry per send of the track in
+    // SEND_LIST order; the level itself rides the lane (raw 0..1-ish gain
+    // domain; AutomatableParamSnapshot carries no value/min/max fields).
+    for (const auto& s : getTrackSends(trackIndex))
+    {
+        AutomatableParamSnapshot aps;
+        aps.slotIndex = s.sendIndex;
+        aps.paramIndex = 2000 + s.sendIndex;
+        aps.name = "Send " + juce::String(s.sendIndex + 1).toStdString();
+        aps.automatable = true;
+        result.push_back(aps);
+    }
+
+    // Bus FX entries: FULL pid 3000 + busID*8 + paramIndex for every param of
+    // every fx bus, names from the BusFxDefs.h def tables. A group/master bus
+    // or a bus type with no defs contributes nothing, so a readback can never
+    // advertise a param the DSP ignores (G5). Values are the def's real units
+    // (same one-parameter-space contract as BusFxDefs); p is capped at 8 so a
+    // future def list can never overrun the pid decode arithmetic.
+    auto busList = model_.getBusListTree();
+    if (busList.isValid())
+    {
+        for (int b = 0; b < busList.getNumChildren(); ++b)
+        {
+            auto busTree = busList.getChild(b);
+            if (busTree.getProperty(IDs::busType).toString() != "fx") continue;
+            const int busID = static_cast<int>(busTree.getProperty(IDs::busID, -1));
+            if (busID < 0) continue;
+            const auto& defs = HDAW::busFxParamDefs(busTree.getProperty(IDs::fxType).toString());
+            const std::string busName = busTree.getProperty(IDs::name).toString().toStdString();
+            for (int p = 0; p < (int) defs.size() && p < 8; ++p)
+            {
+                AutomatableParamSnapshot aps;
+                aps.slotIndex = busID;
+                aps.paramIndex = 3000 + busID * 8 + p;
+                aps.name = busName + "." + defs[(size_t) p].name;
+                aps.automatable = true;
+                result.push_back(aps);
+            }
         }
     }
 

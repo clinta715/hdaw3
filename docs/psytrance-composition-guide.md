@@ -187,6 +187,13 @@ Two legitimate responses:
    electro-reggae / dancehall and satisfies the gate; it is what `dub_embers` does.
 2. **Accept the failure** and record it — a roots one-drop is *supposed* to fail a
    psytrance-shaped gate; note it in the brief rather than distorting the groove.
+3. **Skip the gate** (since 2026-09-23) — both surfaces take `expectBackbeat`
+   (default `true`): `audit_song_structure {expectBackbeat:false}` / RPC
+   `composition.auditSongStructure {expectBackbeat:false}` treats the gate as
+   satisfied — `gates.allDropsHaveBackbeat` reports `true` with
+   `dropChecks.backbeatChecked:false`, and `dropsMissingBackbeat` still lists the
+   would-fail drops informationally. `ok` no longer counts the gate against the plan;
+   every other gate is unchanged.
 
 Do NOT "fix" it by moving the rim to 2-and-4: that converts the groove into a rock/pop
 backbeat, which every reggae programming guide warns against.
@@ -770,22 +777,31 @@ TYPE/TIME/FEEDBACK/LEVEL/SYNC`, `VOCAL MIX`; NodalRed2x per-slot `Distortion`
 hasRange=true (real units via text; value space is normalized 0-1, matching
 `set_fx_param`). LFO/automation pids (100+slot*100+paramIndex) target them too.
 Persist for offline renders via the standard save snapshot (audition workflow).
-Also note the dedicated effect editions installed: **OsirusFX, OsTIrusFX,
-VavraFX, XeniaFX** (list_plugins kind=effect finds them; param surface identical
-to the instrument build).
+Also note: the dedicated effect editions (**OsirusFX, OsTIrusFX, VavraFX,
+XeniaFX**) are excluded from effect lists and rejected by `add_fx` — synth-only
+shadow builds that would silence a slot; making them usable (fix a) would
+require a cross-repo gearmulator rebuild + MIDI forwarding — tracked as a
+limitation (measurement below).
 
-#### The `*FX` editions: they load, expose params, but do NOT process track audio
+#### The `*FX` editions: no longer insertable (excluded 2026-09-23) — the measurement below is why
 
 The four `*FX` CLAPs (OsirusFX, OsTIrusFX, VavraFX, XeniaFX) are scanned as
-`kind: effect`, and it is tempting to insert them inline on any track to get the
-authentic hardware FX section. **Tested 2026-09-22 (`dub_embers`) — they do not work
-as insert effects:**
+`kind: effect`, but inserting them inline on a track is no longer possible — they
+are rejected by `add_fx` (see the first bullet). **The reason is the 2026-09-22
+measurement (`dub_embers`): they do not work as insert effects:**
 
-- They load **only with the format-qualified scan id** (`list_plugins` →
-  `add_fx {trackId, pluginId: "CLAP-VavraFX-a405fdaa-0"}`). The **bare name**
-  (`"VavraFX"`) leaves a dead slot: `list_fx` reports `"pluginFormat": ""` and
-  `"paramCount": 0`, and `list_fx_params` returns `{"params": []}` — with the
-  qualified id the same slot reports `"pluginFormat": "CLAP"` and exposes the full
+- **That invocation is no longer possible (fixed 2026-09-23).** The four names are
+  rejected by `add_fx` on BOTH surfaces through the shared gate
+  (`src/common/FxPluginIdCheck.h`, order: shadow-edition match BEFORE resolvability)
+  and dropped from every effect list (`list_plugins` `kind:effect`/`all`,
+  `plugin.getEffectPlugins`, the frontend FX picker), as an explicit four-name family
+  list (case-insensitive) — so neither the qualified-id load nor the bare-name dead
+  slot can be reproduced. The measurement below stays as the reason for the exclusion:
+  before the gate they loaded **only with the format-qualified scan id** (`list_plugins`
+  → `add_fx {trackId, pluginId: "CLAP-VavraFX-a405fdaa-0"}`), while the **bare name**
+  (`"VavraFX"`) left a dead slot: `list_fx` reported `"pluginFormat": ""` and
+  `"paramCount": 0`, and `list_fx_params` returned `{"params": []}`; with the
+  qualified id the same slot reported `"pluginFormat": "CLAP"` and exposed the full
   surface (**VavraFX: 7,557 params**, oscillators through FX).
 - **After the instrument in the chain they silence the track.** A/B with
   `set_fx_bypass` on the same window: bypassed `soloRms 0.0595 / audible=1`, active
@@ -794,6 +810,14 @@ as insert effects:**
   identical RMS to 5 decimals either way).
 - They also will not resolve a program/state via the usual preset tools in this
   build, so there is nothing to "fix" by loading a patch first.
+
+**`paramCount` is no longer a broken-slot signal (fixed 2026-09-23).** It reports the
+**internal FX defs-table size** for an internal FX slot (`none`/unknown types → 0) and the
+**live instance param count** for a plugin slot — in-process and isolated-proxy alike —
+and **0 while the instance is not loaded** (`TrackFXSlot::paramCount`, projected by
+`ReadModelImpl`). So the `"paramCount": 0` above now reads as "instance never loaded",
+not "slot silently broken"; regression test:
+`FxSurface.ParamCountReportsInternalDefsNotTreeChildren`.
 
 **Working path for that hardware FX character:** use the **instrument** build
 (Osirus / OsTIrus / Vavra / Xenia / JE8086) as the sound source and automate *its own*
@@ -1372,7 +1396,11 @@ diagnostics.
 
 ## 8. Export + deliverable housekeeping (verified)
 
-- `export_audio` ignores trackIds (always full project); serialize calls
+- `export_audio`'s `trackIds` is a TRACK-INDEX filter that shipped 2026-09-08 — the
+  handler compares each value against the track's position in `TRACK_LIST`
+  (`McpExportTool.cpp:92-104`), so `trackIds: [2]` renders that track alone and any
+  non-index value (a role name, e.g. `"PAD"`) matches nothing and mutes EVERY track.
+  Omit the arg for a full-project render; serialize calls
   ("export already in progress"); use a FRESH filename per render and wait
   for the file size to stabilize; output is 24-bit PCM.
 - Since v0.25.2: `export_audio` uses atomic CAS guard; `queue:true` waits for previous export (120s timeout) instead of immediate reject; `cancel_export` still aborts.

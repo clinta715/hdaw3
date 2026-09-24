@@ -536,6 +536,13 @@ std::vector<juce::PluginDescription> PluginManager::getEffectPlugins() const
     {
         if (isBlacklisted(desc.fileOrIdentifier))
             continue;
+        // The *FX shadow editions are synth-only devices that silence a slot —
+        // never publish them as effects. This one edit covers BOTH consumers
+        // of this method: RPC plugin.getEffectPlugins (PluginServiceImpl ->
+        // Router_Plugin) and the frontend FX-chain picker. See
+        // isShadowFxEdition.
+        if (isShadowFxEdition(desc.name))
+            continue;
         if (!desc.isInstrument)
             result.push_back(desc);
     }
@@ -932,6 +939,36 @@ juce::String PluginManager::resolveRespawnPath(
             return kd.fileOrIdentifier;
     }
     return {};
+}
+
+bool PluginManager::isShadowFxEdition(const juce::String& nameOrId)
+{
+    // Explicit four-name family list (Gate 9): NEVER a generic "*FX" suffix
+    // filter — unrelated plugins that happen to end in "FX" must not match.
+    // Token-boundary matching catches bare cache names, format-qualified ids
+    // ("CLAP-VavraFX-a405fdaa-0") and install paths (".../VavraFX.clap")
+    // alike; see the declaration comment in PluginManager.h for the evidence.
+    static const char* const kShadowFxEditions[] = { "OsirusFX", "OsTIrusFX",
+                                                     "VavraFX", "XeniaFX" };
+    const auto hay = nameOrId.toLowerCase();
+    for (const char* name : kShadowFxEditions)
+    {
+        const auto token = juce::String(name).toLowerCase();
+        int from = 0;
+        int at = -1;
+        while ((at = hay.indexOf(from, token)) >= 0)
+        {
+            const int end = at + token.length();
+            const bool leftOk = at == 0
+                || !juce::CharacterFunctions::isLetterOrDigit(hay[at - 1]);
+            const bool rightOk = end == hay.length()
+                || !juce::CharacterFunctions::isLetterOrDigit(hay[end]);
+            if (leftOk && rightOk)
+                return true;
+            from = at + 1;
+        }
+    }
+    return false;
 }
 
 bool PluginManager::isBlacklisted(const juce::String& pluginID) const

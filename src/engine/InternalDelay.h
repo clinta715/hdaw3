@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <vector>
 
 namespace HDAW {
 
@@ -15,6 +16,11 @@ namespace HDAW {
 // a track's internal delay renders what it rendered before. Why the bus needs
 // it: FxBusProcessor's previous bare juce::dsp::DelayLine was a single 100%-wet
 // tap with no feedback path, so a dub return could not repeat.
+//
+// Damping (param 5, 2026-09-23) puts a one-pole lowpass INSIDE the feedback
+// loop — classic dub: repeats darken echo after echo — without touching the
+// wet/dry output mix. Its 0 default is a hard bypass (process() skips the
+// filter before any arithmetic), so existing projects render bit-identically.
 //
 // Threading: params and tempo are atomics — the command/message thread writes
 // them and the audio thread reads them, the same benign-tear class TrackFXSlot
@@ -32,8 +38,11 @@ public:
     // Param indices. TrackFXSlot::getParamDefsForType("delay") builds its table
     // from paramDefs() below and common/BusFxDefs.h mirrors it, so track FX,
     // bus FX and both surfaces share one numbering.
-    enum ParamIndex { DelayTime = 0, Feedback = 1, Mix = 2, SyncToTempo = 3, Division = 4 };
-    static constexpr int kNumParams = 5;
+    enum ParamIndex
+    {
+        DelayTime = 0, Feedback = 1, Mix = 2, SyncToTempo = 3, Division = 4, Damping = 5
+    };
+    static constexpr int kNumParams = 6;
 
     static constexpr float kMaxDelaySeconds = 5.0f;   // Delay Time def top == the line's capacity
     static constexpr float kMinDelaySeconds = 0.01f;  // Delay Time def bottom
@@ -60,6 +69,7 @@ public:
             { "Mix",         0.5f, 0.0f,             1.0f              },
             { "SyncToTempo", 0.0f, 0.0f,             1.0f              },
             { "Division",    0.0f, 0.0f,             6.0f              },
+            { "Damping",     0.0f, 0.0f,             1.0f              },
         } };
         return defs;
     }
@@ -79,24 +89,29 @@ public:
 
     ~InternalDelay() = default;
 
-    // Message thread only (allocates). Sized to the def's 5 s top BEFORE
-    // juce's prepare(), so the documented Delay Time range is real at every
-    // sample rate rather than silently clipped to a fixed capacity.
+    // Message thread only (allocates: the line's capacity AND the per-channel
+    // damping state). The line is sized to the def's 5 s top BEFORE juce's
+    // prepare(), so the documented Delay Time range is real at every sample
+    // rate rather than silently clipped to a fixed capacity.
     void prepare(const juce::dsp::ProcessSpec& spec)
     {
         line.setMaximumDelayInSamples(
             juce::jmax(4, (int) std::ceil((double) kMaxDelaySeconds * spec.sampleRate)));
         line.prepare(spec);
         sampleRate = spec.sampleRate;
+        dampState.assign((size_t) spec.numChannels, 0.0f);
+        deriveDampingCoeff();
         reset();
     }
 
-    // Clears the line's contents and the derived-time cache (params/tempo are
-    // kept: both callers re-push them after prepare). Audio-thread safe — this
-    // only zeroes the ring allocated by prepare().
+    // Clears the line's contents, the damping filter state and the
+    // derived-time cache (params/tempo are kept: both callers re-push them
+    // after prepare). Audio-thread safe — this only zeroes storage allocated
+    // by prepare().
     void reset()
     {
         line.reset();
+        for (auto& y : dampState) y = 0.0f;
         lastDelayTime = -1.0f;
         lastDelaySamps = 1;
     }
@@ -116,6 +131,7 @@ public:
         if (index < 0 || index >= kNumParams) return;
         params[(size_t) index].store(clampParam(index, value), std::memory_order_relaxed);
         applyDelayIfChanged();
+        if (index == Damping) deriveDampingCoeff();
     }
 
     float getParam(int index) const
@@ -135,9 +151,15 @@ public:
 
     // In-place per-block process over a dsp::AudioBlock, per channel:
     //   in = x[s]; delayed = popSample(ch, delaySamps);
-    //   pushSample(ch, in + delayed * fb); x[s] = in * dryMix + delayed * wetMix;
-    // (TrackFXSlot's loop, copied unchanged — pop before push, fb into the
-    // write, wet/dry mix on the read.) No allocation, no lock, no juce::String.
+    //   fbIn = Damping > 0 ? onePole(delayed) : delayed   (loop path only)
+    //   pushSample(ch, in + fbIn * fb); x[s] = in * dryMix + delayed * wetMix;
+    // (TrackFXSlot's loop — pop before push, fb into the write, wet/dry mix on
+    // the read — plus the dub damping filter INSERTED BETWEEN pop and push, so
+    // ONLY the feedback signal darkens and the output mix never sees the
+    // filter. Damping 0 is a hard bypass checked FIRST, before any filter
+    // arithmetic: the feedback sample passes bit-exact and the pre-Damping
+    // impulse tests stay analytic. No allocation, no lock, no juce::String:
+    // the per-channel filter state was allocated by prepare().
     void process(const juce::dsp::AudioBlock<float>& block)
     {
         if (! isPrepared()) return;
@@ -147,6 +169,8 @@ public:
         const float fb     = params[(size_t) Feedback].load(std::memory_order_relaxed);
         const float wetMix = params[(size_t) Mix].load(std::memory_order_relaxed);
         const float dryMix = 1.0f - wetMix;
+        const float damp   = params[(size_t) Damping].load(std::memory_order_relaxed);
+        const bool dampen  = damp > 0.0f;
         const int delaySamps = lastDelaySamps;
 
         const auto numChannels = block.getNumChannels();
@@ -158,7 +182,14 @@ public:
             {
                 const float in = channelData[s];
                 const float delayed = line.popSample(static_cast<int>(ch), (float) delaySamps);
-                line.pushSample(static_cast<int>(ch), in + delayed * fb);
+                float fbIn = delayed;
+                if (dampen)
+                {
+                    float& lp = dampState[ch];           // one-pole lowpass state
+                    lp += dampCoeff * (delayed - lp);
+                    fbIn = lp;
+                }
+                line.pushSample(static_cast<int>(ch), in + fbIn * fb);
                 channelData[s] = in * dryMix + delayed * wetMix;
             }
         }
@@ -199,9 +230,30 @@ private:
         }
     }
 
+    // The dub damping filter's coefficient. Damping d in (0,1] maps
+    // monotonically/exponentially onto a lowpass cutoff,
+    //   fc = 20000 * (200 / 20000)^d Hz   (~20 kHz just above 0 -> ~200 Hz at 1),
+    // then the one-pole coefficient
+    //   a = 1 - exp(-2 * pi * fc / sampleRate)   for y += a * (x - y).
+    // Re-derived exactly like the delay time: in prepare() and whenever the
+    // Damping param is written (setParam). Pure math on preallocated state —
+    // no allocation, safe whichever thread writes the param. At d = 0 the
+    // coefficient is never used (process() bypasses the filter entirely).
+    void deriveDampingCoeff()
+    {
+        if (! isPrepared()) return;
+        const float d = juce::jlimit(0.0f, 1.0f,
+            params[(size_t) Damping].load(std::memory_order_relaxed));
+        const double fc = 20000.0 * std::pow(0.01, (double) d);
+        dampCoeff = (float) (1.0 - std::exp(-2.0 * juce::MathConstants<double>::pi
+                                             * fc / sampleRate));
+    }
+
     juce::dsp::DelayLine<float> line;
     std::array<std::atomic<float>, (size_t) kNumParams> params;
     std::atomic<float> tempoBpm{ 120.0f };
+    std::vector<float> dampState;  // per-channel one-pole state, sized in prepare()
+    float dampCoeff = 1.0f;        // derived from Damping + sampleRate (deriveDampingCoeff)
     double sampleRate = 0.0;      // 0 == not prepared
     float lastDelayTime = -1.0f;  // derived seconds cache (recompute gate)
     int lastDelaySamps = 1;

@@ -118,7 +118,12 @@ return → bass **18 627 → 15 505 (−17%)**, sub **5 645 → 4 445 (−21%)**
 return behind a 250 Hz HPF → sub **4 604 → 3 698 (−20%)**. Note a bus created *after* the graph
 was last prepared is never prepared itself; `FxBusProcessor::processBlock` now fails safe
 (pass-through) rather than corrupting memory. The pre-existing `set_track_send_level` /
-`_mode` / `_bypassed` / `get_track_sends` shape and read an existing send. RPC twins:
+`_mode` / `_bypassed` / `get_track_sends` shape and read an existing send. **Corrected
+2026-09-23:** those four legacy send routes now take `trackId` on BOTH surfaces — the RPC
+half previously took `trackIndex` — and the retired key is rejected on both
+(`BusSendRpcTest.LegacySendRoutesRejectTrackIndexOnBothSurfaces`). A send level is
+automatable too: `add_automation_lane {paramID: 2000 + sendIndex}` rides it (a bus FX
+param is `3000 + busID*8 + paramIndex`). RPC twins:
 `project.addBus` / `removeBus` / `addSend` / `removeSend`. Full plan + gates:
 `docs/plans/2026-09-22-bus-send-surface.md`.
 
@@ -149,12 +154,18 @@ taps.
 signal on top of the track's own dry. 1.0 makes the return pure echo (the classic send-return
 wiring). The same applies to a reverb return.
 
-Three verified caveats remain: mutating commands that trigger a routing rebuild (`add_bus`,
-`add_send`) can **drop their HTTP response while completing the work** (intermittent —
-re-read state with `list_buses` / `get_track_sends` rather than blind-retrying); **sends are
-positional** (index = position in the track's `SEND_LIST`, so removing one shifts the rest);
-and `export_audio`'s `start`/`end` are **seconds** while `verify_part` takes
-`startBeat`/`endBeat` — check the rendered duration before trusting an A/B.
+The dropped-response caveat is **fixed (2026-09-23)**: `TransportHttp::start` raises
+Qt's 15 s default keep-alive to **900 s** (`src/mcp/McpTransportHttp.cpp`) — the
+buffered response of a long synchronous routing rebuild (`add_bus`, `add_send`) is no
+longer discarded when the completion-to-flush heartbeat window elapses (regression
+test `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`). Keep the general hygiene
+anyway: after any transport hiccup, **re-read state** (`list_buses` / `get_track_sends`)
+rather than blind-retrying a mutation — a blind retry double-applies it. Two verified
+caveats remain: **sends are positional** (index = position in the track's `SEND_LIST`,
+so removing one shifts the rest — `remove_send` returns the `shifted` pairs and remaps
+send-level lanes in the same undo unit); and `export_audio`'s `start`/`end` are
+**seconds** while `verify_part` takes `startBeat`/`endBeat` — check the rendered
+duration before trusting an A/B.
 
 Still available (and often the cheaper choice): per-track FX plus **gestural lane
 automation** — `add_automation_lane {trackId, laneName, paramID}` (paramID = `100 +

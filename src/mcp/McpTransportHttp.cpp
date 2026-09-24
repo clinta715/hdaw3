@@ -3,10 +3,12 @@
 #include "McpJsonRpc.h"
 #include <QHttpServerRequest>
 #include <QHttpServerResponse>
+#include <QHttpServerConfiguration>
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTcpServer>
+#include <chrono>
 
 namespace mcp {
 
@@ -22,6 +24,19 @@ TransportHttp::~TransportHttp() { stop(); }
 bool TransportHttp::start(McpServer* s) {
     lastError_.clear();
     server_ = s;
+    // rebuild-commands-drop-response: Qt's default 15 s keep-alive abort()s
+    // the connection on a long synchronous rebuild because lastActiveTimer
+    // only restarts on request read — the buffered response is discarded.
+    // 900 s matches the MCP client timeout convention (900000 ms in
+    // .mcp.json), exceeds any realistic rebuild (bake budget tops at 120 s),
+    // and makes the heartbeat (interval = timeout/2) unable to fire between
+    // a long request's completion and its response flush — which is exactly
+    // the drop mechanism. Local control server: a 900 s idle keep-alive is
+    // harmless (clients time out first). Applied to impl_->server — the same
+    // instance that serves /mcp via route() and bind() below.
+    QHttpServerConfiguration keepAliveCfg = impl_->server.configuration();
+    keepAliveCfg.setKeepAliveTimeout(std::chrono::seconds(900));
+    impl_->server.setConfiguration(keepAliveCfg);
     impl_->server.route("/mcp", QHttpServerRequest::Method::Post,
         [this](const QHttpServerRequest& req) -> QHttpServerResponse {
             auto body = req.body();
@@ -87,6 +102,12 @@ bool TransportHttp::start(McpServer* s) {
         impl_->tcp.reset();
         return false;
     }
+    // Refresh after a successful listen: with port 0 the OS assigned an
+    // ephemeral port, so port() must expose the bound port. No-op for an
+    // explicit nonzero port (serverPort() equals the requested port); on a
+    // listen/bind failure above we never reach here, so the constructor
+    // value is preserved.
+    port_ = impl_->tcp->serverPort();
     return true;
 }
 

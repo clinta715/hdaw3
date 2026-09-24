@@ -11,6 +11,10 @@ and one-line rules; the full narratives live here.
 - Do NOT run `build/Release/HDAW.exe` — stale binary, contains none of the fixes.
 - **Two launch modes:** Default (browser), Headless (Electron).
 - **Frontend build:** `cd frontend; npm run build`, then rebuild the C++ project.
+  **DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
+  date — do NOT build it (`npm run build`, `frontend\build.bat`). Engine-only
+  verification: `build/hdaw_tests.exe` (gtest) + the MCP surface. See the dated banner
+  on "How frontend changes reach the running app" below.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
 
 ### Build speed: the `.ninja_deps` trap (2026-09-21) — 285 s → 2 s
@@ -105,6 +109,10 @@ safe). It shards small suites whole and large ones per test.
   The hook is a fast no-op outside WSL and NEVER fails a build. See
   `docs/archive/plans/2026-09-05-time-sync-build-hook.md` and
   `docs/skills/pre-build-time-sync/SKILL.md`.
+  **DEPRECATED (2026-09-23):** the `frontend\build.bat` / `npm run build` entries
+  above are deprecated with the Electron frontend (see the frontend banner below);
+  the rule now applies only to the live engine builds (`cmake --build`,
+  `build-fast.bat`, bare `ninja`).
 
 ### Disk housekeeping: `scripts/cleanup-stale.ps1` (2026-09-22)
 
@@ -144,6 +152,13 @@ This development system runs **Windows PowerShell 5.1**, where `&&` and `&` (as 
 
 ### How frontend changes reach the running app (the stale-frontend trap)
 
+**DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
+date — the repo no longer builds or tests it. The table and instructions below are
+retained for reference only (do NOT run `frontend\build.bat`, `npm run build`,
+`npm run package:dir`, or `npm run dev`). The stale-`app.asar` warning printed by
+`frontend\build.bat` is therefore expected noise that can be ignored. Engine-only
+verification — `build/hdaw_tests.exe` (gtest) + the MCP surface — is the live path.
+
 The React frontend is delivered three ways, and **a plain `cmake --build`
 updates NONE of them**. If a frontend fix "doesn't take effect after
 rebuilding," this is almost certainly why:
@@ -171,6 +186,24 @@ repackage by hand, run `cmake --build build --config RelWithDebInfo` FIRST and
 verify the binary (string-search the shipped `resources\engine\HDAW_headless.exe`
 for a fix marker) before trusting the package.
 
+### Engine launch: locks and `LNK1104` (2026-09-23)
+
+Never run live engine/tests straight out of `build/` — a running exe locks its
+own file and the next link dies with **`LNK1104`** (hit twice on 2026-09-23).
+Launch via the repo-root **`mcp-launch.bat`**; it copies `HDAW_headless.exe`,
+`hdaw_plugin_host.exe` and `hdaw_plugin_scanner.exe` to `%TEMP%`, verifies each
+copy (size + MD5 + the `audit_song_structure` sentinel), prepends the build
+dirs to `PATH` so the temp copy resolves its DLLs, and `taskkill`s stale
+engines first — so the build-dir exes stay free for the linker.
+
+- **Do not re-derive a manual copy-and-launch.** A hand-rolled copy of the
+  engine to `%TEMP%` died with exit `0x7FFFFFFF` even with `PATH` set: it skips
+  the launcher's build-dir `PATH` prepend, so the DLLs never resolve.
+- **Symptom:** `LNK1104: cannot open ...` on `HDAW_headless.exe` /
+  `hdaw_plugin_host.exe` / `hdaw_plugin_scanner.exe` after an engine or test
+  was left running from `build/` — kill it (the launcher does this itself) and
+  rebuild.
+
 ## Testing
 
 - **C++ engine tests (gtest):** `build/hdaw_tests.exe` (flat Ninja RelWithDebInfo layout — there is no `build/Debug/`; `build-fast.bat test` builds it, `build-fast.bat all` also builds `hdaw_plugin_host.exe` which the PluginIsolation/CrashRecovery suites require)
@@ -178,6 +211,7 @@ for a fix marker) before trusting the package.
   - Full suite: **1768 tests / 264 suites, ~44 min serial** (measured 2026-09-21; the suite keeps growing — it was 1328/216 on 2026-09-02). Fast iteration tier: `run_fast_tests.bat` (~3.3 min; excludes the render/recipe/spawn-heavy suites — run the full suite before delivery). A native **shard runner** exists — `run-tests-sharded.ps1 [-Shards N] [-Filter ...]` (PowerShell twin of the WSL-only `scripts/run-tests-parallel.sh`): it splits the gtest list, keeps the device/plugin-dependent suites in ONE extra serial process, aggregates per-shard logs, and exits non-zero on failure. Its shard count is **not validated** — see the caveat below.
   - **Device-dependent suites need a working audio route; when it is missing they fail with `getTrack() == nullptr` / `tr == nullptr` even SOLO.** That is the documented deviceless pattern (lessons 9/17: no device → `rebuildRoutingGraph` no-ops → `getTrack()` nulls), and it hits `InternalFx`, `MasterGain`, `MasterBusFx`, `AudioPoolDedup`, `AudioEngineReadFacadeTest`, `AutomationPidRouting`, `RenderSequenceRelease`, `McpCoverageTest` and the export/plugin-spawn suites. **Diagnostic rule:** if every failing assertion is a null track/processor, the run is environmental (check the audio device) — do not blame parallel runs, the runner, or your change. Observed 2026-09-21: a device-healthy serial run passed all of them, and the same binary failed them an hour later.
   - Sharding caveat: the calibration runs for `run-tests-sharded.ps1` were contaminated by exactly that environmental failure (its failures were all null-track ones), so **no safe shard count has been established** — the default is a conservative 2. Re-measure on a device-healthy machine before trusting a higher `-Shards`. What *is* independently true: concurrent runs cannot collide on proxy pipe/shm names (unique namespace per manager instance, lesson 20) or on render temp targets (pid-tagged since 2026-09-21).
+  - **The audio route also disappears in a disconnected RDP session (2026-09-23).** The deviceless pattern above can appear even when `Get-CimInstance Win32_SoundDevice` reports the hardware fine — a **disconnected** RDP session exposes no routable endpoint, so `rebuildRoutingGraph` still no-ops and every live-graph/render suite fails with the identical null `(track)`/`(rm)`/`(tr)` signature. Observed 2026-09-23: `query session` showed the active session as `> hapbt 2 Disc` (`rdp-tcp … Listen`) while Realtek/Focusrite/NVIDIA sound devices all reported Status OK, yet `TrackFxRebuildRace.*` (11), `TrackMixerState.*` (2), `MasterBusFx` (6, some as SEH `0xc0000005` inside the test body), `AudioPoolDedup.*` (3), `InternalFx.*` (7), `MasterGain.SurvivesRebuild`, `AudioEngineReadFacadeTest.GetFxProgramList*`, `RenderSequenceRelease.RebuildReleasesPreviousGraphChildren` ("no new `hdaw_plugin_host.exe` after `addFxSlot`"), `StreamingPoolDedup.EngineWires…` (`openCount 0`) and `SongCells.LockSkipsAndRerollBumpsSeed`/`HarvestNotesAndRemove` (`filled == 0`) all failed. **Diagnostic recipe:** (1) `query session` — is the active session `Disc`?; (2) run an **untouched** device-dependent control suite (`MasterGain.SurvivesRebuild`, `InternalFx.FilterLowpassAttenuatesAboveCutoff`, `AudioPoolDedup.EngineWires…`) — if those fail null-track too, the run is environmental, not change-induced; (3) if the failures land in **40–70 ms** instead of the ~**1900 ms** they take with a healthy route, the graph never settled — no route. Timing discriminator: the same binary passed live-graph tests minutes earlier (`AutomationSendBusPids` asserting on LIVE `rm->getSend`/`rm->getFxBus` + `processBlock`; `VerifyPart` renders), so a device-regression is the cause, not the batch. **Rule:** verify a batch's engine changes in a session with a live route (or compare against a pre-change log) and never attribute null-track failures to the change without that untouched control.
   - Current baseline (2026-09-21, full serial run): **1768 tests / 264 suites -> 1728 passed, 39 skipped, 1 failed**. The single failure `PluginIsolation.LargeStateRoundTripThroughProxy` (a 0-byte read of a 100 KB chunked state) passes solo and the whole `PluginIsolation.*:CrashRecovery.*` set (57 tests) is green solo — a load flake in the state-chunk path (lessons 14/26), not a regression. Real-plugin `FxMidiInjection.*` was verified separately: 22/23, the single failure being the cross-shard temp-file collision documented above, since fixed with a pid-tagged temp name (the identical sharded sweep is 24/24 post-fix).
   - Previous baseline (2026-09-02, post DISABLED-test rewrite pass): 0 failed; 4 RealtimeSafety detector tests SKIP in release configs (`BufferCheck` is `#if JUCE_DEBUG`-only by design); 0 DISABLED — every formerly `DISABLED_` test is either re-enabled against current contracts (PluginIsolation ×4, ExportVolumeBypass.RealProjectVolumeSensitivity, TrackFXSlotShowEditor — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md`) or re-enabled after its fix (`ExportAudioWithMultipleIsolatedInstances`, commit abf8a3d).
   - Build sequentially: two concurrent `build-fast` invocations on the same `build/` dir overwrite each other's `.ninja_log`, and the next build re-runs as near-full. One build at a time.
@@ -196,14 +230,19 @@ for a fix marker) before trusting the package.
     coverage, add a gtest — the suite is the contract the frontend and MCP
     server rely on; (3) run `build/Debug/hdaw_tests.exe` to confirm no
     regression. An engine change with no test consideration is incomplete.
-- **Frontend unit tests (Vitest):** `cd frontend; npm test`
+- **DEPRECATED (2026-09-23):** the Electron frontend is a separate project — do NOT
+  run its suites (`cd frontend; npm test`, `npm run test:watch`,
+  `npm run test:coverage`, `cd frontend; npm run test:e2e`). Retained below for the
+  day it returns; engine-only verification is `build/hdaw_tests.exe` (gtest) + the
+  MCP surface.
+- **Frontend unit tests (Vitest):** `cd frontend; npm test` — **DEPRECATED (2026-09-23)**
   - ~177 tests: Zustand stores (transport, ui, project, notify, meter, browser),
     hooks (useTimelineDrag), utils (rowLayout, theme, grooveUtils), and
     components (StatusBar, Toaster, BottomTabs, MidiFxChain, WaveformCanvas,
     MidiThumbnailCanvas, StepSequencer, TimelineContextMenu, MixerStrip,
     TrackHeaders, Icons).
   - Watch: `npm run test:watch` · Coverage: `npm run test:coverage`
-- **Frontend E2E tests (Playwright):** `cd frontend; npm run test:e2e`
+- **Frontend E2E tests (Playwright):** `cd frontend; npm run test:e2e` — **DEPRECATED (2026-09-23)**
   - ~197 tests in `e2e/*.spec.ts`. `app.spec.ts` = render smoke; the rest are
     user-journey regressions that drive the real app (click/drag/keyboard) and
     assert on DOM/canvas/snapshot state — the layer that catches the recurring

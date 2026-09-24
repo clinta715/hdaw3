@@ -19,6 +19,8 @@ project), ten section×role cells, filled to ten clips:
 6. `audit_song_structure` → `boredomSpans:1`, `firstDropHasMotif:true`,
    `allDropsHaveBackbeat:false` (`dropsMissingBackbeat:["drop"]`) — for a MIDI-only sketch
    with no clap/snare cell, correct and useful
+   (Update 2026-09-23: the tool now takes `expectBackbeat` — default `true` keeps this
+   measurement as-is; pass `false` for dub/one-drop styles to skip the backbeat gate)
 7. `audit_modulation_coverage` → all 5 tracks `needsAttention` (`no-lfo`, `lanes-disabled`)
 8. `export_audio {wait:true}` → *worked in a deviceless session* (offline render of the tree copy)
 9. `mix_report {fromPlan:true}` → intro 0.109 / build 0.190 / drop 0.242 RMS,

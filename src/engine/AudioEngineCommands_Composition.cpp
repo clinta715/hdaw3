@@ -1467,7 +1467,8 @@ ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const Auditi
 }
 
 ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex, double windowSeconds,
-                                                                  double startBeat, double endBeat)
+                                                                  double startBeat, double endBeat,
+                                                                  bool soloOnly)
 {
     VerifyPartResult result;
 
@@ -1518,9 +1519,8 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
         result.startBeat = startBeat;
     }
 
-    // Solo render (with band analysis) + full-mix render of the same window —
-    // both via the shared renderTrackWindow. Read-only: no tree writes, no
-    // undo, no rebuild.
+    // Solo render (with band analysis) — always — via the shared
+    // renderTrackWindow. Read-only: no tree writes, no undo, no rebuild.
     BandPresence bands;
     auto solo = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, true, &bands,
                                   1.0f, windowStartSec);
@@ -1530,23 +1530,36 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
         return result;
     }
 
-    auto mix = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, false,
-                                 nullptr, 1.0f, windowStartSec);
-    if (!mix.error.empty())
+    // Full-mix render of the same window — skipped under soloOnly (default
+    // false = unchanged): it is the cost that scales with plugin instances,
+    // and skipping it must never masquerade as a measured pass (mixMeasured
+    // gates nonClipping below).
+    float mixRms = 0.0f, mixPeak = 0.0f;
+    if (!soloOnly)
     {
-        solo.wavPath.deleteFile();
-        result.error = mix.error;
-        return result;
+        auto mix = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, false,
+                                     nullptr, 1.0f, windowStartSec);
+        if (!mix.error.empty())
+        {
+            solo.wavPath.deleteFile();
+            result.error = mix.error;
+            return result;
+        }
+        mixRms = mix.rms;
+        mixPeak = mix.peak;
+        mix.wavPath.deleteFile();
     }
 
     result.soloRms = solo.rms;
     result.soloPeak = solo.peak;
-    result.mixRms = mix.rms;
-    result.mixPeak = mix.peak;
+    result.mixRms = mixRms;
+    result.mixPeak = mixPeak;
+    result.mixMeasured = !soloOnly;
     result.windowStart = solo.windowStart;
     result.durationSeconds = windowSeconds;
     result.audible = (solo.peak > 1e-4f);
-    result.nonClipping = (mix.peak < 1.0f);
+    // Honesty: nonClipping is only meaningful when the mix render ran.
+    result.nonClipping = result.mixMeasured && (mixPeak < 1.0f);
     result.bandLow = bands.low;
     result.bandMid = bands.mid;
     result.bandHigh = bands.high;
@@ -1554,7 +1567,6 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
     result.ok = true;
 
     solo.wavPath.deleteFile();
-    mix.wavPath.deleteFile();
     return result;
 }
 

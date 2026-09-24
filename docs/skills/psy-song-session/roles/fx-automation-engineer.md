@@ -33,12 +33,26 @@ Every gesture must be **provable**: a `mix_diff` delta (rmsDb / band energies / 
 ratio) against the same render without it, or a `tone_verity` expectation the gesture
 satisfies. A gesture with no measurement is decoration.
 
-**Limitation (verified 2026-09-22):** sends and buses have **no agent surface** —
-`set_track_send_level`/`get_track_sends` are inert because nothing in `src/mcp/` or
-`src/frontend/` can create a bus, so the shared-return architecture (all sources →
-one delay bus + one reverb bus, ridden per phrase) is currently impossible. Use
-per-track FX + the gesture lanes above; see the capability-gap note in
-`docs/composition-toolkit.md`.
+**Buses and sends ARE on the agent surface (corrected 2026-09-23):** the old
+"no agent surface" limitation is false. `add_bus` / `add_send` / `remove_bus` /
+`remove_send` (commit 70ab519) create and tear down the routing; `list_buses`
+(3eed79e) plus `list_bus_fx_params` read it back; `set_bus_fx_param` and
+`set_bus_target` shape a return (including re-parenting one behind a high-pass
+`filter` bus); and the setters `set_track_send_level` / `set_track_send_mode` /
+`set_track_send_bypassed` (with `get_track_sends`) are live — they are exactly what
+the mixer's send strip drives. So the shared-return architecture (all sources → one
+delay bus + one reverb bus, ridden per phrase) IS buildable: `add_bus`, `add_send`,
+set the return's Mix to 1.0, then ride the send level per phrase. **Corrected
+2026-09-23 — send levels ARE automatable.** A send level's automation paramID is
+`2000 + sendIndex`, and a bus FX param's is `3000 + busID*8 + paramIndex`, so a
+per-phrase throw is now a lane-ridable gesture: `add_automation_lane {trackId,
+laneName, paramID: 2000+sendIndex}` then `automation_preset {preset:'delayThrow',
+...}` rides the send itself, exactly like a track FX lane (the send must already
+exist; `remove_send` remaps the lane pids in the same undo unit). Per-track FX plus
+the gesture lanes above remain a valid alternative when the effect should stay
+local to the track or survive send re-routing. Recipes and measurements:
+`docs/composition-toolkit.md` §"Bus/send architecture — reachable
+since 2026-09-22".
 
 ## Surface area
 `list_device_params` (device parameter map — engines, intent vocabulary, tier,
@@ -50,6 +64,10 @@ durability; call this FIRST to pick a target), `list_fx_chains`, `load_fx_chain`
 `automation_preset`, `set_automation_enabled`, `list_automation_lanes`,
 `remove_automation_lane`, `psy_fm_set_mod_route`, `psy_fm_get_analysis`,
 `apply_sub_synth_mod_preset`,
+`add_bus`, `add_send`, `remove_bus`, `remove_send`, `list_buses`,
+`list_bus_fx_params`, `set_bus_fx_param`, `set_bus_target`,
+`set_track_send_level`, `set_track_send_mode`, `set_track_send_bypassed`,
+`get_track_sends`,
 `set_fader_authoritative`, `verify_part`, `list_tracks`, `list_clips`,
 `get_project_summary`
 

@@ -104,22 +104,25 @@ QJsonObject waitExportComplete(mcp::TransportLoopback& tp, int msec) {
 // with SEH 0xc0000005. Running this test first avoids the crash for a
 // single run of the test binary.
 //
-// The transport binds to 127.0.0.1:18765; the unit smoke test
-// (HttpTransport.StartStopLifecycle) uses a different port so the two
-// can coexist in the same test binary.
+// The transport binds to an OS-assigned ephemeral port (constructed with
+// 0; port() exposes the bound port after start()), so this test and the
+// unit smoke test (HttpTransport.StartStopLifecycle, also port 0) can
+// never collide on a fixed loopback port. Handoff finding 2026-09-23:
+// the previous fixed port 18765 failed whenever a live engine held it
+// (4 failures measured in a full run).
 // NOTE: in every test below the transport object must be declared BEFORE the
 // McpServer so it outlives it: ~McpServer() calls transport_->stop(), and a
 // destroyed transport's QMutex hangs the teardown forever.
 TEST(McpServer, HttpRoundTrip) {
     AudioEngine engine;
-    mcp::TransportHttp t(18765);
+    mcp::TransportHttp t(0);
     mcp::McpServer s;
     s.setEngine(&engine);
     mcp::registerAllTools(s);
     ASSERT_TRUE(t.start(&s)) << "start failed: " << t.lastError().toStdString();
 
     QNetworkAccessManager nam;
-    QNetworkRequest req(QUrl("http://127.0.0.1:18765/mcp"));
+    QNetworkRequest req(QUrl(QString("http://127.0.0.1:%1/mcp").arg(t.port())));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     QByteArray body = R"({"jsonrpc":"2.0","id":1,"method":"ping"})";
 
@@ -834,10 +837,10 @@ TEST(McpServer, ApplySongCells) {
     s.setTransport(nullptr);
 }
 
-// P1-3 (plan 2026-08-29, G1): the internal delay exposes 5 params incl.
-// SyncToTempo (3) + Division (4); set_internal_fx_param writes them as
-// real-value tree properties (round-trip-safe), and list_fx_params reflects
-// them automatically. Gate 9: out-of-range stays an error.
+// P1-3 (plan 2026-08-29, G1): the internal delay exposes 6 params incl.
+// SyncToTempo (3) + Division (4) + Damping (5); set_internal_fx_param writes
+// them as real-value tree properties (round-trip-safe), and list_fx_params
+// reflects them automatically. Gate 9: out-of-range stays an error.
 TEST(McpServer, AddDelaySyncAndSetParams) {
     AudioEngine engine;
     engine.initialize();
@@ -878,12 +881,12 @@ TEST(McpServer, AddDelaySyncAndSetParams) {
     ASSERT_EQ(tr0->getNumFXSlots(), 1);
     EXPECT_EQ(tr0->getFXChain().at(0)->getType().toStdString(), std::string("delay"));
 
-    // list_fx_params -> 5 defs incl. SyncToTempo + Division (real-unit ranges).
+    // list_fx_params -> 6 defs incl. SyncToTempo, Division and Damping (real-unit ranges).
     r = callTool(2, "list_fx_params", R"({"trackId":0,"slotIndex":0})");
     EXPECT_FALSE(r.value("error").isObject());
     auto params = QJsonDocument::fromJson(text(r).toUtf8())
                       .object().value("params").toArray();
-    ASSERT_EQ(params.size(), 5);
+    ASSERT_EQ(params.size(), 6);
     EXPECT_EQ(params.at(0).toObject().value("name").toString().toStdString(), "Delay Time");
     EXPECT_EQ(params.at(1).toObject().value("name").toString().toStdString(), "Feedback");
     EXPECT_EQ(params.at(2).toObject().value("name").toString().toStdString(), "Mix");
@@ -907,7 +910,7 @@ TEST(McpServer, AddDelaySyncAndSetParams) {
 
     // Read model agrees (real units).
     auto snaps = engine.getReadModel().getInternalFxParams(0, 0);
-    ASSERT_EQ(snaps.size(), 5u);
+    ASSERT_EQ(snaps.size(), 6u);
     EXPECT_NEAR(snaps[3].value, 1.0f, 0.01f);
     EXPECT_NEAR(snaps[4].value, 4.0f, 0.01f);
     // Tree round-trip: param_3/param_4 persist for save/load.
@@ -916,8 +919,9 @@ TEST(McpServer, AddDelaySyncAndSetParams) {
     EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_3"))), 1.0);
     EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_4"))), 4.0);
 
-    // Gate 9: out-of-range internal param is an error, not a silent no-op.
-    r = callTool(5, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":5,"value":1})");
+    // Gate 9: out-of-range internal param is an error, not a silent no-op
+    // (index 5 is now the valid Damping param; the 6-param delay tops out at 5).
+    r = callTool(5, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":6,"value":1})");
     EXPECT_TRUE(isError(r));
 
     s.stop();

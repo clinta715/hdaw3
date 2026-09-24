@@ -29,7 +29,7 @@ namespace HDAW {
 class FxBusProcessor : public BusProcessorBase
 {
 public:
-    // Room for every bus type's def list (reverb is the longest: 5).
+    // Room for every bus type's def list (delay is now the longest: 6).
     static constexpr int kMaxParams = 8;
 
     FxBusProcessor(const juce::String& name = "FX",
@@ -39,6 +39,7 @@ public:
                            juce::AudioChannelSet::stereo()),
           currentFxType(fxType)
     {
+        activeDefs.store(&busFxParamDefs(currentFxType), std::memory_order_release);
         resetParamsToDefaults();
     }
 
@@ -46,9 +47,17 @@ public:
 
     void setFxType(const juce::String& type)
     {
+        // Gate 13: currentFxType (juce::String), the activeDefs pointer swap
+        // and the DSP recreation below all happen under dspStateLock — the
+        // audio-thread readers (getParam / setAutomationValue / the dirty
+        // consume in processBlock) never take it, they read the atomic
+        // activeDefs only. CriticalSection is re-entrant, so resetFxChain
+        // taking the same lock below cannot self-deadlock.
+        juce::ScopedLock lock(dspStateLock);
         if (type != currentFxType)
         {
             currentFxType = type;
+            activeDefs.store(&busFxParamDefs(type), std::memory_order_release);
             // A different type means a different def list: start from ITS
             // defaults rather than carrying the previous type's values.
             resetParamsToDefaults();
@@ -65,23 +74,59 @@ public:
     // uses for these exact types) so a running bus responds without a rebuild.
     void setParam(int paramIndex, float value)
     {
-        const auto& defs = busFxParamDefs(currentFxType);
+        const auto& defs = currentDefs();
         if (paramIndex < 0 || paramIndex >= (int) defs.size()) return;
         value = juce::jlimit(defs[(size_t) paramIndex].min, defs[(size_t) paramIndex].max, value);
         params[(size_t) paramIndex].store(value, std::memory_order_relaxed);
-        applyParamToDsp(paramIndex, value);
+        // Gate 13 (control-thread write path): the DSP push runs under
+        // dspStateLock — prepareToPlay/resetFxChain may be recreating (and
+        // freeing) the DSP objects on the pump thread. A writer that cannot
+        // enter keeps the atomic (already stored above) and flags the param
+        // instead; processBlock's consume pass applies the flag, and
+        // resetFxChain re-applies every atomic after recreation. The
+        // store-then-flag / clear-then-read ordering closes the skip window
+        // (no lost update).
+        if (dspStateLock.tryEnter())
+        {
+            applyParamToDsp(paramIndex, value);
+            dspStateLock.exit();
+        }
+        else
+        {
+            markAutomationDirty(paramIndex);
+        }
+    }
+
+    // AUDIO-THREAD automation/modulation write — the pid 3000 + busID*8 +
+    // paramIndex entry point, called from Track::processBlock's lane-apply and
+    // LFO decode sites (the record site reads via getParam). Real-unit value:
+    // a bus lane rides the def's own units (eq Frequency is 20..20000 Hz),
+    // unlike TrackFXSlot's normalized automation entry. Clamp to the def
+    // range, atomic store, set the DSP-dirty flag — NOTHING else: no lock, no
+    // juce::String, no DSP member write on the audio thread (Gate 3); the DSP
+    // push happens in processBlock under dspStateLock.tryEnter() (Gate 13).
+    void setAutomationValue(int paramIndex, float value)
+    {
+        const auto& defs = currentDefs();
+        if (paramIndex < 0 || paramIndex >= (int) defs.size()) return;
+        value = juce::jlimit(defs[(size_t) paramIndex].min, defs[(size_t) paramIndex].max, value);
+        params[(size_t) paramIndex].store(value, std::memory_order_relaxed);
+        markAutomationDirty(paramIndex);
     }
 
     float getParam(int paramIndex) const
     {
-        const auto& defs = busFxParamDefs(currentFxType);
+        // Any-thread safe: bounds come from the atomic defs pointer — the
+        // automation record and LFO base reads run on the audio thread and
+        // must never touch the juce::String currentFxType (Gate 13).
+        const auto& defs = currentDefs();
         if (paramIndex < 0 || paramIndex >= (int) defs.size()) return 0.0f;
         return params[(size_t) paramIndex].load(std::memory_order_relaxed);
     }
 
     // The defs THIS bus honors (empty for an unknown fxType), so a readback
     // can never advertise a param the DSP ignores (G5).
-    const std::vector<BusFxParamDef>& paramDefs() const { return busFxParamDefs(currentFxType); }
+    const std::vector<BusFxParamDef>& paramDefs() const { return currentDefs(); }
 
     // Gate 1 restore helper: apply a BUS tree node (param_<i> properties) onto
     // the live processor. Called by RoutingManager::addBus right after
@@ -90,7 +135,7 @@ public:
     {
         if (! busNode.isValid()) return;
         resetParamsToDefaults();
-        const auto& defs = busFxParamDefs(currentFxType);
+        const auto& defs = currentDefs();
         for (int p = 0; p < (int) defs.size(); ++p)
         {
             const float raw = static_cast<float>(
@@ -102,6 +147,12 @@ public:
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
+        // Gate 13: spec + scratch sizing + the DSP recreation inside
+        // resetFxChain run under dspStateLock — applyParamToDsp (control
+        // writers and the processBlock dirty consume) reads spec and the DSP
+        // objects concurrently. Re-entrant, so resetFxChain below can take it
+        // again; the audio thread only ever tryEnters this lock.
+        juce::ScopedLock lock(dspStateLock);
         scratchBuffer.setSize(2, samplesPerBlock);
 
         spec.sampleRate = sampleRate;
@@ -133,6 +184,23 @@ public:
             return;
 
         juce::ScopedNoDenormals noDenormals;
+
+        // Consume DSP-dirty params flagged by audio-thread automation writes
+        // (setAutomationValue) and by control writers that lost
+        // dspStateLock.tryEnter(). tryEnter-or-skip — never block the audio
+        // thread; the lock excludes prepareToPlay/resetFxChain recreating the
+        // DSP objects under us (Gate 13), and exchange() keeps bits re-set
+        // concurrently for the next block. Fast path is one atomic load; no
+        // allocation, no blocking lock inside processBlock (Gate 3).
+        if (dspDirty.load(std::memory_order_acquire) != 0 && dspStateLock.tryEnter())
+        {
+            const uint32_t dirty = dspDirty.exchange(0, std::memory_order_acq_rel);
+            const auto& defs = currentDefs();
+            for (int p = 0; p < (int) defs.size() && p < 32; ++p)
+                if ((dirty & (1u << p)) != 0)
+                    applyParamToDsp(p, params[(size_t) p].load(std::memory_order_relaxed));
+            dspStateLock.exit();
+        }
 
         scratchBuffer.clear();
         for (int ch = 0; ch < numChannels; ++ch)
@@ -190,11 +258,30 @@ private:
         return 120.0;
     }
 
+    // Defs for the CURRENT fx type, safe from ANY thread (see activeDefs):
+    // the reference lands in one of busFxParamDefs' immortal static tables —
+    // address-stable, never freed — so audio-thread readers never touch the
+    // juce::String currentFxType. The null fallback only covers a theoretical
+    // pre-constructor call (the constructor stores activeDefs first).
+    const std::vector<BusFxParamDef>& currentDefs() const
+    {
+        auto* d = activeDefs.load(std::memory_order_acquire);
+        return d != nullptr ? *d : busFxParamDefs(juce::String());
+    }
+
+    // Flag one param for the processBlock DSP push (store-then-flag; callers
+    // have already stored the atomic value).
+    void markAutomationDirty(int paramIndex)
+    {
+        if (paramIndex >= 0 && paramIndex < 32)
+            dspDirty.fetch_or(1u << paramIndex, std::memory_order_release);
+    }
+
     void resetParamsToDefaults()
     {
         for (int p = 0; p < kMaxParams; ++p)
             params[(size_t) p].store(0.0f, std::memory_order_relaxed);
-        const auto& defs = busFxParamDefs(currentFxType);
+        const auto& defs = currentDefs();
         for (int p = 0; p < (int) defs.size(); ++p)
             params[(size_t) p].store(defs[(size_t) p].def, std::memory_order_relaxed);
     }
@@ -206,6 +293,13 @@ private:
     // re-runs this with the real spec.
     void resetFxChain()
     {
+        // Gate 13: hold the dedicated lock across the whole recreation —
+        // DSP objects are reset()/prepare()d (destroyed and rebuilt) here on
+        // the pump/command thread while setParam writers and the processBlock
+        // dirty consume may be pushing into them. Re-entrant: setFxType and
+        // prepareToPlay already hold it when they call this. The audio thread
+        // only ever tryEnters, so it never blocks on us.
+        juce::ScopedLock lock(dspStateLock);
         reverbEnabled = false;
         delayEnabled = false;
         eqEnabled = false;
@@ -254,13 +348,18 @@ private:
             filterProcess.prepare(spec.sampleRate);
         }
 
+        // Clear the dirty flags BEFORE the re-apply (both under
+        // dspStateLock): a writer whose atomic landed before the reads below
+        // is covered by applyAllParamsToDsp; one that stores after sets a
+        // fresh flag — store-then-flag / clear-then-read, no lost update.
+        dspDirty.store(0, std::memory_order_release);
         // Defaults are overridden by whatever setParam/applyFromTree stored.
         applyAllParamsToDsp();
     }
 
     void applyAllParamsToDsp()
     {
-        const auto& defs = busFxParamDefs(currentFxType);
+        const auto& defs = currentDefs();
         for (int p = 0; p < (int) defs.size(); ++p)
             applyParamToDsp(p, params[(size_t) p].load(std::memory_order_relaxed));
     }
@@ -311,10 +410,10 @@ private:
         }
         else if (currentFxType == "delay")
         {
-            // The delay's five params all reach the shared DSP (the def table
+            // The delay's six params all reach the shared DSP (the def table
             // and InternalDelay::paramDefs() are the same table): Delay Time /
-            // Feedback / Mix / SyncToTempo / Division. InternalDelay clamps
-            // again at its own entry and re-derives the delay time only when the
+            // Feedback / Mix / SyncToTempo / Division / Damping (index 5).
+            // InternalDelay clamps again at its own entry and re-derives when the
             // derived value moved, so a running return responds without a rebuild.
             delayProcess.setParam(paramIndex, value);
         }
@@ -329,6 +428,24 @@ private:
     }
 
     juce::String currentFxType;
+    // Atomic pointer to the CURRENT type's def table — one of busFxParamDefs'
+    // immortal static vectors (address stable forever). Swapped with release
+    // ordering under dspStateLock by setFxType; loaded with acquire by ANY-
+    // thread readers (setParam / getParam / setAutomationValue / the
+    // processBlock dirty consume) so they never race the juce::String write
+    // (Gate 13). See currentDefs().
+    std::atomic<const std::vector<BusFxParamDef>*> activeDefs{ nullptr };
+    // DSP-recreation vs writer guard (Gate 13 / lesson 13): prepareToPlay /
+    // resetFxChain / setFxType hold it while recreating DSP objects; control
+    // writers take it with tryEnter-or-skip; processBlock only ever tryEnters
+    // it — a blocking lock inside processBlock is forbidden (Gate 3).
+    juce::CriticalSection dspStateLock;
+    // Bit p set = params[p] is ahead of the DSP push. Set by
+    // setAutomationValue (audio thread) and by setParam writers that lost
+    // tryEnter (release); consumed by processBlock's dirty pass (acquire +
+    // exchange); cleared by resetFxChain before its re-apply — the
+    // store-then-flag / clear-then-read pairing loses no update.
+    std::atomic<uint32_t> dspDirty{ 0 };
     juce::AudioBuffer<float> scratchBuffer;
     juce::dsp::ProcessSpec spec;
 

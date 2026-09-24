@@ -513,3 +513,39 @@ filter output even with per-sample processing.
 signal at known cutoff). If it doesn't, fall back to per-sample `processSample()`
 with explicit coefficient management. Prefer `HDAW_LOG_ALWAYS` over `DBG()` for
 filter diagnostics — `DBG()` is `#if JUCE_DEBUG`-only and disappears in Release.
+
+## Qt keyword macros mangle identifiers (2026-09-23)
+
+QtCore defines the Qt "keywords" as **macros** unless it is being run under moc or
+the keywords are explicitly disabled. In
+`C:/Qt/6.11.2/msvc2022_64/include/QtCore/qtmetamacros.h` (lines 43-44):
+
+```cpp
+#   ifndef QT_NO_SIGNALS_SLOTS_KEYWORDS
+#     define slots Q_SLOTS
+#     define signals Q_SIGNALS
+#   endif
+```
+
+guarded by `#ifndef Q_MOC_RUN`. `emit` follows at line 52 (`# define emit`), and
+`foreach` is `#define foreach Q_FOREACH` in `qforeach.h:75` — all pulled in by any
+translation unit that includes QtCore. So any TU that includes QtCore **cannot use
+`slots`, `signals`, `emit`, or `foreach` as identifiers** (unless it defines
+`Q_MOC_RUN` / `QT_NO_SIGNALS_SLOTS_KEYWORDS`, which normal code does not).
+
+**Symptom** (cost a bisect on the batch's `rpc_surface_test.cpp`): a perfectly normal
+local such as
+
+```cpp
+auto slots = readModel.getFxSlots(trackId);
+```
+
+expands to `auto Q_SLOTS QT_ANNOTATE_ACCESS_SPECIFIER(qt_slot) = ...` and dies with
+`error C2513: 'auto': no variable declared before '='`, followed by a cascade of
+nonsense gtest errors (`'gtest_ar' undeclared`, `illegal else without matching if`) as
+the parser desynchronizes. The error points at the *use*, never at the macro
+definition, so it reads like a broken gtest rather than a name collision.
+
+**Fix:** rename the local (`fxSlots`). **Rule:** before building new code that includes
+QtCore, grep it for the four Qt keywords (`slots`, `signals`, `emit`, `foreach`) and
+rename any that are not actual Qt signal/slot machinery.

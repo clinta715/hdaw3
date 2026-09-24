@@ -100,7 +100,7 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& busList,
     if (m == "getMasterMeter")  { return { false, toJson(r.getMasterMeter()) }; }
     if (m == "getFmAnalysis")   { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, toJson(r.getFmAnalysis(i)) }; }
     if (m == "getTrackSends") {
-        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        int i; if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required");
         QJsonArray arr; for (const auto& s : r.getTrackSends(i)) arr.append(toJson(s));
         return { false, arr };
     }

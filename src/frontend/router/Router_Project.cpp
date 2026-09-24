@@ -45,9 +45,24 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         int trackType = optInt(o, "trackType", 0, nullptr);
         return { false, c.addTrack(name, color, parentBus, trackType) };
     }
-    if (m == "removeTrack")     { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); c.removeTrack(i); return { false, QJsonValue::Null }; }
-    if (m == "moveTrack")       { int i, n; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "newIndex", n, nullptr)) return makeError(-32602, "trackIndex and newIndex required"); c.moveTrack(i, n); return { false, QJsonValue::Null }; }
-    if (m == "duplicateTrack")  { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, c.duplicateTrack(i) }; }
+    if (m == "removeTrack") {
+        int i;
+        if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required");
+        // Shift payload, byte-identical to MCP remove_track's text payload
+        // (AGENTS.md parity; the command owns the shape — see
+        // common/ProjectCommands.h TrackRemovalResult):
+        //   {"ok":true,"removed":<oldIndex>,"shifted":[{"from":N,"to":N-1},...]}
+        // `shifted` is [] when the last track was removed; an out-of-range
+        // index keeps this route's non-error contract and reports ok:false.
+        const auto r = c.removeTrack(i);
+        QJsonArray shifted;
+        for (const auto& p : r.shifted)
+            shifted.append(QJsonObject{ { "from", p.first }, { "to", p.second } });
+        return { false, QJsonObject{ { "ok", r.ok }, { "removed", r.removed },
+                                     { "shifted", shifted } } };
+    }
+    if (m == "moveTrack")       { int i, n; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "newIndex", n, nullptr)) return makeError(-32602, "trackId and newIndex required"); c.moveTrack(i, n); return { false, QJsonValue::Null }; }
+    if (m == "duplicateTrack")  { int i; if (!requireInt(o, "trackId", i, nullptr)) return makeError(-32602, "trackId required"); return { false, c.duplicateTrack(i) }; }
     if (m == "setTrackName")    { int i; std::string s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "trackIndex and name required"); c.setTrackName(i, s); return { false, QJsonValue::Null }; }
     if (m == "setTrackColor")   { int i, color; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "color", color, nullptr)) return makeError(-32602, "trackIndex and color required"); c.setTrackColor(i, color); return { false, QJsonValue::Null }; }
     if (m == "setTrackVolume")  { int i; float v;   if (!requireInt(o, "trackIndex", i, nullptr) || !requireFloat(o, "volume", v, nullptr)) return makeError(-32602, "trackIndex and volume required"); c.setTrackVolume(i, v); return { false, QJsonValue::Null }; }
@@ -66,9 +81,9 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "moveTrackOutOfFolder") { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); c.moveTrackOutOfFolder(i); return { false, QJsonValue::Null }; }
 
     // --- Send operations ---
-    if (m == "setTrackSendLevel")    { int i, si; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireFloat(o, "level", v, nullptr)) return makeError(-32602, "trackIndex, sendIndex, level required"); c.setTrackSendLevel(i, si, v); return { false, QJsonValue::Null }; }
-    if (m == "setTrackSendMode")     { int i, si; bool b;  if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "isPreFader", b, nullptr)) return makeError(-32602, "trackIndex, sendIndex, isPreFader required"); c.setTrackSendMode(i, si, b); return { false, QJsonValue::Null }; }
-    if (m == "setTrackSendBypassed") { int i, si; bool b;  if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, sendIndex, bypassed required"); c.setTrackSendBypassed(i, si, b); return { false, QJsonValue::Null }; }
+    if (m == "setTrackSendLevel")    { int i, si; float v; if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireFloat(o, "level", v, nullptr)) return makeError(-32602, "trackId, sendIndex, level required"); c.setTrackSendLevel(i, si, v); return { false, QJsonValue::Null }; }
+    if (m == "setTrackSendMode")     { int i, si; bool b;  if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "isPreFader", b, nullptr)) return makeError(-32602, "trackId, sendIndex, isPreFader required"); c.setTrackSendMode(i, si, b); return { false, QJsonValue::Null }; }
+    if (m == "setTrackSendBypassed") { int i, si; bool b;  if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackId, sendIndex, bypassed required"); c.setTrackSendBypassed(i, si, b); return { false, QJsonValue::Null }; }
 
     // --- Bus / send creation (docs/plans/2026-09-22-bus-send-surface.md, slice B) ---
     // The routes above only shape sends that already exist. Argument names mirror the
@@ -118,8 +133,17 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         if (!requireInt(o, "trackId", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr))
             return makeError(-32602, "trackId and sendIndex required");
         std::string error;
-        if (!c.removeSend(i, si, error)) return makeError(-32602, QString::fromStdString(error));
-        return { false, QStringLiteral("ok") };
+        std::vector<std::pair<int, int>> shifted;
+        if (!c.removeSend(i, si, error, &shifted)) return makeError(-32602, QString::fromStdString(error));
+        // Was the bare string "ok"; extended ADDITIVELY on both surfaces
+        // (byte-identical to MCP remove_send — bus_send_rpc_test.cpp twins it):
+        //   {"ok":true,"removed":<sendIndex>,"shifted":[{"from":N,"to":N-1},...]}
+        // `shifted` is [] when the last send was removed.
+        QJsonArray shiftedArr;
+        for (const auto& p : shifted)
+            shiftedArr.append(QJsonObject{ { "from", p.first }, { "to", p.second } });
+        return { false, QJsonObject{ { "ok", true }, { "removed", si },
+                                     { "shifted", shiftedArr } } };
     }
 
     // --- Bus FX params (docs/plans/2026-09-22-bus-fx-params.md, slice C) ---

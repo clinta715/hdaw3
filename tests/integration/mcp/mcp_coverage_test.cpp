@@ -382,6 +382,139 @@ TEST_F(McpCoverageTest, MoveTrack) {
     EXPECT_EQ(t.value("name").toString().toStdString(), "C");
 }
 
+// ─── Handoff 7: shift-aware removal — MCP/RPC payload twin ─────────────────
+// MCP remove_track and RPC project.removeTrack must return the BYTE-identical
+// shift payload for the same scenario. The fixture seeds one track, so four
+// tracks total; removing index 1 shifts {2,1},{3,2}. The count is restored
+// between the two calls so both surfaces see identical inputs.
+TEST_F(McpCoverageTest, RemoveTrackShiftPayloadMatchesRpc) {
+    call("add_track", {{"name", "A"}});
+    call("add_track", {{"name", "B"}});
+    call("add_track", {{"name", "C"}});
+    const int count = trackCount();
+    ASSERT_EQ(count, 4);
+
+    auto r = call("remove_track", {{"trackId", 1}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    const QJsonValue viaMcp = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    ASSERT_TRUE(viaMcp.isObject()) << "remove_track must answer with compact JSON: "
+                                   << text(r).toStdString();
+    const QJsonObject mcpObj = viaMcp.toObject();
+    EXPECT_TRUE(mcpObj.value("ok").toBool());
+    EXPECT_EQ(mcpObj.value("removed").toInt(), 1);
+    const QJsonArray shifted = mcpObj.value("shifted").toArray();
+    ASSERT_EQ(shifted.size(), count - 2);
+    EXPECT_EQ(shifted[0].toObject().value("from").toInt(), 2);
+    EXPECT_EQ(shifted[0].toObject().value("to").toInt(), 1);
+    EXPECT_EQ(shifted[1].toObject().value("from").toInt(), 3);
+    EXPECT_EQ(shifted[1].toObject().value("to").toInt(), 2);
+
+    // Restore the count, then the SAME removal through the RPC route.
+    auto readd = call("add_track", {{"name", "D"}});
+    ASSERT_FALSE(isError(readd)) << text(readd).toStdString();
+    const auto viaRpc = frontend::dispatch(*engine, "project.removeTrack",
+                                           QJsonObject{ { "trackId", 1 } });
+    ASSERT_FALSE(viaRpc.isError)
+        << "project.removeTrack errored: "
+        << viaRpc.payload.toObject().value("message").toString().toStdString();
+    EXPECT_EQ(viaRpc.payload, viaMcp) << "byte-identical shift payload on both surfaces";
+    EXPECT_EQ(trackCount(), count - 1);
+}
+
+// ─── Handoff 7 Gate 6 seam: the MCP inline paths apply the SAME fixup ──────
+// remove_track historically spliced INLINE, bypassing the only path that knew
+// about index shifts. It now runs the shared command, and move_track (still
+// inline) runs the shared remapper — both asserted on the LIVE tree after a
+// rebuild (Gate 10), folder refs AND SONG_PLAN cells included.
+TEST_F(McpCoverageTest, RemoveTrackRemapsDurableRefsOnMcpPath) {
+    auto& cmds = engine->getProjectCommands();
+    // [Track(seed, 0), A(folder, 1), B(2), C(3)] with B and C children of A.
+    ASSERT_GE(cmds.addTrack("A", -1, -1, 2), 1);
+    const int b = cmds.addTrack("B");
+    const int c = cmds.addTrack("C");
+    engine->drainPendingRoutingRebuild();
+    cmds.moveTrackIntoFolder(b, 1);
+    cmds.moveTrackIntoFolder(c, 1);
+
+    ProjectCommands::SongPlanData plan;
+    plan.bpm = 138.0;
+    plan.keyRoot = 5;
+    plan.scaleMode = 7;
+    plan.style = "test";
+    plan.seed = 42;
+    plan.totalBars = 8;
+    plan.sections = { { "intro", "intro", 8, 0.0, 32.0 } };
+    ASSERT_TRUE(cmds.setSongPlan(plan).ok);
+    auto cell = [](const char* role, int trackId) {
+        ProjectCommands::CellRecipe r;
+        r.section = "intro";
+        r.role = role;
+        r.trackId = trackId;
+        r.sourceKind = "phrase";
+        r.paramsJson = "{}";
+        r.seed = 1;
+        return r;
+    };
+    std::string err;
+    ASSERT_TRUE(cmds.setCellRecipe(cell("onSeed", 0), &err)) << err;
+    ASSERT_TRUE(cmds.setCellRecipe(cell("onA", 1), &err)) << err;
+    ASSERT_TRUE(cmds.setCellRecipe(cell("onB", 2), &err)) << err;
+
+    // MCP removes the folder's MIDDLE child B (index 2): A.childIds drops B
+    // and decrements C's entry; the cell on B sentinel-clears; the payload
+    // reports the single shifted index.
+    auto r = call("remove_track", {{"trackId", 2}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    const QJsonObject payload = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_TRUE(payload.value("ok").toBool());
+    EXPECT_EQ(payload.value("removed").toInt(), 2);
+    ASSERT_EQ(payload.value("shifted").toArray().size(), 1);
+    EXPECT_EQ(payload.value("shifted").toArray()[0].toObject().value("from").toInt(), 3);
+    EXPECT_EQ(payload.value("shifted").toArray()[0].toObject().value("to").toInt(), 2);
+
+    engine->drainPendingRoutingRebuild();
+    auto tl = engine->getProjectModel().getTrackListTree();
+    ASSERT_EQ(tl.getNumChildren(), 3);
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "Track");
+    EXPECT_EQ(tl.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2");
+    EXPECT_EQ(static_cast<int>(tl.getChild(2).getProperty(IDs::parentId, -1)), 1);
+
+    auto cells = engine->getProjectModel().getTree()
+                     .getChildWithName(IDs::SONG_PLAN).getChildWithName(IDs::CELLS);
+    ASSERT_EQ(cells.getNumChildren(), 3);
+    EXPECT_EQ(static_cast<int>(cells.getChild(0).getProperty(IDs::cellTrack, -1)), 0);
+    EXPECT_EQ(static_cast<int>(cells.getChild(1).getProperty(IDs::cellTrack, -1)), 1);
+    EXPECT_EQ(static_cast<int>(cells.getChild(2).getProperty(IDs::cellTrack, -1)), -1);
+}
+
+// The MCP move_track splice stays inline (its undo behavior is untouched) but
+// must run the same durable-ref remapper: moving X to the front shifts every
+// index between — without the fixup B.parentId would hand mute/solo to X.
+TEST_F(McpCoverageTest, MoveTrackRemapsDurableRefsOnMcpPath) {
+    auto& cmds = engine->getProjectCommands();
+    // Drop the fixture's seed track (no folder/cell refs on it) so the
+    // scenario is exactly [A(folder, 0), B(child, 1), X(2)].
+    cmds.removeTrack(0);
+    engine->drainPendingRoutingRebuild();
+    ASSERT_EQ(cmds.addTrack("A", -1, -1, 2), 0);
+    const int b = cmds.addTrack("B");
+    ASSERT_EQ(cmds.addTrack("X"), 2);
+    engine->drainPendingRoutingRebuild();
+    cmds.moveTrackIntoFolder(b, 0);
+
+    auto r = call("move_track", {{"trackId", 2}, {"newIndex", 0}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    engine->drainPendingRoutingRebuild();
+
+    auto tl = engine->getProjectModel().getTrackListTree();
+    ASSERT_EQ(tl.getNumChildren(), 3);
+    EXPECT_EQ(tl.getChild(0).getProperty(IDs::name).toString().toStdString(), "X");
+    EXPECT_EQ(tl.getChild(1).getProperty(IDs::name).toString().toStdString(), "A");
+    EXPECT_EQ(tl.getChild(2).getProperty(IDs::name).toString().toStdString(), "B");
+    EXPECT_EQ(tl.getChild(1).getProperty(IDs::childIds).toString().toStdString(), "2");
+    EXPECT_EQ(static_cast<int>(tl.getChild(2).getProperty(IDs::parentId, -1)), 1);
+}
+
 TEST_F(McpCoverageTest, DuplicateTrack) {
     call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
     int before = trackCount();
@@ -2054,6 +2187,122 @@ TEST_F(McpCoverageTest, AuditSongStructurePassesWithBackbeatAndLead) {
     EXPECT_TRUE(a.value("ok").toBool()) << "audit should pass with clap + lead";
     EXPECT_TRUE(a.value("gates").toObject().value("allDropsHaveBackbeat").toBool());
     EXPECT_TRUE(a.value("gates").toObject().value("firstDropHasMotif").toBool());
+}
+
+// item 10 (soloOnly): MCP verify_part and RPC composition.verifyPart must report the SAME
+// behavior shape with soloOnly=true — solo metrics measured, the full-mix render skipped,
+// mix fields honestly zeroed with mixMeasured=false (nonClipping must not read as a passing
+// true from mixPeak==0) — and the default path (arg absent) must still measure both renders.
+TEST_F(McpCoverageTest, VerifyPartSoloOnlyMatchesRpcTwin) {
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "SoloOnly Verify";
+    params.style = "Standard";
+    params.lengthBeats = 4.0;
+    params.seed = 7;
+    params.targetRms = 0.15f;
+    params.windowSeconds = 4.0;
+    auto res = engine->getProjectCommands().addInstrumentPart(params);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+    ASSERT_GE(res.trackIndex, 0);
+
+    const QJsonObject args{ { "trackIndex", res.trackIndex },
+                            { "windowSeconds", 4.0 }, { "soloOnly", true } };
+
+    // MCP prose surface.
+    const QString viaMcp = callText("verify_part", args).toString();
+    EXPECT_TRUE(viaMcp.contains("ok=1")) << viaMcp.toStdString();
+    EXPECT_TRUE(viaMcp.contains("audible=1")) << viaMcp.toStdString();
+    EXPECT_TRUE(viaMcp.contains("mixRms=0 mixPeak=0")) << viaMcp.toStdString();
+    EXPECT_TRUE(viaMcp.contains("nonClipping=0")) << viaMcp.toStdString();
+    EXPECT_TRUE(viaMcp.contains("mixMeasured=false")) << viaMcp.toStdString();
+
+    // RPC twin: the identical behavior shape.
+    auto rpc = frontend::dispatch(*engine, "composition.verifyPart", args);
+    ASSERT_FALSE(rpc.isError)
+        << rpc.payload.toObject().value("message").toString().toStdString();
+    const auto r = rpc.payload.toObject();
+    EXPECT_TRUE(r.value("ok").toBool()) << r.value("error").toString().toStdString();
+    EXPECT_FALSE(r.value("mixMeasured").toBool());
+    EXPECT_DOUBLE_EQ(r.value("mixRms").toDouble(), 0.0);
+    EXPECT_DOUBLE_EQ(r.value("mixPeak").toDouble(), 0.0);
+    EXPECT_FALSE(r.value("nonClipping").toBool())
+        << "a skipped mix must never read as non-clipping";
+    EXPECT_TRUE(r.value("audible").toBool());
+    EXPECT_GT(r.value("soloPeak").toDouble(), 1e-4) << "solo metrics must still be measured";
+
+    // Default path (absent arg): both renders measured; the legacy MCP text gains nothing.
+    const QJsonObject defArgs{ { "trackIndex", res.trackIndex }, { "windowSeconds", 4.0 } };
+    const QString defMcp = callText("verify_part", defArgs).toString();
+    EXPECT_TRUE(defMcp.contains("ok=1")) << defMcp.toStdString();
+    EXPECT_FALSE(defMcp.contains("mixMeasured"))
+        << "default text output must stay byte-identical";
+    auto defRpc = frontend::dispatch(*engine, "composition.verifyPart", defArgs);
+    ASSERT_FALSE(defRpc.isError)
+        << defRpc.payload.toObject().value("message").toString().toStdString();
+    const auto dr = defRpc.payload.toObject();
+    EXPECT_TRUE(dr.value("mixMeasured").toBool()) << "default path must measure the mix";
+    EXPECT_GT(dr.value("mixPeak").toDouble(), 0.0);
+    EXPECT_TRUE(dr.value("nonClipping").toBool());
+}
+
+// item 11 (expectBackbeat): a dub-shaped plan (drops with NO clap/snare role — rim classes as
+// texture) fails the psytrance-shaped backbeat gate by default and PASSES with
+// expectBackbeat:false, with the identical payload on both surfaces (AGENTS parity) and the
+// drops list kept informational in both modes.
+TEST_F(McpCoverageTest, AuditSongStructureExpectBackbeatFalseMatchesRpcTwin) {
+    auto sp = call("set_song_plan", planTwoSections());
+    EXPECT_FALSE(isError(sp)) << text(sp).toStdString();
+
+    // floor + texture + melodic, NO backbeat role anywhere.
+    for (const char* name : { "kick", "bass", "hats", "rim", "lead" })
+    {
+        auto t = call("add_track", { { "name", name } });
+        EXPECT_FALSE(isError(t)) << text(t).toStdString();
+    }
+    for (int ti = 1; ti <= 5; ++ti)
+    {
+        auto g = call("generate_rhythm_pattern",
+                      { { "trackId", ti }, { "bars", 16 }, { "grid", 16 },
+                        { "pulseA", 4 }, { "pulseB", 3 } });
+        EXPECT_FALSE(isError(g)) << text(g).toStdString();
+    }
+
+    // Absent arg => true: the dub one-drop FAILS (only) the backbeat gate.
+    const auto defMcp = QJsonDocument::fromJson(
+        callText("audit_song_structure").toString().toUtf8()).object();
+    EXPECT_FALSE(defMcp.value("ok").toBool());
+    EXPECT_FALSE(defMcp.value("gates").toObject().value("allDropsHaveBackbeat").toBool());
+    EXPECT_TRUE(defMcp.value("dropChecks").toObject().value("backbeatChecked").toBool());
+    EXPECT_EQ(defMcp.value("dropChecks").toObject().value("dropsMissingBackbeat").toArray(),
+              QJsonArray({ QString("dropA") }));
+    auto defRpc = frontend::dispatch(*engine, "composition.auditSongStructure", QJsonObject{});
+    ASSERT_FALSE(defRpc.isError)
+        << defRpc.payload.toObject().value("message").toString().toStdString();
+    EXPECT_EQ(defRpc.payload.toObject(), defMcp) << "default payloads must match across surfaces";
+
+    // expectBackbeat:false => the gate reports true, backbeatChecked=false, the plan PASSES,
+    // and dropsMissingBackbeat still lists the would-fail drops informationally.
+    const QJsonObject offArgs{ { "expectBackbeat", false } };
+    const auto offMcp = QJsonDocument::fromJson(
+        callText("audit_song_structure", offArgs).toString().toUtf8()).object();
+    EXPECT_TRUE(offMcp.value("ok").toBool())
+        << "dub one-drop must pass without the psytrance backbeat expectation";
+    EXPECT_TRUE(offMcp.value("gates").toObject().value("allDropsHaveBackbeat").toBool());
+    EXPECT_FALSE(offMcp.value("dropChecks").toObject().value("backbeatChecked").toBool());
+    EXPECT_EQ(offMcp.value("dropChecks").toObject().value("dropsMissingBackbeat").toArray(),
+              QJsonArray({ QString("dropA") }))
+        << "the skipped gate's drops stay informational";
+    const auto offGates = offMcp.value("gates").toObject();
+    EXPECT_EQ(offGates.value("boredomSpans").toInt(), 0);
+    EXPECT_TRUE(offGates.value("firstDropHasMotif").toBool());
+    EXPECT_TRUE(offGates.value("dropsAtLeastBuildLoad").toBool());
+
+    // RPC twin: byte-identical payload for the same arg.
+    auto offRpc = frontend::dispatch(*engine, "composition.auditSongStructure", offArgs);
+    ASSERT_FALSE(offRpc.isError)
+        << offRpc.payload.toObject().value("message").toString().toStdString();
+    EXPECT_EQ(offRpc.payload.toObject(), offMcp)
+        << "expectBackbeat:false payloads must match across surfaces";
 }
 
 TEST_F(McpCoverageTest, MixReportCarriesStructureWhenFromPlan) {

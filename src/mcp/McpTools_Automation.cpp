@@ -117,12 +117,14 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
-    // add_automation_lane / remove_automation_lane â€” the lane-authoring surface.
+    // add_automation_lane / remove_automation_lane — the lane-authoring surface.
     // paramID 0 leaves the lane unbound (legacy default); for FX-parameter
-    // automation pass the compound id (100 + slotIndex*100 + paramIndex).
+    // automation pass the compound id (100 + slotIndex*100 + paramIndex), for
+    // a send level 2000 + sendIndex, for a bus FX param
+    // 3000 + busID*8 + paramIndex.
     // Mirrors project.addAutomationLane / project.removeAutomationLane so the
     // UI and MCP share one command path (AGENTS.md feature-parity contract).
-    s.registerTool({"add_automation_lane", "Create an automation lane, optionally bound to a target paramID (1=volume, 2=pan, 3=mute, or 100+slotIndex*100+paramIndex for a plugin FX param). With replace=true and a nonzero paramID the call instead takes ownership of the lane already bound to that paramID: it is renamed to laneName in place, keeping its points, so a post-arrangement automation pass can re-run and re-assert \"the lane bound to paramID N is mine, named X\" in one call. A laneName already bound to a different paramID still fails.",
+    s.registerTool({"add_automation_lane", "Create an automation lane, optionally bound to a target paramID (1=volume, 2=pan, 3=mute, 100+slotIndex*100+paramIndex for a plugin FX param, 2000+sendIndex for a send level, or 3000+busID*8+paramIndex for a bus FX param). With replace=true and a nonzero paramID the call instead takes ownership of the lane already bound to that paramID: it is renamed to laneName in place, keeping its points, so a post-arrangement automation pass can re-run and re-assert \"the lane bound to paramID N is mine, named X\" in one call. A laneName already bound to a different paramID still fails.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"laneName",  QJsonObject{{"type","string"}}},
                   {"paramID",   QJsonObject{{"type","integer"}}},

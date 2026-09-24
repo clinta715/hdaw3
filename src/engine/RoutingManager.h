@@ -54,6 +54,9 @@ public:
     void setSendLevel(int trackIndex, int sendIndex, float level);
     void setSendMode(int trackIndex, int sendIndex, bool isPreFader);
     void setSendBypassed(int trackIndex, int sendIndex, bool bypassed);
+    // Live send processor for a (trackIndex, sendIndex) — readback/tests
+    // mirror of setSendLevel's lookup. nullptr when absent.
+    SendProcessor* getSend(int trackIndex, int sendIndex) const;
 
     void updateClipParam(int trackIndex, int clipIndex, int paramID, float value);
     void switchClipTake(int trackIndex, int clipIndex, const juce::String& sourceFile);

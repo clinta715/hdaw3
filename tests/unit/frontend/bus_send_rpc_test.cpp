@@ -406,8 +406,13 @@ TEST_F(BusSendRpcTest, AddSendRejectsUnknownBusTargetOnBothSurfaces) {
     EXPECT_TRUE(engine->getReadModel().getTrackSends(0).empty());
 }
 
-// remove_send / project.removeSend: identical "ok" payload, each surface dropping
-// an equivalent send, and the ReadModel reflects both removals.
+// remove_send / project.removeSend: identical shift payload on both surfaces,
+// each surface dropping an equivalent send, and the ReadModel reflects both
+// removals. HANDOFF-7 FLAGGED UPDATE: this test previously pinned the bare
+// string "ok" — removeSend's payload was extended ADDITIVELY on both surfaces
+// with {removed, shifted} (mirrored byte-for-byte), so the pin moved to the
+// new object. Each track held exactly one send, so this is a LAST-send
+// removal: shifted must be [].
 TEST_F(BusSendRpcTest, RemoveSendMatchesMcp) {
     auto& cmds = engine->getProjectCommands();
     ASSERT_EQ(cmds.createSend(0, 1, 0.5f, false).sendIndex, 0);
@@ -418,7 +423,49 @@ TEST_F(BusSendRpcTest, RemoveSendMatchesMcp) {
     const QJsonValue viaRpc = rpcPayload("project.removeSend",
                                          QJsonObject{ { "trackId", 1 }, { "sendIndex", 0 } });
     EXPECT_EQ(viaRpc, viaMcp);
-    EXPECT_EQ(viaRpc, QJsonValue(QString("ok")));
+    EXPECT_EQ(viaRpc, QJsonValue(QJsonObject{ { "ok", true }, { "removed", 0 },
+                                              { "shifted", QJsonArray{} } }));
+    EXPECT_TRUE(engine->getReadModel().getTrackSends(0).empty());
+    EXPECT_TRUE(engine->getReadModel().getTrackSends(1).empty());
+}
+
+// Handoff 7 (B): removing a NON-last send reports the index shift — the same
+// payload object on both surfaces — and the survivor reindexes to 0; the
+// LAST-send case on the same surfaces reports an empty shifted array.
+TEST_F(BusSendRpcTest, RemoveSendReportsShiftOnBothSurfaces) {
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_GE(cmds.createSend(0, 1, 0.5f, false).sendIndex, 0);   // track 0: index 0
+    ASSERT_GE(cmds.createSend(0, 1, 0.5f, false).sendIndex, 1);   // track 0: index 1
+    ASSERT_GE(cmds.createSend(1, 1, 0.5f, false).sendIndex, 0);
+    ASSERT_GE(cmds.createSend(1, 1, 0.5f, false).sendIndex, 1);
+
+    // Non-last removal (sendIndex 0 of 2): {from:1,to:0} on BOTH surfaces.
+    const QJsonValue nonLast = QJsonObject{
+        { "ok", true }, { "removed", 0 },
+        { "shifted", QJsonArray{ QJsonObject{ { "from", 1 }, { "to", 0 } } } } };
+    const QJsonValue viaMcp = mcpValue("remove_send",
+                                       QJsonObject{ { "trackId", 0 }, { "sendIndex", 0 } });
+    const QJsonValue viaRpc = rpcPayload("project.removeSend",
+                                         QJsonObject{ { "trackId", 1 }, { "sendIndex", 0 } });
+    EXPECT_EQ(viaMcp, nonLast);
+    EXPECT_EQ(viaRpc, nonLast);
+    EXPECT_EQ(viaRpc, viaMcp);
+    const auto sends0 = engine->getReadModel().getTrackSends(0);
+    const auto sends1 = engine->getReadModel().getTrackSends(1);
+    ASSERT_EQ(sends0.size(), 1u);
+    EXPECT_EQ(sends0[0].sendIndex, 0) << "the survivor reindexes to 0";
+    ASSERT_EQ(sends1.size(), 1u);
+    EXPECT_EQ(sends1[0].sendIndex, 0);
+
+    // Last-send removal: empty shifted on both surfaces.
+    const QJsonValue last = QJsonObject{ { "ok", true }, { "removed", 0 },
+                                         { "shifted", QJsonArray{} } };
+    const QJsonValue lastMcp = mcpValue("remove_send",
+                                        QJsonObject{ { "trackId", 0 }, { "sendIndex", 0 } });
+    const QJsonValue lastRpc = rpcPayload("project.removeSend",
+                                          QJsonObject{ { "trackId", 1 }, { "sendIndex", 0 } });
+    EXPECT_EQ(lastMcp, last);
+    EXPECT_EQ(lastRpc, last);
     EXPECT_TRUE(engine->getReadModel().getTrackSends(0).empty());
     EXPECT_TRUE(engine->getReadModel().getTrackSends(1).empty());
 }
@@ -433,6 +480,58 @@ TEST_F(BusSendRpcTest, RemoveSendUnknownIndexFailsOnBothSurfaces) {
                       QJsonObject{ { "trackId", 99 }, { "sendIndex", 0 } });
     EXPECT_EQ(engine->getReadModel().getTrackSends(0).size(), 1u)
         << "a rejected removeSend must leave the send in place";
+}
+
+// Handoff item-7: removeSend must also remap the durable sendIndex encoded in
+// automation-lane paramIDs (2000 + sendIndex) — and the remap lives in the ONE
+// shared splice command, so both surfaces produce the same TREE state, not
+// just the same payload: the removed send's lane is gone, survivor lanes
+// decrement, 2999 rides the send-range window, and the 3000+ bus pid never
+// moves. Track 0 goes through MCP, track 1 through RPC, identical setup.
+TEST_F(BusSendRpcTest, RemoveSendRemapsLanePidsOnBothSurfaces) {
+    auto& cmds = engine->getProjectCommands();
+    for (int t = 0; t < 2; ++t) {
+        ASSERT_GE(cmds.createSend(t, 1, 0.5f, false).sendIndex, 0);
+        ASSERT_GE(cmds.createSend(t, 1, 0.5f, false).sendIndex, 1);
+        ASSERT_TRUE(cmds.addAutomationLane(t, "LaneA", 2000));
+        ASSERT_TRUE(cmds.addAutomationLane(t, "LaneB", 2001));
+        ASSERT_TRUE(cmds.addAutomationLane(t, "Ghost999", 2999));
+        ASSERT_TRUE(cmds.addAutomationLane(t, "BusRoom", 3000 + 1 * 8 + 0));
+    }
+    engine->drainPendingRoutingRebuild();
+
+    const QJsonValue viaMcp = mcpValue("remove_send",
+                                       QJsonObject{ { "trackId", 0 }, { "sendIndex", 0 } });
+    const QJsonValue viaRpc = rpcPayload("project.removeSend",
+                                         QJsonObject{ { "trackId", 1 }, { "sendIndex", 0 } });
+    const QJsonValue expected = QJsonObject{
+        { "ok", true }, { "removed", 0 },
+        { "shifted", QJsonArray{ QJsonObject{ { "from", 1 }, { "to", 0 } } } } };
+    EXPECT_EQ(viaMcp, expected);
+    EXPECT_EQ(viaRpc, expected);
+
+    // paramID of the named lane, -999 when absent — the tree contract both
+    // surfaces must land identically through the shared command.
+    auto lanePid = [this](int track, const std::string& name) {
+        const auto list = engine->getProjectModel().getTrackListTree()
+                              .getChild(track).getChildWithName(IDs::AUTOMATION_LIST);
+        for (int i = 0; i < list.getNumChildren(); ++i) {
+            const auto lane = list.getChild(i);
+            if (lane.getProperty(IDs::name, "").toString().toStdString() == name)
+                return static_cast<int>(lane.getProperty(IDs::paramID, 0));
+        }
+        return -999;
+    };
+    for (int t = 0; t < 2; ++t) {
+        EXPECT_EQ(lanePid(t, "LaneA"), -999)
+            << "the removed send's lane must be gone (track " << t << ")";
+        EXPECT_EQ(lanePid(t, "LaneB"), 2000)
+            << "survivor lane decrements onto the reindexed send (track " << t << ")";
+        EXPECT_EQ(lanePid(t, "Ghost999"), 2998)
+            << "2999 shifts with the send-range survivor window (track " << t << ")";
+        EXPECT_EQ(lanePid(t, "BusRoom"), 3000 + 1 * 8 + 0)
+            << "stable bus pid never remapped (track " << t << ")";
+    }
 }
 
 // --- Bus FX params + list_buses — slice C of ---------------------------------
@@ -634,6 +733,90 @@ TEST_F(BusSendRpcTest, RouteKeysMirrorToolPropertyNames) {
     const QJsonObject setBusFxArgs{ { "busID", 1 }, { "paramIndex", 2 }, { "value", 0.25 } };
     EXPECT_FALSE(rpc("project.setBusFxParam", setBusFxArgs).isError);
     EXPECT_FALSE(mcpIsError("set_bus_fx_param", setBusFxArgs));
+
+    // The legacy four (renamed 2026-09-23, trap legacy-send-arg-mismatch): the
+    // send reader and the three send shapers take the MCP tool's keys — `trackId`,
+    // the name the tools were born with — not the pre-parity `trackIndex`.
+    ASSERT_GE(engine->getProjectCommands().createSend(0, 1, 0.5f, false).sendIndex, 0);
+
+    const QJsonObject trackSendsArgs{ { "trackId", 0 } };
+    EXPECT_FALSE(rpc("read.getTrackSends", trackSendsArgs).isError);
+    EXPECT_FALSE(mcpIsError("get_track_sends", trackSendsArgs));
+
+    const QJsonObject sendLevelArgs{ { "trackId", 0 }, { "sendIndex", 0 }, { "level", 0.25 } };
+    EXPECT_FALSE(rpc("project.setTrackSendLevel", sendLevelArgs).isError);
+    EXPECT_FALSE(mcpIsError("set_track_send_level", sendLevelArgs));
+
+    const QJsonObject sendModeArgs{ { "trackId", 0 }, { "sendIndex", 0 }, { "isPreFader", true } };
+    EXPECT_FALSE(rpc("project.setTrackSendMode", sendModeArgs).isError);
+    EXPECT_FALSE(mcpIsError("set_track_send_mode", sendModeArgs));
+
+    const QJsonObject sendBypassArgs{ { "trackId", 0 }, { "sendIndex", 0 }, { "bypassed", true } };
+    EXPECT_FALSE(rpc("project.setTrackSendBypassed", sendBypassArgs).isError);
+    EXPECT_FALSE(mcpIsError("set_track_send_bypassed", sendBypassArgs));
+}
+
+// The negative half for the same four routes: the OLD argument name must be
+// rejected on BOTH surfaces (a renamed argument is not a parity twin —
+// apply_preset_test.cpp LoadNordBankRpcTwinSharesLoaderFailure), the route's
+// -32602 must name `trackId` (never the retired `trackIndex`), and when trackId
+// is merely absent BOTH failures must identify `trackId`. Unlike
+// expectSameFailure, the messages are not compared verbatim: an arg-name failure
+// surfaces from DIFFERENT validators per surface (the route's requireInt vs the
+// tool's JSON schema), so the shared contract is the rejected payload and the
+// named key, not byte-identical text.
+TEST_F(BusSendRpcTest, LegacySendRoutesRejectTrackIndexOnBothSurfaces) {
+    ASSERT_GE(engine->getProjectCommands().createSend(0, 1, 0.5f, false).sendIndex, 0);
+
+    struct Case { const char* tool; const char* method; QJsonObject rest; };
+    const Case cases[] = {
+        { "get_track_sends",         "read.getTrackSends",           QJsonObject{} },
+        { "set_track_send_level",    "project.setTrackSendLevel",
+              QJsonObject{ { "sendIndex", 0 }, { "level", 0.25 } } },
+        { "set_track_send_mode",     "project.setTrackSendMode",
+              QJsonObject{ { "sendIndex", 0 }, { "isPreFader", true } } },
+        { "set_track_send_bypassed", "project.setTrackSendBypassed",
+              QJsonObject{ { "sendIndex", 0 }, { "bypassed", true } } },
+    };
+
+    for (const auto& c : cases) {
+        // The old name in place of trackId: the route fails its normal missing-arg
+        // check naming the key it WANTS, and the tool schema refuses the payload too.
+        QJsonObject renamed = c.rest;
+        renamed["trackIndex"] = 0;
+        const auto r = rpc(c.method, renamed);
+        ASSERT_TRUE(r.isError) << c.method << " accepted the old trackIndex key";
+        EXPECT_EQ(r.payload.toObject().value("code").toInt(), -32602) << c.method;
+        const QString rpcMsg = r.payload.toObject().value("message").toString();
+        EXPECT_TRUE(rpcMsg.contains("trackId")) << c.method << ": " << rpcMsg.toStdString();
+        EXPECT_FALSE(rpcMsg.contains("trackIndex"))
+            << c.method << " still names the retired trackIndex: " << rpcMsg.toStdString();
+        EXPECT_TRUE(mcpIsError(c.tool, renamed)) << c.tool << " accepted the old trackIndex key";
+
+        // trackId absent entirely: both surfaces fail AND both name trackId.
+        const auto r2 = rpc(c.method, c.rest);
+        ASSERT_TRUE(r2.isError) << c.method;
+        const QString rpcMissing = r2.payload.toObject().value("message").toString();
+        EXPECT_TRUE(rpcMissing.contains("trackId")) << c.method << ": " << rpcMissing.toStdString();
+        EXPECT_TRUE(mcpIsError(c.tool, c.rest)) << c.tool;
+        const QString mcpMissing = mcpText(c.tool, c.rest);
+        EXPECT_FALSE(mcpMissing.isEmpty()) << c.tool << " failed without a reason";
+        EXPECT_TRUE(mcpMissing.contains("trackId")) << c.tool << ": " << mcpMissing.toStdString();
+
+        // The new name: accepted by BOTH surfaces. The mutators answer Null (RPC)
+        // vs "ok" (MCP) by surface design, so acceptance — not payload equality —
+        // is the contract here; the read twin's payload equality is asserted below.
+        QJsonObject valid = c.rest;
+        valid["trackId"] = 0;
+        EXPECT_FALSE(rpc(c.method, valid).isError) << c.method;
+        EXPECT_FALSE(mcpIsError(c.tool, valid)) << c.tool;
+    }
+
+    // read.getTrackSends / get_track_sends answer the accepted payload with the
+    // same array (sendIndex / level / isPreFader / bypassed on both surfaces).
+    const QJsonObject withTrackId{ { "trackId", 0 } };
+    EXPECT_EQ(rpcPayload("read.getTrackSends", withTrackId),
+              mcpValue("get_track_sends", withTrackId));
 }
 
 } // namespace

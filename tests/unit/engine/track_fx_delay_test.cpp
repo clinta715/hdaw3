@@ -33,6 +33,7 @@ struct DelayProbeConfig
     float  mix        = 1.0f;    // param 2 (1.0 == pure echo, dry = 0)
     float  sync       = 0.0f;    // param 3 SyncToTempo
     float  division   = 0.0f;    // param 4 Division
+    float  damping    = 0.0f;    // param 5 Damping (feedback-loop lowpass, 0 = off)
     double bpm        = 120.0;   // project tempo fed to the slot
 };
 
@@ -48,6 +49,7 @@ DelayProbeResult renderDelayImpulse(const DelayProbeConfig& cfg)
     slot.setInternalParam(2, cfg.mix);            // Mix
     slot.setInternalParam(3, cfg.sync);           // SyncToTempo
     slot.setInternalParam(4, cfg.division);       // Division
+    slot.setInternalParam(5, cfg.damping);        // Damping
 
     DelayProbeResult r;
     r.sampleRate = (int) cfg.sampleRate;
@@ -201,4 +203,47 @@ TEST(TrackFxDelay, SyncDivisionAndTempoMoveTheTaps)
     manual.blocks     = 20;
     const auto manualTap = renderDelayImpulse(manual);
     EXPECT_NEAR(peakNear(manualTap.out, 2205), 1.0f, 0.02f) << "manual Delay Time";
+}
+
+// Damping (param 5) is a one-pole lowpass INSIDE the feedback loop — classic
+// dub: repeats darken echo after echo — and it must NEVER touch the wet/dry
+// output mix. A plausible bug must fail this test:
+//   * filter not wired into the loop (param ignored) -> echo #2 stays at the
+//     analytic fb = 0.5, contradicting the attenuated bound below;
+//   * filter wired AFTER the wet mix -> echo #1 (the raw input impulse) is
+//     attenuated, contradicting the raw-input bound below.
+// The Damping 0 default is a hard bypass: the exact analytic taps are already
+// asserted by ImpulseProducesDecayingEchoes / ShortDelayTapsStayAnalytic above
+// (both render every default), so no duplicate default run here.
+TEST(TrackFxDelay, DampingDarkensOnlyTheFeedbackRepeats)
+{
+    const double sr = 44100.0;
+    DelayProbeConfig cfg;
+    cfg.sampleRate = sr;
+    cfg.delaySec   = 0.1f;      // 4410 samples
+    cfg.feedback   = 0.5f;
+    cfg.mix        = 1.0f;
+    cfg.blocks     = 40;        // 20480 samples > 4 echoes
+
+    const auto undamped = renderDelayImpulse(cfg);   // Damping 0 = hard bypass
+    cfg.damping    = 1.0f;                           // fc ~ 200 Hz at the top
+    const auto damped = renderDelayImpulse(cfg);
+
+    const int d1 = (int) std::lround(cfg.delaySec * sr);        // 4410
+    // Bypass path is bit-exact: the undamped render keeps the analytic taps
+    // the default-param tests above pin.
+    EXPECT_NEAR(undamped.out[(size_t) d1], 1.0f, 0.02f)       << "undamped echo #1";
+    EXPECT_NEAR(undamped.out[(size_t) (2 * d1)], 0.5f, 0.02f) << "undamped echo #2";
+
+    // Echo #1 is the raw input impulse — the damping filter sits between pop
+    // and push, so the output mix never sees it.
+    EXPECT_NEAR(damped.out[(size_t) d1], 1.0f, 0.02f) << "damped echo #1 must stay the raw input";
+    // Later echoes come back measurably darker: strictly below the undamped
+    // analytic taps, and decaying tap over tap.
+    EXPECT_LT(damped.out[(size_t) (2 * d1)], 0.5f * undamped.out[(size_t) (2 * d1)])
+        << "echo #2 must be attenuated by the in-loop filter";
+    EXPECT_LT(damped.out[(size_t) (3 * d1)], damped.out[(size_t) (2 * d1)])
+        << "echo #3 must be darker than echo #2";
+    EXPECT_LT(damped.out[(size_t) (4 * d1)], damped.out[(size_t) (3 * d1)])
+        << "echo #4 must be darker than echo #3";
 }

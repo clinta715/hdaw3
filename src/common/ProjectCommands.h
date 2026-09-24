@@ -59,7 +59,23 @@ public:
 
     // Track operations
     virtual int addTrack(const std::string& name, int color = -1, int parentBus = -1, int trackType = 0) = 0;
-    virtual void removeTrack(int trackIndex) = 0;
+    // removeTrack: splices the track out and remaps every durable POSITIONAL
+    // reference (folder parentId/childIds, SONG_PLAN cellTrack) in ONE indexed
+    // walk (see HDAW::remapTrackPositionalRefs), then reports the index shift.
+    // The payload both surfaces shape from this result is byte-identical on
+    // MCP remove_track (compact JSON text) and RPC project.removeTrack:
+    //   {"ok":true,"removed":<oldIndex>,"shifted":[{"from":N,"to":N-1},...]}
+    // `shifted` is [] when the LAST track was removed. An out-of-range
+    // trackIndex returns ok=false / removed=-1 with NO tree change (MCP keeps
+    // its "track not found" error; the route reports ok:false — the pre-existing
+    // failure-shape split, unchanged).
+    struct TrackRemovalResult
+    {
+        bool ok = false;
+        int removed = -1;
+        std::vector<std::pair<int, int>> shifted;   // {from,to} old->new index pairs
+    };
+    virtual TrackRemovalResult removeTrack(int trackIndex) = 0;
     virtual void moveTrack(int trackIndex, int newIndex) = 0;
     virtual void setTrackName(int trackIndex, const std::string& name) = 0;
     virtual void setTrackColor(int trackIndex, int color) = 0;
@@ -160,7 +176,22 @@ public:
     // busTarget names no bus (a send to a missing bus would be a silent dead
     // node in RoutingManager::addSend).
     virtual SendCreateResult createSend(int trackIndex, int busTarget, float level, bool isPreFader) = 0;
-    virtual bool removeSend(int trackIndex, int sendIndex, std::string& error) = 0;
+    // removeSend: drops the positional SEND at sendIndex (sends have no stable
+    // id) and — when `shifted` is supplied — fills it with the {from,to} index
+    // pairs of every send above it (each to = from - 1). `shifted` stays empty
+    // when the LAST send was removed. Both surfaces shape the same payload:
+    //   {"ok":true,"removed":<sendIndex>,"shifted":[{"from":N,"to":N-1},...]}
+    // (MCP remove_send compact JSON text / RPC project.removeSend — mirrored
+    // byte-for-byte by tests/unit/frontend/bus_send_rpc_test.cpp).
+    // One tree-stored sendIndex does exist — an automation lane's paramID
+    // 2000 + sendIndex: removeSend remaps it inside the same undo unit (lanes
+    // above the removed index decrement through 2999; the removed send's own
+    // lane is deleted so a re-created send cannot inherit its automation).
+    // SEND children themselves carry only sendTarget/sendLevel/sendMode/
+    // bypassed and SendSnapshot.sendIndex is derived from child position at
+    // read time (ReadModelImpl).
+    virtual bool removeSend(int trackIndex, int sendIndex, std::string& error,
+                            std::vector<std::pair<int, int>>* shifted = nullptr) = 0;
 
     // setBusFxParam: shape an FX bus return. `paramIndex` indexes the bus
     // fxType's def list in common/BusFxDefs.h (the same names/ranges a track
@@ -1042,11 +1073,18 @@ public:
     // renders the full mix at the same window (both via the shared
     // renderTrackWindow), then reports levels, clipping, audibility and spectral
     // band presence. Read-only — never mutates the project.
+    // soloOnly=true skips the full-mix render — the cost that scales with plugin
+    // instances (every render spawns/warms a fresh child per slot). Contract:
+    // solo metrics are still measured, mixMeasured reads false, and the mix
+    // fields (mixRms/mixPeak) stay 0 with nonClipping=false — reported as NOT
+    // measured, never as a passing value. soloOnly=false (default) = both
+    // renders, unchanged.
     struct VerifyPartResult {
         bool ok = false;
         float soloRms = 0.0f, soloPeak = 0.0f;
         float mixRms = 0.0f, mixPeak = 0.0f;
-        bool nonClipping = false;   // mixPeak < 1.0
+        bool mixMeasured = true;    // false only when soloOnly skipped the mix render
+        bool nonClipping = false;   // mixPeak < 1.0 (false when !mixMeasured)
         bool audible = false;       // soloPeak > 1e-4 (~ -80 dBFS)
         bool bandsPresent = false;  // bandLow && bandMid && bandHigh
         bool bandLow = false, bandMid = false, bandHigh = false;
@@ -1063,7 +1101,8 @@ public:
     // must be provided together; endBeat > startBeat. Converted to seconds at
     // the project BPM internally.
     virtual VerifyPartResult verifyPart(int trackIndex, double windowSeconds = 4.0,
-                                        double startBeat = 0.0, double endBeat = 0.0) = 0;
+                                        double startBeat = 0.0, double endBeat = 0.0,
+                                        bool soloOnly = false) = 0;
 
     // ── ParamVerity (2026-09-22) ──
     // Per-(slot, param) audibility sweep: N baseline renders at the param's

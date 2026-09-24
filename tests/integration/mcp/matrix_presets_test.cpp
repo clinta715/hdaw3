@@ -198,10 +198,21 @@ protected:
     // Adds a plugin-typed FX slot (tree + ReadModel entry; the bogus plugin id
     // resolves to no instance, which is fine — setParam/sendFxMidi are
     // null-instance-safe and the live-routing seam settles the track).
+    // Built via the COMMAND layer since the 2026-09-23 add_fx gate: the MCP
+    // surface now rejects unresolvable pluginIds (fixture.test is in no scan
+    // cache — the rejection itself is asserted by unit/frontend/
+    // add_fx_parity_test), and this fixture wants the inert slot, not the
+    // gate. Same command + same args the MCP handler ran before (type
+    // "plugin" derived from pluginId, position -1 append) → identical slot:
+    // fxType "plugin", pluginID "fixture.test", pluginFormat "" — the slot
+    // position the tests read (index 0 alone, index 1 after an internal slot)
+    // is unchanged. matrix_presets_rpc_test.cpp:58 is the same precedent.
     void addPluginSlot() {
-        const QJsonObject args { { "trackId", 0 }, { "pluginId", "fixture.test" } };
-        const auto r = call("add_fx", args);
-        ASSERT_FALSE(isError(r)) << callText("add_fx", args).toStdString();
+        engine->getProjectCommands().addFxSlot(0, "plugin", -1, "fixture.test");
+        const auto fxChain = engine->getProjectModel().getTrackListTree()
+                                 .getChild(0).getChildWithName(IDs::FX_CHAIN);
+        ASSERT_TRUE(fxChain.isValid()) << "the fixture track must exist";
+        ASSERT_GT(fxChain.getNumChildren(), 0) << "the fixture slot must exist";
     }
 
     QTemporaryDir temp_;

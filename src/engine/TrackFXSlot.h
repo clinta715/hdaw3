@@ -100,8 +100,8 @@ public:
             };
         if (type == "compressor")
             return {
-                { 0, "Threshold", -20.0f, -80.0f,  0.0f    },
-                { 1, "Ratio",       4.0f,   1.0f, 40.0f    },
+                { 0, "Threshold",  -6.0f, -80.0f,  0.0f    },
+                { 1, "Ratio",       2.0f,   1.0f, 40.0f    },
                 { 2, "Attack",      5.0f,   0.1f,100.0f    },
                 { 3, "Release",   100.0f,   1.0f,2000.0f   },
             };
@@ -112,7 +112,8 @@ public:
                 { 2, "Gain",       0.0f,-24.0f,   24.0f    },
             };
         // Internal delay: Delay Time (manual seconds) + Feedback + Mix, plus
-        // tempo-sync controls (P1-3, plan 2026-08-29): SyncToTempo (3) =
+        // tempo-sync controls (P1-3, plan 2026-08-29) and Damping (param 5,
+        // the dub feedback-loop lowpass, 0 = hard bypass). SyncToTempo (3) =
         // 1 -> Delay Time is DERIVED from Division (4) + project BPM
         // (seconds = divisionBeatFraction * 60 / bpm, clamped to 0.01..5 s),
         // and re-applied automatically when the tempo changes. Division enum:
@@ -1225,10 +1226,11 @@ public:
             case ActiveType::Reverb:      if (reverb) reverb->process(context);  break;
             case ActiveType::Delay:
             {
-                // InternalDelay holds the fb/mix/time state (pushed by
+                // InternalDelay holds the fb/mix/time/damping state (pushed by
                 // applyInternalParamToDsp and by prepare) and runs the same
-                // pop/push/mix loop this slot used inline; the size() guard is
-                // the slot's own "the def list is the 5-param one" check.
+                // pop/push/mix loop this slot used inline; the size() floor
+                // only asserts the def list carries the Delay Time / Feedback /
+                // Mix core — it does, whatever InternalDelay::kNumParams says.
                 if (internalParamValues.size() >= 3)
                     delay.process(context.getOutputBlock());
                 break;
@@ -1330,6 +1332,24 @@ public:
         if (isExternal || activeType == ActiveType::None)
             return {};
         return getParamDefsForType(slotType);
+    }
+
+    // Params this slot exposes — the FxSlotSnapshot::paramCount contract.
+    // Internal FX: the defs-table size (the same getParamDefsForType table
+    // getInternalParamDefs / loadParamsFromTree use); "none"/unknown types: 0
+    // (getInternalParamDefs returns {} for ActiveType::None). Plugins:
+    // numParams, which rebuildParamCache() sets from
+    // pluginInstance->getParameters().size() — for an ISOLATED slot the
+    // instance IS the proxy::PluginProxySlot, whose hosted parameters were
+    // built from the child's GET_PARAM_COUNT round-trip in
+    // PluginProxySlot::fetchParamMetadata() (run in the proxy ctor, before
+    // TrackFXSlot's ctor calls rebuildParamCache), so one field covers both
+    // in-process and proxy plugins. 0 while the instance is not loaded.
+    int paramCount() const
+    {
+        if (isExternal)
+            return numParams.load(std::memory_order_relaxed);
+        return static_cast<int>(getInternalParamDefs().size());
     }
 
     std::vector<float> getInternalParamValues() const

@@ -44,6 +44,7 @@ add_executable(hdaw_tests
     unit/engine/isolated_scanner_test.cpp
     unit/engine/plugin_state_save_load_test.cpp
     unit/engine/plugin_identifier_resolution_test.cpp
+    unit/engine/shadow_fx_edition_test.cpp
     unit/engine/preset_cache_test.cpp
     unit/engine/plugin_manager_scan_test.cpp
     unit/engine/markers_test.cpp
@@ -185,6 +186,7 @@ add_executable(hdaw_tests
     unit/frontend/rpc_namespace_coverage_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     unit/frontend/bus_send_rpc_test.cpp
+    unit/frontend/add_fx_parity_test.cpp
     integration/proxy/isolation_integration_test.cpp
     integration/proxy/namespace_collision_test.cpp
 )

@@ -8,6 +8,7 @@
 #include "../common/MasterFxDefs.h"
 #include "../common/ParamVerity.h"
 #include "../common/FxCaptureStatus.h"
+#include "../common/FxPluginIdCheck.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/EnvelopeGenerator.h"
@@ -151,6 +152,16 @@ s.registerTool({"add_fx",
             if (type.empty() && a.contains("pluginId")) type = "plugin";
             std::string pluginId;
             if (a.contains("pluginId")) pluginId = a.value("pluginId").toString().toStdString();
+            // Gate unresolvable / shadow-edition ids HERE: the command would
+            // otherwise report silent success while Track::rebuildFXChain
+            // substitutes a 'none' placeholder (bare-id inert-slot bug, item 1;
+            // Track.cpp:178-182). The RPC twin runs the SAME shared gate with
+            // byte-identical text (project.addFxSlot intercept in
+            // src/frontend/FrontendRouter.cpp — its route only receives
+            // ProjectCommands& and cannot reach the scan cache).
+            if (const auto err = HDAW::fxPluginIdError(pluginId, e->getProjectModel());
+                !err.empty())
+                return McpToolResult::text(QString::fromStdString(err), true);
             int pos = a.value("position").toInt(-1);
             auto fxChain = tl.getChild(ti).getChildWithName(IDs::FX_CHAIN);
             int n = fxChain.isValid() ? fxChain.getNumChildren() : 0;
