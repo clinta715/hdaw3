@@ -43,6 +43,19 @@ QJsonObject parseOne(const QByteArray& buf) {
     return QJsonDocument::fromJson(line).object();
 }
 
+// Read an integer field out of an MCP tool's JSON text payload — PARSE it,
+// never text-match it. The shared payload builders (src/common/TrackJson.h,
+// SendJson.h, BusInfo.h) emit one-line JSON through juce::JSON::toString(...,
+// true), which is compact but NOT byte-identical to QJsonDocument::Compact: a
+// space follows ':' and ','. A regex like "\"trackId\":(\d+)" therefore stops
+// matching the moment a tool moves onto a shared builder, and the test then
+// reports its own subject ("could not add track") as the failure — exactly what
+// happened here on 2026-09-23 when add_track_with_fx moved to the shared shaper.
+int payloadInt(const QString& payload, const char* key, int fallback = -1) {
+    const QJsonObject obj = QJsonDocument::fromJson(payload.toUtf8()).object();
+    return obj.value(QString::fromUtf8(key)).toInt(fallback);
+}
+
 // Find the first response line (object with an "id" field) in a multi-line
 // buffer. Notifications ("method" without "id") are skipped.
 QJsonObject parseResponse(const QByteArray& buf) {
@@ -1945,10 +1958,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
         auto r = parseResponse(out);
         QString text = textOf(r);
         ASSERT_TRUE(text.contains("trackId")) << "Failed to add track: " << text.toStdString();
-        QRegularExpression re("\"trackId\":(\\d+)");   // add_track_with_fx returns compact JSON
-        auto match = re.match(text);
-        ASSERT_TRUE(match.hasMatch()) << "Could not parse trackId from: " << text.toStdString();
-        trackId = match.captured(1).toInt();
+        trackId = payloadInt(text, "trackId");
     }
 
     // Generate a short phrase (4 bars = 16 beats)
@@ -2068,10 +2078,7 @@ TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
         auto r = parseResponse(out);
         QString text = textOf(r);
         ASSERT_TRUE(text.contains("trackId")) << "Failed to add track: " << text.toStdString();
-        QRegularExpression re("\"trackId\":(\\d+)");   // add_track_with_fx returns compact JSON
-        auto match = re.match(text);
-        ASSERT_TRUE(match.hasMatch()) << "Could not parse trackId from: " << text.toStdString();
-        trackIds.append(match.captured(1).toInt());
+        trackIds.append(payloadInt(text, "trackId"));
     }
 
     // Give each track a MIDI phrase so the isolated instruments render audio.
@@ -2355,12 +2362,11 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
                                   .arg(QString::fromStdString(r.name), plId);
             QString addText = run(baseId + 2, "add_track_with_fx", addArgs);
             r.phaseNote += "add=" + addText.toStdString() + "; ";
-            QRegularExpression re("\"trackId\":(\\d+)");   // add_track_with_fx returns compact JSON
-            auto m = re.match(addText);
-            if (m.hasMatch())
+            const int diagTrackId = payloadInt(addText, "trackId");
+            if (diagTrackId >= 0)
             {
                 r.addOk = true;
-                int trackId = m.captured(1).toInt();
+                int trackId = diagTrackId;
 
                 // 3) Effect plugins (numInputChannels > 0) get a 440 Hz sine
                 // clip as audio input; instruments get the MIDI phrase.
