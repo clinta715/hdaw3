@@ -1,5 +1,12 @@
 # Handoff: what remains after the mixer-return / automation / key work (2026-09-23)
 
+> **SUPERSEDED (2026-09-24) — read
+> [`2026-09-24-track-identity-and-parity.md`](2026-09-24-track-identity-and-parity.md) instead.**
+> That document is the single live handoff: it closes or supersedes every "remaining" item below
+> (the follow-up session shipped B1/B2, the ledger classification, the last fixed-port test, the
+> native-Windows tooling) and carries the current open list, traps and re-verification commands.
+> This file is kept as history for the pre-session state.
+
 Context for the next session. Everything listed here was verified against the tree today;
 "documented" means a repo file already records it, "reported only" means it exists only in
 conversation and still needs writing down.
