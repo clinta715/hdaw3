@@ -322,4 +322,10 @@ not WSL/MSYS* and *we do not build the frontend*.
   `powershell -File run-tests-sharded.ps1 -Shards 4`. Note the runner counts each `[  FAILED  ]`
   **line** and gtest prints every failure twice, so its "failed" total is ~2× the real count —
   read the `FAILED TESTS` list, and re-run those solo before blaming a change
-  (`PluginIsolation.LargeStateRoundTripThroughProxy` is the historical solo-pass flake).
+  (`PluginIsolation.LargeStateRoundTripThroughProxy` is the historical solo-pass flake). Two shard
+  behaviours observed on 2026-09-23 evening, both environmental rather than code: a shard can stop
+  silently mid-test (one run ended inside `NordBankLoaderTest.SharedLoaderQueuesAndClassifiesErrors`
+  after 6/433 tests, which passes solo in 2.9 s — the shards each open the audio device and spawn
+  their own isolated plugin children), so **compare the per-shard test counts against a previous
+  run** before trusting "0 failed" on a short shard; and a heavy run can starve renders
+  (`export failed: Render graph bake timed out after 15000ms`) — those pass solo too.
