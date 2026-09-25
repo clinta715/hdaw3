@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.37.0
+**Current version**: 0.38.0
 
 ## Quick start
 
@@ -25,7 +25,36 @@ defaults to RelWithDebInfo; pass `Debug` for breakpoint debugging. The Electron
 frontend is a separate project (AGENTS.md "DEPRECATED 2026-09-23") — engine work
 never builds it.
 
-## What works today (v0.37.0)
+## What works today (v0.38.0)
+
+### v0.38.0 session highlights (2026-09-24/25)
+- **RPC parity ledger closed**: all 10 formerly unresolved rows are now mapped
+  (307 tools / 411 methods / mapped 295 / mcp-only 12 / unresolved 0, `node
+  tools/rpc_parity_map.mjs`). Seven no-route tools gained RPC twins on shared
+  `src/common/` entry points, and the ledger generator now harvests chained
+  `m == "A" || m == "B"` predicates (it previously made both methods invisible).
+- **Stable track ids (B3)**: folder membership (`parentTrackID` / `childTrackIDs`)
+  and SONG_PLAN cells (`cellTrackID`) store durable track ids; legacy positional
+  refs migrate one-way at load time and are removed from the save. The positional
+  remap machinery is deleted. Send addresses stay `2000 + sendIndex` by decision
+  (a `2000 + sendID` scheme would collide with the bus pid range at send id 1000).
+- **Plugin proxy state round-trip fixed**: the `LargeStateRoundTripThroughProxy`
+  flake was a marshal-timeout answered as a legitimate empty state. Timeouts now
+  signal failure (result=0), the parent handshake retries 3× with backoff, and two
+  latent lifetime bugs found on the way were fixed (ref-captured `done`/`ep` UAF,
+  `ProxyPipe` poisoning `connected=false` on a bounded-receive timeout).
+- **pi coding agent integration via MCP stdio**: `.mcp.json` adds a direct-stdio
+  `hdaw` server (`mcp-launch.bat`) so the agent spawns and parents the engine
+  itself (copy-on-launch = fresh binaries, no pre-running HTTP server);
+  `mcp.startupTimeoutMs: 0` waits for the ~4 s handshake.
+- **Docs restructure**: the oversized `psytrance-composition-guide.md` and
+  `hardware-va-suite.md` were split (`docs/psytrance-va-and-production.md`,
+  `docs/va-suite-status-log.md`), MCP server ops moved to `docs/mcp-server-ops.md`,
+  and `docs/handoffs/INDEX.md` indexes all session handoffs.
+- **`PsyDubFiveMinutes`** — a 5:07 psy-dub composition test driving all five core
+  synth engines (sub_synth, psy_fm, Osirus, NodalRed2x, Vavra) with verified
+  per-engine loads; deliverable WAV rendered locally (`compositions/` is
+  gitignored; the test reproduces it).
 
 ### Hardware VA presets & patch libraries
 - Five preset pipelines decode the gearmulator synth libraries into searchable

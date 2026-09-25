@@ -70,4 +70,5 @@ handoffs** — treat handoff claims as history, verify against the docs.
 | 2026-09-22 | engine-heap-corruption-investigation.md | Engine heap-corruption crash + "empty project after reconnect" | historical |
 | 2026-09-22 | patch-selection-and-sweep.md | Patch-selection tooling + dsp sweep status | historical |
 | 2026-09-23 | remaining-issues.md | What remains after mixer-return / automation / key work | 2026-09-24-track-identity-and-parity.md |
-| 2026-09-24 | track-identity-and-parity.md | Track surface parity, stable ids (B1/B2), native-Windows tooling | **CURRENT** |
+| 2026-09-24 | track-identity-and-parity.md | Track surface parity, stable ids (B1/B2), native-Windows tooling | 2026-09-25-psy-dub-and-parity-closeout.md |
+| 2026-09-25 | psy-dub-and-parity-closeout.md | PsyDub composition (5 core engines), parity closeout, proxy fix, MCP stdio, v0.38.0; OPEN: export-isolation, registry clobber | **CURRENT** |
