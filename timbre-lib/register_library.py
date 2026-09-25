@@ -17,23 +17,27 @@ def wsl_to_win(p):
 
 def default_registry():
     # %APPDATA% on Windows via WSL interop, with a sane fallback.
+    # Native Windows: %APPDATA% resolves directly (the WSL /mnt/ path this
+    # function used to build is a LITERAL directory on Windows, so registry
+    # writes landed somewhere the engine never reads - measured 2026-09-24).
+    appdata = os.environ.get("APPDATA")
+    if appdata and os.path.isdir(appdata):
+        return os.path.join(appdata, "HDAW", "libraries", "registry.json")
     try:
         import subprocess
         out = subprocess.run(
             ["cmd.exe", "/c", "echo", "%APPDATA%"],
             capture_output=True, text=True, timeout=15).stdout.strip()
-        appdata = out.split("\\") and out  # keep raw
         m = re.match(r"^([A-Z]):\\(.*)$", out)
         if m:
-            # %APPDATA% uses backslashes; on the WSL side they are filename
-            # characters, not separators - normalize or the registry write
-            # lands in a bogus literal-backslash directory.
+            # WSL interop fallback: normalize to the /mnt/ form.
             return f"/mnt/{m.group(1).lower()}/{m.group(2).replace(chr(92), '/')}/HDAW/libraries/registry.json"
     except Exception:
         pass
     import glob
     hits = glob.glob("/mnt/c/Users/*/AppData/Roaming/HDAW/libraries/registry.json")
-    return hits[0] if hits else None
+    win_hits = glob.glob(os.path.expandvars(r"%APPDATA%\HDAW\libraries\registry.json"))
+    return hits[0] if hits else (win_hits[0] if win_hits else None)
 
 def main():
     ap = argparse.ArgumentParser()

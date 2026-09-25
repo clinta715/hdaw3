@@ -35,11 +35,10 @@ def _hits():
     return _glob.glob("/mnt/c/Users/*/AppData/Roaming/HDAW/libraries/registry.json")
 
 def load_libs():
-    reg = default_registry()
-    if not reg and os.path.exists("/mnt/c/Users/hapbt/AppData/Roaming/HDAW/libraries/registry.json"):
-        reg = "/mnt/c/Users/hapbt/AppData/Roaming/HDAW/libraries/registry.json"
-    if not reg:
-        reg = _hits()[0] if _hits() else None
+    reg = os.environ.get("APPDATA") and os.path.join(
+        os.environ["APPDATA"], "HDAW", "libraries", "registry.json")
+    if not reg or not os.path.exists(reg):
+        reg = default_registry()
     if not reg:
         print("registry not found", file=sys.stderr); sys.exit(1)
     data = json.load(open(reg, encoding="utf-8"))
@@ -47,7 +46,12 @@ def load_libs():
     for l in data.get("libraries", []):
         if l.get("type") != "audio": continue
         name = l.get("name", "")
-        if name in PSY:
+        # Registry stores pack-folder names; match by psytrance keyword
+        # (the exact-name PSY set predated the folder-name registrations).
+        low = name.lower()
+        if any(k in low for k in ("psy", "dark", "forest", "hypnoticum",
+                                  "hipotermic", "zenhiser", "function loops",
+                                  "antinomy", "inside mind", "sonicspore")):
             libs.append(l)
     return reg, libs
 
@@ -96,7 +100,7 @@ def main():
     print(f"psytrance libraries in registry: {len(libs)}")
     by_lib = defaultdict(list)
     for lib in libs:
-        root = win_to_wsl(lib["path"])
+        root = lib["path"]  # native Windows: the registry stores win paths
         if not os.path.isdir(root):
             print(f"  WARN: library path missing: {lib['path']}")
             continue
@@ -111,6 +115,14 @@ def main():
     total = sum(len(v) for v in by_lib.values())
     print(f"analyzed sidecars found: {total} across {len(by_lib)} libraries")
 
+    # Key-aware ranking (2026-09-24): the strided pick used to take entries
+    # blind, which landed an MP3 track preview in the pad role and FX/SFX
+    # files in the bass role. Rank each role's pool by sidecar key fit for
+    # the target key (F minor: F/Fm first, relative Ab/Abm, then C/Cm and
+    # Eb/Ebm), prefer one-shots for the rhythmic roles, and skip previews.
+    TARGET_ROOT = "F"
+    GOOD_KEYS = {"F": 3, "Fm": 3, "Ab": 2, "Abm": 2, "C": 1, "Cm": 1,
+                 "Eb": 1, "Ebm": 1}
     roles = defaultdict(list)
     stats = defaultdict(int)
     for lib, recs in by_lib.items():
@@ -118,20 +130,46 @@ def main():
             role = classify(rec)
             stats[role] += 1
             win = rec.get("win_path") or rec.get("wsl_path")
-            if not win or not os.path.exists(win_to_wsl(win)):
+            if not win or not os.path.exists(win):
                 continue
-            roles[role].append((lib, win, rec.get("name", "")))
+            low = win.lower()
+            if low.endswith(".mp3") or "preview" in low:
+                continue
+            key = (rec.get("key") or "")
+            keyfit = GOOD_KEYS.get(key, 0)
+            dur = rec.get("durationSeconds", 0)
+            oneshot = 1 if dur <= 4.0 else 0
+            roles[role].append((keyfit, oneshot, -dur, lib, win,
+                                rec.get("name", "")))
     print("classification:", dict(stats))
+    for role in roles:
+        roles[role].sort(key=lambda t: (-t[0], -t[1], t[2]))
 
     want = {"kick": 2, "bass": 3, "lead": 4, "hat": 3, "pad": 3}
     out = []
     for role, n in want.items():
-        pool = roles.get(role, [])
+        pool = [(kf, os_, d, lib, win, name)
+                for (kf, os_, d, lib, win, name) in roles.get(role, [])]
         if len(pool) < n:
             print(f"  WARN: {role} has only {len(pool)} (wanted {n})")
-        # spread across libraries: round-robin-ish by taking strided picks
-        step = (len(pool) / n) if pool else 1
-        picks = [pool[int(i * step)] if pool else None for i in range(n) if pool]
+        # rank-ordered (key fit, one-shot, short duration); spread across
+        # libraries so consecutive picks do not come from the same pack.
+        seen_lib = {}
+        picks = []
+        for kf, os_, dur, lib, win, name in pool:
+            if len(picks) >= n:
+                break
+            seen_lib[lib] = seen_lib.get(lib, 0)
+            if seen_lib[lib] >= 2 and kf == 0:
+                continue  # keep key-fit order but avoid one pack filling the role
+            seen_lib[lib] += 1
+            picks.append((lib, win, name))
+        # if the key-fit filter thinned the pool, top up with the remainder
+        for kf, os_, dur, lib, win, name in pool:
+            if len(picks) >= n:
+                break
+            if (lib, win, name) not in picks:
+                picks.append((lib, win, name))
         for lib, win, name in picks:
             out.append((role, win, lib, name))
 

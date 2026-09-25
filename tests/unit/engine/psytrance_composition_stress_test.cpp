@@ -2728,23 +2728,14 @@ TEST (InternalFx, SaturatorNeutralFidelity)
 // Dub identity: skank offbeat 7th stabs, echo-drenched, half-time, deep sub.
 TEST (PsytranceComposition, PsyDubFiveMinutes)
 {
-    auto selection = loadSelection (1);
+    // Palette: the 2026-09-24 key-aware selector pass (select_psy_samples.py
+    // --key F) picked F-minor-matched samples from the 23 registered packs
+    // (kicks named F, F one-shot + F bass loops, F-riff lead, "ARP Crush
+    // Fmin", F-minor Grid Lines pad). loadSelection(0) — the expanded TSV
+    // has exactly one pick per slot, so nothing to skip.
+    auto selection = loadSelection (0);
     if (selection.empty())
         GTEST_SKIP() << "library selection TSV missing";
-
-    // Key discipline: the dub lead must be a ONE-SHOT we can retune into
-    // F minor. loadSelection(1) hands the lead role the FLOW36 "145 BPM
-    // Riff_F#" LOOP (entry 1) — a loop in F# minor, retriggered 16x/bar and
-    // repitched against its own tonality = the off-key, high-pitched wash the
-    // 2026-09-24 session heard. Replace that entry with the Antinomy
-    // One_Shot_Stab_C (entry 0, C-rooted one-shot); leave every other role on
-    // its skip-1 entry.
-    for (size_t i = 0; i < selection.size(); ++i)
-        if (selection[i].first == "lead"
-            && selection[i].second.contains("Riff_F#"))
-            selection[i].second = "E:\\samples\\Antinomy Psytrance Sounds Vol.2 "
-                "WAV MiDi-ARCADiA\\ANTINOMY_08_One_Shot\\ANTINOMY_01_One_Shot_"
-                "Stab_Full_Octave\\ANTINOMY_01_One_Shot_Stab_C.wav";
 
     AudioEngine engine;
     engine.initialize();
@@ -2787,39 +2778,20 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         const int t = cmds.addTrack ((juce::String("PD") + role + juce::String(i)).toStdString(), -1, -1, 0);
         ASSERT_GE (t, 0);
         cmds.addFxSlot (t, "sampler", 0, "");
-        // Root = the SAMPLE'S MEASURED pitch CLASS + the register the track
-        // plays in (chroma + low-band HPS, 2026-09-24). Pitch-class match is
-        // the key fix; the octave keeps the sampler's repitch inside ~1
-        // octave so one-shots don't turn into formant chipmunks:
-        //   bass  Ascend OneShot18: fundamental F3 (53.5 Hz, in F already)
-        //          -> root 53, notes 36-43 repitch -10..-17 st = dub sub.
-        //   lead  WS#2 Lead FM Fx 2 -> REPLACED TOO (listen-fix round 2):
-        //          the Antinomy "Stab_C" is a full-octave MAJOR voicing baked
-        //          into the sample (E-natural partial 0.22) — it reads sour
-        //          against every minor chord no matter what root you map. The
-        //          FM pluck is minor-friendly (C-rooted, 64% in-Fm) and both
-        //          lead tracks now share it (arp + skank), differentiated by
-        //          octave + FX rather than sample.
-        //   stab  same sample as the lead (see above); root 63 (Eb3) keeps
-        //          the skanks pitch-class correct.
-        //   pad   Batuhan Atmos_7: D-dominant chroma, fundamental ~D3
-        //          -> root 50 (D3), notes 53-56 repitch +3..+6 st. (Was 60:
-        //          -11 st detune against every F-minor pad note.)
-        //   hat/kick: percussive, root 44/36 by convention.
-        // WS#2 "FX Atmos 3" (pad role #2) is a texture — pitch mapping is
-        // irrelevant; it rides the sub_synth assignment below.
-        // Both lead-role tracks use the FM pluck (minor-friendly); ARP Digital
-        // (48% in-Fm) and Stab_C (major voicing baked in) are dropped.
-        const bool isLeadRole = role == "lead";
-        const bool isStab = isLeadRole && selection[i].second.contains ("ARP Digital");
-        if (isLeadRole)
-            selection[i].second = "E:\\samples\\Santo Grau Records WS Dark "
-                "Psytrance Sample Pack #2\\WS#2 - Lead FM Fx 2.wav";
+        // Root = the SAMPLE'S KEY (all 15 picks are F-minor-matched by the
+        // 2026-09-24 key-aware selector) at the register the track plays in:
+        //   kick  F-keyed kick one-shots -> root 36 (percussive convention).
+        //   bass  F bass one-shot + F bass loops -> root 53 (F3); notes
+        //         36-43 repitch -10..-17 st = the dub sub register.
+        //   hat   percussive -> root 44 by convention.
+        //   lead/stab F-riff / ARP Crush Fmin one-shots -> root 60 (C4),
+        //         notes 65-82 repitch +5..+22 st (sane formant range).
+        //   pad   F-minor Grid Lines / F synth FX -> root 53 (F3); notes
+        //         53-56 play near-untransposed.
         const int root = (role == "kick") ? 36
                        : (role == "bass") ? 53
                        : (role == "hat")  ? 44
-                       : (role == "pad")  ? 50
-                       : isStab           ? 63
+                       : (role == "pad")  ? 53
                        : 60;
         cmds.setSamplerSample (t, 0, selection[i].second.toStdString(), root);
         const double vol = (role == "kick")  ? 1.00
