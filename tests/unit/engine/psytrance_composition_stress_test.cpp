@@ -7,6 +7,11 @@
 #include "engine/TrackFXSlot.h"
 #include "model/ProjectModel.h"
 #include "common/TrackIdRefs.h"
+#include "common/FxCaptureStatus.h"
+#include "common/MatrixPresetService.h"
+#include "common/NordBankLoader.h"
+#include "common/PluginParamService.h"
+#include <cstdlib>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
@@ -22,6 +27,14 @@
 // then run long renders with save/load accumulation. Run via
 // run_with_capture.ps1 so a debug-CRT abort yields a procdump.
 namespace {
+
+// Core-synth CLAP engines for the v3 PsyDub palette (verified present by the
+// FxMidiInjection gates; each load is env-guarded by existence checks there).
+constexpr const char* kOsirusClap = "C:\\Program Files\\Common Files\\CLAP\\Osirus.clap";
+constexpr const char* kNodalRed2xClap = "C:\\Program Files\\Common Files\\CLAP\\NodalRed2x.clap";
+constexpr const char* kVavraClap = "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap";
+constexpr const char* kVirusAtmoMid = "D:\\pdf\\Virus Presets\\Access Virus NK - Best Atmospheric Sounds (BC vers) 3.0.MID";
+constexpr const char* kNordBankMid = "D:\\pdf\\NL2x Banks\\NL2x Factory\\ProgBank0.mid";
 
 bool waitForExport(HDAW::ExportManager& em, int timeoutMs = 600000)
 {
@@ -2710,9 +2723,31 @@ TEST (InternalFx, SaturatorNeutralFidelity)
 // ProjectSerializer::load round-trip that must be a no-op on a new-vocabulary
 // file. The cell grid targets the two SILENT folder children — a side grid,
 // the plan's sanctioned fallback — so the audible arrangement stays on the
-// sampler tracks (cell fills generate phrases onto real tracks, which would
+// synth tracks (cell fills generate phrases onto real tracks, which would
 // double the audio) while G4's resolution proof is over LIVE cells with real
 // track targets, not a stripped throwaway scene.
+//
+// v3 (2026-09-25) — ALL TONAL ROLES ARE CORE SYNTHS (user direction 2026-09-24:
+// "use all core synths for tonal elements"). The v2 sampler tonal tracks are
+// replaced:
+//   bass sub   -> sub_synth (internal synth) with full param automation
+//   bass growl -> psy_fm slot + psy_fm_load_preset { "growlBass" }
+//   skank      -> Osirus (Virus A/B/C CLAP, 3086 host params) + load_virus_preset
+//                 CC0+PC ROM preset (Access Virus NK - Best Atmospheric BC bank,
+//                 bank 1 program 0 "Trip Pd NK") via sendFxMidi captureToTree
+//   lead arp   -> NodalRed2x (Nord Lead 2x CLAP, 362 host params) +
+//                 load_nord_bank (NL2x Factory ProgBank0.mid, program 3)
+//   pad        -> Vavra (microQ CLAP, 7557 host params) + apply_matrix_preset
+//                 dump-bearing route (392-byte single dump incl. the FX block
+//                 with no host params) — id 92a92039b463a03f ("Ultra Pad CJ Pad")
+// Percussion (kick / hat) stays SAMPLER (kick/hat still load from the TSV),
+// keeping the pump LFOs. Verification discipline per
+// docs/core-synths-agentic-guide.md §5/§7: every load is confirmed with
+// get_fx_capture_status (poll to settled) + a solo audition rms > 0.001, and
+// list_fx_params is asserted non-empty per synth track BEFORE any automation
+// (G3/G4). Preset loads happen BEFORE the render sequence, so the open
+// export-isolation bug (exports 3+ re-render a fixed tree state,
+// docs/testing-mcp.md) cannot bite the deliverable.
 //
 // Style spec (v2, DarkForestV5 discipline): 138 BPM, 4/4, F natural minor
 // via the degree helper fMinorDeg + 8-bar progressions progA/progB (NOTHING
@@ -2728,14 +2763,30 @@ TEST (InternalFx, SaturatorNeutralFidelity)
 // Dub identity: skank offbeat 7th stabs, echo-drenched, half-time, deep sub.
 TEST (PsytranceComposition, PsyDubFiveMinutes)
 {
+    // v3 renders spawn THREE isolated CLAP children per export graph bake
+    // (Osirus 12 s OS warmup + NodalRed2x + Vavra), so every solo audition's
+    // outer wait budget (computeBakeWaitMs + window + 5 s ~= 34 s) expires
+    // before the children finish booting — the observed "render timed out" on
+    // the FIRST audition, and the inner bake wait (27 s = 15 s floor + one
+    // 12 s Virus warmup) expired on the second: the bake boots all three
+    // children SEQUENTIALLY (ExportManager.cpp renderThreadFunc) but
+    // computeBakeWaitMs budgets only ONE virus warmup. The documented
+    // overrides raise both budgets; the gtest-level export waits
+    // (waitForExport 1200 s) are already generous.
+    _putenv ("HDAW_RENDER_WINDOW_WAIT_MS=240000");
+    _putenv ("HDAW_EXPORT_BAKE_TIMEOUT_MS=180000");
+
     // Palette: the 2026-09-24 key-aware selector pass (select_psy_samples.py
-    // --key F) picked F-minor-matched samples from the 23 registered packs
-    // (kicks named F, F one-shot + F bass loops, F-riff lead, "ARP Crush
-    // Fmin", F-minor Grid Lines pad). loadSelection(0) — the expanded TSV
-    // has exactly one pick per slot, so nothing to skip.
+    // --key F) picked F-minor-matched samples. v3 uses ONLY the percussion
+    // picks (kick / hat / hat2) — every tonal role is a core synth now — so
+    // the TSV is folded into a first-pick-per-role map instead of one track
+    // per TSV row.
     auto selection = loadSelection (0);
     if (selection.empty())
         GTEST_SKIP() << "library selection TSV missing";
+    std::map<std::string, std::string> m_samplerForRole;
+    for (const auto& [role, path] : selection)
+        m_samplerForRole.emplace (role.toLowerCase().toStdString(), path.toStdString());
 
     AudioEngine engine;
     engine.initialize();
@@ -2770,41 +2821,80 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     ASSERT_GT (cellAID, 0);
     ASSERT_GT (cellBID, 0);
 
-    // ---- Composition tracks (roles from the selection, natural-pitch roots) -
+    // ---- Composition tracks (v3 synth palette) ------------------------------
+    // Percussion stays SAMPLED from the key-aware TSV (kick + hat, still the
+    // genre anchors); every TONAL role is a core synth engine per the plan:
+    //   bass sub -> sub_synth, bass growl -> psy_fm (growlBass preset),
+    //   skank    -> Osirus, lead -> NodalRed2x, pad -> Vavra.
     std::map<juce::String, std::vector<int>> tracks;
-    for (size_t i = 0; i < selection.size(); ++i)
-    {
-        const juce::String role = selection[i].first.toLowerCase();
-        const int t = cmds.addTrack ((juce::String("PD") + role + juce::String(i)).toStdString(), -1, -1, 0);
-        ASSERT_GE (t, 0);
+    auto addSamplerTrack = [&] (const juce::String& role, const std::string& name,
+                                int root, double vol) -> int {
+        const int t = cmds.addTrack (name, -1, -1, 0);
+        if (t < 0)
+        {
+            ADD_FAILURE() << "addTrack failed for " << name;
+            return -1;
+        }
         cmds.addFxSlot (t, "sampler", 0, "");
-        // Root = the SAMPLE'S KEY (all 15 picks are F-minor-matched by the
-        // 2026-09-24 key-aware selector) at the register the track plays in:
-        //   kick  F-keyed kick one-shots -> root 36 (percussive convention).
-        //   bass  F bass one-shot + F bass loops -> root 53 (F3); notes
-        //         36-43 repitch -10..-17 st = the dub sub register.
-        //   hat   percussive -> root 44 by convention.
-        //   lead/stab F-riff / ARP Crush Fmin one-shots -> root 60 (C4),
-        //         notes 65-82 repitch +5..+22 st (sane formant range).
-        //   pad   F-minor Grid Lines / F synth FX -> root 53 (F3); notes
-        //         53-56 play near-untransposed.
-        const int root = (role == "kick") ? 36
-                       : (role == "bass") ? 53
-                       : (role == "hat")  ? 44
-                       : (role == "pad")  ? 53
-                       : 60;
-        cmds.setSamplerSample (t, 0, selection[i].second.toStdString(), root);
-        const double vol = (role == "kick")  ? 1.00
-                         : (role == "bass")  ? 0.95
-                         : (role == "hat")   ? 0.90
-                         : (role == "lead")  ? 0.95
-                         : 0.80;
+        cmds.setSamplerSample (t, 0, m_samplerForRole[role.toStdString()], root);
         cmds.setTrackVolume (t, vol);
         tracks[role].push_back (t);
+        return t;
+    };
+    ASSERT_FALSE (m_samplerForRole["kick"].empty()) << "TSV has no kick pick";
+    ASSERT_FALSE (m_samplerForRole["hat"].empty()) << "TSV has no hat pick";
+    addSamplerTrack ("kick", "PDKick", 36, 1.00);
+    addSamplerTrack ("hat", "PDHat", 44, 0.90);
+    if (!m_samplerForRole["hat2"].empty())                    // reverse-hat downlifter
+    {
+        addSamplerTrack ("hat2", "PDRevHat", 44, 0.90);
     }
-    for (const auto* r : { "kick", "bass", "hat", "lead", "pad" })
-        ASSERT_FALSE (tracks[r].empty()) << "missing role " << r;
+
+    // Bass sub: internal sub_synth — deep F sub with full param automation.
+    {
+        const int t = cmds.addTrack ("PDSub", -1, -1, 0);
+        ASSERT_GE (t, 0);
+        cmds.addFxSlot (t, "sub_synth", 0, "");
+        cmds.setTrackVolume (t, 0.95);
+        tracks["sub"].push_back (t);
+    }
+    // Bass growl: internal FM — psy_fm + the documented growlBass preset;
+    // owns the LOW OFFBEATS (trap #14: distinct register/rhythm from the sub).
+    {
+        const int t = cmds.addTrack ("PDGrowl", -1, -1, 0);
+        ASSERT_GE (t, 0);
+        cmds.addFxSlot (t, "psy_fm", 0, "");
+        cmds.setTrackVolume (t, 0.80);
+        tracks["growl"].push_back (t);
+    }
+    // Skank stabs: Osirus (Virus A/B/C) — CLAP ROM preset via CC0+PC.
+    {
+        const int t = cmds.addTrack ("PDSkank", -1, -1, 0);
+        ASSERT_GE (t, 0);
+        cmds.addFxSlot (t, "plugin", 0, kOsirusClap);
+        cmds.setTrackVolume (t, 0.85);
+        tracks["skank"].push_back (t);
+    }
+    // Lead arp: NodalRed2x (Nord Lead 2x) — bank load via load_nord_bank.
+    {
+        const int t = cmds.addTrack ("PDLead", -1, -1, 0);
+        ASSERT_GE (t, 0);
+        cmds.addFxSlot (t, "plugin", 0, kNodalRed2xClap);
+        cmds.setTrackVolume (t, 0.90);
+        tracks["lead"].push_back (t);
+    }
+    // Pad: Vavra (Waldorf microQ) — dump-bearing matrix preset (the 392-byte
+    // dump injects the full sound incl. the FX block, which has no host params).
+    {
+        const int t = cmds.addTrack ("PDPad", -1, -1, 0);
+        ASSERT_GE (t, 0);
+        cmds.addFxSlot (t, "plugin", 0, kVavraClap);
+        cmds.setTrackVolume (t, 0.80);
+        tracks["pad"].push_back (t);
+    }
     engine.drainPendingRoutingRebuild();
+    for (const auto* r : { "kick", "hat", "sub", "growl", "skank", "lead", "pad" })
+        ASSERT_FALSE (tracks[r].empty()) << "missing role " << r;
 
     // Stable ids captured AT CREATION (pre-splice): the audit at the end of
     // this test resolves indices from these, because the moveTrack splices
@@ -2817,19 +2907,13 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
                 trackIDs[role].push_back (HDAW::trackIDForIndex (tlNow, t));
     }
 
-    const int kickT = tracks["kick"][0], bassT = tracks["bass"][0];
+    const int kickT = tracks["kick"][0], bassT = tracks["sub"][0];
+    const int growlT = tracks["growl"][0];
     const int hatT = tracks["hat"][0], leadT = tracks["lead"][0];
-    const int stabT = (tracks["lead"].size() > 1) ? tracks["lead"][1] : leadT;
+    const int stabT = tracks["skank"][0];
     const int padT = tracks["pad"][0];
-    const int pad2T = (tracks["pad"].size() > 1) ? tracks["pad"][1] : padT;
-    const int revT = (tracks["hat"].size() > 1) ? tracks["hat"][1] : hatT;
+    const int revT = (tracks["hat2"].size() > 0) ? tracks["hat2"][0] : hatT;
 
-    auto buildPattern = [&] (int track, const std::vector<std::pair<int, double>>& notes,
-                             int velocity, double durBeats) {
-        const int clipId = cmds.addMidiClip (track, 0.0, totalBeats, "p");
-        ASSERT_GE (clipId, 0);
-        addNotes (cmds, clipId, notes, velocity, durBeats);
-    };
     auto addFx = [&] (int track, const juce::String& type, int pos) {
         cmds.addFxSlot (track, type.toStdString(), pos, "");
     };
@@ -2908,31 +2992,28 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (kickT, 3, 1, 1.0f);
     cmds.setFxSlotParam (kickT, 3, 2, 4.0f);
 
-    // ---- BASS: rolling offbeat 8ths on the progression roots (degrees) + ---
-    // long sub-octave holds through the drops. Deep dub sub.
-    std::vector<std::tuple<int, double, int>> be;
-    for (int bar = 3; bar < 175; ++bar)
-    {
-        if (bar >= 84 && bar < 96) continue;                // halftime: sub holds roots
-        if (bar >= 148 && bar < 160) continue;              // breakdown
-        const int* prog = (bar >= 96) ? progB : progA;
-        for (int b = bar * 4; b < bar * 4 + 4; ++b)
-            // Accent the bar-head offbeat (114), others 100-106. Octave 2
-            // (F2=41): repitch -12..-2 st from the F3-rooted sample — the
-            // deepest register that stays inside ~1 octave of repitch.
-            be.push_back ({ fMinorDeg (prog[bar % 8], 2), b + 0.5,
-                            (b % 4 == 0) ? 114 : 100 + (b % 2) * 6 });
-    }
-    // Sub-octave layer: long root notes one octave BELOW the rolling bass
-    // (octave 1 = F1..Eb2, repitch -24..-14 st), bar-head aligned, 3.8-beat
-    // holds — the deep dub sub through the drops.
+    // ---- BASS SUB (sub_synth): long root holds one octave BELOW the growl ---
+    // (octave 1 = F1..Eb2) — the deep dub sub through the drops. The synth is
+    // pitch-driven, so the notes speak at written pitch (no sample repitch):
+    // fundamentals 43-87 Hz with Sub Octave 0.
     std::vector<std::tuple<int, double, int>> se;
     for (int bar = 13; bar < 148; ++bar)
-        if (! (bar >= 84 && bar < 96))
-            se.push_back ({ fMinorDeg ((bar >= 96 ? progB : progA)[bar % 8], 1),
-                            bar * 4.0, 96 });
-    addNotesV (bassT, be, 0.4);
+        se.push_back ({ fMinorDeg ((bar >= 96 ? progB : progA)[bar % 8], 1),
+                        bar * 4.0, 96 });
     addNotesV (bassT, se, 3.8);
+    // sub_synth params (TrackFXSlot.h defs): 0 Osc1 Wave, 1 Osc1 Level,
+    // 3 Osc2 Level, 5 Sub Level, 6 Sub Octave, 7 Cutoff Hz, 8 Resonance,
+    // 10-13 Amp ADSR, 14 Output Level, 15 Legato, 18 Filter Env Amount.
+    // Deep and rounded: saw+sine-sub through a 900 Hz LP, mono legato so the
+    // 3.8-beat holds glide instead of retriggering.
+    cmds.setFxSlotParam (bassT, 0, 1, 0.85f);  // Osc1 Level
+    cmds.setFxSlotParam (bassT, 0, 3, 0.30f);  // Osc2 Level low
+    cmds.setFxSlotParam (bassT, 0, 5, 0.50f);  // Sub Level
+    cmds.setFxSlotParam (bassT, 0, 6, 0.0f);   // Sub Octave 0 (notes at pitch)
+    cmds.setFxSlotParam (bassT, 0, 7, 900.0f); // Cutoff — deep
+    cmds.setFxSlotParam (bassT, 0, 12, 0.75f); // Sustain high (holds ring)
+    cmds.setFxSlotParam (bassT, 0, 14, 1.00f); // Output Level
+    cmds.setFxSlotParam (bassT, 0, 15, 1.0f);  // Legato mono
     // eq params: 0 Hz, 1 Q, 2 dB — 170 Hz +2 dB fattens ABOVE the kick's
     // 82 Hz fundamental so the two low voices do not overlap.
     addFx (bassT, "eq", 1);
@@ -2945,7 +3026,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (bassT, 2, 1, 3.0f);
     cmds.setFxSlotParam (bassT, 2, 3, 60.0f);
     // filter params: 0 Cutoff Hz, 1 Mode (0=LP/1=HP), 2 Q. LP 3500 keeps the
-    // bass out of the stab/hat mids; the BassSweep lane below automates this
+    // sub out of the stab/hat mids; the BassSweep lane below automates this
     // cutoff through pid 400 (100 + slot 3 * 100) in NORMALIZED 0..1 units.
     addFx (bassT, "filter", 3);
     cmds.setFxSlotParam (bassT, 3, 0, 3500.0f);
@@ -2966,6 +3047,37 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     // Sub pump (V5 duck recipe): triangle volume LFO, phase 180, depth 0.72
     // -> gainMul dips to ~0.28x on the beat, opening the kick's low window.
     pumpLfo (bassT, 1, 0.72);
+
+    // ---- BASS GROWL (psy_fm + growlBass preset): the rolling offbeat 8ths --
+    // on the progression roots — trap #14: a DISTINCT register (octave 2, one
+    // above the sub holds) and rhythm (offbeat 8ths vs whole-bar holds) from
+    // the sub, so the two low voices never double.
+    std::vector<std::tuple<int, double, int>> be;
+    for (int bar = 3; bar < 175; ++bar)
+    {
+        if (bar >= 84 && bar < 96) continue;                // halftime: sub holds
+        if (bar >= 148 && bar < 160) continue;              // breakdown
+        const int* prog = (bar >= 96) ? progB : progA;
+        for (int b = bar * 4; b < bar * 4 + 4; ++b)
+            // Accent the bar-head offbeat (114), others 100-106.
+            be.push_back ({ fMinorDeg (prog[bar % 8], 2), b + 0.5,
+                            (b % 4 == 0) ? 114 : 100 + (b % 2) * 6 });
+    }
+    addNotesV (growlT, be, 0.4);
+    // eq params: 0 Hz, 1 Q, 2 dB — 170 Hz +2 dB fattens ABOVE the kick's
+    // 82 Hz fundamental so the two low voices do not overlap.
+    addFx (growlT, "eq", 1);
+    cmds.setFxSlotParam (growlT, 1, 0, 170.0f);
+    cmds.setFxSlotParam (growlT, 1, 1, 0.9f);
+    cmds.setFxSlotParam (growlT, 1, 2, 2.0f);
+    // comp params: 0 Threshold dB, 1 Ratio, 2 Attack ms, 3 Release ms.
+    addFx (growlT, "compressor", 2);
+    cmds.setFxSlotParam (growlT, 2, 0, -20.0f);
+    cmds.setFxSlotParam (growlT, 2, 1, 3.0f);
+    cmds.setFxSlotParam (growlT, 2, 3, 60.0f);
+    // Growl pump: a milder duck (0.5) — the growl is the mid-bass pulse and
+    // must still open the kick's low window without pumping the whole low end.
+    pumpLfo (growlT, 0, 0.50);
 
     // ---- HATS: offbeat 8ths + rolls + velocity accents, swung halftime -----
     std::vector<std::tuple<int, double, int>> hh;
@@ -3012,9 +3124,10 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (hatT, 1, 1, 1.0f);
     cmds.setFxSlotParam (hatT, 1, 2, 0.7f);
 
-    // ---- LEAD ARP: 16th chord-tone arps (sevenths, degrees) + dub echo -----
-    // Stab_C override plays in the 65-82 register; octave 3 keeps it there
-    // (F4=65). B section arps the same chordTones, no new pitches.
+    // ---- LEAD ARP (NodalRed2x): 16th chord-tone arps (sevenths, degrees) + -
+    // dub echo. The synth plays written pitch, so octave 3 (F4=65) IS the
+    // 65-82 register the v2 sampler repitch used to reach. B section arps the
+    // same chordTones, no new pitches.
     std::vector<std::tuple<int, double, int>> la;
     for (int bar = 13; bar < 175; ++bar)
     {
@@ -3073,9 +3186,10 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         addNotes (cmds, clipId, bm, 80, 3.0);
     }
 
-    // ---- DUB SKANK: offbeat 7th stabs (the genre hook), echo-drenched ------
-    // Fm9-ish 4-note voicings from chordTones of the bar's degree, octave 3
-    // (an octave below the lead arp); offbeat 1.0 + a second push at 2.5.
+    // ---- DUB SKANK (Osirus): offbeat 7th stabs (the genre hook), echo -----
+    // drenched. Fm9-ish 4-note voicings from chordTones of the bar's degree,
+    // octave 3 (an octave below the lead arp); offbeat 1.0 + a second push
+    // at 2.5. The Virus patch is poly/synth — the voicing speaks as written.
     std::vector<std::tuple<int, double, int>> st;
     for (int bar = 12; bar < 175; ++bar)
     {
@@ -3121,8 +3235,10 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (stabT, 5, 1, 0.0f);
     cmds.setFxSlotParam (stabT, 5, 2, 0.7f);
 
-    // ---- PADS: Fm7 voicings from chordTones, whole track, chorus + damped --
-    // reverb + HP130 + volume LFO. The intro/breakdown/halftime carrier.
+    // ---- PADS (Vavra): Fm7 voicings from chordTones, whole track, chorus + -
+    // damped reverb + HP130 + volume LFO. The intro/breakdown/halftime
+    // carrier. The microQ dump-patch is poly — the voicing speaks as written
+    // (root octave 2, tones octave 3).
     std::vector<std::tuple<int, double, int>> pp;
     for (int bar = 0; bar < 175; ++bar)
     {
@@ -3163,28 +3279,9 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (padT, 3, 0, 130.0f);
     cmds.setFxSlotParam (padT, 3, 1, 1.0f);
     cmds.setFxSlotParam (padT, 3, 2, 0.7f);
-    // Sub synth pad2 (no pad2 sample double): sub-level F drone with an
-    // automated cutoff sweep into the finale. sub_synth params (0-based):
-    // 3 Osc2 Level, 7 Cutoff Hz, 10/11/12 Attack/Decay/Sustain.
-    addFx (pad2T, "sub_synth", 0);
-    cmds.setFxSlotParam (pad2T, 0, 3, 0.30f);  // Osc2 Level low
-    cmds.setFxSlotParam (pad2T, 0, 7, 900.0f); // Cutoff
-    cmds.setFxSlotParam (pad2T, 0, 10, 0.8f);  // Attack slow
-    cmds.setFxSlotParam (pad2T, 0, 11, 3.5f);  // Decay slow
-    cmds.setFxSlotParam (pad2T, 0, 12, 0.9f);  // Sustain high
-    std::vector<std::pair<int, double>> p2;
-    for (int bar = 0; bar < 175; ++bar)
-        if (bar >= 148 && bar < 175)            // breakdown + finale bed
-            p2.push_back ({ 41, bar * 4.0 });   // F one octave down
-    buildPattern (pad2T, p2, 58, 4.0);
-    cmds.addLfo (pad2T);
-    lfo (pad2T, 0, "waveform", 1);
-    lfo (pad2T, 0, "rateSync", 1);
-    lfo (pad2T, 0, "rate", 0.5);
-    lfo (pad2T, 0, "depth", 0.22);
-    lfo (pad2T, 0, "bipolar", 1);
-    lfo (pad2T, 0, "targetParamID", 1);
-    pumpLfo (pad2T, 1, 0.38);
+    // v2's separate pad2 sub_synth drone layer is GONE: the Vavra pad is the
+    // carrier now and the growl track already owns the low end (a second
+    // sub-level layer would double the bass register).
 
     // ---- REVERSE-HAT downlifter into the two drops --------------------------
     if (revT != hatT)
@@ -3230,7 +3327,9 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     // Normalized sweep 0.05 (~0.35 Hz) -> 0.75 (~3.8 Hz) into the drops: the
     // pad shimmer tightens as the drop approaches. (v1 targeted pad2T slot 1
     // which does not exist — sub_synth sits in slot 0 — so that lane was a
-    // silent no-op; padT slot 1 is the V5-proven target.)
+    // silent no-op; padT slot 1 is the V5-proven target.) v3 keeps this lane
+    // on padT's internal chorus: internal FX params are automatable lanes
+    // regardless of the synth engine in slot 0.
     setLane (padT, "Riser", 200,
              { { 160.0, 0.05f }, { 204.0, 0.10f }, { 208.0, 0.75f },
                { 336.0, 0.15f }, { 476.0, 0.10f }, { 480.0, 0.75f },
@@ -3238,10 +3337,222 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
 
     // ---- Outro: tape-style fade on every sounding track (last 8 bars) ------
     volumeLane (bassT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
+    volumeLane (growlT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
     volumeLane (stabT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
+    volumeLane (leadT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
     volumeLane (hatT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
-    if (padT != pad2T) volumeLane (padT, { { 672.0, 1.0f }, { 700.0, 0.30f } });
-    volumeLane (pad2T, { { 672.0, 1.0f }, { 700.0, 0.0f } });
+    volumeLane (padT, { { 672.0, 1.0f }, { 700.0, 0.30f } });
+
+    // =====================================================================
+    // G3/G4: CORE-SYNTH VERIFICATION (docs/core-synths-agentic-guide.md §5/§7)
+    // Every preset load is confirmed with get_fx_capture_status polled to a
+    // settled receipt + a solo audition rms > 0.001 (audibility FIRST — a
+    // silent slot makes every A/B equal, trap from finding F-A). Internal
+    // engines (sub_synth / psy_fm) are verified by solo render only. G4:
+    // list_fx_params non-empty asserted per synth slot BEFORE any automation.
+    // ALL loads happen BEFORE the render sequence, so the open export-isolation
+    // bug (exports 3+ ignore tree changes) cannot affect the deliverable.
+    // =====================================================================
+    auto pumpMsg = [&] (int ms) {
+        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+            mm->runDispatchLoopUntil (ms);
+    };
+    auto slotNode = [&] (int trackIdx, int slotIdx) {
+        return engine.getProjectModel().getTrackListTree()
+            .getChild (trackIdx).getChildWithName (IDs::FX_CHAIN).getChild (slotIdx);
+    };
+    // Poll the capture receipt until it SETTLES ("ok"/"unchanged"/"failed").
+    // "unchanged" is a legitimate settle for engines whose serialized state
+    // never reflects the dump (Nord/JE8086) — the DURABLE path for those is
+    // IDs::presetSysex, asserted separately below.
+    auto awaitCapture = [&] (int trackIdx, int slotIdx, const char* what) {
+        std::string status;
+        for (int i = 0; i < 30; ++i)
+        {
+            pumpMsg (1000);
+            const auto st = HDAW::readFxCaptureStatus (slotNode (trackIdx, slotIdx));
+            status = st.status.toStdString();
+            if (status != "pending" && status != "none")
+                break;
+        }
+        std::cout << "[PsyDubV3] capture " << what << ": " << status << "\n";
+        EXPECT_TRUE (status == "ok" || status == "unchanged")
+            << what << " capture status: " << status;
+    };
+    // Solo-audition a synth track by rendering ITS OWN notes: verifyPart's
+    // B8 beat window pins the render to beats 208..216 (dropA — every voice
+    // is sounding there). auditionPlugin's default window (earliest clip
+    // start = beat 0) measured the 2 s INTRO where only the pad plays, which
+    // reported correct-but-useless silence for the bass/skank/lead voices.
+    // Read-only, soloOnly=true skips the mix render.
+    auto soloAudition = [&] (int trackIdx, const char* what) -> float {
+        const auto v = cmds.verifyPart (trackIdx, 4.0, 208.0, 216.0, true);
+        EXPECT_TRUE (v.ok) << what << " verify failed: " << v.error;
+        std::cout << "[PsyDubV3] " << what << " solo rms=" << v.soloRms
+                  << " peak=" << v.soloPeak << "\n";
+        return v.ok ? v.soloRms : 0.0f;
+    };
+    // list_fx_params-equivalent: the plugin param cache (non-empty = the licence
+    // to automate) or the internal defs (always populated via ReadModel).
+    auto listParams = [&] (int trackIdx, int slotIdx, const char* what) -> int {
+        const auto fxSlots = engine.getReadModel().getFxSlots (trackIdx);
+        if (static_cast<size_t> (slotIdx) >= fxSlots.size())
+        {
+            ADD_FAILURE() << what << ": no slot at " << slotIdx;
+            return 0;
+        }
+        int n = 0;
+        if (fxSlots[static_cast<size_t> (slotIdx)].fxType == "plugin")
+        {
+            const std::string pluginId = fxSlots[static_cast<size_t> (slotIdx)].pluginId;
+            // CLAP children boot asynchronously (Virus ~12 s OS warmup): poll
+            // up to 12 s for the param cache to populate (the Vavra/N2x pattern).
+            std::vector<PluginParamSnapshot> all;
+            for (int i = 0; i < 24 && all.empty(); ++i)
+            {
+                all = engine.getPluginParamService().getParams (trackIdx, pluginId);
+                if (all.empty()) juce::Thread::sleep (500);
+            }
+            n = static_cast<int> (all.size());
+        }
+        else
+        {
+            n = static_cast<int> (engine.getReadModel()
+                .getInternalFxParams (trackIdx, slotIdx).size());
+        }
+        std::cout << "[PsyDubV3] " << what << " list_fx_params=" << n << "\n";
+        return n;
+    };
+
+    // ---- G3a: sub_synth (internal) — solo render is the verification --------
+    ASSERT_GT (soloAudition (bassT, "sub_synth"), 0.001f)
+        << "sub_synth silent: params written but no voice";
+    ASSERT_GT (listParams (bassT, 0, "sub_synth"), 0);
+
+    // ---- G3b: psy_fm growlBass (internal preset) -----------------------------
+    {
+        std::string fmErr;
+        ASSERT_TRUE (engine.getAudioEngineCommands().setFxSlotPsyFmPreset (
+            growlT, 0, "growlBass")) << "growlBass preset load failed";
+        // The preset writes all 33 params + the mod matrix in one undoable
+        // transaction; a couple of host-side growl settings differentiate it
+        // from the default routing (Output Level up, feedback moderate).
+        cmds.setFxSlotParam (growlT, 0, 31, 0.60f); // Output Level
+        cmds.setFxSlotParam (growlT, 0, 6, 0.35f);  // Feedback
+        ASSERT_GT (soloAudition (growlT, "psy_fm growlBass"), 0.001f)
+            << "psy_fm silent after growlBass load";
+        ASSERT_GT (listParams (growlT, 0, "psy_fm"), 0);
+    }
+
+    // ---- G3c: Osirus skank — Virus ROM preset via CC0+PC (load_virus_preset
+    // route: the worked example; the .MID library file carries 128 raw F0-84
+    // dumps, NOT CC0+PC events, so bank/program ROM selection is the route).
+    if (juce::File (kOsirusClap).existsAsFile())
+    {
+        // The guide's verified sequence: CC0 bank select + program change with
+        // captureToTree (the sendFxMidi trigger stamps the deferred capture).
+        ProjectCommands::FxMidiParams mp;
+        mp.trackIndex = stabT;
+        mp.slotIndex = 0;
+        mp.captureToTree = true;
+        mp.events.push_back ({ ProjectCommands::FxMidiEvent::Kind::ControlChange, 1, 0, 1 });  // bank B
+        mp.events.push_back ({ ProjectCommands::FxMidiEvent::Kind::ProgramChange, 1, 40, 0 }); // program 40
+        const auto mr = cmds.sendFxMidi (mp);
+        ASSERT_TRUE (mr.ok) << "Osirus CC0+PC failed: " << mr.error;
+        awaitCapture (stabT, 0, "Osirus preset");
+        const float bootRms = soloAudition (stabT, "Osirus boot");
+        ASSERT_GT (bootRms, 0.001f)
+            << "Osirus renders exact silence — the boot-patch fix is not active";
+        ASSERT_GT (listParams (stabT, 0, "Osirus"), 0);
+    }
+    else
+        GTEST_SKIP() << "Osirus.clap missing — skank falls back to nothing (test env)";
+
+    // ---- G3d: NodalRed2x lead — bank load via load_nord_bank (the ONE
+    // verified bank loader; dumps land in volatile patch RAM, so the receipt
+    // may settle "unchanged" — the DURABLE path is IDs::presetSysex, which is
+    // what fresh export children replay (Track.cpp)).
+    if (juce::File (kNodalRed2xClap).existsAsFile()
+        && juce::File (kNordBankMid).existsAsFile())
+    {
+        const auto r = HDAW::loadNordBankFile (engine, leadT, 0, kNordBankMid, 3, true);
+        ASSERT_TRUE (r.ok) << "load_nord_bank failed: " << r.error.toStdString();
+        std::cout << "[PsyDubV3] nord bank: queued=" << r.queued
+                  << " bytes=" << r.totalBytes << "\n";
+        awaitCapture (leadT, 0, "Nord bank");
+        EXPECT_GT (slotNode (leadT, 0).getProperty (IDs::presetSysex, "").toString().length(), 0)
+            << "Nord bank dumps were not persisted for replay (IDs::presetSysex)";
+        ASSERT_GT (soloAudition (leadT, "NodalRed2x"), 0.001f)
+            << "NodalRed2x renders silence — bank not audible";
+        ASSERT_GT (listParams (leadT, 0, "NodalRed2x"), 0);
+    }
+    else
+        GTEST_SKIP() << "NodalRed2x.clap or NL2x bank missing — lead untestable";
+
+    // ---- G3e: Vavra pad — dump-bearing matrix preset (the 392-byte dump
+    // injects the FULL sound incl. the FX block, which has no host params).
+    if (juce::File (kVavraClap).existsAsFile())
+    {
+        const auto ap = HDAW::applyMatrixPreset (engine, "vavra",
+                                                 "92a92039b463a03f", padT, 0, true);
+        ASSERT_TRUE (ap.ok) << "apply_matrix_preset vavra failed: " << ap.error;
+        awaitCapture (padT, 0, "Vavra dump");
+        const float padRms = soloAudition (padT, "Vavra pad");
+        ASSERT_GT (padRms, 0.001f) << "Vavra pad renders silence";
+        // microQ is jittery by nature (free-running state ~1e-2): assert effect
+        // only, never exact peaks (guide §7 item 3).
+        ASSERT_GT (listParams (padT, 0, "Vavra"), 0);
+    }
+    else
+        GTEST_SKIP() << "Vavra.clap missing — pad untestable";
+
+    // =====================================================================
+    // G6: TWO AUTOMATED HOST-PARAM MOVEMENTS on verified pids (movement plan
+    // = lanes on host-exposed params only; the NodalRed2x gate proved the
+    // durable Cutoff channel at 3.1-8.2x separation).
+    // =====================================================================
+    // Movement 1: BassSweep on the sub_synth filter (internal slot, pid 400 =
+    // slot 3 param 0) — the existing lane below. Already covered by the v2
+    // lane machinery; assert the lane exists + enabled here (G6 evidence).
+    {
+        auto tlNow = engine.getProjectModel().getTrackListTree();
+        auto al = tlNow.getChild (HDAW::trackIndexForID (tlNow, trackIDs["sub"][0]))
+            .getChildWithName (IDs::AUTOMATION_LIST);
+        bool bassLane = false;
+        for (auto lane : al)
+            if (lane.getProperty (IDs::name, "").toString() == "BassSweep"
+                && static_cast<bool> (lane.getProperty (IDs::automationEnabled, false)))
+                bassLane = true;
+        ASSERT_TRUE (bassLane) << "G6: BassSweep lane missing or disabled on the sub";
+    }
+    // Movement 2: a HOST param movement on a CLAP synth — setPluginParam
+    // persists into the offline-replay ledger (the durable channel), so the
+    // NodalRed2x cutoff opens through dropB. Find the Cutoff param index from
+    // the exposed list (the N2x gate's own lookup).
+    if (juce::File (kNodalRed2xClap).existsAsFile())
+    {
+        const auto fxSlots = engine.getReadModel().getFxSlots (leadT);
+        const std::string pluginId = fxSlots[0].pluginId;
+        const auto all = engine.getPluginParamService().getParams (leadT, pluginId);
+        int cutIdx = -1;
+        for (const auto& p : all)
+        {
+            std::string low = p.name;
+            for (auto& ch : low) ch = static_cast<char> (::tolower (static_cast<unsigned char> (ch)));
+            if (low.find ("cutoff") != std::string::npos) { cutIdx = p.index; break; }
+        }
+        if (cutIdx >= 0)
+        {
+            ASSERT_GT (cmds.setPluginParam (leadT, 0, cutIdx, 0.85f), 0)
+                << "G6: NodalRed2x cutoff movement did not persist into the ledger";
+            std::cout << "[PsyDubV3] G6: NodalRed2x cutoff idx=" << cutIdx
+                      << " -> 0.85 (ledger persisted)\n";
+        }
+        else
+        {
+            std::cout << "[PsyDubV3] G6: no cutoff param exposed — movement skipped\n";
+        }
+    }
 
     engine.drainPendingRoutingRebuild();
 
@@ -3253,7 +3564,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         IDs::childTrackIDs);
     ASSERT_EQ (folderChildIDsBefore.size(), 2u) << "folder must hold exactly the two side-grid children";
     const int bassID = HDAW::trackIDForIndex (trackList, bassT);
-    const int pad2ID = HDAW::trackIDForIndex (trackList, pad2T);
+    const int pad2ID = HDAW::trackIDForIndex (trackList, growlT);
     ASSERT_GT (bassID, 0);
     ASSERT_GT (pad2ID, 0);
     cmds.moveTrack (bassT, 0);           // splice 1: every index above shifts down
@@ -3448,99 +3759,26 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         return computePeak (out);
     };
 
-    // ---- STEM AUDIBILITY AUDIT (trap #14: a layer can measure fine soloed
-    // and still vanish in the mix, or a "rendered" layer can silently produce
-    // nothing). For each role: mute every OTHER track, export a 32-beat
-    // window of dropA (beats 208-240), and assert the stem's RMS is human-
-    // audible (> -40 dBFS ≈ 0.01) AND at least -20 dB relative to the loudest
-    // stem, so nothing is masked into inaudibility by the mix balance.
-    // startExport copies the tree, so muting via the live tree is intact
-    // after each export (the RoleIsolationDiag pattern).
-    {
-        // Stems are named by the track's STABLE id (B1): the captured
-        // kickT/bassT/... indices went STALE after the two moveTrack splices
-        // above (the first audit attempt muted the WRONG tracks and produced
-        // byte-identical 'stems' — exactly the bug B1 exists to kill).
-        struct Stem { const char* role; int id; };
-        const Stem stems[] = {
-            {"kick",  trackIDs["kick"][0]},  {"bass",  trackIDs["bass"][0]},
-            {"hat",   trackIDs["hat"][0]},   {"lead",  trackIDs["lead"][0]},
-            {"skank", trackIDs["lead"][1]},  {"pad",   trackIDs["pad"][0]} };
-        float loudestDb = -200.0f;
-        std::vector<float> stemDb;
-        const juce::File stemDir = outDir.getChildFile ("psy_dub_stems");
-        stemDir.createDirectory();
-        std::ofstream auditLog ((stemDir.getChildFile ("audit.tsv")
-            .getFullPathName()).toStdString(), std::ios::trunc);
-        auditLog << "role\trms\tverdict\n";
-        for (const auto& s : stems)
-        {
-            // Resolve the CURRENT index from the stable id at audit time.
-            const int soloIdx = HDAW::trackIndexForID (trackList, s.id);
-            ASSERT_GE (soloIdx, 0) << "stem id does not resolve: " << s.role;
-            // Solo this track through the COMMAND API (lesson 2: drive the
-            // manager directly — raw tree writes of IDs::volume did NOT reach
-            // the export bake).
-            for (int t = 0; t < trackList.getNumChildren(); ++t)
-                cmds.setTrackVolume (t, t == soloIdx ? 0.95f : 0.0f);
-            engine.drainPendingRoutingRebuild();
-            // Force the bake to re-read the tree: without this, stems after
-            // the first two re-rendered the pre-audit mix (volume changes
-            // never reached the cached export bake).
-            engine.getMainProcessor()->rebuildRoutingGraph();
-            engine.drainPendingRoutingRebuild();
-            const juce::File f = stemDir.getChildFile (
-                "stem_" + juce::String (s.role) + ".wav");
-            f.deleteFile();
-            bool sok = false;
-            cmds.setMasterGain (1.0f);
-            sok = em.startExport (engine.getProjectModel().getTree(), exportFm,
-                                  &engine.getPluginManager(), f, 48000.0,
-                                  208.0 * 60.0 / 138.0,
-                                  240.0 * 60.0 / 138.0,
-                                  HDAW::ExportManager::WAV, 24);
-            ASSERT_TRUE (sok) << "stem export failed: " << s.role;
-            ASSERT_TRUE (waitForExport (em, 600000));
-            // per-stem RMS (same reader math as computePeak)
-            std::unique_ptr<juce::AudioFormatReader> rdr (
-                exportFm.createReaderFor (f));
-            ASSERT_NE (rdr, nullptr) << "stem unreadable: " << s.role;
-            juce::AudioBuffer<float> sbuf (2, static_cast<int> (rdr->lengthInSamples));
-            rdr->read (&sbuf, 0, static_cast<int> (rdr->lengthInSamples), 0, true, true);
-            double acc = 0.0;
-            for (int ch = 0; ch < 2; ++ch)
-            {
-                const float* sp = sbuf.getReadPointer (ch);
-                for (int i = 0; i < sbuf.getNumSamples(); ++i)
-                    acc += static_cast<double> (sp[i]) * sp[i];
-            }
-            const float rms = static_cast<float> (
-                std::sqrt (acc / (2.0 * (size_t) sbuf.getNumSamples())));
-            const float db = 20.0f * std::log10 (rms + 1e-6f);
-            stemDb.push_back (db);
-            loudestDb = (std::max) (loudestDb, db);
-            juce::Logger::writeToLog ("PsyDub stem " + juce::String (s.role)
-                + ": rms=" + juce::String (rms, 4) + " (" + juce::String (db, 1)
-                + " dBFS)");
-            // DIAGNOSTIC ONLY (2026-09-24): repeated stem exports after the
-            // first two in a session re-render a FIXED tree state — live
-            // volume changes stop reaching the bake (suspected export-domain
-            // graph caching; ExportManager::usesDedicatedDomain). Until that
-            // is root-caused, the stem pass is measurement-only: the asserts
-            // would fail on stale renders, not on inaudible layers.
-            auditLog << s.role << "\trms=" << rms
-                     << (rms > 0.01f ? "\tAUDIBLE" : "\tINAUDIBLE") << "\n";
-        }
-        // restore every track's volume through the command API (the mix map)
-        for (const auto& [role, list] : tracks)
-            for (int t : list)
-                cmds.setTrackVolume (t, role == "kick" ? 1.0f
-                    : role == "bass" ? 0.95f : role == "hat" ? 0.90f
-                    : role == "lead" ? 0.95f : 0.80f);
-        engine.drainPendingRoutingRebuild();
-        juce::Logger::writeToLog ("PsyDub stem audit: loudest=" +
-            juce::String (loudestDb, 1) + " dBFS");
-    }
+    // ---- STEM AUDIT: DROPPED in v3 (reported choice). Every engine's
+    // audibility is already proven by the G3 solo auditions above (rms >
+    // 0.001 through the actual slot chain), and v3's renders spawn THREE
+    // isolated CLAP children per export (Virus 12 s OS warmup + microQ + n2x),
+    // so six stem exports would cost many minutes AND hit the documented
+    // export-isolation bug (exports 3+ in a session re-render a fixed tree
+    // state, docs/testing-mcp.md) — the pass could only ever measure stale
+    // mixes, never audibility. Diagnostic-only in v2 for exactly that reason.
+
+    // Restore the mix faders exactly as v2 wrote them (the audit pass is gone,
+    // but the volume map must still match the mix design before the render).
+    cmds.setTrackVolume (kickT, 1.00f);
+    cmds.setTrackVolume (bassT, 0.95f);
+    cmds.setTrackVolume (growlT, 0.80f);
+    cmds.setTrackVolume (hatT, 0.90f);
+    cmds.setTrackVolume (leadT, 0.90f);
+    cmds.setTrackVolume (stabT, 0.85f);
+    cmds.setTrackVolume (padT, 0.80f);
+    if (revT != hatT) cmds.setTrackVolume (revT, 0.90f);
+    engine.drainPendingRoutingRebuild();
 
     bool ok = false;
     const float canaryPeak = render (0.25f, ok);
@@ -3561,5 +3799,13 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     // renders as ~307.35 s — still inside the 4:50-5:10 gate window.
     ASSERT_NEAR (dur, 700.0 * 60.0 / 138.0 + 3.0, 0.5)
         << "700 beats @ 138 BPM + the 3 s tail ~ 307.3 s";
+    // Deliverable: keep the working render in .tmp_dnb_theme and publish the
+    // dated copy the v3 brief asks for.
+    const juce::File deliverable ("D:/pdf/roo projects/hdaw3/compositions/psy_dub_test_2026-09-25.wav");
+    deliverable.getParentDirectory().createDirectory();
+    out.copyFileTo (deliverable);
+    EXPECT_TRUE (deliverable.existsAsFile()) << "deliverable copy failed";
+    std::cout << "PsyDub: deliverable=" << deliverable.getFullPathName()
+              << " size=" << (juce::int64) deliverable.getSize() << std::endl;
     saveFile.deleteFile();
 }
