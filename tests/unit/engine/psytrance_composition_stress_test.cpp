@@ -2793,25 +2793,26 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         // octave so one-shots don't turn into formant chipmunks:
         //   bass  Ascend OneShot18: fundamental F3 (53.5 Hz, in F already)
         //          -> root 53, notes 36-43 repitch -10..-17 st = dub sub.
-        //   lead  Antinomy Stab_C: real pitch C2 (65.3 Hz; "_C" is truthful).
-        //          Notes 65-82 (F4-Bb5) -> root 60 (C4), repitch +5..+22 st.
-        //          (The old root 62 ALSO had the pitch class wrong: +2 st off
-        //          key on every stab, and the F# loop entry was F-minor-foreign.)
-        //   stab  WS#2 ARP Digital -> REPLACED (2026-09-24 listen-fix): its
-        //          chroma is only 48% F-minor (E 0.22 / D 0.13 / D# 0.12
-        //          non-scale energy = the sour skanks). The skank track now
-        //          uses WS#2 "Lead FM Fx 2" (64% in-Fm, C-rooted) via the
-        //          stabSwap override below; its f0 ~D#2-78Hz -> root 63
-        //          (Eb3) keeps the skanks pitch-class correct.
+        //   lead  WS#2 Lead FM Fx 2 -> REPLACED TOO (listen-fix round 2):
+        //          the Antinomy "Stab_C" is a full-octave MAJOR voicing baked
+        //          into the sample (E-natural partial 0.22) — it reads sour
+        //          against every minor chord no matter what root you map. The
+        //          FM pluck is minor-friendly (C-rooted, 64% in-Fm) and both
+        //          lead tracks now share it (arp + skank), differentiated by
+        //          octave + FX rather than sample.
+        //   stab  same sample as the lead (see above); root 63 (Eb3) keeps
+        //          the skanks pitch-class correct.
         //   pad   Batuhan Atmos_7: D-dominant chroma, fundamental ~D3
         //          -> root 50 (D3), notes 53-56 repitch +3..+6 st. (Was 60:
         //          -11 st detune against every F-minor pad note.)
         //   hat/kick: percussive, root 44/36 by convention.
         // WS#2 "FX Atmos 3" (pad role #2) is a texture — pitch mapping is
         // irrelevant; it rides the sub_synth assignment below.
-        const bool isLead = role == "lead" && selection[i].second.contains ("Stab_C");
-        const bool isStab = role == "lead" && selection[i].second.contains ("ARP Digital");
-        if (isStab)
+        // Both lead-role tracks use the FM pluck (minor-friendly); ARP Digital
+        // (48% in-Fm) and Stab_C (major voicing baked in) are dropped.
+        const bool isLeadRole = role == "lead";
+        const bool isStab = isLeadRole && selection[i].second.contains ("ARP Digital");
+        if (isLeadRole)
             selection[i].second = "E:\\samples\\Santo Grau Records WS Dark "
                 "Psytrance Sample Pack #2\\WS#2 - Lead FM Fx 2.wav";
         const int root = (role == "kick") ? 36
