@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <tuple>
 #include <vector>
 
 // §3-context stress with the NEW psytrance packs (E:\samples, indexed
@@ -2713,13 +2714,18 @@ TEST (InternalFx, SaturatorNeutralFidelity)
 // double the audio) while G4's resolution proof is over LIVE cells with real
 // track targets, not a stripped throwaway scene.
 //
-// Style spec: 138 BPM, 4/4, F minor (F/Ab/Bb/C/Eb), 700 beats = 175 bars
-// (~5:04). Sections: intro 0-12, groove 12-40, build 40-52, dropA 52-84,
-// halftime 84-96, groove2 96-108, build2 108-120, dropB 120-148, brk 148-160,
-// finale 160-175. Dub signature moves: offbeat chord stabs with long reverb +
-// tempo-synced feedback delay, deep sub-bass layering with an automated filter
-// sweep, half-time break with swung hats, pad-driven breakdown with a riser,
-// tape-style outro fade on the built-in Volume lanes.
+// Style spec (v2, DarkForestV5 discipline): 138 BPM, 4/4, F natural minor
+// via the degree helper fMinorDeg + 8-bar progressions progA/progB (NOTHING
+// chromatic), 7th-voicing chordTones for skanks/pads/arps, band-fix FX on
+// EVERY track (kick comp+eq click+eq body / bass eq+comp+LP3500+filter LFO
+// +duck / stabs HP140+flanger+damped reverb+LP2200+1/16 echo / lead HP150
+// +dotted-1/8 echo fb 0.35 mix 0.26+damped reverb+comp / pads chorus+damped
+// reverb+HP130+volume LFO / hats damped reverb+HP500), velocity articulation
+// everywhere. Sections: intro 0-12 (pads only), groove 12-40, build 40-52,
+// dropA 52-84, halftime 84-96 (kick on 1 / clap on 3 / swung hats / long
+// sub), groove2 96-108, build2 108-120, dropB 120-148, brk 148-160 (no
+// drums, melody + pad carrier), finale 160-175 (octave-up arp last 4 bars).
+// Dub identity: skank offbeat 7th stabs, echo-drenched, half-time, deep sub.
 TEST (PsytranceComposition, PsyDubFiveMinutes)
 {
     auto selection = loadSelection (1);
@@ -2858,53 +2864,118 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
             cmds.addAutomationPoint (track, "Volume", t, v);
         cmds.setAutomationEnabled (track, "Volume", true);
     };
+    // Velocity-articulated notes: addNotes writes ONE flat velocity, so the
+    // accented-offbeat / softer-breakdown articulation needs per-note
+    // velocities (pitch, startBeat, velocity).
+    auto addNotesV = [&] (int track, const std::vector<std::tuple<int, double, int>>& notes,
+                          double durBeats) {
+        const int clipId = cmds.addMidiClip (track, 0.0, totalBeats, "pv");
+        ASSERT_GE (clipId, 0);
+        for (const auto& [pitch, start, vel] : notes)
+            cmds.addNote (clipId, pitch, vel, start, durBeats);
+    };
+    // Two 8-bar progressions in F-minor DEGREES (0=F, 2=Ab, 4=C, 5=Db, 6=Eb):
+    // progA i-VI-VII feel for intro..halftime, progB VII-VI-i for groove2 on.
+    const int progA[8] = { 0, 5, 4, 5, 0, 5, 4, 5 };
+    const int progB[8] = { 4, 5, 0, 0, 4, 5, 2, 2 };
+    // In-scale 7th-voicing table per degree (V5 lever): degree d's chord
+    // tones are four consecutive scale thirds, so every skank/pad/arp is a
+    // Fm7-ish seventh voicing — never a unison or bare triad.
+    const int chordTones[7][4] = {
+        { 0, 2, 4, 5 }, { 1, 3, 5, 6 }, { 2, 4, 6, 1 }, { 3, 5, 0, 2 },
+        { 4, 6, 1, 3 }, { 5, 0, 2, 4 }, { 6, 1, 3, 5 } };
 
     // ---- KICK: 4-on-floor, drops in halftime/brk, half-time in the break ----
-    std::vector<std::pair<int, double>> kk;
+    std::vector<std::tuple<int, double, int>> kk;
     for (int b = grooveB; b < totalBeats; ++b)
     {
         if (b >= halfB && b < groove2B) continue;          // half-time break
         if (b >= brkB && b < finB) continue;               // breakdown
-        kk.push_back ({ 36, b });
+        // Accent bar-heads (115) vs the rest (108).
+        kk.push_back ({ 36, (double) b, (b % 4 == 0) ? 115 : 108 });
     }
-    for (int b = halfB; b < groove2B; b += 2)              // half-time: every 2 beats
-        kk.push_back ({ 36, b });
-    buildPattern (kickT, kk, 122, 1.9);
+    for (int b = halfB; b < groove2B; b += 4)              // half-time: kick on 1 only
+        kk.push_back ({ 36, (double) b, 112 });
+    addNotesV (kickT, kk, 1.9);
+    // comp params (TrackFXSlot.h): 0 Threshold dB, 1 Ratio, 2 Attack ms,
+    // 3 Release ms — V5 numbers (-22 / 2.5:1 / release 90 ms) level the kick
+    // without the -18/4:1 transient squash that buried the click.
     addFx (kickT, "compressor", 1);
-    cmds.setFxSlotParam (kickT, 1, 0, -18.0f);
-    cmds.setFxSlotParam (kickT, 1, 1, 4.0f);
+    cmds.setFxSlotParam (kickT, 1, 0, -22.0f);
+    cmds.setFxSlotParam (kickT, 1, 1, 2.5f);
+    cmds.setFxSlotParam (kickT, 1, 3, 90.0f);
+    // eq params: 0 Frequency Hz, 1 Q, 2 Gain dB. Click band 3.6 kHz +3.5 dB.
     addFx (kickT, "eq", 2);
     cmds.setFxSlotParam (kickT, 2, 0, 3600.0f);
+    cmds.setFxSlotParam (kickT, 2, 1, 1.2f);
+    cmds.setFxSlotParam (kickT, 2, 2, 3.5f);
+    // Body band 82 Hz +4 dB: the kick owns <120 Hz and gets the low accent.
+    addFx (kickT, "eq", 3);
+    cmds.setFxSlotParam (kickT, 3, 0, 82.0f);
+    cmds.setFxSlotParam (kickT, 3, 1, 1.0f);
+    cmds.setFxSlotParam (kickT, 3, 2, 4.0f);
 
-    // ---- BASS: rolling offbeat 8ths, F-minor roots + sub-octave layer -------
-    // F minor progression (semitones from F=36): i F, VII Eb, VI Db->36+8=C?
-    // Voiced as F(36) Eb(34) Ab(39) Bb(41) C(43) shapes per bar.
-    std::vector<std::pair<int, double>> be;
-    const int rootSeq[8] = { 36, 36, 34, 41, 36, 36, 39, 34 }; // F F Eb Bb F F Ab Eb
+    // ---- BASS: rolling offbeat 8ths on the progression roots (degrees) + ---
+    // long sub-octave holds through the drops. Deep dub sub.
+    std::vector<std::tuple<int, double, int>> be;
     for (int bar = 3; bar < 175; ++bar)
     {
         if (bar >= 84 && bar < 96) continue;                // halftime: sub holds roots
         if (bar >= 148 && bar < 160) continue;              // breakdown
-        const int oct = (bar >= 148) ? 0 : ((bar >= 52 && bar < 84) || bar >= 120) ? 12 : 0;
+        const int* prog = (bar >= 96) ? progB : progA;
         for (int b = bar * 4; b < bar * 4 + 4; ++b)
-            be.push_back ({ rootSeq[bar % 8] + oct + (b % 2), b + 0.5 });
+            // Accent the bar-head offbeat (114), others 100-106. Octave 2
+            // (F2=41): repitch -12..-2 st from the F3-rooted sample — the
+            // deepest register that stays inside ~1 octave of repitch.
+            be.push_back ({ fMinorDeg (prog[bar % 8], 2), b + 0.5,
+                            (b % 4 == 0) ? 114 : 100 + (b % 2) * 6 });
     }
-    // Sub-octave layer: long root notes one octave down through the drops.
-    std::vector<std::pair<int, double>> se;
+    // Sub-octave layer: long root notes one octave BELOW the rolling bass
+    // (octave 1 = F1..Eb2, repitch -24..-14 st), bar-head aligned, 3.8-beat
+    // holds — the deep dub sub through the drops.
+    std::vector<std::tuple<int, double, int>> se;
     for (int bar = 13; bar < 148; ++bar)
-        if (!((bar >= 84 && bar < 96) || (bar >= 148)))
-            se.push_back ({ rootSeq[bar % 8] - 12, bar * 4.0 });
-    buildPattern (bassT, be, 112, 0.4);
-    buildPattern (bassT, se, 100, 3.8);
+        if (! (bar >= 84 && bar < 96))
+            se.push_back ({ fMinorDeg ((bar >= 96 ? progB : progA)[bar % 8], 1),
+                            bar * 4.0, 96 });
+    addNotesV (bassT, be, 0.4);
+    addNotesV (bassT, se, 3.8);
+    // eq params: 0 Hz, 1 Q, 2 dB — 170 Hz +2 dB fattens ABOVE the kick's
+    // 82 Hz fundamental so the two low voices do not overlap.
     addFx (bassT, "eq", 1);
+    cmds.setFxSlotParam (bassT, 1, 0, 170.0f);
+    cmds.setFxSlotParam (bassT, 1, 1, 0.9f);
+    cmds.setFxSlotParam (bassT, 1, 2, 2.0f);
+    // comp params: 0 Threshold dB, 1 Ratio, 2 Attack ms, 3 Release ms.
     addFx (bassT, "compressor", 2);
     cmds.setFxSlotParam (bassT, 2, 0, -20.0f);
     cmds.setFxSlotParam (bassT, 2, 1, 3.0f);
-    // Sub pump (the V4 recipe): triangle volume LFO on the built-in pid 1.
-    pumpLfo (bassT, 1, 0.55);
+    cmds.setFxSlotParam (bassT, 2, 3, 60.0f);
+    // filter params: 0 Cutoff Hz, 1 Mode (0=LP/1=HP), 2 Q. LP 3500 keeps the
+    // bass out of the stab/hat mids; the BassSweep lane below automates this
+    // cutoff through pid 400 (100 + slot 3 * 100) in NORMALIZED 0..1 units.
+    addFx (bassT, "filter", 3);
+    cmds.setFxSlotParam (bassT, 3, 0, 3500.0f);
+    cmds.setFxSlotParam (bassT, 3, 1, 0.0f);
+    cmds.setFxSlotParam (bassT, 3, 2, 0.7f);
+    // LFO0: slow bipolar wobble on the REAL filter cutoff (targetParamID 400
+    // = slot 3 param 0, same pid the BassSweep lane drives). getModulation
+    // returns depth-scaled [-1,1]; the Track.cpp >=100 path adds it to the
+    // base and re-denormalizes, so a depth of 0.05 is a gentle ±cutoff
+    // breathing — V5's number.
+    cmds.addLfo (bassT);
+    lfo (bassT, 0, "waveform", 0);
+    lfo (bassT, 0, "rateSync", 1);
+    lfo (bassT, 0, "rate", 2.0);
+    lfo (bassT, 0, "depth", 0.05);
+    lfo (bassT, 0, "bipolar", 1);
+    lfo (bassT, 0, "targetParamID", 400);
+    // Sub pump (V5 duck recipe): triangle volume LFO, phase 180, depth 0.72
+    // -> gainMul dips to ~0.28x on the beat, opening the kick's low window.
+    pumpLfo (bassT, 1, 0.72);
 
-    // ---- HATS: quarters in intro/build, offbeat 8ths, rolls, swung halftime -
-    std::vector<std::pair<int, double>> hh;
+    // ---- HATS: offbeat 8ths + rolls + velocity accents, swung halftime -----
+    std::vector<std::tuple<int, double, int>> hh;
     for (int bar = 2; bar < 175; ++bar)
     {
         if (bar >= 148 && bar < 160) continue;              // breakdown
@@ -2912,112 +2983,196 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         {
             if (bar < 6 || (bar >= 10 && bar < 12))         // intro: quarters
             {
-                hh.push_back ({ 44, b });
+                hh.push_back ({ 44, (double) b, 78 });
                 continue;
             }
             if (bar >= 84 && bar < 96)                      // swung halftime
             {
-                hh.push_back ({ 44, b + 0.25 });
-                if (b % 2 == 0) hh.push_back ({ 46, b + 0.75 });
+                // Swung 16ths, accent on the swing (every other 8th).
+                hh.push_back ({ 44, b + 0.25, (b % 2 == 0) ? 100 : 88 });
+                if (b % 2 == 0) hh.push_back ({ 46, b + 0.75, 96 });
                 continue;
             }
-            hh.push_back ({ 44, b + 0.5 });
+            // Offbeat 8th, accented at bar-heads (base 92, accent 108).
+            hh.push_back ({ 44, b + 0.5, (b % 4 == 0) ? 108 : 92 });
             const bool roll = ((b / 4) % 8 == 4) || bar >= 160;
-            if (roll)
+            if (roll)   // roll fills: three 16th accelerando hits, softer
             {
-                hh.push_back ({ 46, b + 0.75 });
-                hh.push_back ({ 46, b + 1.0 });
-                hh.push_back ({ 46, b + 1.25 });
+                hh.push_back ({ 46, b + 0.75, 84 });
+                hh.push_back ({ 46, b + 1.0, 88 });
+                hh.push_back ({ 46, b + 1.25, 92 });
             }
         }
     }
-    buildPattern (hatT, hh, 92, 0.2);
+    addNotesV (hatT, hh, 0.2);
+    // reverb params (TrackFXSlot.h): 0 Room Size, 1 Damping, 2 Wet Level.
+    // Tight damped plate: room 0.50 / damping 0.70 / wet 0.16 — no wash.
     addFx (hatT, "reverb", 1);
-    cmds.setFxSlotParam (hatT, 1, 0, 0.60f);
-    cmds.setFxSlotParam (hatT, 1, 2, 0.25f);
+    cmds.setFxSlotParam (hatT, 1, 0, 0.50f);
+    cmds.setFxSlotParam (hatT, 1, 1, 0.70f);
+    cmds.setFxSlotParam (hatT, 1, 2, 0.16f);
+    // filter params: 0 Cutoff Hz, 1 Mode (1 = HP), 2 Q. HP 500 inserted at
+    // slot 1 shifts the reverb to slot 2, so the hats feed it nothing below
+    // 500 Hz — the kick's low room stays clean.
+    addFx (hatT, "filter", 1);
+    cmds.setFxSlotParam (hatT, 1, 0, 500.0f);
+    cmds.setFxSlotParam (hatT, 1, 1, 1.0f);
+    cmds.setFxSlotParam (hatT, 1, 2, 0.7f);
 
-    // ---- LEAD ARP: dub delay (synced, feedback) + long reverb ---------------
-    // F minor arp: F Ab C Eb shapes; B section lifts to the Bb/C voicing.
-    std::vector<std::pair<int, double>> la;
-    const int arpA[8] = { 65, 68, 72, 75, 68, 72, 79, 75 };  // F Ab C Eb G (top +19 from the C-rooted stab)
-    const int arpB[8] = { 70, 73, 77, 79, 73, 77, 82, 77 };  // Bb Db F G (Db=73: F natural minor has NO D natural; top capped at 82=Bb5)
+    // ---- LEAD ARP: 16th chord-tone arps (sevenths, degrees) + dub echo -----
+    // Stab_C override plays in the 65-82 register; octave 3 keeps it there
+    // (F4=65). B section arps the same chordTones, no new pitches.
+    std::vector<std::tuple<int, double, int>> la;
     for (int bar = 13; bar < 175; ++bar)
     {
         if (bar >= 148 && bar < 160) continue;              // breakdown
-        const int* arp = (bar >= 120) ? arpB : arpA;
+        const int* prog = (bar >= 120) ? progB : progA;
+        const int* ct = chordTones[prog[bar % 8]];
         for (int b = bar * 4; b < bar * 4 + 4; ++b)
-            la.push_back ({ arp[(b / 4) % 8], b + (b % 4) * 0.25 });
+        {
+            const int pitch = fMinorDeg (ct[b % 4], 3) + ((b % 4) == 3 ? 12 : 0);
+            // Softer dropA arp (86), accented dropB (96), peak lift (104).
+            const int vel = (bar >= 160) ? 104 : (bar >= 120) ? 96 : 86;
+            la.push_back ({ pitch, b + (b % 4) * 0.25, vel });
+        }
     }
-    buildPattern (leadT, la, 88, 0.2);
+    addNotesV (leadT, la, 0.2);
+    // delay params (InternalDelay.h): 0 Time s, 1 Feedback, 2 Mix,
+    // 3 SyncToTempo, 4 Division (4 = dotted-1/8), 5 Damping. V5 feedback
+    // 0.17 / mix 0.26 — the 0.45/0.35 v1 numbers were the mud source; sync
+    // + damping keep the dub echo musical instead of a runaway wash.
     addFx (leadT, "delay", 1);
     cmds.setFxSlotParam (leadT, 1, 3, 1.0f);   // SyncToTempo
     cmds.setFxSlotParam (leadT, 1, 4, 4.0f);   // dotted-1/8 (division 4)
-    cmds.setFxSlotParam (leadT, 1, 1, 0.45f);  // Feedback 0.45+
-    cmds.setFxSlotParam (leadT, 1, 2, 0.35f);  // Mix
-    cmds.setFxSlotParam (leadT, 1, 5, 0.25f);  // Damping (tape-ish loop LP)
+    cmds.setFxSlotParam (leadT, 1, 1, 0.17f);  // Feedback (V5: 0.17)
+    cmds.setFxSlotParam (leadT, 1, 2, 0.26f);  // Mix (V5: 0.26)
+    cmds.setFxSlotParam (leadT, 1, 5, 0.60f);  // Damping (tape-ish loop LP)
+    // reverb params: 0 Room Size, 1 Damping, 2 Wet Level. Damped 0.60/0.70/0.16.
     addFx (leadT, "reverb", 2);
-    cmds.setFxSlotParam (leadT, 2, 0, 0.90f);  // Room Size (long)
-    cmds.setFxSlotParam (leadT, 2, 2, 0.30f);  // Wet 0.6-ish post-dubwash
+    cmds.setFxSlotParam (leadT, 2, 0, 0.60f);
+    cmds.setFxSlotParam (leadT, 2, 1, 0.70f);
+    cmds.setFxSlotParam (leadT, 2, 2, 0.16f);
+    // comp params: 0 Threshold dB, 1 Ratio, 2 Attack ms, 3 Release ms.
     addFx (leadT, "compressor", 3);
-    cmds.setFxSlotParam (leadT, 3, 0, -16.0f);
-    pumpLfo (leadT, 0, 0.40);
+    cmds.setFxSlotParam (leadT, 3, 0, -20.0f);
+    cmds.setFxSlotParam (leadT, 3, 1, 2.5f);
+    cmds.setFxSlotParam (leadT, 3, 3, 80.0f);
+    // filter params: 0 Cutoff Hz, 1 Mode (1 = HP), 2 Q. HP 150 at slot 1
+    // (insert shifts delay/reverb/comp up) — the arp never feeds the low end.
+    addFx (leadT, "filter", 1);
+    cmds.setFxSlotParam (leadT, 1, 0, 150.0f);
+    cmds.setFxSlotParam (leadT, 1, 1, 1.0f);
+    cmds.setFxSlotParam (leadT, 1, 2, 0.7f);
+    pumpLfo (leadT, 0, 0.45);
 
-    // Breakdown melody: long notes over the wash (F Ab Bb C phrase).
+    // Breakdown melody: slow F-minor DEGREE phrase (F Ab C Eb), reverbed,
+    // softer velocity (80) than the drops — the break breathes.
     std::vector<std::pair<int, double>> bm;
-    const int phraseF[4] = { 65, 68, 70, 72 };
+    const int phraseDeg[4] = { 0, 2, 4, 6 };
     for (int k = 0; k < 4; ++k)
     {
-        bm.push_back ({ phraseF[k], 592.0 + k * 8.0 });
-        bm.push_back ({ phraseF[k] + 7, 596.0 + k * 8.0 });
+        bm.push_back ({ fMinorDeg (phraseDeg[k], 3), 592.0 + k * 8.0 });
+        bm.push_back ({ fMinorDeg (phraseDeg[k] + 3, 3), 596.0 + k * 8.0 });
     }
     {
         const int clipId = cmds.addMidiClip (leadT, 0.0, totalBeats, "bm");
         ASSERT_GE (clipId, 0);
-        addNotes (cmds, clipId, bm, 95, 3.0);
+        addNotes (cmds, clipId, bm, 80, 3.0);
     }
 
-    // ---- DUB SKANK: offbeat chord stabs, long reverb + synced delay ---------
-    const int ch[8][3] = { {53,56,60}, {56,60,63}, {58,63,65}, {56,60,65}, // Fm/Ab/Bbm/Ab voicings (Bb chord = Bb Db F: 58,61,65 -> inverted 58,63,65 keeps Db=63)
-                           {53,58,60}, {60,63,65}, {58,63,65}, {55,58,60} };
-    std::vector<std::pair<int, double>> st;
+    // ---- DUB SKANK: offbeat 7th stabs (the genre hook), echo-drenched ------
+    // Fm9-ish 4-note voicings from chordTones of the bar's degree, octave 3
+    // (an octave below the lead arp); offbeat 1.0 + a second push at 2.5.
+    std::vector<std::tuple<int, double, int>> st;
     for (int bar = 12; bar < 175; ++bar)
     {
         if (bar >= 148 && bar < 160) continue;              // breakdown
-        const auto& c = ch[bar % 8];
-        st.push_back ({ c[0], bar * 4.0 + 1.0 });
-        st.push_back ({ c[1], bar * 4.0 + 1.0 });
-        st.push_back ({ c[2], bar * 4.0 + 1.0 });
+        const int* prog = (bar >= 120) ? progB : progA;
+        const int* c = chordTones[prog[bar % 8]];
+        // Offbeat skank accented (104), the 2.5 push softer (88).
+        for (int n = 0; n < 4; ++n)
+            st.push_back ({ fMinorDeg (c[n], 3), bar * 4.0 + 1.0, 104 });
+        for (int n = 0; n < 4; ++n)
+            st.push_back ({ fMinorDeg (c[n], 3), bar * 4.0 + 2.5, 88 });
     }
-    buildPattern (stabT, st, 96, 1.3);
-    addFx (stabT, "delay", 1);
-    cmds.setFxSlotParam (stabT, 1, 3, 1.0f);   // SyncToTempo
-    cmds.setFxSlotParam (stabT, 1, 4, 1.0f);   // 1/16 (division 1)
-    cmds.setFxSlotParam (stabT, 1, 1, 0.55f);  // Feedback 0.55
-    cmds.setFxSlotParam (stabT, 1, 2, 0.45f);  // Mix (wet 0.45)
-    addFx (stabT, "reverb", 2);
-    cmds.setFxSlotParam (stabT, 2, 0, 0.85f);
-    cmds.setFxSlotParam (stabT, 2, 2, 0.60f);  // Wet 0.6+ per spec
-    addFx (stabT, "phaser", 3);
-    cmds.setFxSlotParam (stabT, 3, 0, 0.4f);
+    addNotesV (stabT, st, 1.3);
+    // filter params: 0 Cutoff Hz, 1 Mode (1 = HP), 2 Q. HP 140 at slot 1
+    // (insert shifts the echo chain up) keeps the skanks out of the mud band.
+    addFx (stabT, "filter", 1);
+    cmds.setFxSlotParam (stabT, 1, 0, 140.0f);
+    cmds.setFxSlotParam (stabT, 1, 1, 1.0f);
+    cmds.setFxSlotParam (stabT, 1, 2, 0.7f);
+    // delay params (InternalDelay.h): 0 Time s, 1 Feedback, 2 Mix,
+    // 3 SyncToTempo, 4 Division (1 = 1/16), 5 Damping. The 1/16 skank echo:
+    // sync 1, feedback 0.45 (V5 cap; v1's 0.55 ran away), damping 0.6.
+    addFx (stabT, "delay", 2);
+    cmds.setFxSlotParam (stabT, 2, 3, 1.0f);   // SyncToTempo
+    cmds.setFxSlotParam (stabT, 2, 4, 1.0f);   // 1/16 (division 1)
+    cmds.setFxSlotParam (stabT, 2, 1, 0.45f);  // Feedback
+    cmds.setFxSlotParam (stabT, 2, 2, 0.45f);  // Mix
+    cmds.setFxSlotParam (stabT, 2, 5, 0.60f);  // Damping
+    // flanger params: 0 Rate, 1 Depth. V5 0.5/0.45.
+    addFx (stabT, "flanger", 3);
+    cmds.setFxSlotParam (stabT, 3, 0, 0.5f);
+    cmds.setFxSlotParam (stabT, 3, 1, 0.45f);
+    // reverb params: 0 Room Size, 1 Damping, 2 Wet Level. Damped 0.55/0.70/0.20
+    // (v1: 0.85 room / 0.60 wet = the wash).
+    addFx (stabT, "reverb", 4);
+    cmds.setFxSlotParam (stabT, 4, 0, 0.55f);
+    cmds.setFxSlotParam (stabT, 4, 1, 0.70f);
+    cmds.setFxSlotParam (stabT, 4, 2, 0.20f);
+    // filter params: 0 Cutoff Hz, 1 Mode (0 = LP), 2 Q. LP 2200 at the chain
+    // end caps the sizzle out of the kick/hat 2-6 kHz band.
+    addFx (stabT, "filter", 5);
+    cmds.setFxSlotParam (stabT, 5, 0, 2200.0f);
+    cmds.setFxSlotParam (stabT, 5, 1, 0.0f);
+    cmds.setFxSlotParam (stabT, 5, 2, 0.7f);
 
-    // ---- PADS: whole track, chorus + long reverb, pump ---------------------
-    std::vector<std::pair<int, double>> pp;
+    // ---- PADS: Fm7 voicings from chordTones, whole track, chorus + damped --
+    // reverb + HP130 + volume LFO. The intro/breakdown/halftime carrier.
+    std::vector<std::tuple<int, double, int>> pp;
     for (int bar = 0; bar < 175; ++bar)
     {
+        const int* prog = (bar >= 120) ? progB : progA;
+        const int* c = chordTones[prog[bar % 8]];
         const double b = bar * 4.0;
-        pp.push_back ({ 53, b });
-        pp.push_back ({ 56, b + 0.5 });
+        // Fm7-ish spread (root octave 2, tones octave 3), softer in the
+        // intro/breakdown (55), fuller elsewhere (62).
+        pp.push_back ({ fMinorDeg (c[0], 2), b, 55 });
+        pp.push_back ({ fMinorDeg (c[1], 3), b + 0.5, 58 });
+        pp.push_back ({ fMinorDeg (c[2], 3), b + 1.0, 58 });
+        pp.push_back ({ fMinorDeg (c[3], 3), b + 1.5, 58 });
     }
-    buildPattern (padT, pp, 62, 4.0);
+    addNotesV (padT, pp, 4.0);
+    // chorus params: 0 Rate, 1 Depth, 2 Centre Delay ms, 3 Feedback, 4 Mix.
     addFx (padT, "chorus", 1);
-    cmds.setFxSlotParam (padT, 1, 0, 1.3f);
-    cmds.setFxSlotParam (padT, 1, 1, 0.6f);
+    cmds.setFxSlotParam (padT, 1, 0, 1.2f);
+    cmds.setFxSlotParam (padT, 1, 1, 0.65f);
     cmds.setFxSlotParam (padT, 1, 4, 0.55f);
+    // reverb params: 0 Room Size, 1 Damping, 2 Wet Level. Damped 0.65/0.70/0.24.
     addFx (padT, "reverb", 2);
-    cmds.setFxSlotParam (padT, 2, 0, 0.95f);
-    cmds.setFxSlotParam (padT, 2, 2, 0.35f);
+    cmds.setFxSlotParam (padT, 2, 0, 0.65f);
+    cmds.setFxSlotParam (padT, 2, 1, 0.70f);
+    cmds.setFxSlotParam (padT, 2, 2, 0.24f);
+    // Volume LFO (pid 1): slow 0.5-rate bipolar swell, depth 0.22, plus the
+    // 0.38 pump — pads breathe instead of sitting at a constant level.
+    cmds.addLfo (padT);
+    lfo (padT, 0, "waveform", 1);
+    lfo (padT, 0, "rateSync", 1);
+    lfo (padT, 0, "rate", 0.5);
+    lfo (padT, 0, "depth", 0.22);
+    lfo (padT, 0, "bipolar", 1);
+    lfo (padT, 0, "targetParamID", 1);
+    pumpLfo (padT, 1, 0.38);
+    // filter params: 0 Cutoff Hz, 1 Mode (1 = HP), 2 Q. HP 130 APPENDED at
+    // the chain end (slot 3) so slot 1 stays the chorus — no re-addressing.
+    addFx (padT, "filter", 3);
+    cmds.setFxSlotParam (padT, 3, 0, 130.0f);
+    cmds.setFxSlotParam (padT, 3, 1, 1.0f);
+    cmds.setFxSlotParam (padT, 3, 2, 0.7f);
     // Sub synth pad2 (no pad2 sample double): sub-level F drone with an
-    // automated cutoff sweep into the finale.
+    // automated cutoff sweep into the finale. sub_synth params (0-based):
+    // 3 Osc2 Level, 7 Cutoff Hz, 10/11/12 Attack/Decay/Sustain.
     addFx (pad2T, "sub_synth", 0);
     cmds.setFxSlotParam (pad2T, 0, 3, 0.30f);  // Osc2 Level low
     cmds.setFxSlotParam (pad2T, 0, 7, 900.0f); // Cutoff
@@ -3048,9 +3203,20 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         addNotes (cmds, clipId, rv, 100, 0.8);
     }
 
-    // ---- Macro automation: dual bass filter sweep + pad riser into drops ---
-    // pid 200 = 100 + slot 1 * 100 + param 0 (the bass EQ slot's Frequency,
-    // real units 20..20000 Hz). Lane points are REAL units for fx params.
+    // ---- Macro automation: bass filter sweep + pad riser into the drops ----
+    // AUTOMATION-LANE VALUE CONVENTION (verified src/engine/Track.cpp +
+    // TrackFXSlot::setAutomationParam): FX-param lane POINT VALUES are
+    // NORMALIZED 0..1 and are denormalized against the slot's def table on
+    // the audio thread. Raw Hz here clamps to the def max (v1 wrote
+    // "200..4500 Hz" onto a 20..20000 Hz def -> everything pinned near
+    // 20000 Hz). Point TIMES are beats (converted at the command boundary).
+    // pid = 100 + slotIndex * 100 + paramIndex.
+    //
+    // BassSweep -> bassT pid 400 = slot 3 ("filter", added 4th: sampler 0,
+    // eq 1, comp 2, filter 3) param 0 (Cutoff, def 20..20000 Hz). Normalized
+    // 0.06 ~= 1200 Hz … 0.30 ~= 6000 Hz: a real octave-sweep into each drop,
+    // reset between. The LFO0 wobble above targets the SAME pid, so lane +
+    // LFO compose (lane sets the base, LFO adds its depth-scaled delta).
     auto setLane = [&] (int track, const juce::String& name, int paramID,
                         const std::vector<std::pair<double, float>>& pts) {
         ASSERT_TRUE (cmds.addAutomationLane (track, name.toStdString(), paramID));
@@ -3063,14 +3229,19 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
                 lane.setProperty (IDs::automationEnabled, true,
                                   &engine.getProjectModel().getUndoManager());
     };
-    setLane (bassT, "BassSweep", 200,
-             { { 208.0, 200.0f }, { 272.0, 1200.0f }, { 336.0, 3000.0f },
-               { 384.0, 400.0f }, { 480.0, 2000.0f }, { 592.0, 4500.0f },
-               { 640.0, 900.0f }, { 700.0, 2400.0f } });
-    setLane (pad2T, "Riser", 200,
-             { { 160.0, 300.0f }, { 204.0, 400.0f }, { 208.0, 6000.0f },
-               { 336.0, 900.0f }, { 476.0, 500.0f }, { 480.0, 7000.0f },
-               { 592.0, 1200.0f }, { 700.0, 3000.0f } });
+    setLane (bassT, "BassSweep", 400,
+             { { 208.0, 0.06f }, { 272.0, 0.12f }, { 336.0, 0.20f },
+               { 384.0, 0.05f }, { 480.0, 0.14f }, { 592.0, 0.30f },
+               { 640.0, 0.08f }, { 700.0, 0.18f } });
+    // Riser -> padT pid 200 = slot 1 ("chorus") param 0 (Rate, 0.1..5 Hz).
+    // Normalized sweep 0.05 (~0.35 Hz) -> 0.75 (~3.8 Hz) into the drops: the
+    // pad shimmer tightens as the drop approaches. (v1 targeted pad2T slot 1
+    // which does not exist — sub_synth sits in slot 0 — so that lane was a
+    // silent no-op; padT slot 1 is the V5-proven target.)
+    setLane (padT, "Riser", 200,
+             { { 160.0, 0.05f }, { 204.0, 0.10f }, { 208.0, 0.75f },
+               { 336.0, 0.15f }, { 476.0, 0.10f }, { 480.0, 0.75f },
+               { 592.0, 0.20f }, { 700.0, 0.35f } });
 
     // ---- Outro: tape-style fade on every sounding track (last 8 bars) ------
     volumeLane (bassT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
@@ -3252,6 +3423,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     const juce::File out = outDir.getChildFile ("psy_dub_test.wav");
     cmds.setMasterGain (1.0f);
 
+    float lastRms = 0.0f;
     auto computePeak = [&] (const juce::File& f) {
         std::unique_ptr<juce::AudioFormatReader> rdr (exportFm.createReaderFor (f));
         if (rdr == nullptr) return 1.0f;
@@ -3264,8 +3436,8 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
             for (int i = 0; i < buf.getNumSamples(); ++i)
                 acc += static_cast<double> (s[i]) * s[i];
         }
-        const double rms = std::sqrt (acc / (2.0 * buf.getNumSamples()));
-        juce::Logger::writeToLog ("PsyDub: rms=" + juce::String (rms, 4)
+        lastRms = static_cast<float> (std::sqrt (acc / (2.0 * buf.getNumSamples())));
+        juce::Logger::writeToLog ("PsyDub: rms=" + juce::String (lastRms, 4)
             + " size=" + juce::String ((juce::int64) f.getSize()));
         return (std::max) (buf.getMagnitude (0, 0, buf.getNumSamples()),
                            buf.getMagnitude (1, 0, buf.getNumSamples()));
@@ -3292,9 +3464,10 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     ASSERT_TRUE (ok);
     EXPECT_LE (finalPeak, 0.95f) << "final render clipped";
     EXPECT_GE (finalPeak, 0.35f) << "final render too quiet";
+    EXPECT_GT (lastRms, 0.05f) << "final render RMS too low (thin mix)";
     std::cout << "PsyDub: truePeak=" << truePeak << " finalGain=" << finalGain
-              << " finalPeak=" << finalPeak << " dur=" << dur
-              << " beats=700" << std::endl;
+              << " finalPeak=" << finalPeak << " rms=" << lastRms
+              << " dur=" << dur << " beats=700" << std::endl;
     // calculateProjectDuration adds the engine's documented 3 s reverb tail
     // (ExportManager.cpp: maxEnd + 3.0), so 700 beats @ 138 BPM (304.35 s)
     // renders as ~307.35 s — still inside the 4:50-5:10 gate window.
