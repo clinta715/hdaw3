@@ -337,6 +337,130 @@ private:
     int currentProgram_ = 0;
 };
 
+// Deterministic failure-path seam (PluginIsolation.SlowStateTimeoutSignalsFailure):
+// echoes state like StateEchoProcessor, but blocks INSIDE getStateInformation
+// for longer than the host's 3 s marshal timeout, forcing the
+// runLifecycleOnMessageThread timeout branch every attempt.
+class SlowStateProcessor : public juce::AudioPluginInstance
+{
+public:
+    SlowStateProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
+    }
+
+    const juce::String getName() const override { return "SlowState"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        (void)buffer;
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock& dest) override
+    {
+        // 5 s > the 3 s GET_STATE marshal timeout: the host's
+        // runLifecycleOnMessageThread must give up while this sleeps.
+        Sleep(5000);
+        dest.setSize(state.getSize(), false);
+        if (state.getSize() > 0)
+            std::memcpy(dest.getData(), state.getData(), state.getSize());
+    }
+    void setStateInformation(const void* data, int sizeInBytes) override
+    {
+        if (data == nullptr || sizeInBytes <= 0) {
+            state.setSize(0, false);
+            return;
+        }
+        state.setSize(static_cast<size_t>(sizeInBytes), false);
+        std::memcpy(state.getData(), data, static_cast<size_t>(sizeInBytes));
+    }
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "SlowState";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__slowstate__";
+    }
+
+private:
+    juce::MemoryBlock state;
+};
+
+// Companion seam (GetStateRetriesWhileChildBusyInSetStateMarshal): like
+// SlowStateProcessor, but the slow path is setStateInformation only — GET is
+// instant, so a GET issued while a SET holds the message thread deterministically
+// observes the busy window and then succeeds once the SET completes.
+class SlowStateSetProcessor : public juce::AudioPluginInstance
+{
+public:
+    SlowStateSetProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
+    }
+
+    const juce::String getName() const override { return "SlowStateSet"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        (void)buffer;
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock& dest) override
+    {
+        dest.setSize(state.getSize(), false);
+        if (state.getSize() > 0)
+            std::memcpy(dest.getData(), state.getData(), state.getSize());
+    }
+    void setStateInformation(const void* data, int sizeInBytes) override
+    {
+        // Store FIRST, then hold 3.2 s: parks the child message thread past
+        // the 3 s SET marshal wait (control thread relays result=0 at ~3 s),
+        // so a GET issued during the hold is queued behind it — but because
+        // the blob is already stored, every queued GET (this test's retried
+        // attempts AND any concurrent saveStateToTemp GET from the slot's
+        // 100 ms pump-thread timer) is answered with the same correct bytes
+        // the moment the hold ends. (Sleeping before the store was wrong:
+        // queued GETs were then served in the 3.0-3.2 s window with EMPTY
+        // state, starving the 3-attempt budget.) 3.2 s keeps the hold just
+        // past the relay yet well inside the parent's 3-attempt budget.
+        if (data != nullptr && sizeInBytes > 0) {
+            state.setSize(static_cast<size_t>(sizeInBytes), false);
+            std::memcpy(state.getData(), data, static_cast<size_t>(sizeInBytes));
+        }
+        Sleep(3200);
+    }
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "SlowStateSet";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__slowstateset__";
+    }
+
+private:
+    juce::MemoryBlock state;
+};
+
 
 // C2b-rev test seam (PluginIsolation.StagedParamsBakeIntoChildState): a
 // minimal plugin that bakes its CURRENT parameter values into getState() at
@@ -873,21 +997,33 @@ int PluginHost::run()
 // on timeout.
 bool PluginHost::runLifecycleOnMessageThread(const std::function<void()>& fn, int timeoutMs)
 {
-    std::atomic<bool> done{false};
-    std::exception_ptr ep;
-    juce::MessageManager::callAsync([&]() {
-        try { fn(); }
-        catch (...) { ep = std::current_exception(); }
-        done.store(true, std::memory_order_release);
+    // Heap-held so the async lambda outlives a timed-out waiter: when this
+    // returns false, the waiter's stack frame (and every by-reference capture)
+    // is destroyed, but the marshal still fires on the message thread later.
+    // fn itself is captured BY VALUE into a shared holder; a fn that captures
+    // waiter locals by reference (e.g. [&block, this]) is only valid while the
+    // waiter is still blocked in this function — exactly the window the
+    // successful path guarantees.
+    struct MarshalState {
+        std::atomic<bool> done{ false };
+        std::exception_ptr ep;
+        std::function<void()> fn;
+    };
+    auto state = std::make_shared<MarshalState>();
+    state->fn = fn;
+    juce::MessageManager::callAsync([state]() {
+        try { state->fn(); }
+        catch (...) { state->ep = std::current_exception(); }
+        state->done.store(true, std::memory_order_release);
     });
     const auto deadline = juce::Time::getMillisecondCounter() + static_cast<uint32_t>(timeoutMs);
-    while (!done.load(std::memory_order_acquire))
+    while (!state->done.load(std::memory_order_acquire))
     {
         if (juce::Time::getMillisecondCounter() >= deadline)
             return false;
         Sleep(1);
     }
-    if (ep) std::rethrow_exception(ep);
+    if (state->ep) std::rethrow_exception(state->ep);
     return true;
 }
 
@@ -1070,16 +1206,22 @@ void PluginHost::controlLoop()
                 // single SET_STATE response is sent only once fully accumulated.
                 const uint32_t total = msg.dataSize;
                 if (total <= sizeof(msg.data)) {
+                    uint32_t result = 0;
                     if (plugin && total > 0) {
                         try {
-                            if (!runLifecycleOnMessageThread([this, data = msg.data, total]() {
+                            if (runLifecycleOnMessageThread([this, data = msg.data, total]() {
                                     plugin->setStateInformation(data, static_cast<int>(total));
                                 }, 3000))
                             {
-                                HDAW_LOG("plugin_host", "setStateInformation marshal timed out");
+                                lastSetState.assign(msg.data, msg.data + total);
+                                HDAW_LOG("plugin_host", "SET_STATE small applied bytes=" + juce::String(total));
+                                result = 1;
+                            } else {
+                                // Marshal timeout: the plugin never saw this
+                                // state — signal failure instead of a
+                                // false-success that looks like an empty state.
+                                HDAW_LOG("plugin_host", "SET_STATE small marshal timed out");
                             }
-                            lastSetState.assign(msg.data, msg.data + total);
-                            HDAW_LOG("plugin_host", "SET_STATE small applied bytes=" + juce::String(total));
                         } catch (const std::exception& e) {
                             HDAW_LOG("plugin_host", "setStateInformation threw: " + juce::String(e.what()));
                             pluginFailed.store(true);
@@ -1090,7 +1232,7 @@ void PluginHost::controlLoop()
                     }
                     proxy::ProxyResponse resp{};
                     resp.type = proxy::MessageType::SET_STATE;
-                    resp.result = 1;
+                    resp.result = result;
                     pipe.sendResp(resp);
                 } else {
                     pendingStateTotal = total;
@@ -1113,16 +1255,18 @@ void PluginHost::controlLoop()
                     uint32_t result = 0;
                     if (plugin) {
                         try {
-                            if (!runLifecycleOnMessageThread([this]() {
+                            if (runLifecycleOnMessageThread([this]() {
                                     plugin->setStateInformation(pendingState.data(),
                                                                 static_cast<int>(pendingState.size()));
                                 }, 3000))
                             {
-                                HDAW_LOG("plugin_host", "setStateInformation marshal timed out");
+                                lastSetState = pendingState;
+                                HDAW_LOG("plugin_host", "SET_STATE chunked applied bytes=" + juce::String(static_cast<int>(pendingState.size())));
+                                result = 1;
+                            } else {
+                                // Marshal timeout: plugin never saw the state.
+                                HDAW_LOG("plugin_host", "SET_STATE chunked marshal timed out");
                             }
-                            lastSetState = pendingState;
-                            HDAW_LOG("plugin_host", "SET_STATE chunked applied bytes=" + juce::String(static_cast<int>(pendingState.size())));
-                            result = 1;
                         } catch (const std::exception& e) {
                             HDAW_LOG("plugin_host", "setStateInformation threw: " + juce::String(e.what()));
                             pluginFailed.store(true);
@@ -1145,18 +1289,19 @@ void PluginHost::controlLoop()
                 proxy::ProxyResponse resp{};
                 resp.type = proxy::MessageType::GET_STATE_RESULT;
                 if (plugin) {
-                    juce::MemoryBlock block;
+                    // The marshal lambda is heap-held by runLifecycleOnMessageThread
+                    // and CAN run after a timeout (the waiter returned, the queued
+                    // callAsync still fires). `block` must therefore be heap-owned,
+                    // not a frame local — a by-ref capture would be a dangling
+                    // stack write on the timeout path.
+                    auto block = std::make_shared<juce::MemoryBlock>();
+                    bool marshalOk = false;
                     try {
-                        // block is captured by reference and the control
-                        // thread waits for the marshal to complete before
-                        // touching it, so the message-thread lambda never
-                        // races the local.
-                        if (!runLifecycleOnMessageThread([&block, this]() {
-                                plugin->getStateInformation(block);
-                            }, 3000))
-                        {
+                        marshalOk = runLifecycleOnMessageThread([block, this]() {
+                                plugin->getStateInformation(*block);
+                            }, 3000);
+                        if (!marshalOk)
                             HDAW_LOG("plugin_host", "getStateInformation marshal timed out");
-                        }
                     } catch (const std::exception& e) {
                         HDAW_LOG("plugin_host", "getStateInformation threw: " + juce::String(e.what()));
                         pluginFailed.store(true);
@@ -1164,12 +1309,21 @@ void PluginHost::controlLoop()
                         HDAW_LOG("plugin_host", "getStateInformation threw (unknown exception)");
                         pluginFailed.store(true);
                     }
-                    const size_t total = block.getSize();
+                    const size_t total = block->getSize();
+                    if (!marshalOk) {
+                        // Marshal timeout: no state bytes were produced —
+                        // signal failure instead of a false "success, 0 bytes"
+                        // that the parent cannot distinguish from a genuinely
+                        // empty plugin state.
+                        resp.result = 0;
+                        pipe.sendResp(resp);
+                        break;
+                    }
                     resp.result = 1;
                     resp.dataSize = static_cast<uint32_t>(total);
                     const size_t first = std::min(total, sizeof(resp.data));
                     if (first > 0)
-                        std::memcpy(resp.data, block.getData(), first);
+                        std::memcpy(resp.data, block->getData(), first);
                     pipe.sendResp(resp);
                     size_t offset = first;
                     while (offset < total) {
@@ -1178,7 +1332,7 @@ void PluginHost::controlLoop()
                         chunk.dataSize = static_cast<uint32_t>(
                             std::min(total - offset, sizeof(chunk.data)));
                         std::memcpy(chunk.data,
-                                    static_cast<const uint8_t*>(block.getData()) + offset,
+                                    static_cast<const uint8_t*>(block->getData()) + offset,
                                     chunk.dataSize);
                         pipe.sendResp(chunk);
                         offset += chunk.dataSize;
@@ -2044,6 +2198,18 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
 
     if (path == "__stateecho__") {
         plugin = std::make_unique<StateEchoProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+    if (path == "__slowstate__") {
+        plugin = std::make_unique<SlowStateProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+    if (path == "__slowstateset__") {
+        plugin = std::make_unique<SlowStateSetProcessor>();
         pluginLoaded.store(true);
         return true;
     }

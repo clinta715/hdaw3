@@ -76,8 +76,10 @@ bool PipeServer::overlappedConnect(DWORD timeoutMs) {
     return success;
 }
 
-bool PipeServer::overlappedRead(void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesRead) {
+bool PipeServer::overlappedRead(void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesRead,
+                                bool* timedOut) {
     bytesRead = 0;
+    if (timedOut) *timedOut = false;
     OVERLAPPED ov{};
     ov.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
     if (!ov.hEvent) return false;
@@ -97,6 +99,8 @@ bool PipeServer::overlappedRead(void* buf, DWORD size, DWORD timeoutMs, DWORD& b
                 CancelIo(hPipe);
                 DWORD transferred = 0;
                 GetOverlappedResult(hPipe, &ov, &transferred, TRUE);
+                if (wait == WAIT_TIMEOUT && timedOut)
+                    *timedOut = true;
             }
         }
     }
@@ -199,8 +203,13 @@ bool PipeServer::receiveRespBounded(ProxyResponse& resp, DWORD timeoutMs) {
         connected = true;
     }
     DWORD bytesRead = 0;
-    if (!overlappedRead(&resp, sizeof(ProxyResponse), timeoutMs, bytesRead)) {
-        connected = false;
+    bool timedOut = false;
+    if (!overlappedRead(&resp, sizeof(ProxyResponse), timeoutMs, bytesRead, &timedOut)) {
+        // A bounded-receive TIMEOUT is not a broken pipe: the child is still
+        // there and its late response stays queued in the message-mode pipe.
+        // Only a genuine read error tears the connection state down.
+        if (!timedOut)
+            connected = false;
         return false;
     }
     return bytesRead >= sizeof(ProxyResponse) - sizeof(resp.data);

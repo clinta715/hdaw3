@@ -766,29 +766,89 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
     msg.slotId = slotId;
 
     static constexpr DWORD kStateTimeoutMs = 3000;
-    if (!pipe->sendMsgBounded(msg, kStateTimeoutMs)) return;
+    // Under concurrent-suite load a single 3 s handshake can fail (bounded
+    // send/receive timeout, or the child now answering result=0 after a
+    // marshal timeout). Retry the WHOLE handshake a bounded number of times
+    // before giving up; a missing pipe still returns immediately — the host
+    // is gone, retrying cannot help.
+    constexpr int kStateAttempts = 3;
+    for (int attempt = 1; attempt <= kStateAttempts; ++attempt) {
+        if (attempt > 1)
+            HDAW_LOG("FxStateRead", "GET_STATE retry attempt=" + juce::String(attempt)
+                + "/" + juce::String(kStateAttempts) + " slot=" + juce::String((int) slotId));
 
-    ProxyResponse resp{};
-    if (!pipe->receiveRespBounded(resp, kStateTimeoutMs)) return;
-    HDAW_LOG("FxStateRead", "GET_STATE slot=" + juce::String((int) slotId) + " total=" + juce::String((juce::int64) resp.dataSize) + " result=" + juce::String((int) resp.result));
-    if (resp.type != MessageType::GET_STATE_RESULT || resp.result != 1) return;
+        if (!pipe->sendMsgBounded(msg, kStateTimeoutMs))
+        {
+            if (attempt < kStateAttempts)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                continue;
+            }
+            return;
+        }
 
-    // dataSize carries the TOTAL state size; resp.data holds the first chunk
-    // and the remainder arrives as STATE_CHUNK responses.
-    const size_t total = resp.dataSize;
-    if (total == 0) return;
-    if (total > kMaxStateBytes) return;
+        ProxyResponse resp{};
+        if (!pipe->receiveRespBounded(resp, kStateTimeoutMs))
+        {
+            if (attempt < kStateAttempts)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                continue;
+            }
+            return;
+        }
+        HDAW_LOG("FxStateRead", "GET_STATE slot=" + juce::String((int) slotId) + " total=" + juce::String((juce::int64) resp.dataSize) + " result=" + juce::String((int) resp.result));
+        if (resp.type != MessageType::GET_STATE_RESULT || resp.result != 1)
+        {
+            if (attempt < kStateAttempts)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                continue;
+            }
+            return;
+        }
 
-    destData.setSize(0, false);
-    const size_t first = std::min(total, sizeof(resp.data));
-    destData.append(resp.data, first);
+        // dataSize carries the TOTAL state size; resp.data holds the first chunk
+        // and the remainder arrives as STATE_CHUNK responses.
+        const size_t total = resp.dataSize;
+        if (total == 0)
+        {
+            if (attempt < kStateAttempts)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                continue;
+            }
+            return;
+        }
+        if (total > kMaxStateBytes) return;
 
-    while (destData.getSize() < total) {
-        ProxyResponse chunk{};
-        if (!pipe->receiveRespBounded(chunk, kStateTimeoutMs)) return;
-        if (chunk.type != MessageType::STATE_CHUNK) return;
-        const size_t take = std::min<size_t>(chunk.dataSize, sizeof(chunk.data));
-        destData.append(chunk.data, take);
+        juce::MemoryBlock accum;
+        accum.setSize(0, false);
+        const size_t first = std::min(total, sizeof(resp.data));
+        accum.append(resp.data, first);
+
+        bool complete = true;
+        while (accum.getSize() < total) {
+            ProxyResponse chunk{};
+            if (!pipe->receiveRespBounded(chunk, kStateTimeoutMs)
+                || chunk.type != MessageType::STATE_CHUNK)
+            {
+                complete = false;
+                break;
+            }
+            const size_t take = std::min<size_t>(chunk.dataSize, sizeof(chunk.data));
+            accum.append(chunk.data, take);
+        }
+        if (complete) {
+            destData = std::move(accum);
+            return;
+        }
+        if (attempt < kStateAttempts)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            continue;
+        }
+        return;
     }
 }
 

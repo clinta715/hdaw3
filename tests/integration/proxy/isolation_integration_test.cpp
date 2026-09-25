@@ -1715,6 +1715,162 @@ TEST(PluginIsolation, SmallStateRoundTripThroughProxy) {
 }
 
 // ========================================================================
+// Deterministic failure-path signaling (root-cause fixture for the
+// state-round-trip flake). The __slowstate__ internal plugin blocks inside
+// getStateInformation longer than the child's 3 s marshal timeout, forcing
+// the runLifecycleOnMessageThread timeout branch on every attempt. The
+// child must answer result=0 (failure) — never result=1 with 0 bytes, which
+// the parent cannot distinguish from a genuinely empty plugin state — and
+// the parent must retry the whole handshake a bounded number of times
+// before surfacing the failure as an empty buffer.
+// ========================================================================
+
+TEST(PluginIsolation, SlowStateTimeoutSignalsFailure) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9142;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__slowstate__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    PluginProxySlot slot(mgr, slotId, "SlowState");
+
+    // No prior SET_STATE here on purpose: a slot SET would arm the parent's
+    // background state-retry worker, whose own verify GET would race this
+    // test's GET on the same pipe and skew the timing bounds below.
+    const auto t0 = std::chrono::steady_clock::now();
+    juce::MemoryBlock out;
+    slot.getStateInformation(out);
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    EXPECT_EQ(out.getSize(), 0u)
+        << "marshal timeout must surface as failure (empty), never as a "
+           "false 'success, 0 bytes' snapshot of stale plugin state";
+    // Every attempt needs >= 3 s (the child cannot answer before its marshal
+    // wait expires), so a fast success/return would mean the retry loop or
+    // the failure signaling regressed.
+    EXPECT_GE(elapsedMs, 2800)
+        << "expected the bounded 3-attempt handshake, got a fast return";
+    EXPECT_LE(elapsedMs, 20000)
+        << "retry loop must stay bounded (3 attempts x 3 s + backoff)";
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// Parent-side retry, wrong-response variant: a response with the wrong type
+// (here a GET_PARAM_RESULT/failure injected ahead of the real answer) must
+// be rejected and retried over, and the round trip must still complete with
+// the child's real state.
+TEST(PluginIsolation, GetStateRetriesAfterWrongTypeResponse) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9143;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    PluginProxySlot slot(mgr, slotId, "StateEcho");
+
+    constexpr size_t kStateSize = 100; // inline: no chunk interleaving
+    juce::MemoryBlock in(kStateSize);
+    auto* inBytes = static_cast<uint8_t*>(in.getData());
+    for (size_t i = 0; i < kStateSize; ++i)
+        inBytes[i] = static_cast<uint8_t>((i * 7 + 13) & 0xFF);
+    slot.setStateInformation(in.getData(), static_cast<int>(in.getSize()));
+
+    // Confirm the child actually applied the state before injecting noise.
+    {
+        juce::MemoryBlock probe;
+        bool applied = false;
+        for (int i = 0; i < 50 && !applied; ++i) {
+            slot.getStateInformation(probe);
+            applied = probe.getSize() == kStateSize
+                && std::memcmp(probe.getData(), in.getData(), kStateSize) == 0;
+            if (!applied)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        ASSERT_TRUE(applied) << "child never applied the seeded state";
+    }
+
+    // Inject exactly one stale response into the pipe: a bare GET_PARAM is
+    // answered by the child with GET_PARAM_RESULT/result=0 — well-formed,
+    // but the wrong type and result for a GET_STATE handshake.
+    auto* pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+    ProxyMessage seed{};
+    seed.type = MessageType::GET_PARAM;
+    seed.slotId = slotId;
+    ASSERT_TRUE(pipe->sendMsgBounded(seed, 3000));
+
+    juce::MemoryBlock out;
+    slot.getStateInformation(out);
+
+    ASSERT_EQ(out.getSize(), kStateSize)
+        << "retry loop must not surface the wrong-type failure response";
+    EXPECT_EQ(std::memcmp(out.getData(), in.getData(), kStateSize), 0)
+        << "round trip must complete with the child's real state after retry";
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// Parent-side retry, busy-child variant: while the child's message thread is
+// parked inside a slow setStateInformation (3.2 s hold) it cannot service
+// GET_STATE. The raw SET's own marshal exceeds the 3 s wait, so the child's
+// control thread relays result=0 at ~3 s (attempt 1 of the GET loop consumes
+// it as a wrong-type/failure response and retries), and the blob is stored
+// the moment the hold ends (~3.2 s) — before attempt 2's GET. The final read
+// must therefore return exactly the stored blob. Uses __slowstateset__ whose
+// SET-side hold makes the busy window deterministic (stateecho's SET marshal
+// is instant and leaves no observable busy window).
+TEST(PluginIsolation, GetStateRetriesWhileChildBusyInSetStateMarshal) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9144;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__slowstateset__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    PluginProxySlot slot(mgr, slotId, "SlowStateSet");
+
+    constexpr size_t kStateSize = 60; // inline small-SET payload
+    juce::MemoryBlock blob(kStateSize);
+    auto* blobBytes = static_cast<uint8_t*>(blob.getData());
+    for (size_t i = 0; i < kStateSize; ++i)
+        blobBytes[i] = static_cast<uint8_t>(0xAB ^ i);
+
+    // Raw-pipe small SET_STATE: the child's message thread parks 3.2 s in
+    // this store and the SET marshal times out at 3 s (the control thread
+    // relays a result=0). Sent raw (not via the slot) so the parent's
+    // background retry worker stays out of the picture.
+    auto* pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+    ProxyMessage hold{};
+    hold.type = MessageType::SET_STATE;
+    hold.slotId = slotId;
+    hold.dataSize = static_cast<uint32_t>(kStateSize);
+    std::memcpy(hold.data, blob.getData(), kStateSize);
+    ASSERT_TRUE(pipe->sendMsgBounded(hold, 3000));
+
+    // Immediately read state: attempt 1 cannot be served until the child's
+    // SET hold ends (>= 3 s), so the loop must retry.
+    const auto t0 = std::chrono::steady_clock::now();
+    juce::MemoryBlock out;
+    slot.getStateInformation(out);
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    ASSERT_EQ(out.getSize(), kStateSize)
+        << "retry loop must complete the read once the child is free";
+    EXPECT_EQ(std::memcmp(out.getData(), blob.getData(), kStateSize), 0)
+        << "completed read must return the child's current state byte-exact";
+    EXPECT_GE(elapsedMs, 2800)
+        << "first attempt must have hit the busy child (>= 3 s marshal wait)";
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// ========================================================================
 // MIDI fidelity through the proxy (SysEx lane + short-message size)
 // ========================================================================
 

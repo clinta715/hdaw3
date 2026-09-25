@@ -35,7 +35,12 @@ private:
     // OVERLAPPED read/write with a bounded wait. INFINITE preserves the prior
     // blocking behavior for non-READY exchanges. Return true on completion with
     // bytesTransferred filled; false on timeout/error (IO cancelled).
-    bool overlappedRead(void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesRead);
+    // timedOut (optional) reports WAIT_TIMEOUT distinctly from real pipe
+    // errors: a bounded-receive timeout must NOT mark the pipe disconnected
+    // (the connection is healthy; a late response is still consumable), while
+    // a genuine read error must.
+    bool overlappedRead(void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesRead,
+                        bool* timedOut = nullptr);
     bool overlappedWrite(const void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesWritten);
 
     std::string name;
