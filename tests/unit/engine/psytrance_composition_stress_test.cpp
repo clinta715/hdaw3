@@ -2781,12 +2781,30 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         const int t = cmds.addTrack ((juce::String("PD") + role + juce::String(i)).toStdString(), -1, -1, 0);
         ASSERT_GE (t, 0);
         cmds.addFxSlot (t, "sampler", 0, "");
-        const int root = (role == "kick") ? 36 : (role == "bass") ? 36
-                       : (role == "hat")  ? 44 : (role == "lead") ? 60 : 52;
-        // lead root 60 (C3): the dub lead samples are C-rooted one-shots
-        // (ANTINOMY Stab_C / WS#2 ARP), so C notes play untransposed and the
-        // F-minor pitches retune relative to their real pitch (the previous
-        // root 62 repitched every stab +2 semitones against its own pitch).
+        // Root = the SAMPLE'S MEASURED pitch CLASS + the register the track
+        // plays in (chroma + low-band HPS, 2026-09-24). Pitch-class match is
+        // the key fix; the octave keeps the sampler's repitch inside ~1
+        // octave so one-shots don't turn into formant chipmunks:
+        //   bass  Ascend OneShot18: fundamental F3 (53.5 Hz, in F already)
+        //          -> root 53, notes 36-43 repitch -10..-17 st = dub sub.
+        //   lead  Antinomy Stab_C: real pitch C2 (65.3 Hz; "_C" is truthful).
+        //          Notes 65-82 (F4-Bb5) -> root 60 (C4), repitch +5..+22 st.
+        //          (The old root 62 ALSO had the pitch class wrong: +2 st off
+        //          key on every stab, and the F# loop entry was F-minor-foreign.)
+        //   stab  WS#2 ARP Digital: ambiguous chroma (E/F/D); root 60 keeps
+        //          the skanks an octave below the lead arp.
+        //   pad   Batuhan Atmos_7: D-dominant chroma, fundamental ~D3
+        //          -> root 50 (D3), notes 53-56 repitch +3..+6 st. (Was 60:
+        //          -11 st detune against every F-minor pad note.)
+        //   hat/kick: percussive, root 44/36 by convention.
+        // WS#2 "FX Atmos 3" (pad role #2) is a texture — pitch mapping is
+        // irrelevant; it rides the sub_synth assignment below.
+        const bool isLead = role == "lead" && selection[i].second.contains ("Stab_C");
+        const int root = (role == "kick") ? 36
+                       : (role == "bass") ? 53
+                       : (role == "hat")  ? 44
+                       : (role == "pad")  ? 50
+                       : 60;
         cmds.setSamplerSample (t, 0, selection[i].second.toStdString(), root);
         const double vol = (role == "kick")  ? 1.00
                          : (role == "bass")  ? 0.95
