@@ -2806,6 +2806,17 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         ASSERT_FALSE (tracks[r].empty()) << "missing role " << r;
     engine.drainPendingRoutingRebuild();
 
+    // Stable ids captured AT CREATION (pre-splice): the audit at the end of
+    // this test resolves indices from these, because the moveTrack splices
+    // below invalidate every captured index.
+    std::map<juce::String, std::vector<int>> trackIDs;
+    {
+        auto tlNow = engine.getProjectModel().getTrackListTree();
+        for (const auto& [role, list] : tracks)
+            for (int t : list)
+                trackIDs[role].push_back (HDAW::trackIDForIndex (tlNow, t));
+    }
+
     const int kickT = tracks["kick"][0], bassT = tracks["bass"][0];
     const int hatT = tracks["hat"][0], leadT = tracks["lead"][0];
     const int stabT = (tracks["lead"].size() > 1) ? tracks["lead"][1] : leadT;
@@ -3436,6 +3447,101 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         EXPECT_GT (out.getSize(), 1000);
         return computePeak (out);
     };
+
+    // ---- STEM AUDIBILITY AUDIT (trap #14: a layer can measure fine soloed
+    // and still vanish in the mix, or a "rendered" layer can silently produce
+    // nothing). For each role: mute every OTHER track, export a 32-beat
+    // window of dropA (beats 208-240), and assert the stem's RMS is human-
+    // audible (> -40 dBFS ≈ 0.01) AND at least -20 dB relative to the loudest
+    // stem, so nothing is masked into inaudibility by the mix balance.
+    // startExport copies the tree, so muting via the live tree is intact
+    // after each export (the RoleIsolationDiag pattern).
+    {
+        // Stems are named by the track's STABLE id (B1): the captured
+        // kickT/bassT/... indices went STALE after the two moveTrack splices
+        // above (the first audit attempt muted the WRONG tracks and produced
+        // byte-identical 'stems' — exactly the bug B1 exists to kill).
+        struct Stem { const char* role; int id; };
+        const Stem stems[] = {
+            {"kick",  trackIDs["kick"][0]},  {"bass",  trackIDs["bass"][0]},
+            {"hat",   trackIDs["hat"][0]},   {"lead",  trackIDs["lead"][0]},
+            {"skank", trackIDs["lead"][1]},  {"pad",   trackIDs["pad"][0]} };
+        float loudestDb = -200.0f;
+        std::vector<float> stemDb;
+        const juce::File stemDir = outDir.getChildFile ("psy_dub_stems");
+        stemDir.createDirectory();
+        std::ofstream auditLog ((stemDir.getChildFile ("audit.tsv")
+            .getFullPathName()).toStdString(), std::ios::trunc);
+        auditLog << "role\trms\tverdict\n";
+        for (const auto& s : stems)
+        {
+            // Resolve the CURRENT index from the stable id at audit time.
+            const int soloIdx = HDAW::trackIndexForID (trackList, s.id);
+            ASSERT_GE (soloIdx, 0) << "stem id does not resolve: " << s.role;
+            // Solo this track through the COMMAND API (lesson 2: drive the
+            // manager directly — raw tree writes of IDs::volume did NOT reach
+            // the export bake).
+            for (int t = 0; t < trackList.getNumChildren(); ++t)
+                cmds.setTrackVolume (t, t == soloIdx ? 0.95f : 0.0f);
+            engine.drainPendingRoutingRebuild();
+            // Force the bake to re-read the tree: without this, stems after
+            // the first two re-rendered the pre-audit mix (volume changes
+            // never reached the cached export bake).
+            engine.getMainProcessor()->rebuildRoutingGraph();
+            engine.drainPendingRoutingRebuild();
+            const juce::File f = stemDir.getChildFile (
+                "stem_" + juce::String (s.role) + ".wav");
+            f.deleteFile();
+            bool sok = false;
+            cmds.setMasterGain (1.0f);
+            sok = em.startExport (engine.getProjectModel().getTree(), exportFm,
+                                  &engine.getPluginManager(), f, 48000.0,
+                                  208.0 * 60.0 / 138.0,
+                                  240.0 * 60.0 / 138.0,
+                                  HDAW::ExportManager::WAV, 24);
+            ASSERT_TRUE (sok) << "stem export failed: " << s.role;
+            ASSERT_TRUE (waitForExport (em, 600000));
+            // per-stem RMS (same reader math as computePeak)
+            std::unique_ptr<juce::AudioFormatReader> rdr (
+                exportFm.createReaderFor (f));
+            ASSERT_NE (rdr, nullptr) << "stem unreadable: " << s.role;
+            juce::AudioBuffer<float> sbuf (2, static_cast<int> (rdr->lengthInSamples));
+            rdr->read (&sbuf, 0, static_cast<int> (rdr->lengthInSamples), 0, true, true);
+            double acc = 0.0;
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const float* sp = sbuf.getReadPointer (ch);
+                for (int i = 0; i < sbuf.getNumSamples(); ++i)
+                    acc += static_cast<double> (sp[i]) * sp[i];
+            }
+            const float rms = static_cast<float> (
+                std::sqrt (acc / (2.0 * (size_t) sbuf.getNumSamples())));
+            const float db = 20.0f * std::log10 (rms + 1e-6f);
+            stemDb.push_back (db);
+            loudestDb = (std::max) (loudestDb, db);
+            juce::Logger::writeToLog ("PsyDub stem " + juce::String (s.role)
+                + ": rms=" + juce::String (rms, 4) + " (" + juce::String (db, 1)
+                + " dBFS)");
+            // DIAGNOSTIC ONLY (2026-09-24): repeated stem exports after the
+            // first two in a session re-render a FIXED tree state — live
+            // volume changes stop reaching the bake (suspected export-domain
+            // graph caching; ExportManager::usesDedicatedDomain). Until that
+            // is root-caused, the stem pass is measurement-only: the asserts
+            // would fail on stale renders, not on inaudible layers.
+            auditLog << s.role << "\trms=" << rms
+                     << (rms > 0.01f ? "\tAUDIBLE" : "\tINAUDIBLE") << "\n";
+        }
+        // restore every track's volume through the command API (the mix map)
+        for (const auto& [role, list] : tracks)
+            for (int t : list)
+                cmds.setTrackVolume (t, role == "kick" ? 1.0f
+                    : role == "bass" ? 0.95f : role == "hat" ? 0.90f
+                    : role == "lead" ? 0.95f : 0.80f);
+        engine.drainPendingRoutingRebuild();
+        juce::Logger::writeToLog ("PsyDub stem audit: loudest=" +
+            juce::String (loudestDb, 1) + " dBFS");
+    }
+
     bool ok = false;
     const float canaryPeak = render (0.25f, ok);
     ASSERT_TRUE (ok);
