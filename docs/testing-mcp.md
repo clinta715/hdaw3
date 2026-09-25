@@ -169,6 +169,18 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   failure-path tests added (`SlowStateTimeoutSignalsFailure`, `GetStateRetriesAfterWrongTypeResponse`,
   `GetStateRetriesWhileChildBusyInSetStateMarshal`); verified 5× solo + 5× under parallel CPU load
   (10/10 each round) and `PluginIsolation.*` 49/49.
+- **OPEN BUG (2026-09-24): exports 3+ in one session ignore live tree changes.** In
+  `PsytranceComposition.PsyDubFiveMinutes`'s stem-audit pass (solo each role by
+  `cmds.setTrackVolume(t, 0)` on the others, then `startExport` a 104 s window), the first two
+  stems isolate correctly but stems 3+ re-render a FIXED tree state — deterministic md5s across
+  runs, `rebuildRoutingGraph()` + `drainPendingRoutingRebuild()` before each export do not help,
+  and raw `IDs::volume` tree writes never reach the bake at all (only the command API does — and
+  then only for the first two exports). Suspected: the dedicated export domain caches its baked
+  graph after the first two uses (`ExportManager::usesDedicatedDomain`). Impact: any multi-export
+  workflow (stems, A/B renders, audit passes) silently renders stale mixes after the second
+  export. Repro: `PsyDubFiveMinutes` + `.tmp_dnb_theme/psy_dub_stems/audit.tsv`; until fixed,
+  keep per-stem verification to ≤ 2 exports per engine session or re-create the engine between
+  exports.
 - **HTTP runtime path coverage**: `McpServer.EngineSettingsStartMcpHttp`
   enables `mcp/httpEnabled` in `QSettings`, starts `AudioEngine` with the
   persisted config, and verifies a real `POST /mcp` round-trip on the
