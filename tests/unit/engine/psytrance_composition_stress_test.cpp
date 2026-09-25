@@ -2986,11 +2986,21 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (kickT, 2, 0, 3600.0f);
     cmds.setFxSlotParam (kickT, 2, 1, 1.2f);
     cmds.setFxSlotParam (kickT, 2, 2, 3.5f);
-    // Body band 82 Hz +4 dB: the kick owns <120 Hz and gets the low accent.
+    // Body band 82 Hz +6 dB: the kick owns <120 Hz and gets the low accent
+    // (v3 listen-fix: the kick sat behind the sub/growl low mass).
     addFx (kickT, "eq", 3);
     cmds.setFxSlotParam (kickT, 3, 0, 82.0f);
     cmds.setFxSlotParam (kickT, 3, 1, 1.0f);
-    cmds.setFxSlotParam (kickT, 3, 2, 4.0f);
+    cmds.setFxSlotParam (kickT, 3, 2, 6.0f);
+
+    // v3 listen-fix: a saturator slot on the kick — Drive 12 dB at Mix 0.5
+    // adds the harmonic density that raises PERCEIVED loudness (a compressor
+    // can only reduce; the kick fader is already at 1.0).
+    addFx (kickT, "saturator", 4);
+    cmds.setFxSlotParam (kickT, 4, 0, 12.0f);   // Drive dB
+    cmds.setFxSlotParam (kickT, 4, 1, 0.0f);    // Type
+    cmds.setFxSlotParam (kickT, 4, 3, 0.65f);   // Mix
+    cmds.setFxSlotParam (kickT, 4, 4, 4.0f);    // Output dB (makeup — the saturation is louder)
 
     // ---- BASS SUB (sub_synth): long root holds one octave BELOW the growl ---
     // (octave 1 = F1..Eb2) — the deep dub sub through the drops. The synth is
@@ -3010,7 +3020,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (bassT, 0, 3, 0.30f);  // Osc2 Level low
     cmds.setFxSlotParam (bassT, 0, 5, 0.50f);  // Sub Level
     cmds.setFxSlotParam (bassT, 0, 6, 0.0f);   // Sub Octave 0 (notes at pitch)
-    cmds.setFxSlotParam (bassT, 0, 7, 900.0f); // Cutoff — deep
+    cmds.setFxSlotParam (bassT, 0, 7, 450.0f); // Cutoff (v3.1 listen-fix: 900 let midrange through — the sub should be SUB)
     cmds.setFxSlotParam (bassT, 0, 12, 0.75f); // Sustain high (holds ring)
     cmds.setFxSlotParam (bassT, 0, 14, 1.00f); // Output Level
     cmds.setFxSlotParam (bassT, 0, 15, 1.0f);  // Legato mono
@@ -3029,7 +3039,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     // sub out of the stab/hat mids; the BassSweep lane below automates this
     // cutoff through pid 400 (100 + slot 3 * 100) in NORMALIZED 0..1 units.
     addFx (bassT, "filter", 3);
-    cmds.setFxSlotParam (bassT, 3, 0, 3500.0f);
+    cmds.setFxSlotParam (bassT, 3, 0, 1200.0f);
     cmds.setFxSlotParam (bassT, 3, 1, 0.0f);
     cmds.setFxSlotParam (bassT, 3, 2, 0.7f);
     // LFO0: slow bipolar wobble on the REAL filter cutoff (targetParamID 400
@@ -3075,9 +3085,15 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (growlT, 2, 0, -20.0f);
     cmds.setFxSlotParam (growlT, 2, 1, 3.0f);
     cmds.setFxSlotParam (growlT, 2, 3, 60.0f);
-    // Growl pump: a milder duck (0.5) — the growl is the mid-bass pulse and
-    // must still open the kick's low window without pumping the whole low end.
-    pumpLfo (growlT, 0, 0.50);
+    // v3 listen-fix: a +3 dB speak band at 400 Hz (Q 1) — the growl's bite
+    // region, so it reads as an aggressive mid-bass rather than a soft pulse.
+    addFx (growlT, "eq", 3);
+    cmds.setFxSlotParam (growlT, 3, 0, 400.0f);
+    cmds.setFxSlotParam (growlT, 3, 1, 1.0f);
+    cmds.setFxSlotParam (growlT, 3, 2, 3.0f);
+    // Growl pump: deeper duck (0.65) — opens the kick's low window harder
+    // while the louder growl carries the offbeats.
+    pumpLfo (growlT, 0, 0.65);
 
     // ---- HATS: offbeat 8ths + rolls + velocity accents, swung halftime -----
     std::vector<std::tuple<int, double, int>> hh;
@@ -3150,14 +3166,14 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     addFx (leadT, "delay", 1);
     cmds.setFxSlotParam (leadT, 1, 3, 1.0f);   // SyncToTempo
     cmds.setFxSlotParam (leadT, 1, 4, 4.0f);   // dotted-1/8 (division 4)
-    cmds.setFxSlotParam (leadT, 1, 1, 0.17f);  // Feedback (V5: 0.17)
-    cmds.setFxSlotParam (leadT, 1, 2, 0.26f);  // Mix (V5: 0.26)
+    cmds.setFxSlotParam (leadT, 1, 1, 0.45f);  // Feedback (v3 listen-fix 2: 0.32 still died too fast)
+    cmds.setFxSlotParam (leadT, 1, 2, 0.42f);  // Mix up — the dub echo must be HEARD
     cmds.setFxSlotParam (leadT, 1, 5, 0.60f);  // Damping (tape-ish loop LP)
-    // reverb params: 0 Room Size, 1 Damping, 2 Wet Level. Damped 0.60/0.70/0.16.
+    // reverb params: 0 Room Size, 1 Damping, 2 Wet Level. 0.60/0.70/0.24 (v3 listen-fix: the breakdown tail cliff-dropped at 0.16).
     addFx (leadT, "reverb", 2);
-    cmds.setFxSlotParam (leadT, 2, 0, 0.60f);
+    cmds.setFxSlotParam (leadT, 2, 0, 0.75f);   // Room (v3 listen-fix: longer breakdown tail)
     cmds.setFxSlotParam (leadT, 2, 1, 0.70f);
-    cmds.setFxSlotParam (leadT, 2, 2, 0.16f);
+    cmds.setFxSlotParam (leadT, 2, 2, 0.24f);
     // comp params: 0 Threshold dB, 1 Ratio, 2 Attack ms, 3 Release ms.
     addFx (leadT, "compressor", 3);
     cmds.setFxSlotParam (leadT, 3, 0, -20.0f);
@@ -3210,13 +3226,16 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     cmds.setFxSlotParam (stabT, 1, 1, 1.0f);
     cmds.setFxSlotParam (stabT, 1, 2, 0.7f);
     // delay params (InternalDelay.h): 0 Time s, 1 Feedback, 2 Mix,
-    // 3 SyncToTempo, 4 Division (1 = 1/16), 5 Damping. The 1/16 skank echo:
-    // sync 1, feedback 0.45 (V5 cap; v1's 0.55 ran away), damping 0.6.
+    // 3 SyncToTempo, 4 Division (4 = dotted-1/8), 5 Damping. DUB CANON
+    // (2026-09-25 listen-fix): the skank echo must ring 2+ beats — dotted-1/8
+    // at 138 BPM = 0.33 s, feedback 0.62 (the runaway guard is 0.99; 0.62
+    // rings ~6 repeats), mix 0.5. A 1/16 fb-0.45 echo dies inside one beat
+    // and reads as no delay at all.
     addFx (stabT, "delay", 2);
     cmds.setFxSlotParam (stabT, 2, 3, 1.0f);   // SyncToTempo
-    cmds.setFxSlotParam (stabT, 2, 4, 1.0f);   // 1/16 (division 1)
-    cmds.setFxSlotParam (stabT, 2, 1, 0.45f);  // Feedback
-    cmds.setFxSlotParam (stabT, 2, 2, 0.45f);  // Mix
+    cmds.setFxSlotParam (stabT, 2, 4, 4.0f);   // dotted-1/8 (division 4)
+    cmds.setFxSlotParam (stabT, 2, 1, 0.62f);  // Feedback — the dub tail
+    cmds.setFxSlotParam (stabT, 2, 2, 0.50f);  // Mix
     cmds.setFxSlotParam (stabT, 2, 5, 0.60f);  // Damping
     // flanger params: 0 Rate, 1 Depth. V5 0.5/0.45.
     addFx (stabT, "flanger", 3);
@@ -3335,6 +3354,27 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
                { 336.0, 0.15f }, { 476.0, 0.10f }, { 480.0, 0.75f },
                { 592.0, 0.20f }, { 700.0, 0.35f } });
 
+    // ---- DUB MOVEMENT (2026-09-25 listen-fix): multi-bar cutoff sweeps and
+    // musically-timed step changes on the SKANK stab track. Target: stabT
+    // slot 5 (the LP2200 filter), pid 500 = 100 + 5*100. Normalized 0..1
+    // against the cutoff def (0..~20 kHz): 0.15 = dark/muffled stabs, 0.85 =
+    // wide open. The sweep RISES over the 12 bars before each drop, SNAPS
+    // shut at each section boundary, and steps per section — the classic
+    // dub arrangement move.
+    setLane (stabT, "SkankSweep", 500,
+             { // build into dropA (40..52): 8 bars rising
+               { 208.0, 0.20f }, { 256.0, 0.45f }, { 304.0, 0.70f },
+               { 312.0, 0.85f }, { 336.0, 0.85f },
+               // halftime: snap shut, stay dark
+               { 336.0, 0.25f }, { 384.0, 0.25f },
+               // groove2 steady, build2 rising into dropB
+               { 384.0, 0.35f }, { 432.0, 0.35f }, { 480.0, 0.85f },
+               { 496.0, 0.85f },
+               // breakdown: dark
+               { 592.0, 0.20f }, { 608.0, 0.20f },
+               // finale: open wide
+               { 640.0, 0.85f }, { 700.0, 0.60f } });
+
     // ---- Outro: tape-style fade on every sounding track (last 8 bars) ------
     volumeLane (bassT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
     volumeLane (growlT, { { 672.0, 1.0f }, { 700.0, 0.0f } });
@@ -3437,8 +3477,8 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         // The preset writes all 33 params + the mod matrix in one undoable
         // transaction; a couple of host-side growl settings differentiate it
         // from the default routing (Output Level up, feedback moderate).
-        cmds.setFxSlotParam (growlT, 0, 31, 0.60f); // Output Level
-        cmds.setFxSlotParam (growlT, 0, 6, 0.35f);  // Feedback
+        cmds.setFxSlotParam (growlT, 0, 31, 0.85f); // Output Level (v3 listen-fix: was 0.60)
+        cmds.setFxSlotParam (growlT, 0, 6, 0.50f);  // Feedback deeper = growlier tail
         ASSERT_GT (soloAudition (growlT, "psy_fm growlBass"), 0.001f)
             << "psy_fm silent after growlBass load";
         ASSERT_GT (listParams (growlT, 0, "psy_fm"), 0);
@@ -3772,7 +3812,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     // but the volume map must still match the mix design before the render).
     cmds.setTrackVolume (kickT, 1.00f);
     cmds.setTrackVolume (bassT, 0.95f);
-    cmds.setTrackVolume (growlT, 0.80f);
+    cmds.setTrackVolume (growlT, 0.95f);
     cmds.setTrackVolume (hatT, 0.90f);
     cmds.setTrackVolume (leadT, 0.90f);
     cmds.setTrackVolume (stabT, 0.85f);
