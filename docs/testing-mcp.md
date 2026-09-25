@@ -158,6 +158,17 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   pre-existing ones listed here. So the "1 flake" baseline in `AGENTS.md`
   (2026-09-21) is stale, and the two `McpServer.*` failures are an artifact of
   running the suite alongside a live engine, not a regression.**
+- **`PluginIsolation.LargeStateRoundTripThroughProxy` — ROOT-CAUSED AND FIXED (2026-09-24,
+  commit e632738).** It was never load flakiness: a `runLifecycleOnMessageThread` marshal
+  timeout in the plugin host's GET_STATE handler was answered as `result=1, size=0`
+  (indistinguishable from a legitimately empty state), and the parent's
+  `getStateInformation` had no retry. Fix: honest failure signaling (`result=0` on marshal
+  timeout, GET and SET paths), a 3-attempt parent handshake, plus two latent safety bugs found
+  on the way (a use-after-free in the marshal-lambda lifetime, a dangling `&block` capture, and
+  `ProxyPipe` poisoning `connected=false` on a bounded-receive timeout). 3 deterministic
+  failure-path tests added (`SlowStateTimeoutSignalsFailure`, `GetStateRetriesAfterWrongTypeResponse`,
+  `GetStateRetriesWhileChildBusyInSetStateMarshal`); verified 5× solo + 5× under parallel CPU load
+  (10/10 each round) and `PluginIsolation.*` 49/49.
 - **HTTP runtime path coverage**: `McpServer.EngineSettingsStartMcpHttp`
   enables `mcp/httpEnabled` in `QSettings`, starts `AudioEngine` with the
   persisted config, and verifies a real `POST /mcp` round-trip on the
