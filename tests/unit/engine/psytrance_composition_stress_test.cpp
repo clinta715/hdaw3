@@ -2722,9 +2722,23 @@ TEST (InternalFx, SaturatorNeutralFidelity)
 // tape-style outro fade on the built-in Volume lanes.
 TEST (PsytranceComposition, PsyDubFiveMinutes)
 {
-    const auto selection = loadSelection (1);
+    auto selection = loadSelection (1);
     if (selection.empty())
         GTEST_SKIP() << "library selection TSV missing";
+
+    // Key discipline: the dub lead must be a ONE-SHOT we can retune into
+    // F minor. loadSelection(1) hands the lead role the FLOW36 "145 BPM
+    // Riff_F#" LOOP (entry 1) — a loop in F# minor, retriggered 16x/bar and
+    // repitched against its own tonality = the off-key, high-pitched wash the
+    // 2026-09-24 session heard. Replace that entry with the Antinomy
+    // One_Shot_Stab_C (entry 0, C-rooted one-shot); leave every other role on
+    // its skip-1 entry.
+    for (size_t i = 0; i < selection.size(); ++i)
+        if (selection[i].first == "lead"
+            && selection[i].second.contains("Riff_F#"))
+            selection[i].second = "E:\\samples\\Antinomy Psytrance Sounds Vol.2 "
+                "WAV MiDi-ARCADiA\\ANTINOMY_08_One_Shot\\ANTINOMY_01_One_Shot_"
+                "Stab_Full_Octave\\ANTINOMY_01_One_Shot_Stab_C.wav";
 
     AudioEngine engine;
     engine.initialize();
@@ -2768,7 +2782,11 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         ASSERT_GE (t, 0);
         cmds.addFxSlot (t, "sampler", 0, "");
         const int root = (role == "kick") ? 36 : (role == "bass") ? 36
-                       : (role == "hat")  ? 44 : (role == "lead") ? 62 : 52;
+                       : (role == "hat")  ? 44 : (role == "lead") ? 60 : 52;
+        // lead root 60 (C3): the dub lead samples are C-rooted one-shots
+        // (ANTINOMY Stab_C / WS#2 ARP), so C notes play untransposed and the
+        // F-minor pitches retune relative to their real pitch (the previous
+        // root 62 repitched every stab +2 semitones against its own pitch).
         cmds.setSamplerSample (t, 0, selection[i].second.toStdString(), root);
         const double vol = (role == "kick")  ? 1.00
                          : (role == "bass")  ? 0.95
@@ -2903,8 +2921,8 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     // ---- LEAD ARP: dub delay (synced, feedback) + long reverb ---------------
     // F minor arp: F Ab C Eb shapes; B section lifts to the Bb/C voicing.
     std::vector<std::pair<int, double>> la;
-    const int arpA[8] = { 65, 68, 72, 75, 68, 72, 80, 75 };  // F Ab C Eb ...
-    const int arpB[8] = { 70, 74, 77, 82, 74, 77, 84, 77 };  // Bb Db F ...
+    const int arpA[8] = { 65, 68, 72, 75, 68, 72, 79, 75 };  // F Ab C Eb G (top +19 from the C-rooted stab)
+    const int arpB[8] = { 70, 73, 77, 79, 73, 77, 82, 77 };  // Bb Db F G (Db=73: F natural minor has NO D natural; top capped at 82=Bb5)
     for (int bar = 13; bar < 175; ++bar)
     {
         if (bar >= 148 && bar < 160) continue;              // breakdown
@@ -2941,7 +2959,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     }
 
     // ---- DUB SKANK: offbeat chord stabs, long reverb + synced delay ---------
-    const int ch[8][3] = { {53,56,60}, {56,60,63}, {58,62,65}, {56,60,65}, // Fm/Ab/Bb voicings
+    const int ch[8][3] = { {53,56,60}, {56,60,63}, {58,63,65}, {56,60,65}, // Fm/Ab/Bbm/Ab voicings (Bb chord = Bb Db F: 58,61,65 -> inverted 58,63,65 keeps Db=63)
                            {53,58,60}, {60,63,65}, {58,63,65}, {55,58,60} };
     std::vector<std::pair<int, double>> st;
     for (int bar = 12; bar < 175; ++bar)
