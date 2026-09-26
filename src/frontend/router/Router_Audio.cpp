@@ -47,13 +47,17 @@ QJsonValue parseText(const QString& text) {
 DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonValue& params) {
     auto& dm = engine.getDeviceManager();
     const auto o = paramsObject(params);
+    // B2: the TRACK_LIST the stable-id track resolution reads (the ONE shared
+    // rule in common/StableRefResolve.h; moveTrack/getTrackSends precedent).
+    const juce::ValueTree trackList = engine.getProjectModel().getTrackListTree();
 
     if (m == "verifyTone") {
         // ToneVerity (Phase 2): the RPC twin of the MCP `tone_verity` tool —
         // SAME builder (buildToneVerityPayload) so the surfaces cannot drift.
-        int trackIndex;
-        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
-            return makeError(-32602, "trackIndex required");
+        int trackIndex; DispatchResult err;
+        if (!trackIndexArg(o, trackList, trackIndex, &err,
+                           HDAW::StableRefKeys{"trackIndex", "trackID"}))
+            return err;
         const double nan = std::numeric_limits<double>::quiet_NaN();
         const auto num = [&](const char* k) {
             return o.contains(k) && o.value(k).isDouble() ? o.value(k).toDouble() : nan;
@@ -349,9 +353,10 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
     // of trusting the immediate capturedToTree=0: a deferred capture completes after
     // the call returns. READ-ONLY.
     if (m == "getFxCaptureStatus") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         auto slotTree = engine.getProjectModel().getTrackListTree()
             .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
         if (!slotTree.isValid()) return makeError(-32602, "slot not found in tree");
@@ -364,9 +369,10 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
 
     // FX A/B comparison: capture/swap plugin state snapshots.
     if (m == "captureFxSnapshot") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         auto* proc = engine.getMainProcessor();
         if (!proc) return makeError(-32603, "audio engine not initialized");
         auto* track = proc->getTrack(ti);
@@ -385,9 +391,10 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         return { false, QJsonValue::Null };
     }
     if (m == "swapFxSnapshot") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         auto* proc = engine.getMainProcessor();
         if (!proc) return makeError(-32603, "audio engine not initialized");
         auto* track = proc->getTrack(ti);
@@ -443,9 +450,9 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         // Argument names mirror the MCP tool EXACTLY (AGENTS.md): trackId,
         // slotIndex, filePath, voiceIndex. (The pre-fix route's trackIndex
         // spelling predated the parity rule; the tool's trackId wins.)
-        int ti, si;
-        if (!requireInt(o, "trackId", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackId and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err) || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackId and slotIndex required");
 
         std::string filePath;
         if (!requireString(o, "filePath", filePath, nullptr))
@@ -468,13 +475,47 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         // src/common/FmPatchLoad.h) -> ProjectCommands::setFmPatch, so the
         // patch persists to the slot tree (fmPatchData) and answers
         // byte-identical text on both surfaces. The tool's key is trackId;
-        // this surface's historical key is trackIndex (read.getWaveformPeaks
-        // precedent: trackIndex/trackId read side by side).
-        int ti = optInt(o, "trackIndex", -1, nullptr);
-        if (ti < 0 && o.contains("trackId")) ti = o.value("trackId").toInt(-1);
-        int si;
-        if (ti < 0 || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        // this surface's historical key is trackIndex — and its pre-B2b read
+        // accepted BOTH spellings side by side.
+        // B2b split: with the stable `trackID` the ONE shared rule
+        // (common/StableRefResolve.h) resolves strictly (id wins; unknown /
+        // disagreement name themselves, spelling-preserving). WITHOUT
+        // `trackID` the read is BYTE-FOR-BYTE the pre-B2b dual-read —
+        // `trackIndex` first, `trackId` the fallback the tool's spelling
+        // needs — and the combined gate keeps its text and precedence.
+        int ti, si;
+        if (o.contains("trackID")) {
+            // The positional half keeps the dual acceptance; the disagreement
+            // text names whichever spelling supplied the number (a
+            // `trackId`-spelled call then sees the MCP twin's exact text).
+            int index = HDAW::kNoRef, stableID = 0;
+            HDAW::StableRefKeys keys{ "trackIndex", "trackID" };
+            if (o.contains("trackIndex")) {
+                if (!o.value("trackIndex").isDouble())
+                    return makeError(-32602, "missing or non-numeric param: trackIndex");
+                index = static_cast<int>(o.value("trackIndex").toDouble());
+            }
+            if (index < 0 && o.contains("trackId")) {
+                if (!o.value("trackId").isDouble())
+                    return makeError(-32602, "missing or non-numeric param: trackId");
+                index = static_cast<int>(o.value("trackId").toDouble());
+                keys = HDAW::StableRefKeys{ "trackId", "trackID" };
+            }
+            if (!o.value("trackID").isDouble())
+                return makeError(-32602, "missing or non-numeric param: trackID");
+            stableID = static_cast<int>(o.value("trackID").toDouble());
+            const auto ref = HDAW::resolveTrackRef(trackList, index, stableID, keys);
+            if (!ref.ok)
+                return makeError(-32602, QString::fromStdString(ref.error));
+            ti = ref.index;
+            if (!requireInt(o, "slotIndex", si, nullptr))
+                return makeError(-32602, "trackIndex and slotIndex required");
+        } else {
+            ti = optInt(o, "trackIndex", -1, nullptr);
+            if (ti < 0 && o.contains("trackId")) ti = o.value("trackId").toInt(-1);
+            if (ti < 0 || !requireInt(o, "slotIndex", si, nullptr))
+                return makeError(-32602, "trackIndex and slotIndex required");
+        }
 
         std::string hex;
         if (!requireString(o, "patchData", hex, nullptr) || hex.empty())
@@ -495,9 +536,9 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         // the shared entry point (src/common/PresetApply.h wraps the same
         // call for the tool), so slot-tree writes, live load and the payload
         // match by construction. Same key names as the tool.
-        int ti, si;
-        if (!requireInt(o, "trackId", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackId and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err) || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackId and slotIndex required");
         std::string filePath;
         if (!requireString(o, "filePath", filePath, nullptr))
             return makeError(-32602, "filePath required");
@@ -518,8 +559,18 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         // SAME body the tool runs). The whole argument object goes through,
         // so the tool's key contract (trackId/slotIndex/filePath/program/
         // bank/voiceIndex/channel/captureToTree) holds on both surfaces.
+        // B2: `trackId` (index) or the stable `trackID` — resolved by the ONE
+        // shared rule (common/StableRefResolve.h). The shared loader reads the
+        // POSITIONAL `trackId` off the argument object (PresetApply.h), so the
+        // resolved index is written back under that key.
+        QJsonObject args = o;
+        if (o.contains("trackId") || o.contains("trackID")) {
+            int i; DispatchResult err;
+            if (!trackIndexArg(o, trackList, i, &err)) return err;
+            args.insert("trackId", i);
+        }
         bool ok = false;
-        const auto text = HDAW::applyPresetToolText(engine, o, &ok);
+        const auto text = HDAW::applyPresetToolText(engine, args, &ok);
         if (!ok)
             return makeError(-32602, text);
         return { false, parseText(text) };
@@ -530,8 +581,18 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         // probe track/clip placement + the shared patch loaders
         // (HDAW::auditionPatchToolText, src/common/PresetApply.h — the SAME
         // body the tool runs; path/engine/role/root/trackId keys intact).
+        // B2: same ONE rule; `trackId` is OPTIONAL here (absent means the
+        // loader creates its own probe track), so resolution runs only when a
+        // key is present, and the resolved index is written back under the
+        // positional `trackId` the shared loader reads (PresetApply.h).
+        QJsonObject args = o;
+        if (o.contains("trackId") || o.contains("trackID")) {
+            int i; DispatchResult err;
+            if (!trackIndexArg(o, trackList, i, &err)) return err;
+            args.insert("trackId", i);
+        }
         bool ok = false;
-        const auto text = HDAW::auditionPatchToolText(engine, o, &ok);
+        const auto text = HDAW::auditionPatchToolText(engine, args, &ok);
         if (!ok)
             return makeError(-32602, text);
         return { false, parseText(text) };

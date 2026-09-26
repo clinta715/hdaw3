@@ -14,8 +14,16 @@
 #include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
 #include "model/ProjectModel.h"
+#include "shared_engine_fixture.h"
 
 #include <juce_data_structures/juce_data_structures.h>
+
+// One shared engine per process (see shared_engine_fixture.h); the engine stays
+// initialize()d for the whole binary, so the source->ghost propagation
+// listeners (guarded on mainProcessor != nullptr) stay live across tests.
+// Each suite keeps its own fixture class so --gtest_filter=<Suite>.* is unchanged.
+class GhostClips : public hdaw_test::SharedEngineSuite {};
+class PaintClips : public hdaw_test::SharedEngineSuite {};
 
 namespace {
 
@@ -55,10 +63,8 @@ int rawNoteCount(AudioEngine& engine, int clipId)
 
 // ─── createGhostClip: basic creation & metadata ────────────────────────
 
-TEST(GhostClips, CreateGhostSetsMetadata)
+TEST_F(GhostClips, CreateGhostSetsMetadata)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
@@ -77,18 +83,14 @@ TEST(GhostClips, CreateGhostSetsMetadata)
     EXPECT_DOUBLE_EQ(ghost.startBeat, 8.0);
 }
 
-TEST(GhostClips, CreateGhostFromInvalidSourceReturnsNegOne)
+TEST_F(GhostClips, CreateGhostFromInvalidSourceReturnsNegOne)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     EXPECT_EQ(cmds.createGhostClip(99999, 4.0, 0), -1);
 }
 
-TEST(GhostClips, CreateGhostOnInvalidTrackReturnsNegOne)
+TEST_F(GhostClips, CreateGhostOnInvalidTrackReturnsNegOne)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
@@ -99,10 +101,8 @@ TEST(GhostClips, CreateGhostOnInvalidTrackReturnsNegOne)
 // ─── createGhostClip: ghost-of-ghost chain is flattened to root ────────
 // Per spec §2.6: a ghost of a ghost points at the root source, depth ≤ 1.
 
-TEST(GhostClips, GhostOfGhostResolvesToRoot)
+TEST_F(GhostClips, GhostOfGhostResolvesToRoot)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -120,10 +120,8 @@ TEST(GhostClips, GhostOfGhostResolvesToRoot)
 
 // ─── Content properties are deep-copied at creation ────────────────────
 
-TEST(GhostClips, GhostInheritsContentProperties)
+TEST_F(GhostClips, GhostInheritsContentProperties)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -141,10 +139,8 @@ TEST(GhostClips, GhostInheritsContentProperties)
     EXPECT_TRUE(ghost.looping);
 }
 
-TEST(GhostClips, GhostMidiNotesCopiedWithFreshIds)
+TEST_F(GhostClips, GhostMidiNotesCopiedWithFreshIds)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -172,10 +168,8 @@ TEST(GhostClips, GhostMidiNotesCopiedWithFreshIds)
 // Spec §2.3: changing a propagated content property on the source pushes
 // the same value to every ghost.
 
-TEST(GhostClips, PropagateGainChangeToGhosts)
+TEST_F(GhostClips, PropagateGainChangeToGhosts)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
@@ -192,10 +186,8 @@ TEST(GhostClips, PropagateGainChangeToGhosts)
     EXPECT_FLOAT_EQ(static_cast<float>(requireClip(engine, g2).gain), 0.25f);
 }
 
-TEST(GhostClips, PropagateFadeInChangeToGhosts)
+TEST_F(GhostClips, PropagateFadeInChangeToGhosts)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -211,10 +203,8 @@ TEST(GhostClips, PropagateFadeInChangeToGhosts)
 // Non-propagated properties (per spec §2.3: startTime, duration, name)
 // must NOT bleed across the source→ghost boundary.
 
-TEST(GhostClips, DoNotPropagateStartTime)
+TEST_F(GhostClips, DoNotPropagateStartTime)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -232,10 +222,8 @@ TEST(GhostClips, DoNotPropagateStartTime)
 // Edits originating ON a ghost must not bounce back to the source or to
 // sibling ghosts (re-entrancy guard: isPropagating_).
 
-TEST(GhostClips, GhostEditsDoNotPropagate)
+TEST_F(GhostClips, GhostEditsDoNotPropagate)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -255,10 +243,8 @@ TEST(GhostClips, GhostEditsDoNotPropagate)
 
 // ─── MIDI note propagation (spec §2.4) ─────────────────────────────────
 
-TEST(GhostClips, NewNoteOnSourcePropagatesToGhosts)
+TEST_F(GhostClips, NewNoteOnSourcePropagatesToGhosts)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -278,10 +264,8 @@ TEST(GhostClips, NewNoteOnSourcePropagatesToGhosts)
 // Removing a note from the source should remove the matching note from
 // ghosts. The implementation matches by noteID (see AudioEngine.cpp
 // valueTreeChildRemoved). This test pins down the current contract.
-TEST(GhostClips, RemoveNoteOnSourcePropagatesToGhosts)
+TEST_F(GhostClips, RemoveNoteOnSourcePropagatesToGhosts)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -307,10 +291,8 @@ TEST(GhostClips, RemoveNoteOnSourcePropagatesToGhosts)
 
 // ─── Deletion propagation (spec §2.5) ──────────────────────────────────
 
-TEST(GhostClips, DeletingSourceRemovesAllGhosts)
+TEST_F(GhostClips, DeletingSourceRemovesAllGhosts)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
@@ -337,10 +319,8 @@ TEST(GhostClips, DeletingSourceRemovesAllGhosts)
     EXPECT_NE(std::find(remaining.begin(), remaining.end(), other), remaining.end());
 }
 
-TEST(GhostClips, DeletingGhostLeavesSourceAndSiblings)
+TEST_F(GhostClips, DeletingGhostLeavesSourceAndSiblings)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -364,10 +344,8 @@ TEST(GhostClips, DeletingGhostLeavesSourceAndSiblings)
 
 // ─── paintClips ────────────────────────────────────────────────────────
 
-TEST(PaintClips, SingleSourceTilesEndToEnd)
+TEST_F(PaintClips, SingleSourceTilesEndToEnd)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -389,10 +367,8 @@ TEST(PaintClips, SingleSourceTilesEndToEnd)
     }
 }
 
-TEST(PaintClips, MultipleSourcesTileAsGroup)
+TEST_F(PaintClips, MultipleSourcesTileAsGroup)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -418,30 +394,24 @@ TEST(PaintClips, MultipleSourcesTileAsGroup)
         EXPECT_TRUE(c.isGhost);
 }
 
-TEST(PaintClips, ZeroCountReturnsEmpty)
+TEST_F(PaintClips, ZeroCountReturnsEmpty)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Src");
     auto ids = cmds.paintClips({ srcId }, 0.0, 4.0, 0, 0);
     EXPECT_TRUE(ids.empty());
 }
 
-TEST(PaintClips, InvalidTrackReturnsEmpty)
+TEST_F(PaintClips, InvalidTrackReturnsEmpty)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Src");
     auto ids = cmds.paintClips({ srcId }, 0.0, 4.0, 999, 3);
     EXPECT_TRUE(ids.empty());
 }
 
-TEST(PaintClips, PaintedGhostsInheritNotes)
+TEST_F(PaintClips, PaintedGhostsInheritNotes)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -461,10 +431,8 @@ TEST(PaintClips, PaintedGhostsInheritNotes)
 // ─── Undo ──────────────────────────────────────────────────────────────
 // All mutations flow through the UndoManager, so Ctrl+Z must roll them back.
 
-TEST(GhostClips, UndoCreateGhostClip)
+TEST_F(GhostClips, UndoCreateGhostClip)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 
@@ -485,10 +453,8 @@ TEST(GhostClips, UndoCreateGhostClip)
     EXPECT_TRUE(found);
 }
 
-TEST(PaintClips, UndoPaintRollsBackAllTiles)
+TEST_F(PaintClips, UndoPaintRollsBackAllTiles)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track");
 

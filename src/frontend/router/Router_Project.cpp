@@ -478,10 +478,16 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     if (m == "setMidiNoteRecordArmed") { bool b; if (!requireBool(o, "armed", b, nullptr)) return makeError(-32602, "armed required"); c.setMidiNoteRecordArmed(b); return { false, QJsonValue::Null }; }
 
     // --- FX ---
+    // B2b: every route here is the RPC twin of a B2b-adopted MCP tool
+    // (add_fx / remove_fx / set_fx_bypass / set_fx_param / clear_fx_param_overrides /
+    // restart_fx / the midi-fx tools), so the track argument is `trackIndex`
+    // (index, unchanged) OR the stable `trackID` — resolved by the ONE shared
+    // rule (common/StableRefResolve.h) with spelling-preserving keys. slotIndex
+    // / paramIndex stay POSITIONAL (they are not entities with stable ids).
     if (m == "addFxSlot") {
-        int i; std::string type; int pos; std::string pluginId;
-        if (!requireInt(o, "trackIndex", i, nullptr))
-            return makeError(-32602, "trackIndex required");
+        int i; std::string type; int pos; std::string pluginId; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}))
+            return err;
         // Accept either `type` (canonical) or `fxType` (frontend spelling) for
         // the FX-type string. Accept either `position` (canonical) or
         // `slotIndex` (frontend spelling) for the insertion index; default
@@ -503,9 +509,9 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         return { false, QJsonValue::Null };
     }
     if (m == "addMidiFxSlot") {
-        int i; std::string type; int pos = -1;
-        if (!requireInt(o, "trackIndex", i, nullptr))
-            return makeError(-32602, "trackIndex required");
+        int i; std::string type; int pos = -1; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}))
+            return err;
         if (o.contains("type") && o.value("type").isString())
             type = o.value("type").toString().toStdString();
         else if (o.contains("fxType") && o.value("fxType").isString())
@@ -517,23 +523,25 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         c.addMidiFxSlot(i, type, pos);
         return { false, QJsonValue::Null };
     }
-    if (m == "removeMidiFxSlot")    { int i, s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)) return makeError(-32602, "trackIndex and slotIndex required"); c.removeMidiFxSlot(i, s); return { false, QJsonValue::Null }; }
-    if (m == "setMidiFxSlotBypassed") { int i, s; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setMidiFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
+    if (m == "removeMidiFxSlot")    { int i, s; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required"); c.removeMidiFxSlot(i, s); return { false, QJsonValue::Null }; }
+    if (m == "setMidiFxSlotBypassed") { int i, s; bool b; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setMidiFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
     if (m == "setMidiFxSlotParam") {
-        int i, s; std::string paramName; double v;
-        if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)
+        int i, s; std::string paramName; double v; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", s, nullptr)
             || !requireString(o, "paramName", paramName, nullptr) || !requireDouble(o, "value", v, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex, paramName, value required");
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, paramName, value required");
         c.setMidiFxSlotParam(i, s, paramName, v);
         return { false, QJsonValue::Null };
     }
-    if (m == "removeFxSlot")        { int i, s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)) return makeError(-32602, "trackIndex and slotIndex required"); c.removeFxSlot(i, s); return { false, QJsonValue::Null }; }
-    if (m == "setFxSlotBypassed")   { int i, s; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
-    if (m == "setFxSlotParam")      { int i, s, p; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireInt(o, "paramIndex", p, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, slotIndex, paramIndex, value required"); c.setFxSlotParam(i, s, p, v); return { false, QJsonValue::Null }; }
+    if (m == "removeFxSlot")        { int i, s; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required"); c.removeFxSlot(i, s); return { false, QJsonValue::Null }; }
+    if (m == "setFxSlotBypassed")   { int i, s; bool b; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
+    if (m == "setFxSlotParam")      { int i, s, p; float v; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr) || !requireInt(o, "paramIndex", p, nullptr) || !requireFloat(o, "value", v, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, paramIndex, value required"); c.setFxSlotParam(i, s, p, v); return { false, QJsonValue::Null }; }
     if (m == "clearPluginParamOverrides") {
-        int i, s;
-        if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int i, s; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", s, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         const int removed = c.clearPluginParamOverrides(i, s);
         if (removed < 0) return makeError(-32602, "slot not found");
         return { false, QJsonObject{ { "removed", removed } } };
@@ -590,17 +598,24 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         c.setFxSlotPlugin(i, s, fxType, pluginID, fmt, path); return { false, QJsonValue::Null };
     }
     if (m == "respawnPlugin") {
-        int i, s;
-        if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int i, s; DispatchResult err;
+        // B2b: `trackIndex` or the stable `trackID` — the ONE shared rule
+        // (keys mirror the MCP restart_fx tool, which spells it trackIndex).
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", s, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         c.respawnFxSlot(i, s);
         return { false, QJsonValue::Null };
     }
     // --- FX chain presets (plan 2026-09-02-fx-chain-presets, Task 3) ---
+    // B2b: the track argument is `trackIndex` (index, unchanged) OR the stable
+    // `trackID` — the ONE shared rule (common/StableRefResolve.h), keys
+    // spelling-preserving against the save_fx_chain / load_fx_chain tools.
     if (m == "saveFxChainPreset") {
-        int i; std::string name;
-        if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "name", name, nullptr))
-            return makeError(-32602, "trackIndex and name required");
+        int i; std::string name; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireString(o, "name", name, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and name required");
         // exportFxChain returns an empty preset for an out-of-range index,
         // which would save a 0-slot junk file as success. Reject both bounds
         // here: getTrackCount() < 0 means unknown (skip upper-bound check).
@@ -629,9 +644,9 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         return { false, arr };
     }
     if (m == "loadFxChainPreset") {
-        int i;
-        if (!requireInt(o, "trackIndex", i, nullptr))
-            return makeError(-32602, "trackIndex required");
+        int i; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}))
+            return err;
         bool hasId = o.contains("id") && o.value("id").isString();
         bool hasName = o.contains("name") && o.value("name").isString();
         if (!hasId && !hasName)
@@ -688,12 +703,39 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     }
 
     // --- Automation ---
-    if (m == "addAutomationLane")       { int i; std::string lane; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", lane, nullptr)) return makeError(-32602, "trackIndex and laneName required"); int paramID = optInt(o, "paramID", 0, nullptr); bool replace = optBool(o, "replace", false, nullptr); if (!c.addAutomationLane(i, lane, paramID, replace)) return makeError(-32602, "lane name or paramID already exists"); return { false, QJsonValue::Null }; }
-    if (m == "removeAutomationLane")    { int i; std::string lane; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", lane, nullptr)) return makeError(-32602, "trackIndex and laneName required"); c.removeAutomationLane(i, lane); return { false, QJsonValue::Null }; }
-    if (m == "addAutomationPoint")      { int i; std::string lane; double t; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, lane, time, value required"); c.addAutomationPoint(i, lane, t, v); return { false, QJsonValue::Null }; }
+    // B2b: these are the RPC twins of B2b-adopted MCP tools (add_automation_lane /
+    // add_automation_point / remove_automation_lane / set_automation_enabled /
+    // set_fader_authoritative), so the track argument is `trackIndex` (index,
+    // unchanged) OR the stable `trackID` — the ONE shared rule
+    // (common/StableRefResolve.h), spelling-preserving keys. Routes with no MCP
+    // twin (removeAutomationPoint / setAutomationPointValue / setAutomationMode)
+    // stay positional — the read.getTrack precedent for route-only methods.
+    if (m == "addAutomationLane")       { int i; std::string lane; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "laneName", lane, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and laneName required"); int paramID = optInt(o, "paramID", 0, nullptr); bool replace = optBool(o, "replace", false, nullptr); if (!c.addAutomationLane(i, lane, paramID, replace)) return makeError(-32602, "lane name or paramID already exists"); return { false, QJsonValue::Null }; }
+    if (m == "removeAutomationLane")    { int i; std::string lane; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "laneName", lane, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and laneName required"); c.removeAutomationLane(i, lane); return { false, QJsonValue::Null }; }
+    if (m == "addAutomationPoint")      { int i; std::string lane; double t; float v; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireFloat(o, "value", v, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, lane, time, value required"); c.addAutomationPoint(i, lane, t, v); return { false, QJsonValue::Null }; }
     if (m == "removeAutomationPoint")   { int i; std::string lane; double t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr)) return makeError(-32602, "trackIndex, lane, time required"); c.removeAutomationPoint(i, lane, t); return { false, QJsonValue::Null }; }
-    if (m == "setAutomationEnabled")    { int i; std::string lane; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "lane", lane, nullptr) || !requireBool(o, "enabled", b, nullptr)) return makeError(-32602, "trackIndex, lane, enabled required"); c.setAutomationEnabled(i, lane, b); return { false, QJsonValue::Null }; }
-    if (m == "setFaderAuthoritative") { int i; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "authoritative", b, nullptr)) return makeError(-32602, "trackIndex, authoritative required"); c.setFaderAuthoritative(i, b); return { false, QJsonValue::Null }; }
+    if (m == "setAutomationEnabled")    { int i; std::string lane; bool b; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "lane", lane, nullptr) || !requireBool(o, "enabled", b, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, lane, enabled required"); c.setAutomationEnabled(i, lane, b); return { false, QJsonValue::Null }; }
+    if (m == "setFaderAuthoritative") {
+        int i; bool b;
+        if (!requireBool(o, "authoritative", b, nullptr))
+            return makeError(-32602, "trackIndex, authoritative required");
+        // The all-tracks wildcard (`trackIndex -1` / absent = every track)
+        // survives as the no-argument shape — exactly the set_fader_authoritative
+        // tool's rule: the shared resolver treats index<0 as "no positional
+        // argument", so the sentinel is applied when NEITHER key names a track.
+        const int rawIndex = o.contains("trackIndex")
+            ? o.value("trackIndex").toInt(HDAW::kNoRef) : HDAW::kNoRef;
+        if (rawIndex < 0 && !o.contains("trackID"))
+        {
+            c.setFaderAuthoritative(-1, b);
+            return { false, QJsonValue::Null };
+        }
+        DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}))
+            return err;
+        c.setFaderAuthoritative(i, b);
+        return { false, QJsonValue::Null };
+    }
     if (m == "setAutomationPointValue") { int i; std::string lane; double t; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, lane, time, value required"); c.setAutomationPointValue(i, lane, t, v); return { false, QJsonValue::Null }; }
     if (m == "setAutomationMode")       { int i; std::string ln, md; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", ln, nullptr) || !requireString(o, "mode", md, nullptr)) return makeError(-32602, "trackIndex, laneName, mode required"); c.setAutomationMode(i, ln, md); return { false, QJsonValue::Null }; }
     if (m == "notifyAutomationTouch")   { int i, pid; bool t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "paramID", pid, nullptr) || !requireBool(o, "touching", t, nullptr)) return makeError(-32602, "trackIndex, paramID, touching required"); c.notifyAutomationTouch(i, pid, t); return { false, QJsonValue::Null }; }
@@ -712,7 +754,9 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     }
     if (m == "applyMovementPlan") {
         bool ok = false;
-        const QString text = HDAW::applyMovementPlanToolText(c, o, &ok);
+        // B2b: per-event `trackId` / `trackID` resolution needs the TRACK_LIST
+        // (the ONE shared rule, inside the shared helper).
+        const QString text = HDAW::applyMovementPlanToolText(c, trackList, o, &ok);
         if (! ok) return makeError(-32602, text);
         return { false, QJsonDocument::fromJson(text.toUtf8()).object() };
     }

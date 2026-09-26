@@ -27,6 +27,7 @@
 #include <QString>
 
 #include "engine/AudioEngine.h"
+#include "engine/PsyFmState.h"   // B2b: decodeRoutes for the psy_fm matrix seam
 #include "frontend/FrontendRouter.h"
 #include "common/TrackIdRefs.h"   // design B3: stable-id folder refs
 #include "mcp/McpServer.h"
@@ -94,6 +95,24 @@ protected:
         return frontend::dispatch(*engine, method, args);
     }
 
+    // Tool payloads are compact JSON text on success and a bare message on
+    // failure, so dispatch on the parsed root exactly like the MCP client does
+    // (bus_send_rpc_test's shape).
+    QJsonValue mcpValue(const QString& tool, const QJsonObject& args) {
+        const QString text = mcpText(tool, args);
+        const QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8());
+        if (doc.isArray()) return QJsonValue(doc.array());
+        if (doc.isObject()) return QJsonValue(doc.object());
+        return QJsonValue(text);
+    }
+    QJsonValue rpcPayload(const QString& method, const QJsonObject& args) {
+        const auto r = rpc(method, args);
+        EXPECT_FALSE(r.isError)
+            << "RPC " << method.toStdString() << " errored: "
+            << r.payload.toObject().value("message").toString().toStdString();
+        return r.payload;
+    }
+
     // A failing pair: both surfaces must report the same code and the same
     // text (copied from bus_send_rpc_test.cpp so this TU stays self-contained).
     void expectSameFailure(const QString& tool, const QString& method,
@@ -106,6 +125,57 @@ protected:
         EXPECT_FALSE(mcpMessage.isEmpty()) << "a failure must carry a reason";
         EXPECT_EQ(rpcMessage, mcpMessage);
         EXPECT_EQ(r.payload.toObject().value("code").toInt(), -32602);
+    }
+
+    // The B2b disagreement on a SPELLING-SPLIT twin. The tools read `trackId`
+    // and the fx/automation/plugin-family routes read `trackIndex`
+    // (spelling-preserving keys — each surface keeps its own historical
+    // positional name, Router_Project.cpp's "spelling-preserving" note), so
+    // the ONE resolver template words the two failures with different keys and
+    // a shared argument object cannot even express the same request on both
+    // surfaces. Each surface gets its OWN object and its own exact text — the
+    // shared rule verbatim, one spelling per surface — and neither mutates.
+    void expectDisagreementSpelled(const QString& tool, const QString& method,
+                                   const QJsonObject& toolArgs, const QJsonObject& routeArgs,
+                                   const char* toolIndexKey, const char* routeIndexKey,
+                                   int positional, int stableID) {
+        const auto r = rpc(method, routeArgs);
+        ASSERT_TRUE(r.isError) << "expected " << method.toStdString() << " to fail";
+        EXPECT_EQ(r.payload.toObject().value("code").toInt(), -32602);
+        EXPECT_EQ(r.payload.toObject().value("message").toString().toStdString(),
+                  std::string(routeIndexKey) + " " + std::to_string(positional)
+                      + " and trackID " + std::to_string(stableID) + " disagree");
+        EXPECT_TRUE(mcpIsError(tool, toolArgs)) << "expected " << tool.toStdString() << " to fail";
+        EXPECT_EQ(mcpText(tool, toolArgs).toStdString(),
+                  std::string(toolIndexKey) + " " + std::to_string(positional)
+                      + " and trackID " + std::to_string(stableID) + " disagree");
+    }
+
+    // The seeded pair every B2b family test drives: the fixture's track 0
+    // ("Track") is the DECOY and track 1 ("Target") is the id's track, so an
+    // id a surface silently ignored and defaulted to index 0 would write to
+    // the decoy and fail the untouched-decoy assertions below.
+    struct TwoTracks { int decoyIdx = 0, targetIdx = 1, decoyID = 0, targetID = 0; };
+    TwoTracks seedTargetAndDecoy() {
+        auto& cmds = engine->getProjectCommands();
+        TwoTracks t;
+        t.targetIdx = cmds.addTrack("Target");
+        EXPECT_EQ(t.targetIdx, 1);
+        engine->drainPendingRoutingRebuild();
+        const auto tl = engine->getProjectModel().getTrackListTree();
+        t.decoyID = static_cast<int>(tl.getChild(t.decoyIdx).getProperty(IDs::trackID, 0));
+        t.targetID = static_cast<int>(tl.getChild(t.targetIdx).getProperty(IDs::trackID, 0));
+        EXPECT_GT(t.decoyID, 0);
+        EXPECT_GT(t.targetID, 0);
+        EXPECT_NE(t.decoyID, t.targetID);
+        return t;
+    }
+
+    // An FX slot's persisted tree node (the source of truth the ReadModel
+    // projects and rebuildFXChain restores).
+    juce::ValueTree fxSlotNode(int trackIdx, int slotIdx) {
+        return engine->getProjectModel().getTrackListTree()
+            .getChild(trackIdx).getChildWithName(IDs::FX_CHAIN).getChild(slotIdx);
     }
 
     // A rejected add_fx must leave NOTHING behind — the old bug reported
@@ -806,5 +876,598 @@ TEST_F(AddFxParityTest, FolderMoveAcceptsStableIds) {
         << "a refused folder move must not re-parent the child";
 }
 
+// ═══ B2b: the stable id across the fx / automation / plugin families ═══════
+// The scope B2 cut (common/StableRefResolve.h's post-B2b note): every tool and
+// RPC twin that addresses a track now parses it through the ONE shared rule —
+// `trackID` wins, an unknown id errors naming it, and a positional argument
+// naming a DIFFERENT entity errors naming both. One test per family, each on
+// BOTH surfaces (the MCP tool and its rpc_parity_map twin), on a seeded pair
+// where track 1 is the id's track and track 0 the decoy:
+//   (a) id-only `{trackID}` — no positional key — drives the RIGHT track's
+//       slot / lane / state and the decoy stays untouched (asserted on the
+//       resulting state, never "the call returned");
+//   (b) `{trackID: 4242}` — `unknown trackID 4242`, byte-identical on both;
+//   (c) `{trackId/trackIndex: 0, trackID: <other id>}` — the disagreement,
+//       nothing mutated. The tools word it `trackId …` (their own positional
+//       spelling); the fx / automation / plugin-family ROUTES spell the
+//       positional key `trackIndex` (spelling-preserving keys), so on those
+//       twins each surface's exact text is pinned separately — one resolver
+//       template, one spelling per surface. Twins that resolve through the
+//       shared helpers or default keys (fm_synth, matrix, automation_preset /
+//       movement plan) keep the byte-identical expectSameFailure.
+
+// ─── fx slot: set_fx_bypass ↔ project.setFxSlotBypassed ────────────────────
+TEST_F(AddFxParityTest, StableTrackIdDrivesFxSlotBypassOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    // One eq slot per track (positional setup), so the id has to pick.
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.decoyIdx }, { "fxType", "eq" } })
+                    .startsWith("slot="));
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "eq" } })
+                    .startsWith("slot="));
+
+    // (a) id-only tool: the TARGET's slot flips, the decoy's does not.
+    const QJsonObject toolById{ { "trackID", t.targetID }, { "slotIndex", 0 }, { "bypassed", true } };
+    EXPECT_FALSE(mcpIsError("set_fx_bypass", toolById))
+        << mcpText("set_fx_bypass", toolById).toStdString();
+    EXPECT_TRUE(engine->getReadModel().getFxSlots(t.targetIdx)[0].bypassed);
+    EXPECT_FALSE(engine->getReadModel().getFxSlots(t.decoyIdx)[0].bypassed)
+        << "the decoy must stay untouched";
+
+    // …and id-only on the route: the same id's slot flips back.
+    EXPECT_FALSE(rpc("project.setFxSlotBypassed",
+                     QJsonObject{ { "trackID", t.targetID }, { "slotIndex", 0 },
+                                  { "bypassed", false } }).isError);
+    EXPECT_FALSE(engine->getReadModel().getFxSlots(t.targetIdx)[0].bypassed);
+    EXPECT_FALSE(engine->getReadModel().getFxSlots(t.decoyIdx)[0].bypassed);
+
+    // (b) unknown id: one text on both surfaces (the stable spelling is
+    // `trackID` everywhere, so the text is spelling-independent).
+    const QJsonObject unknown{ { "trackID", 4242 }, { "slotIndex", 0 }, { "bypassed", true } };
+    expectSameFailure("set_fx_bypass", "project.setFxSlotBypassed", unknown);
+    EXPECT_EQ(mcpText("set_fx_bypass", unknown).toStdString(), "unknown trackID 4242");
+
+    // (c) disagreement: positional 0 (the decoy) vs the target's id.
+    expectDisagreementSpelled("set_fx_bypass", "project.setFxSlotBypassed",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 }, { "bypassed", true } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 }, { "bypassed", true } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    EXPECT_FALSE(engine->getReadModel().getFxSlots(t.decoyIdx)[0].bypassed)
+        << "a refusal must not fall back to the positional track";
+    EXPECT_FALSE(engine->getReadModel().getFxSlots(t.targetIdx)[0].bypassed);
+}
+
+// ─── automation: add_automation_point ↔ project.addAutomationPoint ─────────
+TEST_F(AddFxParityTest, StableTrackIdDrivesAutomationPointsOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_TRUE(cmds.addAutomationLane(t.decoyIdx, "Pre", 2000));
+    ASSERT_TRUE(cmds.addAutomationLane(t.targetIdx, "Pre", 2000));
+    engine->drainPendingRoutingRebuild();
+    auto points = [&](int track) {
+        return engine->getReadModel().getAutomationPoints(track, "Pre");
+    };
+    ASSERT_TRUE(points(t.decoyIdx).empty());
+    ASSERT_TRUE(points(t.targetIdx).empty());
+
+    // (a) id-only tool: the point lands on the id's OWN lane…
+    const QJsonObject toolById{ { "trackID", t.targetID }, { "lane", "Pre" },
+                                { "time", 1.0 }, { "value", 0.5 } };
+    EXPECT_FALSE(mcpIsError("add_automation_point", toolById))
+        << mcpText("add_automation_point", toolById).toStdString();
+    EXPECT_EQ(points(t.targetIdx).size(), 1u);
+    EXPECT_TRUE(points(t.decoyIdx).empty()) << "the decoy's lane must stay empty";
+
+    // …and id-only on the route: a second point on the same id's lane.
+    EXPECT_FALSE(rpc("project.addAutomationPoint",
+                     QJsonObject{ { "trackID", t.targetID }, { "lane", "Pre" },
+                                  { "time", 2.0 }, { "value", 0.25 } }).isError);
+    EXPECT_EQ(points(t.targetIdx).size(), 2u);
+    EXPECT_TRUE(points(t.decoyIdx).empty());
+
+    // (b) unknown id: identical text.
+    const QJsonObject unknown{ { "trackID", 4242 }, { "lane", "Pre" },
+                               { "time", 1.0 }, { "value", 0.5 } };
+    expectSameFailure("add_automation_point", "project.addAutomationPoint", unknown);
+    EXPECT_EQ(mcpText("add_automation_point", unknown).toStdString(), "unknown trackID 4242");
+
+    // (c) disagreement on each surface's own positional spelling; no mutation.
+    expectDisagreementSpelled("add_automation_point", "project.addAutomationPoint",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "lane", "Pre" }, { "time", 3.0 }, { "value", 0.75 } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "lane", "Pre" }, { "time", 3.0 }, { "value", 0.75 } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    EXPECT_EQ(points(t.targetIdx).size(), 2u);
+    EXPECT_TRUE(points(t.decoyIdx).empty());
+}
+
+// ─── automation preset / movement plan: the SHARED entry points ────────────
+// automation_preset ↔ project.applyAutomationPreset and apply_movement_plan ↔
+// project.applyMovementPlan both resolve the ref INSIDE the one shared helper
+// (src/common/AutomationPresetRequest.h / MovementPlanJson.h) with the DEFAULT
+// keys, so (b) and (c) are byte-identical on both surfaces — and the success
+// path is cheap here (a lane + a named preset), so (a) is pinned too.
+TEST_F(AddFxParityTest, StableTrackIdDrivesAutomationPresetAndPlanOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_TRUE(cmds.addAutomationLane(t.decoyIdx, "Pre", 2000));
+    ASSERT_TRUE(cmds.addAutomationLane(t.targetIdx, "Pre", 2000));
+    engine->drainPendingRoutingRebuild();
+    auto points = [&](int track) {
+        return engine->getReadModel().getAutomationPoints(track, "Pre");
+    };
+
+    // (a) automation_preset by id: the window's points land on the id's lane,
+    // and the two surfaces return the SAME payload (one shared entry point).
+    const QJsonObject presetById{ { "trackID", t.targetID }, { "lane", "Pre" },
+                                  { "preset", "pump" }, { "start", 0.0 }, { "end", 8.0 } };
+    const QJsonValue toolPreset = mcpValue("automation_preset", presetById);
+    ASSERT_TRUE(toolPreset.isObject())
+        << mcpText("automation_preset", presetById).toStdString();
+    EXPECT_GT(toolPreset.toObject().value("pointsAdded").toInt(), 0);
+    EXPECT_EQ(rpcPayload("project.applyAutomationPreset", presetById), toolPreset);
+    EXPECT_FALSE(points(t.targetIdx).empty());
+    EXPECT_TRUE(points(t.decoyIdx).empty()) << "the decoy's lane must stay empty";
+
+    // apply_movement_plan by id: the per-event ref resolves to the id's track.
+    const QJsonObject planById{ { "events", QJsonArray{ QJsonObject{
+        { "trackID", t.targetID }, { "preset", "macro" }, { "start", 8.0 }, { "end", 16.0 },
+        { "laneName", "Pre" }, { "paramID", 2000 } } } } };
+    const QJsonValue toolPlan = mcpValue("apply_movement_plan", planById);
+    ASSERT_TRUE(toolPlan.isObject())
+        << mcpText("apply_movement_plan", planById).toStdString();
+    EXPECT_EQ(toolPlan.toObject().value("okCount").toInt(), 1)
+        << mcpText("apply_movement_plan", planById).toStdString();
+    EXPECT_EQ(toolPlan.toObject().value("failCount").toInt(), 0);
+    EXPECT_EQ(rpcPayload("project.applyMovementPlan", planById), toolPlan);
+    EXPECT_TRUE(points(t.decoyIdx).empty()) << "the decoy's lane must stay empty";
+
+    // (b) unknown id — one text on both surfaces, the whole plan refused
+    // before anything is applied.
+    const QJsonObject presetUnknown{ { "trackID", 4242 }, { "lane", "Pre" },
+                                     { "preset", "pump" }, { "start", 0.0 }, { "end", 8.0 } };
+    expectSameFailure("automation_preset", "project.applyAutomationPreset", presetUnknown);
+    EXPECT_EQ(mcpText("automation_preset", presetUnknown).toStdString(), "unknown trackID 4242");
+    const QJsonObject planUnknown{ { "events", QJsonArray{ QJsonObject{
+        { "trackID", 4242 }, { "preset", "pump" } } } } };
+    expectSameFailure("apply_movement_plan", "project.applyMovementPlan", planUnknown);
+    EXPECT_EQ(mcpText("apply_movement_plan", planUnknown).toStdString(), "unknown trackID 4242");
+
+    // (c) disagreement — both surfaces word with the default `trackId`
+    // spelling, so the text is byte-identical here.
+    const QJsonObject presetClash{ { "trackId", 0 }, { "trackID", t.targetID }, { "lane", "Pre" },
+                                   { "preset", "pump" }, { "start", 0.0 }, { "end", 8.0 } };
+    expectSameFailure("automation_preset", "project.applyAutomationPreset", presetClash);
+    EXPECT_EQ(mcpText("automation_preset", presetClash).toStdString(),
+              "trackId 0 and trackID " + std::to_string(t.targetID) + " disagree");
+    const QJsonObject planClash{ { "events", QJsonArray{ QJsonObject{
+        { "trackId", 0 }, { "trackID", t.targetID }, { "preset", "pump" } } } } };
+    expectSameFailure("apply_movement_plan", "project.applyMovementPlan", planClash);
+    EXPECT_EQ(mcpText("apply_movement_plan", planClash).toStdString(),
+              "trackId 0 and trackID " + std::to_string(t.targetID) + " disagree");
+
+    // nothing mutated by the four refusals
+    EXPECT_GT(points(t.targetIdx).size(), 0u);
+    EXPECT_TRUE(points(t.decoyIdx).empty());
+}
+
+// ─── plugin params: set_fx_param / list_fx_params ↔ pluginParam.* ──────────
+// (b)+(c) on pluginParam.setParam / getParams (Router_Plugin) plus the
+// id-only read. The .clap extension fallback creates a pluginId-bearing slot
+// whose processor degrades to 'none', so the READ side works without any
+// plugin; the WRITE side (set_fx_param / pluginParam.setParam -> the
+// offline-replay override ledger) needs a LIVE plugin instance — on a
+// deviceless slot setPluginParam reports "slot is not a plugin slot" and
+// writes nothing (AudioEngineCommands_Fx's !slot->isPlugin() gate), so with no
+// CLAP children in this suite the write twins are pinned on (b)/(c) instead,
+// which is exactly the B2b contract under test (the shared track ref).
+TEST_F(AddFxParityTest, StableTrackIdDrivesPluginParamSurfacesOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    const QString pluginTarget = "C:/definitely/missing/hdaw_b2b_target.clap";
+    const QString pluginDecoy = "C:/definitely/missing/hdaw_b2b_decoy.clap";
+    // The decoy gets ONE placeholder plugin slot; the target gets an internal
+    // eq slot FIRST plus its own placeholder plugin slot — the two chains
+    // differ, so every read below can only come from the track the id names.
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.decoyIdx },
+                                               { "pluginId", pluginDecoy } })
+                    .startsWith("slot="));
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "eq" } })
+                    .startsWith("slot="));
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx },
+                                               { "pluginId", pluginTarget } })
+                    .startsWith("slot="));
+
+    // (a) id-only read: the tool projects the id's OWN slot 0 — the target's
+    // eq defs — while the decoy's slot 0 is the plugin placeholder (no live
+    // params), so a read that landed on the wrong track cannot pass.
+    const QJsonValue targetParams =
+        mcpValue("list_fx_params", QJsonObject{ { "trackID", t.targetID }, { "slotIndex", 0 } });
+    ASSERT_TRUE(targetParams.isObject())
+        << mcpText("list_fx_params", QJsonObject{ { "trackID", t.targetID }, { "slotIndex", 0 } })
+               .toStdString();
+    EXPECT_FALSE(targetParams.toObject().value("params").toArray().isEmpty())
+        << "the target's slot 0 is the eq — its params must be listed";
+    const QJsonValue decoyParams =
+        mcpValue("list_fx_params", QJsonObject{ { "trackID", t.decoyID }, { "slotIndex", 0 } });
+    ASSERT_TRUE(decoyParams.isObject());
+    EXPECT_TRUE(decoyParams.toObject().value("params").toArray().isEmpty())
+        << "the decoy's slot 0 is a plugin placeholder with no live params";
+
+    // id-only read on the route twin: accepted for both ids (a deviceless
+    // plugin slot has no live params — the payload is the empty array).
+    EXPECT_TRUE(rpcPayload("pluginParam.getParams",
+                           QJsonObject{ { "trackID", t.targetID }, { "pluginID", pluginTarget } })
+                    .isArray());
+    EXPECT_TRUE(rpcPayload("pluginParam.getParams",
+                           QJsonObject{ { "trackID", t.decoyID }, { "pluginID", pluginDecoy } })
+                    .isArray());
+
+    // The ledger is the write seam — and it stays EMPTY here by design (a
+    // deviceless placeholder slot cannot carry an override), which is also the
+    // "nothing mutated" baseline for (c) below.
+    EXPECT_TRUE(engine->getProjectCommands().getPluginParamOverrides(t.targetIdx, 1).empty())
+        << "nothing may land in the ledger without a live plugin";
+    EXPECT_TRUE(engine->getProjectCommands().getPluginParamOverrides(t.decoyIdx, 0).empty())
+        << "the decoy's slot must stay untouched";
+
+    // (b) unknown id: identical text on both surfaces (each resolves BEFORE
+    // its own pluginID / slotIndex argument).
+    const QJsonObject unknownRead{ { "trackID", 4242 }, { "slotIndex", 0 } };
+    expectSameFailure("list_fx_params", "pluginParam.getParams", unknownRead);
+    EXPECT_EQ(mcpText("list_fx_params", unknownRead).toStdString(), "unknown trackID 4242");
+    const QJsonObject unknownWrite{ { "trackID", 4242 }, { "slotIndex", 0 },
+                                    { "paramIndex", 0 }, { "value", 0.5 } };
+    expectSameFailure("set_fx_param", "pluginParam.setParam", unknownWrite);
+    EXPECT_EQ(mcpText("set_fx_param", unknownWrite).toStdString(), "unknown trackID 4242");
+
+    // (c) disagreement on each surface's own positional spelling; the ledgers
+    // are untouched (a refusal never falls back to track 0).
+    expectDisagreementSpelled("set_fx_param", "pluginParam.setParam",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 1 }, { "paramIndex", 0 }, { "value", 0.5 } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "pluginID", pluginTarget }, { "paramIndex", 0 },
+                                           { "normalizedValue", 0.5 } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    expectDisagreementSpelled("list_fx_params", "pluginParam.getParams",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "pluginID", pluginTarget } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    EXPECT_TRUE(engine->getProjectCommands().getPluginParamOverrides(t.targetIdx, 1).empty())
+        << "a refused write must not touch the ledger";
+    EXPECT_TRUE(engine->getProjectCommands().getPluginParamOverrides(t.decoyIdx, 0).empty());
+}
+
+// ─── sampler: set_sampler_mode ↔ sampler.setMode ───────────────────────────
+TEST_F(AddFxParityTest, StableTrackIdDrivesSamplerModeOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.decoyIdx }, { "fxType", "sampler" } })
+                    .startsWith("slot="));
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "sampler" } })
+                    .startsWith("slot="));
+    auto mode = [&](int track) {
+        return engine->getReadModel().getSamplerState(track, 0).mode;
+    };
+    ASSERT_EQ(mode(t.decoyIdx), "classic");
+    ASSERT_EQ(mode(t.targetIdx), "classic");
+
+    // (a) id-only tool: "slice" on the TARGET only…
+    const QJsonObject toolById{ { "trackID", t.targetID }, { "slotIndex", 0 }, { "mode", "slice" } };
+    EXPECT_FALSE(mcpIsError("set_sampler_mode", toolById))
+        << mcpText("set_sampler_mode", toolById).toStdString();
+    EXPECT_EQ(mode(t.targetIdx), "slice");
+    EXPECT_EQ(mode(t.decoyIdx), "classic") << "the decoy must stay untouched";
+
+    // …and id-only on the route: "one-shot" on the same id.
+    EXPECT_FALSE(rpc("sampler.setMode",
+                     QJsonObject{ { "trackID", t.targetID }, { "slotIndex", 0 },
+                                  { "mode", "one-shot" } }).isError);
+    EXPECT_EQ(mode(t.targetIdx), "one-shot");
+    EXPECT_EQ(mode(t.decoyIdx), "classic");
+
+    // (b) unknown id: identical text.
+    const QJsonObject unknown{ { "trackID", 4242 }, { "slotIndex", 0 }, { "mode", "classic" } };
+    expectSameFailure("set_sampler_mode", "sampler.setMode", unknown);
+    EXPECT_EQ(mcpText("set_sampler_mode", unknown).toStdString(), "unknown trackID 4242");
+
+    // (c) disagreement on each surface's own positional spelling; no mutation.
+    expectDisagreementSpelled("set_sampler_mode", "sampler.setMode",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 }, { "mode", "classic" } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 }, { "mode", "classic" } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    EXPECT_EQ(mode(t.targetIdx), "one-shot");
+    EXPECT_EQ(mode(t.decoyIdx), "classic");
+}
+
+// ─── psy_fm: psy_fm_clear_mod_matrix ↔ psy_fm.clearModMatrix (+ the read) ──
+// The clear is a TREE write (slot `psyFmMatrix`), so the persisted route count
+// is the deterministic assertion channel; the mod-matrix debug read rides the
+// same spellings and pins the same failure texts.
+TEST_F(AddFxParityTest, StableTrackIdDrivesPsyFmModMatrixOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.decoyIdx }, { "fxType", "psy_fm" } })
+                    .startsWith("slot="));
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "psy_fm" } })
+                    .startsWith("slot="));
+    // Seed ONE route on each track (positional setup).
+    for (const int idx : { t.decoyIdx, t.targetIdx })
+        ASSERT_FALSE(mcpIsError("psy_fm_set_mod_route",
+                                QJsonObject{ { "trackId", idx }, { "slotIndex", 0 },
+                                             { "source", "ratioSweepLFO" }, { "dest", "op1Ratio" },
+                                             { "depth", 0.5 } }));
+    auto routeCount = [&](int track) {
+        return HDAW::PsyFmState::decodeRoutes(
+            fxSlotNode(track, 0).getProperty("psyFmMatrix", "").toString().toStdString()).size();
+    };
+    ASSERT_EQ(routeCount(t.decoyIdx), 1u);
+    ASSERT_EQ(routeCount(t.targetIdx), 1u);
+
+    // (a) id-only tool clear: the TARGET's routes go, the decoy's stay.
+    EXPECT_FALSE(mcpIsError("psy_fm_clear_mod_matrix",
+                            QJsonObject{ { "trackID", t.targetID }, { "slotIndex", 0 } }))
+        << mcpText("psy_fm_clear_mod_matrix",
+                   QJsonObject{ { "trackID", t.targetID }, { "slotIndex", 0 } }).toStdString();
+    EXPECT_EQ(routeCount(t.targetIdx), 0u);
+    EXPECT_EQ(routeCount(t.decoyIdx), 1u) << "the decoy must keep its route";
+
+    // Re-seed the target and clear it again through the ROUTE by id.
+    ASSERT_FALSE(mcpIsError("psy_fm_set_mod_route",
+                            QJsonObject{ { "trackId", t.targetIdx }, { "slotIndex", 0 },
+                                         { "source", "ratioSweepLFO" }, { "dest", "op1Ratio" },
+                                         { "depth", 0.5 } }));
+    EXPECT_FALSE(rpc("psy_fm.clearModMatrix",
+                     QJsonObject{ { "trackID", t.targetID }, { "slotIndex", 0 } }).isError);
+    EXPECT_EQ(routeCount(t.targetIdx), 0u);
+    EXPECT_EQ(routeCount(t.decoyIdx), 1u);
+
+    // The read twin by id: one payload, both surfaces (the shared
+    // src/common/PsyFmModMatrixView.cpp shaping).
+    const QJsonObject debugById{ { "trackID", t.decoyID }, { "slotIndex", 0 } };
+    const QJsonValue toolDebug = mcpValue("psy_fm_mod_matrix_debug", debugById);
+    ASSERT_TRUE(toolDebug.isObject())
+        << mcpText("psy_fm_mod_matrix_debug", debugById).toStdString();
+    EXPECT_EQ(rpcPayload("psy_fm.modMatrixDebug", debugById), toolDebug);
+
+    // (b) unknown id: identical text on the write AND the read twin.
+    const QJsonObject unknown{ { "trackID", 4242 }, { "slotIndex", 0 } };
+    expectSameFailure("psy_fm_clear_mod_matrix", "psy_fm.clearModMatrix", unknown);
+    EXPECT_EQ(mcpText("psy_fm_clear_mod_matrix", unknown).toStdString(), "unknown trackID 4242");
+    expectSameFailure("psy_fm_mod_matrix_debug", "psy_fm.modMatrixDebug", unknown);
+
+    // (c) disagreement on each surface's own positional spelling; no mutation.
+    expectDisagreementSpelled("psy_fm_clear_mod_matrix", "psy_fm.clearModMatrix",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    expectDisagreementSpelled("psy_fm_mod_matrix_debug", "psy_fm.modMatrixDebug",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    EXPECT_EQ(routeCount(t.targetIdx), 0u);
+    EXPECT_EQ(routeCount(t.decoyIdx), 1u);
+}
+
+// ─── fm_synth: fm_synth_get_state ↔ read.getFmSynthState ───────────────────
+// Both surfaces resolve with the DEFAULT keys, so (b)/(c) keep the
+// byte-identical shared-object twin, and the state read reports the id's OWN
+// slot (the tree's param_0 = the algorithm the rebuild restores).
+TEST_F(AddFxParityTest, StableTrackIdDrivesFmSynthStateOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.decoyIdx }, { "fxType", "fm_synth" } })
+                    .startsWith("slot="));
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "fm_synth" } })
+                    .startsWith("slot="));
+    auto& cmds = engine->getProjectCommands();
+    cmds.setFxSlotParam(t.decoyIdx, 0, 0, 3.0f);
+    cmds.setFxSlotParam(t.targetIdx, 0, 0, 5.0f);
+    const int algoDecoy = static_cast<int>(fxSlotNode(t.decoyIdx, 0).getProperty("param_0", 0));
+    const int algoTarget = static_cast<int>(fxSlotNode(t.targetIdx, 0).getProperty("param_0", 0));
+    ASSERT_NE(algoDecoy, algoTarget) << "premise: the two slots must differ";
+
+    // (a) id-only read on the tool and the route: each reports its OWN slot's
+    // algorithm, and the two payloads agree value for value.
+    const QJsonObject targetById{ { "trackID", t.targetID }, { "slotIndex", 0 } };
+    const QJsonValue toolState = mcpValue("fm_synth_get_state", targetById);
+    ASSERT_TRUE(toolState.isObject())
+        << mcpText("fm_synth_get_state", targetById).toStdString();
+    EXPECT_EQ(toolState.toObject().value("algorithm").toInt(), algoTarget);
+    EXPECT_EQ(rpcPayload("read.getFmSynthState", targetById), toolState);
+    EXPECT_EQ(mcpValue("fm_synth_get_state",
+                       QJsonObject{ { "trackID", t.decoyID }, { "slotIndex", 0 } })
+                  .toObject().value("algorithm").toInt(),
+              algoDecoy)
+        << "the decoy's id must report the decoy's own algorithm";
+
+    // (b) unknown id: identical text on both surfaces.
+    const QJsonObject unknown{ { "trackID", 4242 }, { "slotIndex", 0 } };
+    expectSameFailure("fm_synth_get_state", "read.getFmSynthState", unknown);
+    EXPECT_EQ(mcpText("fm_synth_get_state", unknown).toStdString(), "unknown trackID 4242");
+
+    // (c) disagreement: byte-identical `trackId …` text (default keys both).
+    const QJsonObject clash{ { "trackId", 0 }, { "trackID", t.targetID }, { "slotIndex", 0 } };
+    expectSameFailure("fm_synth_get_state", "read.getFmSynthState", clash);
+    EXPECT_EQ(mcpText("fm_synth_get_state", clash).toStdString(),
+              "trackId 0 and trackID " + std::to_string(t.targetID) + " disagree");
+    EXPECT_EQ(static_cast<int>(fxSlotNode(t.targetIdx, 0).getProperty("param_0", 0)), algoTarget)
+        << "a refusal must not mutate the slot";
+    EXPECT_EQ(static_cast<int>(fxSlotNode(t.decoyIdx, 0).getProperty("param_0", 0)), algoDecoy);
+}
+
+// ─── matrix: apply_matrix_preset ↔ matrix.applyPreset — failure paths ──────
+// The success path needs a live plugin engine plus harvested preset ids
+// (machine-dependent), so this family pins the two resolver failure texts
+// only — which both surfaces reach BEFORE any preset lookup. Both surfaces
+// resolve with the default keys, so the texts are byte-identical.
+TEST_F(AddFxParityTest, MatrixPresetTrackRefFailuresMatchOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+
+    const QJsonObject unknown{ { "trackID", 4242 }, { "engine", "je8086" },
+                               { "id", "nope" }, { "slotIndex", 0 } };
+    expectSameFailure("apply_matrix_preset", "matrix.applyPreset", unknown);
+    EXPECT_EQ(mcpText("apply_matrix_preset", unknown).toStdString(), "unknown trackID 4242");
+
+    const QJsonObject clash{ { "trackId", 0 }, { "trackID", t.targetID }, { "engine", "je8086" },
+                             { "id", "nope" }, { "slotIndex", 0 } };
+    expectSameFailure("apply_matrix_preset", "matrix.applyPreset", clash);
+    EXPECT_EQ(mcpText("apply_matrix_preset", clash).toStdString(),
+              "trackId 0 and trackID " + std::to_string(t.targetID) + " disagree");
+}
+
+// ─── midi-fx: list_midi_fx_params ↔ read.getMidiFxSlots ────────────────────
+// Read-only family: (a) is "the id-only read returns the RIGHT track's slot
+// set" — the decoy carries ONE slot and the target TWO of different types, so
+// a read that ignored the id cannot describe both.
+TEST_F(AddFxParityTest, StableTrackIdDrivesMidiFxSlotsOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    ASSERT_FALSE(mcpIsError("add_midi_fx",
+                            QJsonObject{ { "trackId", t.decoyIdx }, { "fxType", "arpeggiator" } }));
+    ASSERT_FALSE(mcpIsError("add_midi_fx",
+                            QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "transpose" } }));
+    ASSERT_FALSE(mcpIsError("add_midi_fx",
+                            QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "humanize" } }));
+
+    // (a) id-only reads: the tool projects the id's own slot, the route lists
+    // the id's own slot set — and the id equals the position it resolves to.
+    const QJsonObject targetSlot1{ { "trackID", t.targetID }, { "slotIndex", 1 } };
+    const QJsonValue slot1 = mcpValue("list_midi_fx_params", targetSlot1);
+    ASSERT_TRUE(slot1.isObject())
+        << mcpText("list_midi_fx_params", targetSlot1).toStdString();
+    EXPECT_EQ(slot1.toObject().value("fxType").toString().toStdString(), "humanize");
+    EXPECT_TRUE(mcpIsError("list_midi_fx_params",
+                           QJsonObject{ { "trackID", t.decoyID }, { "slotIndex", 1 } }))
+        << "the decoy has one slot; slot 1 exists only on the track the target id names";
+    const QJsonValue targetList =
+        rpcPayload("read.getMidiFxSlots", QJsonObject{ { "trackID", t.targetID } });
+    ASSERT_TRUE(targetList.isArray());
+    EXPECT_EQ(targetList.toArray().size(), 2);
+    EXPECT_EQ(rpcPayload("read.getMidiFxSlots", QJsonObject{ { "trackID", t.decoyID } })
+                  .toArray().size(),
+              1);
+    EXPECT_EQ(rpcPayload("read.getMidiFxSlots", QJsonObject{ { "trackID", t.decoyID } }),
+              rpcPayload("read.getMidiFxSlots", QJsonObject{ { "trackIndex", t.decoyIdx } }))
+        << "the id names the same slots as the position it resolves to";
+
+    // (b) unknown id: identical text.
+    const QJsonObject unknown{ { "trackID", 4242 }, { "slotIndex", 0 } };
+    expectSameFailure("list_midi_fx_params", "read.getMidiFxSlots", unknown);
+    EXPECT_EQ(mcpText("list_midi_fx_params", unknown).toStdString(), "unknown trackID 4242");
+
+    // (c) disagreement on each surface's own positional spelling; nothing
+    // mutated (still 2 + 1 slots).
+    expectDisagreementSpelled("list_midi_fx_params", "read.getMidiFxSlots",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "slotIndex", 0 } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    EXPECT_EQ(engine->getReadModel().getMidiFxSlots(t.targetIdx).size(), 2u);
+    EXPECT_EQ(engine->getReadModel().getMidiFxSlots(t.decoyIdx).size(), 1u);
+}
+
+// ─── fx chain presets: save_fx_chain / load_fx_chain ↔ project.*FxChainPreset
+// The two chains differ (decoy ONE reverb slot, target eq+delay), so the saved
+// preset's slotCount can only describe the track the id named, and loading it
+// back onto the same id restores THAT chain while the decoy is untouched.
+TEST_F(AddFxParityTest, StableTrackIdDrivesFxChainPresetsOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.decoyIdx }, { "fxType", "reverb" } })
+                    .startsWith("slot="));
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "eq" } })
+                    .startsWith("slot="));
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "delay" } })
+                    .startsWith("slot="));
+    ASSERT_EQ(engine->getReadModel().getFxSlots(t.decoyIdx).size(), 1u);
+    ASSERT_EQ(engine->getReadModel().getFxSlots(t.targetIdx).size(), 2u);
+    auto fxTypes = [&](int track) {
+        std::vector<std::string> types;
+        for (const auto& s : engine->getReadModel().getFxSlots(track))
+            types.push_back(s.fxType);
+        return types;
+    };
+    auto listedRow = [&](const QString& id) {
+        for (const auto& v : mcpValue("list_fx_chains", QJsonObject{}).toArray()) {
+            const auto row = v.toObject();
+            if (row.value("id").toString() == id) return row;
+        }
+        return QJsonObject{};
+    };
+
+    // (a) id-only save on the tool: the preset captures the id's OWN chain.
+    const QJsonObject saveTool{ { "trackID", t.targetID }, { "name", "B2b Twin Chain" } };
+    const QJsonValue savedTool = mcpValue("save_fx_chain", saveTool);
+    ASSERT_TRUE(savedTool.isObject())
+        << mcpText("save_fx_chain", saveTool).toStdString();
+    const QString idTool = savedTool.toObject().value("id").toString();
+    EXPECT_FALSE(idTool.isEmpty());
+    EXPECT_EQ(listedRow(idTool).value("slotCount").toInt(), 2)
+        << "the preset must describe the TARGET's two slots, not the decoy's one";
+    EXPECT_EQ(engine->getReadModel().getFxSlots(t.decoyIdx).size(), 1u)
+        << "the decoy must stay untouched";
+
+    // …and id-only save on the route, same id.
+    const QJsonObject saveRoute{ { "trackID", t.targetID }, { "name", "B2b Twin Chain R" } };
+    const QJsonValue savedRoute = rpcPayload("project.saveFxChainPreset", saveRoute);
+    ASSERT_TRUE(savedRoute.isObject());
+    const QString idRoute = savedRoute.toObject().value("id").toString();
+    EXPECT_FALSE(idRoute.isEmpty());
+    EXPECT_EQ(listedRow(idRoute).value("slotCount").toInt(), 2);
+
+    // Grow the target's chain, then load each preset back onto the SAME id —
+    // tool once, route once — and watch the id's chain return to [eq, delay].
+    ASSERT_TRUE(mcpText("add_fx", QJsonObject{ { "trackId", t.targetIdx }, { "fxType", "chorus" } })
+                    .startsWith("slot="));
+    ASSERT_EQ(engine->getReadModel().getFxSlots(t.targetIdx).size(), 3u);
+    EXPECT_FALSE(mcpIsError("load_fx_chain",
+                            QJsonObject{ { "trackID", t.targetID }, { "id", idRoute } }))
+        << mcpText("load_fx_chain", QJsonObject{ { "trackID", t.targetID }, { "id", idRoute } })
+               .toStdString();
+    EXPECT_EQ(fxTypes(t.targetIdx), (std::vector<std::string>{ "eq", "delay" }));
+    EXPECT_EQ(fxTypes(t.decoyIdx), (std::vector<std::string>{ "reverb" }))
+        << "the decoy must stay untouched";
+    EXPECT_FALSE(rpc("project.loadFxChainPreset",
+                     QJsonObject{ { "trackID", t.targetID }, { "id", idTool } }).isError);
+    EXPECT_EQ(fxTypes(t.targetIdx), (std::vector<std::string>{ "eq", "delay" }));
+    EXPECT_EQ(fxTypes(t.decoyIdx), (std::vector<std::string>{ "reverb" }));
+
+    // (b) unknown id: identical text on both surfaces, both operations.
+    const QJsonObject unknownSave{ { "trackID", 4242 }, { "name", "Nope" } };
+    expectSameFailure("save_fx_chain", "project.saveFxChainPreset", unknownSave);
+    EXPECT_EQ(mcpText("save_fx_chain", unknownSave).toStdString(), "unknown trackID 4242");
+    const QJsonObject unknownLoad{ { "trackID", 4242 }, { "id", idTool } };
+    expectSameFailure("load_fx_chain", "project.loadFxChainPreset", unknownLoad);
+    EXPECT_EQ(mcpText("load_fx_chain", unknownLoad).toStdString(), "unknown trackID 4242");
+
+    // (c) disagreement on each surface's own positional spelling; the chains
+    // and the library are untouched.
+    expectDisagreementSpelled("save_fx_chain", "project.saveFxChainPreset",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "name", "Nope" } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "name", "Nope" } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    expectDisagreementSpelled("load_fx_chain", "project.loadFxChainPreset",
+                              QJsonObject{ { "trackId", 0 }, { "trackID", t.targetID },
+                                           { "id", idTool } },
+                              QJsonObject{ { "trackIndex", 0 }, { "trackID", t.targetID },
+                                           { "id", idTool } },
+                              "trackId", "trackIndex", 0, t.targetID);
+    EXPECT_EQ(fxTypes(t.targetIdx), (std::vector<std::string>{ "eq", "delay" }));
+    EXPECT_EQ(fxTypes(t.decoyIdx), (std::vector<std::string>{ "reverb" }));
+    EXPECT_EQ(listedRow(idTool).value("slotCount").toInt(), 2)
+        << "a refused save must not touch the library";
+
+    // Leave the user chain library as found.
+    EXPECT_EQ(mcpText("delete_fx_chain", QJsonObject{ { "id", idTool } }).toStdString(), "ok");
+    EXPECT_EQ(mcpText("delete_fx_chain", QJsonObject{ { "id", idRoute } }).toStdString(), "ok");
+}
 
 } // namespace

@@ -57,6 +57,164 @@ TEST_F(FileLibraryTest, RegistryPersistenceRoundTrip) {
     EXPECT_EQ(info.name, "Persist Test");
 }
 
+// --- Merge-on-save regression tests ---------------------------------------
+// registry.json is shared state: external writers (scripts, a second engine)
+// may add entries between a manager's load and its next save. saveRegistry()
+// must merge those entries instead of clobbering them.
+
+namespace {
+juce::File registryFileFor(const juce::File& baseDir) {
+    return baseDir.getChildFile("libraries").getChildFile("registry.json");
+}
+
+template <typename Container>
+bool containsId(const Container& ids, const juce::String& id) {
+    return std::find(std::begin(ids), std::end(ids), id) != std::end(ids);
+}
+
+std::vector<juce::String> readRegistryIds(const juce::File& registryFile) {
+    std::vector<juce::String> ids;
+    auto json = juce::JSON::parse(registryFile.loadFileAsString());
+    auto* obj = json.getDynamicObject();
+    if (!obj) return ids;
+    auto* arr = obj->getProperty("libraries").getArray();
+    if (!arr) return ids;
+    for (int i = 0; i < arr->size(); ++i) {
+        auto* e = (*arr)[i].getDynamicObject();
+        if (e) ids.push_back(e->getProperty("id").toString());
+    }
+    return ids;
+}
+
+// Simulates an external writer (script / second engine) appending an entry
+// with exactly the field names loadRegistry() reads.
+bool appendExternalRegistryEntry(const juce::File& registryFile,
+                                 const juce::String& id, const juce::String& name) {
+    auto json = juce::JSON::parse(registryFile.loadFileAsString());
+    auto* obj = json.getDynamicObject();
+    if (!obj) return false;
+    auto* arr = obj->getProperty("libraries").getArray();
+    if (!arr) return false;
+    auto entry = new juce::DynamicObject();
+    entry->setProperty("id", id);
+    entry->setProperty("name", name);
+    entry->setProperty("path", juce::String("/x/") + id);
+    entry->setProperty("type", juce::String("sample"));
+    entry->setProperty("lastScan", juce::String());
+    entry->setProperty("fileCount", 0);
+    entry->setProperty("autoScan", false);
+    arr->add(juce::var(entry));
+    return registryFile.replaceWithText(juce::JSON::toString(juce::var(obj)));
+}
+
+// Simulates an external writer mutating an existing entry's values.
+bool tamperRegistryEntry(const juce::File& registryFile, const juce::String& id) {
+    auto json = juce::JSON::parse(registryFile.loadFileAsString());
+    auto* obj = json.getDynamicObject();
+    if (!obj) return false;
+    auto* arr = obj->getProperty("libraries").getArray();
+    if (!arr) return false;
+    for (int i = 0; i < arr->size(); ++i) {
+        auto* e = (*arr)[i].getDynamicObject();
+        if (e && e->getProperty("id").toString() == id) {
+            e->setProperty("name", juce::String("Tampered"));
+            e->setProperty("fileCount", 42);
+            e->setProperty("autoScan", true);
+            return registryFile.replaceWithText(juce::JSON::toString(juce::var(obj)));
+        }
+    }
+    return false;
+}
+}
+
+TEST_F(FileLibraryTest, RegistryMergeOnSaveKeepsExternalEntries) {
+    auto idA = [&] {
+        HDAW::FileLibraryManager mgrA(tempDir);
+        return mgrA.addLibrary("Lib A", "/x/a", "midi");
+    }();
+    ASSERT_FALSE(idA.isEmpty());
+
+    auto registryFile = registryFileFor(tempDir);
+    // Written while no manager owns the file; the next manager loads it.
+    ASSERT_TRUE(appendExternalRegistryEntry(registryFile, "external-b", "B"));
+
+    HDAW::FileLibraryManager mgrB(tempDir);
+    // external-b was added before mgrB loaded, so a plain load keeps it.
+    // external-c was added AFTER mgrB loaded: mgrB's memory does not know
+    // it, so only merge-on-save keeps it (and only once).
+    ASSERT_TRUE(appendExternalRegistryEntry(registryFile, "external-c", "C"));
+
+    mgrB.setAutoScan(idA, true);  // unrelated mutation that saves
+
+    auto diskIds = readRegistryIds(registryFile);
+    EXPECT_TRUE(containsId(diskIds, idA));
+    EXPECT_TRUE(containsId(diskIds, juce::String("external-b")));
+    EXPECT_TRUE(containsId(diskIds, juce::String("external-c")));
+    EXPECT_EQ((int)std::count(diskIds.begin(), diskIds.end(), juce::String("external-c")), 1);
+
+    auto libIds = mgrB.getLibraryIds();
+    EXPECT_TRUE(containsId(libIds, idA));
+    EXPECT_TRUE(containsId(libIds, juce::String("external-b")));
+    EXPECT_EQ(mgrB.getLibraryInfo("external-b").name, juce::String("B"));
+}
+
+TEST_F(FileLibraryTest, RegistryMergeOnSaveKeepsExplicitRemovals) {
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto idA = mgr.addLibrary("Lib A", "/x/a", "midi");
+    auto idB = mgr.addLibrary("Lib B", "/x/b", "midi");
+    ASSERT_FALSE(idA.isEmpty());
+    ASSERT_FALSE(idB.isEmpty());
+    mgr.removeLibrary(idB);  // removal is sticky for this manager
+
+    auto registryFile = registryFileFor(tempDir);
+    // A stale external writer re-adds B; the manager must not resurrect it
+    // at the next save (removedIds wins over the on-disk entry).
+    ASSERT_TRUE(appendExternalRegistryEntry(registryFile, idB, "B Readded"));
+
+    mgr.setAutoScan(idA, true);  // unrelated mutation that saves
+
+    auto diskIds = readRegistryIds(registryFile);
+    EXPECT_TRUE(containsId(diskIds, idA));
+    EXPECT_FALSE(containsId(diskIds, idB));
+    auto libIds = mgr.getLibraryIds();
+    EXPECT_TRUE(containsId(libIds, idA));
+    EXPECT_FALSE(containsId(libIds, idB));
+}
+
+TEST_F(FileLibraryTest, RegistryMergeOnSavePrefersMemoryValues) {
+    // Semantics: for ids the manager owns, its in-memory state is
+    // authoritative. External edits to those entries in registry.json do not
+    // win at the next save; only entries unknown to memory are adopted.
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto idA = mgr.addLibrary("Lib A", "/x/a", "midi");
+    ASSERT_FALSE(idA.isEmpty());
+
+    auto registryFile = registryFileFor(tempDir);
+    ASSERT_TRUE(tamperRegistryEntry(registryFile, idA));
+
+    auto idC = mgr.addLibrary("Lib C", "/x/c", "midi");  // unrelated save trigger
+    ASSERT_FALSE(idC.isEmpty());
+
+    auto diskIds = readRegistryIds(registryFile);
+    EXPECT_TRUE(containsId(diskIds, idA));
+    EXPECT_TRUE(containsId(diskIds, idC));
+
+    auto json = juce::JSON::parse(registryFile.loadFileAsString());
+    auto* obj = json.getDynamicObject();
+    ASSERT_NE(obj, nullptr);
+    auto* arr = obj->getProperty("libraries").getArray();
+    ASSERT_NE(arr, nullptr);
+    const juce::DynamicObject* entryA = nullptr;
+    for (int i = 0; i < arr->size(); ++i) {
+        auto* e = (*arr)[i].getDynamicObject();
+        if (e && e->getProperty("id").toString() == idA) { entryA = e; break; }
+    }
+    ASSERT_NE(entryA, nullptr);
+    EXPECT_EQ(entryA->getProperty("name").toString(), juce::String("Lib A"));
+    EXPECT_EQ((int)entryA->getProperty("fileCount"), 0);
+    EXPECT_FALSE((bool)entryA->getProperty("autoScan"));
+}
+
 TEST_F(FileLibraryTest, ExtractMidiMetadata) {
     auto midiDir = tempDir.getChildFile("midi");
     midiDir.createDirectory();

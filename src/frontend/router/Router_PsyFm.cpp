@@ -21,11 +21,15 @@ namespace frontend {
 
 DispatchResult dispatchPsyFm(AudioEngine& engine, const QString& m, const QJsonValue& params) {
     const auto o = paramsObject(params);
+    // B2: the TRACK_LIST the stable-id track resolution reads (the ONE shared
+    // rule in common/StableRefResolve.h; moveTrack/getTrackSends precedent).
+    const juce::ValueTree trackList = engine.getProjectModel().getTrackListTree();
 
     if (m == "getAnalysis") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         auto fxSlots = engine.getReadModel().getFxSlots(ti);
         if (si < 0 || si >= static_cast<int>(fxSlots.size()) || fxSlots[si].fxType != "psy_fm")
             return makeError(-32602, "slot is not a psy_fm synth");
@@ -60,11 +64,11 @@ DispatchResult dispatchPsyFm(AudioEngine& engine, const QString& m, const QJsonV
     }
 
     if (m == "loadPreset") {
-        int ti, si;
-        std::string preset;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+        int ti, si; std::string preset; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr)
             || !requireString(o, "preset", preset, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex, and preset required");
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, and preset required");
         auto fxSlots = engine.getReadModel().getFxSlots(ti);
         if (si < 0 || si >= static_cast<int>(fxSlots.size()) || fxSlots[si].fxType != "psy_fm")
             return makeError(-32602, "slot is not a psy_fm synth");
@@ -76,11 +80,11 @@ DispatchResult dispatchPsyFm(AudioEngine& engine, const QString& m, const QJsonV
     }
 
     if (m == "setModRoute") {
-        int ti, si;
-        std::string src, dst;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+        int ti, si; std::string src, dst; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr)
             || !requireString(o, "source", src, nullptr) || !requireString(o, "dest", dst, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex, source and dest required");
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, source and dest required");
         if (!o.contains("depth") || !o.value("depth").isDouble())
             return makeError(-32602, "depth (number) required");
         auto fxSlots = engine.getReadModel().getFxSlots(ti);
@@ -93,9 +97,10 @@ DispatchResult dispatchPsyFm(AudioEngine& engine, const QString& m, const QJsonV
     }
 
     if (m == "clearModMatrix") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         auto fxSlots = engine.getReadModel().getFxSlots(ti);
         if (si < 0 || si >= static_cast<int>(fxSlots.size()) || fxSlots[si].fxType != "psy_fm")
             return makeError(-32602, "slot is not a psy_fm synth");
@@ -107,9 +112,10 @@ DispatchResult dispatchPsyFm(AudioEngine& engine, const QString& m, const QJsonV
     // Same payload as the MCP tool psy_fm_mod_matrix_debug: both delegate to
     // src/common/PsyFmModMatrixView.cpp so they cannot drift.
     if (m == "modMatrixDebug") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         auto fxSlots = engine.getReadModel().getFxSlots(ti);
         if (si < 0 || si >= static_cast<int>(fxSlots.size()) || fxSlots[si].fxType != "psy_fm")
             return makeError(-32602, "slot is not a psy_fm synth");

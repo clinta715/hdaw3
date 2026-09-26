@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include <cmath>
+#include <cstdlib>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -177,4 +178,74 @@ TEST(AudioEngineReadFacadeTest, GetWaveformPeaksRejectsMissingOrNonAudioClip)
     auto notAudio = engine.getWaveformPeaks(midiId, 10);
     EXPECT_FALSE(notAudio.ok);
     EXPECT_EQ(notAudio.errorCode, -32602);
+}
+
+// ========================================================================
+// Change B — default-device open skips the doomed 2-in attempt when the
+// device type exposes no capture endpoints.
+// ========================================================================
+
+TEST(AudioEngineReadFacadeTest, ShouldRequestInputsCoversBothBranches)
+{
+    // No capture endpoints -> do NOT request inputs (the open would fail).
+    EXPECT_FALSE(AudioEngine::shouldRequestInputs({}));
+    // Capture endpoints present -> request inputs (unchanged behaviour).
+    EXPECT_TRUE(AudioEngine::shouldRequestInputs({ "Microphone" }));
+}
+
+TEST(AudioEngineReadFacadeTest, CapturelessDeviceTypeOpensOutputOnlyAndEngineIsUsable)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto& dm = engine.getDeviceManager();
+    auto* devType = dm.getCurrentDeviceTypeObject();
+    const bool captureless = devType == nullptr || devType->getDeviceNames(true).isEmpty();
+
+    // The requested input count must follow the capture-endpoint probe: 0 on a
+    // capture-less type (no doomed 2-in open), 2 when inputs exist.
+    if (captureless)
+        EXPECT_EQ(engine.debugDefaultDeviceInitInputs(), 0)
+            << "capture-less device type must not request inputs";
+    else
+        EXPECT_EQ(engine.debugDefaultDeviceInitInputs(), 2);
+
+    // The engine must still reach a usable state. If the device-open path did
+    // not reach prepareToPlay (no openable endpoint — this dev box can also
+    // report "No driver" when no interface is attached), mirror the existing
+    // deviceless seam (shared_engine_fixture.h / send_test.cpp:
+    // ensureLiveRoutingGraph) and assert on the LIVE routing manager.
+    auto* proc = engine.getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    if (proc->getRoutingManager() == nullptr)
+    {
+        const juce::MessageManagerLock pumpPark;
+        proc->prepareToPlay(44100.0, 512);
+    }
+    EXPECT_NE(proc->getRoutingManager(), nullptr);
+}
+
+// Force the capture-less branch (this dev box currently exposes a Focusrite
+// capture endpoint, so the natural path is the "inputs present" one) and prove
+// the engine opens output-only directly and still reaches a usable state.
+TEST(AudioEngineReadFacadeTest, ForcedCapturelessOpensOutputOnly)
+{
+    _putenv_s("HDAW_TEST_FORCE_NO_CAPTURE", "1");
+    {
+        AudioEngine engine;
+        engine.initialize();
+
+        EXPECT_EQ(engine.debugDefaultDeviceInitInputs(), 0)
+            << "capture-less override must request 0 inputs (no doomed 2-in open)";
+
+        auto* proc = engine.getMainProcessor();
+        ASSERT_NE(proc, nullptr);
+        if (proc->getRoutingManager() == nullptr)
+        {
+            const juce::MessageManagerLock pumpPark;
+            proc->prepareToPlay(44100.0, 512);
+        }
+        EXPECT_NE(proc->getRoutingManager(), nullptr);
+    }
+    _putenv_s("HDAW_TEST_FORCE_NO_CAPTURE", "");
 }

@@ -1,5 +1,9 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -22,16 +26,20 @@ namespace mcp {
 void registerMidiFxTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"add_midi_fx",
-        "Add a MIDI FX slot to a track.",
+        "Add a MIDI FX slot to a track. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                   {"trackID", QJsonObject{{"type","integer"}}},
                    {"fxType", QJsonObject{{"type","string"},
                        {"enum", QJsonArray{"arpeggiator","velocity","chord","scale","notelength",
                                            "transpose","keyfilter","multinote","velocitycurve",
                                            "notechance","mididelay","humanize","strum"}}}},
-                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId","fxType"}),
+                   {"position", QJsonObject{{"type","integer"}}}}, {"fxType"}),
         "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             auto tl = e->getProjectModel().getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren())
                 return McpToolResult::text("track not found", true);
@@ -42,25 +50,33 @@ void registerMidiFxTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"remove_midi_fx",
-        "Remove a MIDI FX slot from a track.",
+        "Remove a MIDI FX slot from a track. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
-                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+                   {"trackID", QJsonObject{{"type","integer"}}},
+                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"slotIndex"}),
         "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             e->getProjectCommands().removeMidiFxSlot(ti, si);
             return McpToolResult::text("ok");
         }});
 
     s.registerTool({"set_midi_fx_bypass",
-        "Bypass or unbypass a MIDI FX slot.",
+        "Bypass or unbypass a MIDI FX slot. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                   {"trackID", QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}},
-                   {"bypassed", QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex","bypassed"}),
+                   {"bypassed", QJsonObject{{"type","boolean"}}}}, {"slotIndex","bypassed"}),
         "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             bool b = a.value("bypassed").toBool();
             e->getProjectCommands().setMidiFxSlotBypassed(ti, si, b);
@@ -68,14 +84,18 @@ void registerMidiFxTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"set_midi_fx_param",
-        "Set a parameter on a MIDI FX slot. Values are in the param's own range — call list_midi_fx_params {trackId, slotIndex} to discover the exact range.",
+        "Set a parameter on a MIDI FX slot. Values are in the param's own range — call list_midi_fx_params {trackId, slotIndex} to discover the exact range. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                   {"trackID", QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"paramName", QJsonObject{{"type","string"}}},
-                   {"value", QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramName","value"}),
+                   {"value", QJsonObject{{"type","number"}}}}, {"slotIndex","paramName","value"}),
         "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             std::string pn = a.value("paramName").toString().toStdString();
             double v = a.value("value").toDouble();
@@ -85,15 +105,19 @@ void registerMidiFxTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"set_midi_fx_param_normalized",
         "Set a MIDI FX parameter by normalized value (0..1) for real-time modulation. "
-        "Bypasses the ValueTree — use set_midi_fx_param for persistent changes.",
+        "Bypasses the ValueTree — use set_midi_fx_param for persistent changes. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
+                   {"trackID",     QJsonObject{{"type","integer"}}},
                    {"slotIndex",   QJsonObject{{"type","integer"}}},
                    {"paramIndex",  QJsonObject{{"type","integer"}}},
                    {"value",       QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}},
-                  {"trackId","slotIndex","paramIndex","value"}),
+                  {"slotIndex","paramIndex","value"}),
         "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int trackId = a.value("trackId").toInt();
+            int trackId; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), trackId, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int slotIndex = a.value("slotIndex").toInt();
             int paramIndex = a.value("paramIndex").toInt();
             float value = static_cast<float>(a.value("value").toDouble());
@@ -113,13 +137,17 @@ void registerMidiFxTools(McpServer& s, AudioEngine* e)
 
     {
         QJsonObject midiFxProps{{"trackId", QJsonObject{{"type","integer"}}},
+                                {"trackID", QJsonObject{{"type","integer"}}},
                                 {"slotIndex", QJsonObject{{"type","integer"}}}};
         s.registerTool({"list_midi_fx_params",
-            "List all parameters of a MIDI FX slot with their names, ranges, and current values.",
-            objSchema(midiFxProps, QJsonArray{"trackId","slotIndex"}),
+            "List all parameters of a MIDI FX slot with their names, ranges, and current values. " +
+            mcp::stableRefRuleText("trackID", "trackId"),
+            objSchema(midiFxProps, QJsonArray{"slotIndex"}),
             "midi-fx",
             [e](const QJsonObject& a) -> McpToolResult {
-                int ti = a.value("trackId").toInt();
+                int ti; std::string refErr;
+                if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                    return McpToolResult::text(QString::fromStdString(refErr), true);
                 int si = a.value("slotIndex").toInt();
                 auto allSlots = e->getReadModel().getMidiFxSlots(ti);
                 int numSlots = static_cast<int>(allSlots.size());

@@ -6,6 +6,10 @@
 #include "../engine/ChainLibrary.h"
 #include "McpTools.h"
 #include "McpTools_Private.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -27,12 +31,16 @@ void registerFxChainTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"save_fx_chain",
-        "Save a track's entire FX chain as a named preset (slot types, order, params, bypass states, plugin states, sampler + psy-fm state).",
+        "Save a track's entire FX chain as a named preset (slot types, order, params, bypass states, plugin states, sampler + psy-fm state). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
-                  {"name",    QJsonObject{{"type","string"}}}}, {"trackId","name"}),
+                  {"trackID", QJsonObject{{"type","integer"}}},
+                  {"name",    QJsonObject{{"type","string"}}}}, {"name"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             auto tl = e->getProjectModel().getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren())
                 return McpToolResult::text("track not found", true);
@@ -70,13 +78,17 @@ s.registerTool({"list_fx_chains",
         }});
 
 s.registerTool({"load_fx_chain",
-        "Load a saved FX chain preset onto a track: instrument slots (sampler/sub_synth/psy_fm/fm_synth/growl_bass/psyarp) are preserved; FX slots are replaced and appended after them in one undo unit. Give id or name (name must resolve to exactly one preset). Ids may be user presets or built-in factory presets (\"_factory/<File_Name>.json\" from list_fx_chains — the 8 psytrance per-role chains); name resolution covers factory presets too.",
+        "Load a saved FX chain preset onto a track: instrument slots (sampler/sub_synth/psy_fm/fm_synth/growl_bass/psyarp) are preserved; FX slots are replaced and appended after them in one undo unit. Give id or name (name must resolve to exactly one preset). Ids may be user presets or built-in factory presets (\"_factory/<File_Name>.json\" from list_fx_chains — the 8 psytrance per-role chains); name resolution covers factory presets too. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"trackID", QJsonObject{{"type","integer"}}},
                   {"id",      QJsonObject{{"type","string"}}},
-                  {"name",    QJsonObject{{"type","string"}}}}, {"trackId"}),
+                  {"name",    QJsonObject{{"type","string"}}}}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             auto tl = e->getProjectModel().getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren())
                 return McpToolResult::text("track not found", true);

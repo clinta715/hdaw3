@@ -16,6 +16,10 @@
 #include "RouterHelpers.h"
 
 #include "../../common/MatrixPresetService.h"
+// B2: applyPreset resolves the stable trackID itself (engine.getProjectModel()
+// ...), so the complete AudioEngine type is needed (MatrixPresetService.h only
+// forward-declares it).
+#include "../../engine/AudioEngine.h"
 
 #include <QJsonObject>
 #include <QJsonValue>
@@ -55,9 +59,12 @@ DispatchResult dispatchMatrix(AudioEngine& engine, const QString& m, const QJson
             return makeError(-32602, "missing or non-string param: engine");
         if (!requireString(o, "id", id, nullptr))
             return makeError(-32602, "missing or non-string param: id");
-        int ti = -1;
-        if (!requireInt(o, "trackId", ti, nullptr))
-            return makeError(-32602, "missing or non-numeric param: trackId");
+        // B2: `trackId` (index) or the stable `trackID` — the ONE shared rule
+        // (common/StableRefResolve.h); the resolver's text IS the -32602 message.
+        const juce::ValueTree trackList = engine.getProjectModel().getTrackListTree();
+        int ti; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err))
+            return err;
         int si = -1;
         if (!requireInt(o, "slotIndex", si, nullptr))
             return makeError(-32602, "missing or non-numeric param: slotIndex");

@@ -70,26 +70,34 @@ TEST(HttpTransport, AdvertisesKeepAliveTimeoutAtLeast900) {
     post += "\r\n\r\n";
     post += body;
 
+    // Nested event loop (the McpServer.HttpRoundTrip pattern): the server
+    // lives on this test thread, so only an event loop dispatches its
+    // socket notifiers — blocking waitForReadyRead would starve it.
+    // Declaration order is load-bearing: the socket's disconnected lambda
+    // must not fire after the loop is gone.
+    QEventLoop loop;
+    QByteArray resp;
     QTcpSocket sock;
     sock.connectToHost(QHostAddress::LocalHost, t.port());
     sock.write(post);
 
-    // Nested event loop (the McpServer.HttpRoundTrip pattern): the server
-    // lives on this test thread, so only an event loop dispatches its
-    // socket notifiers — blocking waitForReadyRead would starve it.
-    QByteArray resp;
-    QEventLoop loop;
-    QObject::connect(&sock, &QTcpSocket::readyRead, &sock, [&] {
-        resp += sock.readAll();
-        if (resp.contains("\r\n\r\n"))
+    const auto readyReadConn =
+        QObject::connect(&sock, &QTcpSocket::readyRead, &sock, [&] {
+            resp += sock.readAll();
+            if (resp.contains("\r\n\r\n"))
+                loop.quit();
+        });
+    const auto disconnectedConn =
+        QObject::connect(&sock, &QTcpSocket::disconnected, &sock, [&] {
+            resp += sock.readAll();
             loop.quit();
-    });
-    QObject::connect(&sock, &QTcpSocket::disconnected, &sock, [&] {
-        resp += sock.readAll();
-        loop.quit();
-    });
+        });
     QTimer::singleShot(5000, &loop, &QEventLoop::quit);
     loop.exec();
+    // Callback teardown: no lambda may fire after either captured object
+    // is gone (~QTcpSocket emits disconnected from its destructor).
+    QObject::disconnect(readyReadConn);
+    QObject::disconnect(disconnectedConn);
     t.stop();
 
     ASSERT_FALSE(resp.isEmpty()) << "no HTTP response received within 5 s";

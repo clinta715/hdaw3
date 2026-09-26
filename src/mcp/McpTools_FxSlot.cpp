@@ -1,5 +1,9 @@
 ﻿#include "McpTools.h"
 #include "McpTools_Private.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "PresetFileParser.h"
 #include "PresetRoute.h"
 #include "McpServer.h"
@@ -131,15 +135,19 @@ void registerFxSlotTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"add_fx",
-        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, OR a pluginId.",
+        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, OR a pluginId. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+                  {"trackID",  QJsonObject{{"type","integer"}}},
                   {"fxType",   QJsonObject{{"type","string"},
                       {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth"}}}},
                    {"pluginId", QJsonObject{{"type","string"}}},
-                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+                   {"position", QJsonObject{{"type","integer"}}}}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             auto tl = e->getProjectModel().getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren())
                 return McpToolResult::text("track not found", true);
@@ -165,13 +173,17 @@ s.registerTool({"add_fx",
             return McpToolResult::text(QString("slot=%1").arg(idx));
         }});
 
-s.registerTool({"remove_fx", "Remove an FX slot (destructive).",
+s.registerTool({"remove_fx", "Remove an FX slot (destructive). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
-                  {"dryRun",    QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex"}),
+                  {"dryRun",    QJsonObject{{"type","boolean"}}}}, {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             auto tl = e->getProjectModel().getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren())
                 return McpToolResult::text("track not found", true);
@@ -182,24 +194,32 @@ s.registerTool({"remove_fx", "Remove an FX slot (destructive).",
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"set_fx_bypass", "Bypass or unbypass an FX slot.",
+s.registerTool({"set_fx_bypass", "Bypass or unbypass an FX slot. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
-                  {"bypassed",  QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex","bypassed"}),
+                  {"bypassed",  QJsonObject{{"type","boolean"}}}}, {"slotIndex","bypassed"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             e->getProjectCommands().setFxSlotBypassed(ti, si, a.value("bypassed").toBool());
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"toggle_plugin_editor", "Open or close the plugin editor window for an FX slot (toggles). Use with windows-mcp/cua-driver to drive the plugin's own UI.",
+s.registerTool({"toggle_plugin_editor", "Open or close the plugin editor window for an FX slot (toggles). Use with windows-mcp/cua-driver to drive the plugin's own UI. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
-                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+                  {"trackID",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -210,12 +230,17 @@ s.registerTool({"toggle_plugin_editor", "Open or close the plugin editor window 
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot.",
+s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot. " +
+        mcp::stableRefRuleText("trackID", "trackIndex"),
         objSchema({{"trackIndex", QJsonObject{{"type","integer"}}},
-                  {"slotIndex",  QJsonObject{{"type","integer"}}}}, {"trackIndex","slotIndex"}),
+                  {"trackID",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackIndex").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr,
+                               HDAW::StableRefKeys{"trackIndex","trackID"}))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto tl = e->getProjectModel().getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren())
@@ -224,12 +249,16 @@ s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot.",
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth). Plugin (CLAP) params additionally report hasRange/minVal/maxVal/defaultVal/plainValue/stepped plus minText/maxText/defaultText (real units) so writes can be mapped meaningfully; hasRange=false means blind normalized 0..1 (VST3, older children).",
+s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth). Plugin (CLAP) params additionally report hasRange/minVal/maxVal/defaultVal/plainValue/stepped plus minText/maxText/defaultText (real units) so writes can be mapped meaningfully; hasRange=false means blind normalized 0..1 (VST3, older children). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
-                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+                  {"trackID",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -305,15 +334,19 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
-s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex or paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth). For PLUGIN slots the write is live AND persisted as a slot-level offline-replay override (returned as 'ok overrides=N'), so it also reaches export_audio / audition_plugin / verify_part renders and save/load; list_fx_params marks such params 'overridden', clear_fx_param_overrides removes them. For INTERNAL FX the ValueTree param_N property is the durable source.",
+s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex or paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth). For PLUGIN slots the write is live AND persisted as a slot-level offline-replay override (returned as 'ok overrides=N'), so it also reaches export_audio / audition_plugin / verify_part renders and save/load; list_fx_params marks such params 'overridden', clear_fx_param_overrides removes them. For INTERNAL FX the ValueTree param_N property is the durable source. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
                   {"paramName", QJsonObject{{"type","string"}}},
-                  {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","value"}),
+                  {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","value"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -379,18 +412,22 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by 
         }});
 
 s.registerTool({"param_verity",
-    "AUDIBILITY VERIFICATION (ParamVerity): does this FX parameter actually change the render? Solo-renders the SAME tree-copy window N times at the param's current value (baseline spread = the harness's own same-input variance), then once per swept value; a step is 'audible' only when its RMS separates by >= 3x the spread (NodalRed2x lesson-27 precedent, floor 1e-4). A SILENT baseline reports inconclusive — never 'no effect' (lesson 25). Steps are normalized 0..1 (internal FX are denormalized through the param defs; plugin slots go through the durable appliedParamOverrides ledger, exactly the set_fx_param channel, so renders match export_audio). The param is RESTORED afterwards (restored:true). Returns {ok, baselineRms, spread, threshold, inconclusive, restored, anyAudible, steps:[{value, rms, rmsDelta, band, bandDelta, audible}]}. Use anyAudible to answer 'does this knob do anything', and per-step deltas for 'how much'. Deterministic verdicts only — no LLM in this path.",
+    "AUDIBILITY VERIFICATION (ParamVerity): does this FX parameter actually change the render? Solo-renders the SAME tree-copy window N times at the param's current value (baseline spread = the harness's own same-input variance), then once per swept value; a step is 'audible' only when its RMS separates by >= 3x the spread (NodalRed2x lesson-27 precedent, floor 1e-4). A SILENT baseline reports inconclusive — never 'no effect' (lesson 25). Steps are normalized 0..1 (internal FX are denormalized through the param defs; plugin slots go through the durable appliedParamOverrides ledger, exactly the set_fx_param channel, so renders match export_audio). The param is RESTORED afterwards (restored:true). Returns {ok, baselineRms, spread, threshold, inconclusive, restored, anyAudible, steps:[{value, rms, rmsDelta, band, bandDelta, audible}]}. Use anyAudible to answer 'does this knob do anything', and per-step deltas for 'how much'. Deterministic verdicts only — no LLM in this path." +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",      QJsonObject{{"type","integer"}}},
+              {"trackID",      QJsonObject{{"type","integer"}}},
               {"slotIndex",    QJsonObject{{"type","integer"}}},
               {"paramIndex",   QJsonObject{{"type","integer"}}},
               {"paramName",    QJsonObject{{"type","string"}}},
               {"steps",        QJsonObject{{"type","array"}, {"items", QJsonObject{{"type","number"}}}}},
               {"baselineRuns", QJsonObject{{"type","integer"}}},
               {"windowSeconds",QJsonObject{{"type","number"}}},
-              {"startBeat",    QJsonObject{{"type","number"}}}}, {"trackId","slotIndex"}),
+              {"startBeat",    QJsonObject{{"type","number"}}}}, {"slotIndex"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
-        const int ti = a.value("trackId").toInt();
+        int ti; std::string refErr;
+        if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+            return McpToolResult::text(QString::fromStdString(refErr), true);
         const int si = a.value("slotIndex").toInt();
         auto fxSlots = e->getReadModel().getFxSlots(ti);
         if (si < 0 || si >= (int)fxSlots.size())
@@ -437,8 +474,10 @@ s.registerTool({"param_verity",
     }});
 
 s.registerTool({"param_verity_corpus",
-    "PARAM AUDIBILITY CORPUS (ParamVerity Phase 3): sweep MANY parameters of ONE slot in a single call. Each param runs the full param_verity sweep (baseline same-input spread + steps + durable restore). Enumeration: explicit paramIndexes array wins; internal FX default to ALL param defs; plugin slots take the first maxParams (default 16, cap 128) from the live host-param cache — a deviceless plugin slot with no cache is an ERROR, pass paramIndexes. outPath (optional) writes the full sidecar JSON (schema hdaw.param.verity.corpus.v1) for per-device audit loops. Returns {ok, ran, audibleCount, results:[{paramIndex, paramName, ok, anyAudible, baselineRms, spread, maxAbsRmsDelta, error?}]}. Use to answer 'which knobs on this device actually do anything'. Deterministic verdicts only.",
+    "PARAM AUDIBILITY CORPUS (ParamVerity Phase 3): sweep MANY parameters of ONE slot in a single call. Each param runs the full param_verity sweep (baseline same-input spread + steps + durable restore). Enumeration: explicit paramIndexes array wins; internal FX default to ALL param defs; plugin slots take the first maxParams (default 16, cap 128) from the live host-param cache — a deviceless plugin slot with no cache is an ERROR, pass paramIndexes. outPath (optional) writes the full sidecar JSON (schema hdaw.param.verity.corpus.v1) for per-device audit loops. Returns {ok, ran, audibleCount, results:[{paramIndex, paramName, ok, anyAudible, baselineRms, spread, maxAbsRmsDelta, error?}]}. Use to answer 'which knobs on this device actually do anything'. Deterministic verdicts only. " +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",       QJsonObject{{"type","integer"}}},
+              {"trackID",      QJsonObject{{"type","integer"}}},
               {"slotIndex",    QJsonObject{{"type","integer"}}},
               {"paramIndexes", QJsonObject{{"type","array"}, {"items", QJsonObject{{"type","integer"}}}}},
               {"maxParams",    QJsonObject{{"type","integer"}}},
@@ -446,11 +485,14 @@ s.registerTool({"param_verity_corpus",
               {"baselineRuns", QJsonObject{{"type","integer"}}},
               {"windowSeconds",QJsonObject{{"type","number"}}},
               {"startBeat",    QJsonObject{{"type","number"}}},
-              {"outPath",      QJsonObject{{"type","string"}}}}, {"trackId","slotIndex"}),
+              {"outPath",      QJsonObject{{"type","string"}}}}, {"slotIndex"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
+        int ti; std::string refErr;
+        if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+            return McpToolResult::text(QString::fromStdString(refErr), true);
         ProjectCommands::ParamCorpusParams p;
-        p.trackIndex = a.value("trackId").toInt();
+        p.trackIndex = ti;
         p.slotIndex = a.value("slotIndex").toInt();
         if (a.contains("paramIndexes") && a.value("paramIndexes").isArray())
             for (const auto& v : a.value("paramIndexes").toArray())
@@ -472,12 +514,16 @@ s.registerTool({"param_verity_corpus",
     }});
 
 s.registerTool({"clear_fx_param_overrides",
-    "Drop every persisted plugin-parameter override for ONE FX slot (the offline-replay ledger written by set_fx_param on plugin slots). Use it to return a slot to 'what the plugin state itself says' before an export/audition — without it, a param set once keeps being replayed into every later tree-copy render. Returns {removed:N}. No effect on internal FX (their param_N properties are the source of truth).",
+    "Drop every persisted plugin-parameter override for ONE FX slot (the offline-replay ledger written by set_fx_param on plugin slots). Use it to return a slot to 'what the plugin state itself says' before an export/audition — without it, a param set once keeps being replayed into every later tree-copy render. Returns {removed:N}. No effect on internal FX (their param_N properties are the source of truth). " +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
-              {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+              {"trackID",   QJsonObject{{"type","integer"}}},
+              {"slotIndex", QJsonObject{{"type","integer"}}}}, {"slotIndex"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
-        const int ti = a.value("trackId").toInt();
+        int ti; std::string refErr;
+        if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+            return McpToolResult::text(QString::fromStdString(refErr), true);
         const int si = a.value("slotIndex").toInt();
         auto fxSlots = e->getReadModel().getFxSlots(ti);
         if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -491,16 +537,21 @@ s.registerTool({"clear_fx_param_overrides",
     }});
 
 s.registerTool({"send_fx_midi",
-    "Queue short MIDI messages (programChange/controlChange/noteOn/noteOff/sysEx) into a plugin FX slot's NEXT processed block of the LIVE plugin instance. Loads MIDI-selectable presets â€” e.g. gearmulator Virus plugins: controlChange controller=0 value=bank (0-7 = banks A-H singles) then programChange program=patch. DX7 voices: use fm_synth_import_sysex into an fm_synth slot (plugin slots ignore injected SysEx). Realtime mutation: not undoable. The changed preset reaches offline exports once captured via project save.",
+    "Queue short MIDI messages (programChange/controlChange/noteOn/noteOff/sysEx) into a plugin FX slot's NEXT processed block of the LIVE plugin instance. Loads MIDI-selectable presets â€” e.g. gearmulator Virus plugins: controlChange controller=0 value=bank (0-7 = banks A-H singles) then programChange program=patch. DX7 voices: use fm_synth_import_sysex into an fm_synth slot (plugin slots ignore injected SysEx). Realtime mutation: not undoable. The changed preset reaches offline exports once captured via project save. " +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+              {"trackID",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
               {"captureToTree", QJsonObject{{"type","boolean"}}},
               {"messages", QJsonObject{{"type","array"}}}},
-              {"trackId","slotIndex","messages"}),
+              {"slotIndex","messages"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
+        int ti; std::string refErr;
+        if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+            return McpToolResult::text(QString::fromStdString(refErr), true);
         ProjectCommands::FxMidiParams p;
-        p.trackIndex = a.value("trackId").toInt();
+        p.trackIndex = ti;
         p.slotIndex = a.value("slotIndex").toInt();
         p.captureToTree = a.value("captureToTree").toBool(true);
         const auto msgs = a.value("messages").toArray();
@@ -535,13 +586,17 @@ s.registerTool({"send_fx_midi",
     }});
 
 s.registerTool({"get_fx_capture_status",
-    "Report the deferred plugin-state capture receipt for ONE FX slot (see send_fx_midi / load_nord_bank / load_virus_preset / apply_preset): {status, stateBytes, capturedAtMs, hasPluginState}. status is pending while the deferred capture is in flight, ok when the injected preset landed in IDs::pluginState, or failed:<reason>. Poll this after a bank load instead of trusting the immediate capturedToTree=0 (the realtime capture completes after the call returns).",
+    "Report the deferred plugin-state capture receipt for ONE FX slot (see send_fx_midi / load_nord_bank / load_virus_preset / apply_preset): {status, stateBytes, capturedAtMs, hasPluginState}. status is pending while the deferred capture is in flight, ok when the injected preset landed in IDs::pluginState, or failed:<reason>. Poll this after a bank load instead of trusting the immediate capturedToTree=0 (the realtime capture completes after the call returns). " +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+              {"trackID",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}}},
-             {"trackId","slotIndex"}),
+             {"slotIndex"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
-        const int ti = a.value("trackId").toInt();
+        int ti; std::string refErr;
+        if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+            return McpToolResult::text(QString::fromStdString(refErr), true);
         const int si = a.value("slotIndex").toInt();
         auto slotTree = e->getProjectModel().getTrackListTree()
             .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
@@ -554,50 +609,65 @@ s.registerTool({"get_fx_capture_status",
             .arg(st.status).arg(st.stateBytes).arg(st.capturedAtMs).arg(st.hasPluginState ? 1 : 0));
     }});
 s.registerTool({"load_virus_preset",
-    "Load a Virus ROM preset into a gearmulator plugin slot (Osirus=Virus A/B/C, OsTIrus, Vavra, Xenia): CC0 bank select (0-7 = banks A-H singles) + program change (0-127), like the hardware front panel. Applies to the LIVE plugin instance; for offline exports capture via project save.",
+    "Load a Virus ROM preset into a gearmulator plugin slot (Osirus=Virus A/B/C, OsTIrus, Vavra, Xenia): CC0 bank select (0-7 = banks A-H singles) + program change (0-127), like the hardware front panel. Applies to the LIVE plugin instance; for offline exports capture via project save. " +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+              {"trackID",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
               {"bank",     QJsonObject{{"type","integer"},{"minimum",0},{"maximum",7}}},
               {"program",  QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
               {"channel",  QJsonObject{{"type","integer"},{"minimum",1},{"maximum",16}}}},
-              {"trackId","slotIndex","bank","program"}),
+              {"slotIndex","bank","program"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
+        int ti; std::string refErr;
+        if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+            return McpToolResult::text(QString::fromStdString(refErr), true);
         return runVirusRomPreset(*e,
-            a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+            ti, a.value("slotIndex").toInt(),
             a.value("bank").toInt(), a.value("program").toInt(),
             a.value("channel").toInt(1),
             a.value("captureToTree").toBool(true));
     }});
 
 s.registerTool({"load_nord_bank",
-    "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. ATOMIC: validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything, appends a harmless CC125 after the dumps; delivery is paced at <=1 SysEx per block and the deferred capture is delayed per queued dump, then confirmed via get_fx_capture_status (no capture-race). Realtime mutation: not undoable; capture via project save.",
+    "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. ATOMIC: validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything, appends a harmless CC125 after the dumps; delivery is paced at <=1 SysEx per block and the deferred capture is delayed per queued dump, then confirmed via get_fx_capture_status (no capture-race). Realtime mutation: not undoable; capture via project save. " +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+              {"trackID",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
               {"filePath", QJsonObject{{"type","string"}}},
               {"program",  QJsonObject{{"type","integer"}}}},
-              {"trackId","slotIndex","filePath"}),
+              {"slotIndex","filePath"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
         const int program = a.contains("program") ? a.value("program").toInt(-1) : -1;
         if (a.contains("program") && program < 0)
             return McpToolResult::text("program must be 0..127", true);
+        int ti; std::string refErr;
+        if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+            return McpToolResult::text(QString::fromStdString(refErr), true);
         return runNordBankFile(*e,
-            a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+            ti, a.value("slotIndex").toInt(),
             a.value("filePath").toString(), program,
             a.value("captureToTree").toBool(true));
     }});
 s.registerTool({"load_je8086_preset",
-    "Load ONE Roland JP-8080 patch from a bank file (.syx raw DT1 SysEx, or .mid SMF wrapping DT1 SysEx) into a JE8086 plugin slot via injected MIDI SysEx. preset is the 1-based patch unit in file order (default 1) - use the je8086 sidecar survey roleShortlist refs (perf016/part2, bank0/slot25) to choose one. ATOMIC: every DT1 message is validated (F0 41 10 00 06 12 header, F7-terminated, Roland checksum, <=32768B) BEFORE anything is queued, so a corrupt bank never half-loads. The dump keeps its UserPatch bank address; the JE8086 wrapper retargets it onto the sounding temp-performance patch (same transform as the plugin's own patch browser), so it sounds immediately. No CC0+program-change recall is sent - a JP-8080 PC loads the emulator's bank program into the current patch and would overwrite the applied dump. Per-patch by design: a 64-patch bank is 128 DT1 messages while the injection carries at most 64 events and the proxy forwards SysEx over a single lane that DROPS when busy rather than queueing. Realtime mutation: not undoable; capture via project save.",
+    "Load ONE Roland JP-8080 patch from a bank file (.syx raw DT1 SysEx, or .mid SMF wrapping DT1 SysEx) into a JE8086 plugin slot via injected MIDI SysEx. preset is the 1-based patch unit in file order (default 1) - use the je8086 sidecar survey roleShortlist refs (perf016/part2, bank0/slot25) to choose one. ATOMIC: every DT1 message is validated (F0 41 10 00 06 12 header, F7-terminated, Roland checksum, <=32768B) BEFORE anything is queued, so a corrupt bank never half-loads. The dump keeps its UserPatch bank address; the JE8086 wrapper retargets it onto the sounding temp-performance patch (same transform as the plugin's own patch browser), so it sounds immediately. No CC0+program-change recall is sent - a JP-8080 PC loads the emulator's bank program into the current patch and would overwrite the applied dump. Per-patch by design: a 64-patch bank is 128 DT1 messages while the injection carries at most 64 events and the proxy forwards SysEx over a single lane that DROPS when busy rather than queueing. Realtime mutation: not undoable; capture via project save. " +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+              {"trackID",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
               {"filePath", QJsonObject{{"type","string"}}},
               {"preset",   QJsonObject{{"type","integer"}}}},
-              {"trackId","slotIndex","filePath"}),
+              {"slotIndex","filePath"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
+        int ti; std::string refErr;
+        if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+            return McpToolResult::text(QString::fromStdString(refErr), true);
         return runJe8086PatchFile(*e,
-            a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+            ti, a.value("slotIndex").toInt(),
             a.value("filePath").toString(),
             a.value("preset").toInt(1),
             a.value("captureToTree").toBool(true));
@@ -647,15 +717,19 @@ s.registerTool({"get_master_fx_params",
         }});
 
 s.registerTool({"set_internal_fx_param",
-        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex, or pass paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given) — out-of-range values are silently clamped (lesson 23).",
+        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex, or pass paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given) — out-of-range values are silently clamped (lesson 23). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
                   {"paramName", QJsonObject{{"type","string"}}},
-                  {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","value"}),
+                  {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","value"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -694,15 +768,19 @@ s.registerTool({"set_internal_fx_param",
         }});
 
 s.registerTool({"apply_sub_synth_mod_preset",
-        "Apply a named factory preset to a sub_synth slot's internal modulation LFO (params 27-32) in ONE atomic, undoable step â€” the mod matrix moves together and every other synth param is untouched. presetId one of: off, slow_filter_drift, vibrato, tremolo, fm_motion, animated_sweep.",
+        "Apply a named factory preset to a sub_synth slot's internal modulation LFO (params 27-32) in ONE atomic, undoable step â€” the mod matrix moves together and every other synth param is untouched. presetId one of: off, slow_filter_drift, vibrato, tremolo, fm_motion, animated_sweep. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+                  {"trackID",  QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"presetId",  QJsonObject{{"type","string"},
                       {"enum", QJsonArray{"off","slow_filter_drift","vibrato","tremolo","fm_motion","animated_sweep"}}}}},
-                   {"trackId","slotIndex","presetId"}),
+                   {"slotIndex","presetId"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             const std::string presetId = a.value("presetId").toString().toStdString();
             std::string err;
@@ -714,12 +792,16 @@ s.registerTool({"apply_sub_synth_mod_preset",
         }});
 
 s.registerTool({"get_internal_fx_param",
-        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units â€” the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Returns {params:[{index,name,value,defaultValue,minValue,maxValue}]}; untouched params report their default value. Reads the project ValueTree (source of truth â€” no render, no DSP access, read-only).",
+        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units â€” the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Returns {params:[{index,name,value,defaultValue,minValue,maxValue}]}; untouched params report their default value. Reads the project ValueTree (source of truth â€” no render, no DSP access, read-only). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
-                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+                  {"trackID",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -754,18 +836,23 @@ s.registerTool({"sub_synth_import_sysex",
         "(cutoff/envelopes/levels/waves/...); Virus "
         "features with no sub_synth equivalent (ring mod, LFOs, keytrack, FX, "
         "mod matrix, noise) are reported in 'unmapped' â€” never silently dropped. "
-        "On a bad file/slot/checksum the slot is left unchanged.",
+        "On a bad file/slot/checksum the slot is left unchanged. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                   {"trackID",   QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"filePath",  QJsonObject{{"type","string"}}},
                    {"voiceIndex",QJsonObject{{"type","integer"}}}},
-                   {"trackId","slotIndex","filePath"}),
+                   {"slotIndex","filePath"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             // Shared loader (src/common/PresetApply.h) — the same entry point
             // audio.subSynthImportSysex runs.
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             return runSubSynthImportSysex(*e,
-                a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+                ti, a.value("slotIndex").toInt(),
                 a.value("filePath").toString(),
                 a.value("voiceIndex").toInt(0));
         }});
@@ -778,8 +865,10 @@ s.registerTool({"apply_preset",
         "- Internal fm_synth slot + F0 43 .syx (single 163B, cartridge 4104B, raw VMEM 4096B) -> patch via setFmPatch (voiceIndex picks the cartridge voice).\n"
     "- Internal sub_synth slot + Virus dump (F0 00 20 33) -> patch via loadVirusPatch (voiceIndex for TI banks).\n"
     "- Any plugin slot + .SerumPreset (XferJson) / .fxp (CcnK) -> setStateInformation via parsePresetFile.\n"
-    "Otherwise errors: cannot determine preset type. Realtime mutations (SysEx/CC/PC routes) are not undoable; capture via project save.",
+    "Otherwise errors: cannot determine preset type. Realtime mutations (SysEx/CC/PC routes) are not undoable; capture via project save. " +
+    mcp::stableRefRuleText("trackID", "trackId"),
     objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
+              {"trackID",     QJsonObject{{"type","integer"}}},
               {"slotIndex",   QJsonObject{{"type","integer"}}},
               {"filePath",    QJsonObject{{"type","string"}}},
               {"program",     QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
@@ -787,13 +876,21 @@ s.registerTool({"apply_preset",
               {"voiceIndex",  QJsonObject{{"type","integer"},{"minimum",0}}},
               {"channel",     QJsonObject{{"type","integer"},{"minimum",1},{"maximum",16}}},
               {"captureToTree",QJsonObject{{"type","boolean"}}}},
-             {"trackId","slotIndex"}),
+             {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             // Shared composite (src/common/PresetApply.h) — the same body the
             // audio.applyPreset RPC route runs: dispatch by slot + file header
             // onto the shared loaders, tool argument contract intact.
-            return runApplyPreset(*e, a);
+            // B2: resolve `trackID`/`trackId` FIRST, then hand the shared body
+            // the resolved positional index (it reads `trackId` only).
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            QJsonObject args = a;
+            args["trackId"] = ti;
+            args.remove("trackID");
+            return runApplyPreset(*e, args);
         }});
 s.registerTool({"audition_patch",
         "Load a synth patch file into a probe FX slot and place a role-appropriate "
@@ -804,20 +901,35 @@ s.registerTool({"audition_patch",
         "(F0 43) -> fm_synth, else the Access header (F0 00 20 33) -> sub_synth, "
         "else an error. role picks the probe phrase root (bass 36 / lead 72 / pad 48 / "
         "stab 60 / arp 60 / fx 36 / riser 36; default pad); root overrides it. Live "
-        "audition only â€” no offline render. Returns {ok, trackId, slotIndex, name, engine, role}.",
+        "audition only â€” no offline render. Returns {ok, trackId, slotIndex, name, engine, role}. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"path",   QJsonObject{{"type","string"}}},
                    {"engine", QJsonObject{{"type","string"},
                        {"enum", QJsonArray{"sub_synth","fm_synth"}}}},
                    {"role",   QJsonObject{{"type","string"}}},
                    {"root",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
-                   {"trackId",QJsonObject{{"type","integer"}}}},
+                   {"trackId",QJsonObject{{"type","integer"}}},
+                   {"trackID",QJsonObject{{"type","integer"}}}},
                   {"path"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             // Shared composite (src/common/PresetApply.h) — the same body the
             // audio.auditionPatch RPC route runs: probe track/clip placement
             // + the shared patch loaders, tool argument contract intact.
-            return runAuditionPatch(*e, a);
+            // B2: `trackID` resolves like every other tool, but the shared
+            // body's probe-track wildcard (trackId omitted or negative) is
+            // preserved when NEITHER key names a real track.
+            const int rawTrackId = a.contains("trackId")
+                ? a.value("trackId").toInt(HDAW::kNoRef) : HDAW::kNoRef;
+            if (rawTrackId < 0 && !a.contains("trackID"))
+                return runAuditionPatch(*e, a);
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            QJsonObject args = a;
+            args["trackId"] = ti;
+            args.remove("trackID");
+            return runAuditionPatch(*e, args);
         }});
 
 }

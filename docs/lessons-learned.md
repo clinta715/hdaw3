@@ -506,3 +506,17 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     REQUIRED: the state capture is deferred ~800 ms and an immediate export
     races it, rendering the init patch for every patch).
 
+32. **An enabled Volume automation lane owns the parameter in the offline
+    render — audit isolation must use mute, not `setTrackVolume`.** The enabled
+    paramID-1 `Volume` lane rewrites the parameter every block in the offline
+    render (`src/engine/Track.cpp:557-561` playback branch;
+    `src/engine/AutomationManager.h:59-77` returns `points.front().second`
+    before a lane's first point), so a static fader write (`setTrackVolume` /
+    `IDs::volume`) is silently overridden — the 2026-09-24 "exports 3+ ignore
+    live tree changes" report was exactly this (the audit soloed with the fader
+    on tracks carrying a Volume lane; only `kick`, which had no lane, isolated).
+    **Rule:** isolate with mute (`setTrackMuted`) or disable the lane on the
+    offline copy. Pinned by
+    `ExportVolumeBypass.VolumeAutomationOverridesTreeFader` /
+    `ExportVolumeBypass.MultiExportRereadsLiveTree`.
+

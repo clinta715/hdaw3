@@ -86,21 +86,53 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   **Before blaming a change, re-run the suite with the temp area INSIDE the working tree** — and set
   BOTH vars to the literal path:
   `cmd /c "set TEMP=D:\…\hdaw3\.tmp_suite&& set TMP=D:\…\hdaw3\.tmp_suite&& powershell -File run-tests-sharded.ps1 -Shards 4"`.
+  **The harness now does this itself (2026-09-25).** `tests/test_main.cpp` probes the default temp
+  dir once before anything else in `main`; when the probe (write+read+delete) fails it redirects
+  `TMP`/`TEMP` to `<repo>/.tmp_tests` in both the CRT and Win32 process environments and prints
+  `[test_main] temp dir redirected to … (default unwritable: …)`. So this class no longer needs a
+  per-run override — `HDAW_TEST_TMP` overrides the choice if you want a specific dir. Measured:
+  `./build/hdaw_tests.exe --gtest_filter='VerifyPart.*'` went from **9/13 failing** with
+  `export failed: Could not create output file` to **13/13 PASSED** with no external env at all.
   `set TMP=%TEMP%` inside the same cmd line is a **trap** (measured 2026-09-24): cmd expands `%TEMP%` at
   parse time, so TMP keeps the sandbox-denied path and the save/load class stays red — 8 unrelated
   failures (`SongCells.CellsPersistAcrossSaveLoad`, 6× `ProjectMetadata.*`,
   `BusSendRpcTest.ListBusesMatchesMcpAndTheSavedProject`), all green once TMP is set explicitly.
   That converts the `%TEMP%` class (save/export/render) to green immediately — the same focused set
-  went from 15 failures to **172/172**. The `%APPDATA%` (preset/template) and QSettings classes stay
-  red in a sandbox: they are environmental, independent of any session's diff, and the way to confirm
-  is that the failing test passes once its path/keys are made available (clear the keys by hand, or
-  run outside the sandbox) — never by editing the test to expect the sandbox.
+  went from 15 failures to **172/172**. The `%APPDATA%` (preset/template) and QSettings classes were
+  the remaining two; **the harness now covers them too (2026-09-25)**:
+  - `%APPDATA%` = `File::getSpecialLocation(userApplicationDataDirectory)` =
+    `SHGetSpecialFolderPathW(CSIDL_APPDATA)` (registry `%USERPROFILE%\AppData\Roaming`, NOT the
+    `APPDATA` env var) — `build/_deps/juce-src/modules/juce_core/native/juce_Files_windows.cpp:721`
+    → `:146`. shell32 resolves that folder set on FIRST use and never re-reads the env afterwards, so
+    the harness rewrites `USERPROFILE`/`APPDATA`/`LOCALAPPDATA` to `<repo>/.tmp_tests/userdata` as the
+    very first statements of `main` (before `ScopedComInit`/the pump thread/`QCoreApplication`) and
+    prints `[test_main] user data dir redirected to …`. `HDAW_TEST_USERDATA` overrides the profile root.
+  - QSettings is NativeFormat (registry `HKCU\Software\HDAW\HDAW`) because the engine never sets a
+    format/path (`src/engine/AudioEngine.cpp:198,345,445`, `src/engine/RaveService.cpp:46`,
+    `src/engine/PluginManager.cpp:78`, `src/frontend/router/Router_Audio.cpp:293`, …). The harness
+    sets `QSettings::IniFormat` + `QSettings::setPath(…)` = `<repo>/.tmp_tests/settings/<pid>`
+    (User- and SystemScope) for the TEST PROCESS before any `QSettings` exists and prints
+    `[test_main] settings store = …`. Production entry points (`src/main.cpp`,
+    `src/main_headless.cpp`) are untouched; the switch is process-wide, so engine and tests still
+    share one settings mechanism.
+  Measured 2026-09-25: the settings filter
+  (`RaveSettings.*:FrontendServer.SettingsNamespaceExposesMcpHttpConfig:McpServer.EngineSettingsStartMcpHttp`)
+  is **13/13 PASSED** (was 8 red) and
+  `SongPlan.TemplateRoundTripDoesNotApply:McpServer.ApplySongPlan:McpCoverageTest.FxChainPresetRoundTrip`
+  is **3/3 PASSED** (was 3 red). `TransportSurface.StartStopRecording` also passes now (3/3 solo):
+  its recorder targets `@userApplicationDataDirectory/HDAW/recordings`
+  (`src/engine/MainAudioProcessor.cpp:376`), so the first classification below ("no capture endpoint")
+  was really this path denial on this box. `VerifyPart.*` stays 13/13.
 - **Two more environmental classes measured on 2026-09-24 full runs (do not chase either):**
   1. **No capture endpoint → `TransportSurface.StartStopRecording` fails deterministically.**
      This box exposes exactly one audio endpoint (RDP "Remote Audio", playback only). `beginActualRecording`
      passes `getTotalNumInputChannels()` (0) to the recorder → `juce::WavAudioFormat::createWriterFor`
      returns null → `isRecording()` stays false. Solo-fails consistently (~270 ms). It needs a real
-     input device, like the deviceless pattern above.
+     input device, like the deviceless pattern above. **(2026-09-25 update: with the harness
+     user-data redirect this test PASSES (3/3 solo) — `beginActualRecording` writes
+     `@userApplicationDataDirectory/HDAW/recordings` (`src/engine/MainAudioProcessor.cpp:376`), so on
+     this box the denial was the path, not the endpoint. The no-endpoint failure remains possible on a
+     box with no route at all.)**
   2. **A `FrontendServer.*` shard can cascade on "server failed to bind".** The shard's first
      FrontendServer test that fails to bind port 0's listener (or loses the WS handshake under load)
      turns every later `client.connect(...)` in that shard red (`server failed to bind` /
@@ -118,6 +150,34 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   1952 passed, 39 skipped, 11 failures, all environmental** (exact failure list in the
   bullet above; `docs/build-and-testing.md` defers its baseline counts here). Compare any
   later full run against this.
+- **Full-suite 4-shard measurement (2026-09-25, pre-widened-harness):**
+  `powershell -File run-tests-sharded.ps1 -Shards 4` over the WHOLE suite took
+  **1398 s (23.3 min)** and reported **1957 passed, 12 unique failures**. Sharding is measured
+  **NOT** to multiply failures — all 12 reproduce SOLO on this box, so they are environmental, not
+  contention. Census by class: **3 persistence** (`%APPDATA%` preset/template writes:
+  `SongPlan.TemplateRoundTripDoesNotApply`, `McpServer.ApplySongPlan`,
+  `McpCoverageTest.FxChainPresetRoundTrip`) + **8 settings-backed** (6× `RaveSettings.*`,
+  `FrontendServer.SettingsNamespaceExposesMcpHttpConfig`, `McpServer.EngineSettingsStartMcpHttp`) +
+  **1 deviceless/env** (`TransportSurface.StartStopRecording`). The widened harness isolation (temp +
+  user-data root + isolated per-process QSettings INI store, bullets above) makes classes 1 and 2
+  (11 tests) green.
+- **Intermittent CLAP bake-bed dropout (measured 3× on 2026-09-25 during
+  PsyDub tail-polish iteration).** In a windowed render, one 4-beat window
+  occasionally comes out at −89..−96 dBFS — the smooth exponential decay is
+  missing and the pad bed is absent — while the identical binary and
+  arrangement rerun clean (one observed rerun even half-recovered at −44.49).
+  Seen in candidate-A run 1 (beats 628-632 at −89.65) and once in the freeze
+  full run (−95.8 in a single window); it sits outside all gates. **Before
+  blaming a mix/arrangement change, re-render just the affected window.**
+  Root cause unknown; suspects are the render-sequence bake race or an
+  isolated-CLAP child dropout under load.
+- **Shard runner counts UNIQUE failures (fixed 2026-09-25).** gtest prints each failing test twice
+  (timed `[  FAILED  ] Name (123 ms)` plus a bare `[  FAILED  ] Name` in the summary list) and the
+  `[  FAILED  ] N test(s), listed below:` counter is not a test name; summing raw lines reported the
+  12 unique failures above as "28 failed". `run-tests-sharded.ps1` now totals the unique timed names
+  and prints `TOTAL: <n> passed, <n> unique failed (raw FAILED lines: <n>)`; the per-shard detail lines
+  keep the raw counts. Measured: `-Shards 2 -Filter "BusSendRpcTest.*"` prints
+  `TOTAL: 32 passed, 0 unique failed (raw FAILED lines: 0)`.
 - **Twin parity suites (landed with the 2026-09-24 parity + B3 waves)** — each drives the
   SAME scenario through the MCP tool AND the frontend JSON-RPC route and asserts identical
   payloads / failure texts:
@@ -169,18 +229,45 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   failure-path tests added (`SlowStateTimeoutSignalsFailure`, `GetStateRetriesAfterWrongTypeResponse`,
   `GetStateRetriesWhileChildBusyInSetStateMarshal`); verified 5× solo + 5× under parallel CPU load
   (10/10 each round) and `PluginIsolation.*` 49/49.
-- **OPEN BUG (2026-09-24): exports 3+ in one session ignore live tree changes.** In
-  `PsytranceComposition.PsyDubFiveMinutes`'s stem-audit pass (solo each role by
-  `cmds.setTrackVolume(t, 0)` on the others, then `startExport` a 104 s window), the first two
-  stems isolate correctly but stems 3+ re-render a FIXED tree state — deterministic md5s across
-  runs, `rebuildRoutingGraph()` + `drainPendingRoutingRebuild()` before each export do not help,
-  and raw `IDs::volume` tree writes never reach the bake at all (only the command API does — and
-  then only for the first two exports). Suspected: the dedicated export domain caches its baked
-  graph after the first two uses (`ExportManager::usesDedicatedDomain`). Impact: any multi-export
-  workflow (stems, A/B renders, audit passes) silently renders stale mixes after the second
-  export. Repro: `PsyDubFiveMinutes` + `.tmp_dnb_theme/psy_dub_stems/audit.tsv`; until fixed,
-  keep per-stem verification to ≤ 2 exports per engine session or re-create the engine between
-  exports.
+- **`HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900` test-side UAF — ROOT-CAUSED AND FIXED
+  (2026-09-26); this is the cause of the intermittent shard-death class.** Symptom: SEH
+  `0xc0000005` in `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`
+  (`tests/unit/mcp/transport_http_test.cpp`), ~1/17 idle, which under load cascaded into killing a
+  whole 855-test shard (an earlier full run lost a shard and showed 2 failures — both this same
+  UAF). Root cause: test declaration order — `QTcpSocket` was declared before the `QEventLoop` it
+  captured, so `~QTcpSocket` → `disconnected` → `loop.quit()` ran on a destroyed loop. Fix:
+  declaration order plus an explicit `QObject::disconnect` teardown. Evidence: 25/25 repeat green,
+  and both later full runs completed every shard. The intermittent shard-death class (a whole test
+  shard lost mid-suite, `INCOMPLETE SHARDS … (ran <x> of <y> intended tests)`, no crash artifact —
+  previously unclassified in `docs/build-and-testing.md`) has been tracked down to this test-side
+  UAF and has not recurred since the fix.
+- **DISPROVEN (2026-09-25) — "exports 3+ in one session ignore live tree changes" was an audit
+  artifact, not an export bug.** The 2026-09-24 stem audit soloed tracks with
+  `cmds.setTrackVolume(t, 0)` (a static fader write to `IDs::volume`), but the project has
+  ENABLED paramID-1 `Volume` automation on `bass/growl/stab/lead/hat/pad`, and an enabled lane
+  rewrites the parameter EVERY BLOCK in the offline render (`src/engine/Track.cpp:557-561`,
+  lanes installed by `RoutingManager` during the offline rebuild). Every enabled lane
+  evaluates to exactly 1.0 across the audit window (beats 208-240) by construction:
+  `getValueAtTime` returns `points.front().second` for any time before a lane's first point
+  (`src/engine/AutomationManager.h:59-77`), and these Volume lanes' first point is
+  (beat 672, 1.0). So each such lane re-opened a track the audit had tried to silence,
+  and the audited stems are overlapping, highly correlated mixes
+  (measured 0.94-0.97 zero-lag correlation). `kick` carries no Volume lane, so it alone honoured
+  the fader. Automation-wins-over-fader is the intended semantics; no stale export-graph reuse
+  was reproduced — `ExportManager::startExport` deep-copies the tree per call and builds a
+  fresh graph, and the probe/recipe runs below all re-read the live tree (the audit run's own
+  log shows 18 × "render finished success=1 message=Export complete."). Verified 2026-09-25 by
+  three controlled multi-export probes that all isolated correctly — mute soloing ×5 exports,
+  `setTrackVolume` ×5, `setTrackVolume` + a real isolated
+  `__passthrough__` child ×4 — plus the historical audit recipe restored in the current
+  v3 PsyDub project, which produced six DISTINCT stems: kick rms 0.3195 vs the five automated
+  synth stems 0.1855-0.1856, mutually correlated 0.94-0.97).
+  **Audit rule:** isolate with mute (`setTrackMuted`) or disable the track's Volume automation
+  on the offline copy — never `setTrackVolume` on a track with an enabled Volume lane.
+  Regression pins (passing 2026-09-25): `ExportVolumeBypass.VolumeAutomationOverridesTreeFader`
+  (automation on vs off = 162.7 dB apart on rendered RMS) and
+  `ExportVolumeBypass.MultiExportRereadsLiveTree` (exports #1 and #3 match to <1% RMS while the
+  muted #2 sits 12.5 dB down).
 - **HTTP runtime path coverage**: `McpServer.EngineSettingsStartMcpHttp`
   enables `mcp/httpEnabled` in `QSettings`, starts `AudioEngine` with the
   persisted config, and verifies a real `POST /mcp` round-trip on the

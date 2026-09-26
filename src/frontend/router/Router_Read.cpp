@@ -49,24 +49,26 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& trackList,
     if (m == "getScaleRoot")     { return { false, r.getScaleRoot() }; }
     if (m == "getScaleMode")     { return { false, r.getScaleMode() }; }
     if (m == "getFxSlots") {
-        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        // B2: `trackIndex` (index) or the stable `trackID` — the ONE shared rule.
+        int i; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})) return err;
         // The SAME shaping list_fx emits (common/SendJson.h) — the router hands the
         // client the parsed structure rather than a string-quoted document.
         return { false, QJsonDocument::fromJson(
             QString::fromStdString(HDAW::shapeFxSlotsJson(r.getFxSlots(i))).toUtf8()).array() };
     }
     if (m == "getMidiFxSlots") {
-        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        int i; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})) return err;
         QJsonArray arr; for (const auto& f : r.getMidiFxSlots(i)) arr.append(toJson(f));
         return { false, arr };
     }
     if (m == "getAutomationLanes") {
-        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        int i; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})) return err;
         QJsonArray arr; for (const auto& l : r.getAutomationLanes(i)) arr.append(toJson(l));
         return { false, arr };
     }
     if (m == "getAutomationPoints") {
-        int i; std::string lane; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", lane, nullptr)) return makeError(-32602, "trackIndex and laneName required");
+        int i; std::string lane; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "laneName", lane, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and laneName required");
         QJsonArray arr; for (const auto& p : r.getAutomationPoints(i, lane)) arr.append(toJson(p));
         return { false, arr };
     }
@@ -91,23 +93,24 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& trackList,
         return { false, arr };
     }
     if (m == "getInternalFxParams") {
-        int ti, si; if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)) return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", si, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         QJsonArray arr; for (const auto& p : r.getInternalFxParams(ti, si)) arr.append(toJson(p));
         return { false, arr };
     }
     if (m == "getAutomatableParams") {
-        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        int i; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})) return err;
         QJsonArray arr; for (const auto& a : r.getAutomatableParams(i)) arr.append(toJson(a));
         return { false, arr };
     }
     if (m == "getModulationLfos") {
-        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        int i; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})) return err;
         QJsonArray arr; for (const auto& l : r.getModulationLfos(i)) arr.append(toJson(l));
         return { false, arr };
     }
     if (m == "getTrackMeter")   { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, toJson(r.getTrackMeter(i)) }; }
     if (m == "getMasterMeter")  { return { false, toJson(r.getMasterMeter()) }; }
-    if (m == "getFmAnalysis")   { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, toJson(r.getFmAnalysis(i)) }; }
+    if (m == "getFmAnalysis")   { int i; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})) return err; return { false, toJson(r.getFmAnalysis(i)) }; }
     if (m == "getTrackSends") {
         // B2: `trackId` (index) or `trackID` (stable id, design B1) — the ONE
         // shared rule (common/StableRefResolve.h), so this route and the MCP
@@ -170,7 +173,8 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& trackList,
     }
     if (m == "isDirty")         { return { false, r.isDirty() }; }
     if (m == "sampler.getState") {
-        int ti, si; if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)) return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", si, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         auto s = r.getSamplerState(ti, si);
         QJsonObject obj;
         obj["sampleFile"] = QString::fromStdString(s.sampleFile);

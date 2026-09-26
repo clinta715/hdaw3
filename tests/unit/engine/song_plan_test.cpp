@@ -15,6 +15,13 @@
 #include "engine/SeededCellDefaults.h"
 #include "common/ProjectCommands.h"
 #include "model/ProjectModel.h"
+#include "shared_engine_fixture.h"
+
+// One shared engine per process (see shared_engine_fixture.h). Each suite keeps
+// its own fixture class so --gtest_filter=<Suite>.* is unchanged.
+class SongPlan : public hdaw_test::SharedEngineSuite {};
+class SongCells : public hdaw_test::SharedEngineSuite {};
+class SeededDefaults : public hdaw_test::SharedEngineSuite {};
 
 using SongPlanData = ProjectCommands::SongPlanData;
 
@@ -37,10 +44,8 @@ SongPlanData makePlan()
 
 } // namespace
 
-TEST(SongPlan, SetSyncsTypedRegionsAndEchoes)
+TEST_F(SongPlan, SetSyncsTypedRegionsAndEchoes)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     auto r = cmds.setSongPlan(makePlan());
@@ -78,10 +83,8 @@ TEST(SongPlan, SetSyncsTypedRegionsAndEchoes)
     EXPECT_EQ(plan.totalBars, 32);
 }
 
-TEST(SongPlan, ValidationRejectsBadPlansWithNoMutation)
+TEST_F(SongPlan, ValidationRejectsBadPlansWithNoMutation)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     auto badKind = makePlan();
@@ -104,10 +107,8 @@ TEST(SongPlan, ValidationRejectsBadPlansWithNoMutation)
     EXPECT_TRUE(cmds.getSongPlan().sections.empty());
 }
 
-TEST(SongPlan, OneUndoRevertsPlan)
+TEST_F(SongPlan, OneUndoRevertsPlan)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     EXPECT_TRUE(cmds.setSongPlan(makePlan()).ok);
@@ -124,10 +125,8 @@ TEST(SongPlan, OneUndoRevertsPlan)
     EXPECT_EQ(typed, 0);
 }
 
-TEST(SongPlan, PersistsAcrossSaveLoad)
+TEST_F(SongPlan, PersistsAcrossSaveLoad)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     EXPECT_TRUE(cmds.setSongPlan(makePlan()).ok);
 
@@ -151,10 +150,8 @@ TEST(SongPlan, PersistsAcrossSaveLoad)
     file.deleteFile();
 }
 
-TEST(SongPlan, TemplateRoundTripDoesNotApply)
+TEST_F(SongPlan, TemplateRoundTripDoesNotApply)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     EXPECT_TRUE(cmds.setSongPlan(makePlan()).ok);
     EXPECT_TRUE(cmds.saveSectionTemplate("hdaw-plan-test", nullptr));
@@ -186,10 +183,8 @@ TEST(SongPlan, TemplateRoundTripDoesNotApply)
     dir.deleteFile();
 }
 
-TEST(SongPlan, BriefRoundTripAndValidation)
+TEST_F(SongPlan, BriefRoundTripAndValidation)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     const char* brief =
@@ -247,10 +242,8 @@ juce::ValueTree findClipNode(AudioEngine& engine, int clipId)
 }
 } // namespace
 
-TEST(SongCells, ValidationRejectsWithoutCells)
+TEST_F(SongCells, ValidationRejectsWithoutCells)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     std::string err;
 
@@ -266,10 +259,8 @@ TEST(SongCells, ValidationRejectsWithoutCells)
     EXPECT_TRUE(cmds.getCells().empty());
 }
 
-TEST(SongCells, PhraseFillWindowReuseAndProvenance)
+TEST_F(SongCells, PhraseFillWindowReuseAndProvenance)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
@@ -319,10 +310,8 @@ TEST(SongCells, PhraseFillWindowReuseAndProvenance)
     EXPECT_EQ(cmds.fillCells("unfilled").filled, 0);
 }
 
-TEST(SongCells, LockSkipsAndRerollBumpsSeed)
+TEST_F(SongCells, LockSkipsAndRerollBumpsSeed)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // makeCell targets track 1 ("Synth (MIDI) track") — the default project
     // ships ZERO tracks, so the fill has to have a real target or fillOneCell
@@ -363,10 +352,8 @@ TEST(SongCells, LockSkipsAndRerollBumpsSeed)
     EXPECT_EQ(b4.skippedLocked, 1);
 }
 
-TEST(SongCells, HarvestNotesAndRemove)
+TEST_F(SongCells, HarvestNotesAndRemove)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // makeCell targets track 1 — the default project ships zero tracks, so the
     // harvest needs a real target (fillOneCell refuses a cell whose track is
@@ -386,12 +373,10 @@ TEST(SongCells, HarvestNotesAndRemove)
     EXPECT_FALSE(cmds.removeCellRecipe("build", "hits"));
 }
 
-TEST(SongCells, PadCellFillsChordVoicing)
+TEST_F(SongCells, PadCellFillsChordVoicing)
 {
     // B6 (Modular Dawn audit): a pad-role cell must produce a chord voicing
     // (root + fifth +7 + octave +12 per chord slot), not a single-note drone.
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
@@ -456,10 +441,8 @@ TEST(SongCells, PadCellFillsChordVoicing)
     EXPECT_GE(maxPitch - 12, 48) << "expected stacked octaves (root+12)";
 }
 
-TEST(SongCells, CellsPersistAcrossSaveLoad)
+TEST_F(SongCells, CellsPersistAcrossSaveLoad)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);
     std::string err;
@@ -506,13 +489,15 @@ std::string clipNoteSig(AudioEngine& engine, int clipId, double* maxStart = null
 
 // (A1) A bare rhythm cell varies with the plan seed and is deterministic
 // per seed — the identical-defaults bug (4/3/1/1 in every song).
-TEST(SongCells, BareRhythmCellVariesWithSeedAndIsDeterministic)
+TEST_F(SongCells, BareRhythmCellVariesWithSeedAndIsDeterministic)
 {
     // ASSERT_* cannot appear in a non-void lambda (bare failure return),
     // so this helper reports failure as an empty signature.
-    auto fillSig = [](uint64_t planSeed, int* clipIdOut) -> std::string {
-        AudioEngine engine;
-        engine.initialize();
+    // Each call needs a FRESH project (three fills in one test): reset the
+    // shared engine explicitly — the same reset the fixture's SetUp runs —
+    // instead of constructing a private engine per call.
+    auto fillSig = [this](uint64_t planSeed, int* clipIdOut) -> std::string {
+        hdaw_test::resetSharedEngineProject(engine);
         auto& cmds = engine.getProjectCommands();
         cmds.addTrack("Track 0");
         cmds.addTrack("Track 1");
@@ -525,7 +510,6 @@ TEST(SongCells, BareRhythmCellVariesWithSeedAndIsDeterministic)
         auto b = cmds.fillCells("all");
         if (!b.ok || b.cells.size() != 1u || !b.cells[0].ok) return {};
         if (clipIdOut != nullptr) *clipIdOut = b.cells[0].clipId;
-        // NOTE: engine dies at scope end; read the signature before that.
         return clipNoteSig(engine, b.cells[0].clipId);
     };
     const std::string sig777 = fillSig(777, nullptr);
@@ -538,10 +522,8 @@ TEST(SongCells, BareRhythmCellVariesWithSeedAndIsDeterministic)
 }
 
 // (B1) corpusRole fills from a seeded bank phrase at the phrase GM pitch.
-TEST(SongCells, CorpusRoleFillsBankPhraseAtPhrasePitch)
+TEST_F(SongCells, CorpusRoleFillsBankPhraseAtPhrasePitch)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
@@ -568,10 +550,8 @@ TEST(SongCells, CorpusRoleFillsBankPhraseAtPhrasePitch)
 }
 
 // (B2) Unknown bank role falls back to euclidean — ok, never an error.
-TEST(SongCells, CorpusRoleUnknownRoleFallsBackToEuclidean)
+TEST_F(SongCells, CorpusRoleUnknownRoleFallsBackToEuclidean)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
@@ -586,10 +566,8 @@ TEST(SongCells, CorpusRoleUnknownRoleFallsBackToEuclidean)
 }
 
 // (B3) The phrase tiles across the whole section window (drop = 16 bars).
-TEST(SongCells, CorpusRoleTilesAcrossSectionWindow)
+TEST_F(SongCells, CorpusRoleTilesAcrossSectionWindow)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
@@ -609,7 +587,7 @@ TEST(SongCells, CorpusRoleTilesAcrossSectionWindow)
 
 // ── Seeded cell defaults (E1–E3): pure-picker unit tests ──────────────────
 
-TEST(SeededDefaults, BreakStyleVariesAndIsDeterministic)
+TEST_F(SeededDefaults, BreakStyleVariesAndIsDeterministic)
 {
     using HDAW::SeededDefaults::defaultBreakStyle;
     // Valid style for a spread of seeds (incl. 0), deterministic per seed.
@@ -627,7 +605,7 @@ TEST(SeededDefaults, BreakStyleVariesAndIsDeterministic)
     EXPECT_GT(seen.size(), 1u) << "break default never varies";
 }
 
-TEST(SeededDefaults, PhraseRoleStyles)
+TEST_F(SeededDefaults, PhraseRoleStyles)
 {
     using HDAW::SeededDefaults::defaultPhraseStyleForRole;
     EXPECT_EQ(defaultPhraseStyleForRole("bass", 7), PhraseGenerator::BassLine);
@@ -656,7 +634,7 @@ TEST(SeededDefaults, PhraseRoleStyles)
     EXPECT_GT(arpSeen.size(), 1u) << "arp style never varies";
 }
 
-TEST(SeededDefaults, PadVoicingShapes)
+TEST_F(SeededDefaults, PadVoicingShapes)
 {
     using HDAW::SeededDefaults::padVoicingIntervals;
     using HDAW::SeededDefaults::padVoicingShape;
@@ -677,10 +655,8 @@ TEST(SeededDefaults, PadVoicingShapes)
 }
 
 // (E2 wiring smoke) A bare lead phrase cell fills and refills identically.
-TEST(SongCells, BareLeadCellFillsDeterministically)
+TEST_F(SongCells, BareLeadCellFillsDeterministically)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");

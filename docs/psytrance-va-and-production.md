@@ -733,10 +733,19 @@ bypasses the procdump attach.
    the truth; hasSound is NOT a render predictor.
 3. **`duplicate_region` ripple-inserts:** copies [start,end) at end AND
    shifts later content. Extend grooves BEFORE placing later material.
-4. **Registry clobber:** an engine restart rewrites
+4. **Registry clobber (FIXED 2026-09-25):** an engine restart used to rewrite
    `%APPDATA%\HDAW\libraries\registry.json` from memory, dropping
-   externally-written entries. Register libraries via MCP `add_library`
-   while engines may run; scripted registry writes only when idle.
+   externally-written entries. `FileLibraryManager::saveRegistry` now MERGES
+   the on-disk registry at save time: in-memory entries win for ids the
+   manager owns, unknown on-disk ids are kept (in on-disk order) and adopted
+   into the live manager, and ids in `removedIds` stay removed. Regression
+   tests: `FileLibraryTest.RegistryMergeOnSaveKeepsExternalEntries`,
+   `RegistryMergeOnSaveKeepsExplicitRemovals`,
+   `RegistryMergeOnSavePrefersMemoryValues`. Registering via MCP
+   `add_library` remains the normal path, and external/scripted registry
+   writes now survive engine restarts. Remaining caveat: removals are only
+   sticky per process — a stale external copy of a removed entry can
+   resurrect after that engine restarts.
 5. **Daemon drops:** "Connection closed" mid-project → `await mcp.reload(
    'hdaw')` then `load_project` from the last save. Save often on long
    builds (`.tmp_dnb_theme/<name>.hdaw` after every section pass).

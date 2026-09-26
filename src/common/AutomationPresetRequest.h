@@ -7,6 +7,7 @@
 // Unit convention: the JSON boundary speaks BEATS; ProjectCommands::applyAutomationPreset
 // converts to the seconds the tree stores. Header-only; JUCE + Qt only.
 #include "ProjectCommands.h"         // ProjectCommands
+#include "StableRefResolve.h"        // resolveTrackRef (the ONE shared rule)
 #include "../engine/AutomationPreset.h"  // HDAW::AutomationPreset::PresetWindow / presetFromName
 #include "../model/ProjectModel.h"   // IDs:: namespace
 
@@ -169,15 +170,48 @@ inline QString automationPresetAppliedText(const AutomationPresetRequest& req, i
             {"pointsAdded", pointsAdded}}).toJson(QJsonDocument::Compact));
 }
 
-// ONE entry point for automation_preset: resolve lane, parse windows, apply,
-// report. Returns the exact tool text (error text when *outOk is left false).
+// ONE entry point for automation_preset: resolve the track ref, resolve lane,
+// parse windows, apply, report. Returns the exact tool text (error text when
+// *outOk is left false). B2b split: WITH the stable `trackID` the ONE shared
+// rule (common/StableRefResolve.h) resolves strictly — the id wins over the
+// positional `trackId`, unknown/disagreement name themselves. WITHOUT
+// `trackID` the parse is BYTE-FOR-BYTE the pre-B2b one: positional `trackId`
+// with its historical -1 default and no "required" gate of its own, so a
+// request naming no track still reaches the lane lookup below (the route's
+// `{}` has always failed THERE, with the lane text). The two-key read mirrors
+// the surfaces' refArgs shape (RouterHelpers.h / McpArgs.h): presence via
+// contains(), never inferred from the value.
 inline QString automationPresetToolText(ProjectCommands& commands,
                                         const juce::ValueTree& trackList,
                                         const QJsonObject& args,
                                         bool* outOk = nullptr)
 {
     if (outOk) *outOk = false;
-    const int trackId = args.value("trackId").toInt(-1);
+    int trackId;
+    if (args.contains("trackID"))
+    {
+        int index = HDAW::kNoRef, stableID = 0;
+        if (args.contains("trackId"))
+        {
+            if (! args.value("trackId").isDouble())
+                return QString::fromUtf8("missing or non-numeric param: trackId");
+            index = static_cast<int>(args.value("trackId").toDouble());
+        }
+        if (! args.value("trackID").isDouble())
+            return QString::fromUtf8("missing or non-numeric param: trackID");
+        stableID = static_cast<int>(args.value("trackID").toDouble());
+        const auto ref = resolveTrackRef(trackList, index, stableID);
+        if (! ref.ok)
+            return QString::fromStdString(ref.error);
+        trackId = ref.index;
+    }
+    else
+    {
+        // Pre-B2b parse, byte-for-byte: `toInt(-1)` — an absent OR
+        // non-numeric positional is the "no track" default, answered by the
+        // lane gate below, never by a new "trackId required" error.
+        trackId = args.value("trackId").toInt(-1);
+    }
     auto lane = findAutomationLane(trackList, trackId, args.value("lane"));
     if (! lane.isValid())
         return QString::fromUtf8(

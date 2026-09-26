@@ -6,6 +6,7 @@
 #include "engine/RoutingManager.h"
 #include "engine/MidiClipProcessor.h"
 #include "model/ProjectModel.h"
+#include "../engine/shared_engine_fixture.h"   // ONE engine for the suite, project reset per test
 
 #include <algorithm>
 #include <string>
@@ -23,10 +24,39 @@ static int seedTrack(AudioEngine& engine, const char* name)
     return idx;
 }
 
-TEST(Commands, AddRemoveTrack)
+// The suite's engine is shared: hdaw_test::SharedEngineSuite builds ONE
+// AudioEngine for the whole Commands suite and resetSharedEngineProject()
+// calls newProject() in SetUp(), so every test still starts from a clean
+// project. The old per-test `AudioEngine engine; engine.initialize();`
+// prologue (56x) is gone; `engine` below is the fixture's AudioEngine&.
+// The fixture class name IS the gtest suite name, so `--gtest_filter=Commands.*`
+// is unchanged. See tests/unit/engine/shared_engine_fixture.h for the
+// invariants a converted suite must hold.
+//
+// State that a whole-process engine carries and newProject() does NOT restore
+// (the risk list for rolling this fixture out; none of it is touched by the
+// tests below — they were audited against it before conversion):
+//   * TransportManager atomics: isRecording, punchEnabled, punchOutRequested
+//     (the fixture restores playing / currentSample / auto-stop; bpm, looping,
+//     loop bounds and arranger state are re-pushed from the re-created
+//     TRANSPORT node).
+//   * device / sample rate: deviceManager is opened once for the process; a
+//     suite that calls setAudioDeviceSetup leaves that for the next suite.
+//   * pluginManager: the plugin cache/blacklist and any proxy child processes
+//     are loaded once; suites that mutate them bleed.
+//   * fileLibraryManager: the registry and its async auto-scans persist (and
+//     land at unpredictable times).
+//   * raveService / raveJobManager / raveTrainingJobManager / sessionManager:
+//     background job and session state is not part of the project tree.
+//   * MCP HTTP server: started once per process from settings; a test that
+//     enables it binds the port for every later test in the binary.
+//   * MainAudioProcessor::metronome enabled flag (beats-per-bar IS re-pushed).
+//   * user-data / QSettings writes (chain libraries, patterns, presets) are
+//     process-external and shared by every test in the binary.
+class Commands : public hdaw_test::SharedEngineSuite {};
+
+TEST_F(Commands, AddRemoveTrack)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     int initial = engine.getReadModel().getTrackCount();
     int idx = cmds.addTrack("Test");
@@ -35,10 +65,8 @@ TEST(Commands, AddRemoveTrack)
     EXPECT_EQ(engine.getReadModel().getTrackCount(), initial);
 }
 
-TEST(Commands, TransportPlayStop)
+TEST_F(Commands, TransportPlayStop)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getTransportCommands();
     cmds.play();
     EXPECT_TRUE(engine.getReadModel().getTransport().isPlaying);
@@ -46,10 +74,8 @@ TEST(Commands, TransportPlayStop)
     EXPECT_FALSE(engine.getReadModel().getTransport().isPlaying);
 }
 
-TEST(Commands, TransportPause)
+TEST_F(Commands, TransportPause)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getTransportCommands();
     cmds.play();
     EXPECT_TRUE(engine.getReadModel().getTransport().isPlaying);
@@ -57,10 +83,8 @@ TEST(Commands, TransportPause)
     EXPECT_FALSE(engine.getReadModel().getTransport().isPlaying);
 }
 
-TEST(Commands, TransportRewind)
+TEST_F(Commands, TransportRewind)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getTransportCommands();
     cmds.seekToSeconds(5.0);
     auto t = engine.getReadModel().getTransport();
@@ -70,10 +94,8 @@ TEST(Commands, TransportRewind)
     EXPECT_DOUBLE_EQ(t.currentTimeSeconds, 0.0);
 }
 
-TEST(Commands, PlayAfterAutoStopRestartsPlayback)
+TEST_F(Commands, PlayAfterAutoStopRestartsPlayback)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getTransportCommands();
     auto& tm = engine.getTransportManager();
 
@@ -98,10 +120,8 @@ TEST(Commands, PlayAfterAutoStopRestartsPlayback)
     EXPECT_FALSE(tm.consumeAutoStopRequested());
 }
 
-TEST(Commands, ToggleLoop)
+TEST_F(Commands, ToggleLoop)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getTransportCommands();
     EXPECT_FALSE(engine.getReadModel().getTransport().isLooping);
     cmds.toggleLoop();
@@ -110,10 +130,8 @@ TEST(Commands, ToggleLoop)
     EXPECT_FALSE(engine.getReadModel().getTransport().isLooping);
 }
 
-TEST(Commands, SetTrackVolume)
+TEST_F(Commands, SetTrackVolume)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -122,10 +140,8 @@ TEST(Commands, SetTrackVolume)
     EXPECT_DOUBLE_EQ(track.volume, 0.5);
 }
 
-TEST(Commands, SetTrackPan)
+TEST_F(Commands, SetTrackPan)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -134,10 +150,8 @@ TEST(Commands, SetTrackPan)
     EXPECT_DOUBLE_EQ(track.pan, 0.25);
 }
 
-TEST(Commands, SetTrackMuted)
+TEST_F(Commands, SetTrackMuted)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -149,10 +163,8 @@ TEST(Commands, SetTrackMuted)
     EXPECT_FALSE(track.muted);
 }
 
-TEST(Commands, SetTrackName)
+TEST_F(Commands, SetTrackName)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -161,10 +173,8 @@ TEST(Commands, SetTrackName)
     EXPECT_EQ(track.name, "MyTrack");
 }
 
-TEST(Commands, AddMidiClip)
+TEST_F(Commands, AddMidiClip)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -185,10 +195,8 @@ TEST(Commands, AddMidiClip)
     EXPECT_TRUE(found);
 }
 
-TEST(Commands, RemoveClip)
+TEST_F(Commands, RemoveClip)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -200,10 +208,8 @@ TEST(Commands, RemoveClip)
         EXPECT_NE(clip.clipId, clipId);
 }
 
-TEST(Commands, AddNote)
+TEST_F(Commands, AddNote)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -225,10 +231,8 @@ TEST(Commands, AddNote)
     EXPECT_TRUE(found);
 }
 
-TEST(Commands, RemoveNote)
+TEST_F(Commands, RemoveNote)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -241,10 +245,8 @@ TEST(Commands, RemoveNote)
         EXPECT_NE(n.noteId, noteId);
 }
 
-TEST(Commands, UndoRedo)
+TEST_F(Commands, UndoRedo)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     int initial = engine.getReadModel().getTrackCount();
     cmds.addTrack("UndoTest");
@@ -255,19 +257,15 @@ TEST(Commands, UndoRedo)
     EXPECT_EQ(engine.getReadModel().getTrackCount(), initial + 1);
 }
 
-TEST(Commands, SetTempo)
+TEST_F(Commands, SetTempo)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.setTempo(140.0);
     EXPECT_DOUBLE_EQ(engine.getReadModel().getTransport().bpm, 140.0);
 }
 
-TEST(Commands, SetLoopBounds)
+TEST_F(Commands, SetLoopBounds)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.setLoopStart(2.0);
     cmds.setLoopEnd(8.0);
@@ -276,10 +274,8 @@ TEST(Commands, SetLoopBounds)
     EXPECT_DOUBLE_EQ(t.loopEnd, 8.0);
 }
 
-TEST(Commands, AudioGraphCommands)
+TEST_F(Commands, AudioGraphCommands)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getAudioGraphCommands();
     // Zero-track default: rebuildTrackFX/AutomationCache/Modulation target
     // track 0 — seed it so the indices are real (lesson 9).
@@ -291,10 +287,8 @@ TEST(Commands, AudioGraphCommands)
     cmds.rebuildModulation(0);
 }
 
-TEST(Commands, DuplicateClip)
+TEST_F(Commands, DuplicateClip)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -314,10 +308,8 @@ TEST(Commands, DuplicateClip)
 // duplicateClipTo combines duplicate + position into one call so the frontend
 // can place a ctrl-drag copy in a single round trip. Verifies direct placement
 // at the requested position/track (no follow-up moveClipWithOverlap needed).
-TEST(Commands, DuplicateClipToPlacesAtTarget)
+TEST_F(Commands, DuplicateClipToPlacesAtTarget)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Two tracks so cross-track placement is exercised. Zero-track default:
     // seed both explicitly; the second track must land at index 1.
@@ -347,10 +339,8 @@ TEST(Commands, DuplicateClipToPlacesAtTarget)
 }
 
 // duplicateClipTo on an invalid clip id / track returns -1 (no throw).
-TEST(Commands, DuplicateClipToInvalidReturnsNegative)
+TEST_F(Commands, DuplicateClipToInvalidReturnsNegative)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: track 0 must exist for the valid-clip leg below.
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -365,10 +355,8 @@ TEST(Commands, DuplicateClipToInvalidReturnsNegative)
 // shadowed clip is discarded so parts never overlap — the replacement clip wins.
 // Partial overlaps (trim/split) are handled by the neighbouring cases and are
 // untouched here.
-TEST(Commands, MoveFullyCoveringReplacesCoveredClip)
+TEST_F(Commands, MoveFullyCoveringReplacesCoveredClip)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -399,10 +387,8 @@ TEST(Commands, MoveFullyCoveringReplacesCoveredClip)
 // Regression: the user's workaround (move a replacement overlay away, delete the
 // covered original, move it back) must keep the surviving MIDI clip wired into
 // the audio graph with its notes intact — this is the "no silence" contract.
-TEST(Commands, OverlayMoveBackKeepsReplacementAudible)
+TEST_F(Commands, OverlayMoveBackKeepsReplacementAudible)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     // Zero-track default: seed track 0 (clip host) and a second track to move
@@ -479,10 +465,8 @@ TEST(Commands, OverlayMoveBackKeepsReplacementAudible)
     EXPECT_DOUBLE_EQ(bFinal.durationBeats, 4.0);
 }
 
-TEST(Commands, ReorderFxSlots)
+TEST_F(Commands, ReorderFxSlots)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: FX slots are added on track 0 — seed it (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -499,10 +483,8 @@ TEST(Commands, ReorderFxSlots)
     cmds.reorderFxSlots(0, 1, 1);  // no-op, same index
 }
 
-TEST(Commands, AddRemoveAutomationLane)
+TEST_F(Commands, AddRemoveAutomationLane)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -513,10 +495,8 @@ TEST(Commands, AddRemoveAutomationLane)
     cmds.removeAutomationLane(-1, "Any");
 }
 
-TEST(Commands, SwitchClipTake)
+TEST_F(Commands, SwitchClipTake)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getAudioGraphCommands();
     // switchClipTake on a non-existent clip should not crash
     cmds.switchClipTake(9999);
@@ -528,10 +508,8 @@ TEST(Commands, SwitchClipTake)
     cmds.switchClipTake(clipId);
 }
 
-TEST(Commands, AddRemoveMarker)
+TEST_F(Commands, AddRemoveMarker)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     int idx = cmds.addMarker("TestMarker", 5.0);
     EXPECT_GE(idx, 0);
@@ -554,10 +532,8 @@ TEST(Commands, AddRemoveMarker)
         EXPECT_NE(m.name, "TestMarker");
 }
 
-TEST(Commands, SetMarkerName)
+TEST_F(Commands, SetMarkerName)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     int idx = cmds.addMarker("RenameMe", 2.0);
     cmds.setMarkerName(idx, "Renamed");
@@ -572,10 +548,8 @@ TEST(Commands, SetMarkerName)
     }
 }
 
-TEST(Commands, SetClipName)
+TEST_F(Commands, SetClipName)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -604,10 +578,8 @@ TEST(Commands, SetClipName)
     cmds.setClipName(9999, "NoCrash");
 }
 
-TEST(Commands, ReadModelExtensions)
+TEST_F(Commands, ReadModelExtensions)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& rm = engine.getReadModel();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed track 0 — FX slots/lanes are added on it (lesson 9).
@@ -651,10 +623,8 @@ TEST(Commands, ReadModelExtensions)
     EXPECT_EQ(markers.size(), 1u);
 }
 
-TEST(Commands, SetTimeSignature)
+TEST_F(Commands, SetTimeSignature)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     cmds.setTimeSignature(3, 8);
     auto transport = engine.getProjectModel().getTransportTree();
@@ -662,10 +632,8 @@ TEST(Commands, SetTimeSignature)
     EXPECT_EQ(static_cast<int>(transport.getProperty(IDs::timeSigDenominator, 0)), 8);
 }
 
-TEST(Commands, DuplicateTrack)
+TEST_F(Commands, DuplicateTrack)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: duplicateTrack(0) needs a real source track.
     ASSERT_GE(seedTrack(engine, "Source"), 0);
@@ -675,10 +643,8 @@ TEST(Commands, DuplicateTrack)
     EXPECT_EQ(newIdx, before);
 }
 
-TEST(Commands, SetAutomationPointValue)
+TEST_F(Commands, SetAutomationPointValue)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -699,10 +665,8 @@ TEST(Commands, SetAutomationPointValue)
     EXPECT_TRUE(found);
 }
 
-TEST(Commands, SetFxSlotPlugin)
+TEST_F(Commands, SetFxSlotPlugin)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -714,10 +678,8 @@ TEST(Commands, SetFxSlotPlugin)
     EXPECT_EQ(fxSlots[0].pluginFormat, "VST3");
 }
 
-TEST(Commands, AddCcPoint)
+TEST_F(Commands, AddCcPoint)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -736,10 +698,8 @@ TEST(Commands, AddCcPoint)
     EXPECT_EQ(static_cast<int>(ccList.getChild(0).getProperty(IDs::value)), 64);
 }
 
-TEST(Commands, SetAndRemoveCcPoint)
+TEST_F(Commands, SetAndRemoveCcPoint)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -764,10 +724,8 @@ TEST(Commands, SetAndRemoveCcPoint)
     EXPECT_EQ(ccList().getNumChildren(), 0);
 }
 
-TEST(Commands, CcRecordingWritesToClip)
+TEST_F(Commands, CcRecordingWritesToClip)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -794,10 +752,8 @@ TEST(Commands, CcRecordingWritesToClip)
     EXPECT_DOUBLE_EQ(static_cast<double>(ccList.getChild(0).getProperty(IDs::beat)), 4.0);
 }
 
-TEST(Commands, AddMidiFxSlot)
+TEST_F(Commands, AddMidiFxSlot)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -809,10 +765,8 @@ TEST(Commands, AddMidiFxSlot)
     EXPECT_EQ(chain.getChild(0).getProperty(IDs::fxType).toString(), juce::String("arpeggiator"));
 }
 
-TEST(Commands, SetMidiFxSlotParam)
+TEST_F(Commands, SetMidiFxSlotParam)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: seed the track this test drives (lesson 9).
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -823,10 +777,8 @@ TEST(Commands, SetMidiFxSlotParam)
     EXPECT_EQ(static_cast<int>(slot.getProperty(IDs::semitones)), 7);
 }
 
-TEST(Commands, MidiNoteRecording)
+TEST_F(Commands, MidiNoteRecording)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: notes are recorded onto the armed track 0 — seed it.
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -858,10 +810,8 @@ TEST(Commands, MidiNoteRecording)
     EXPECT_TRUE(found);
 }
 
-TEST(Commands, MidiNoteRecordingFlushOnDisarm)
+TEST_F(Commands, MidiNoteRecordingFlushOnDisarm)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     // Zero-track default: notes are recorded onto the armed track 0 — seed it.
     ASSERT_GE(seedTrack(engine, "Track"), 0);
@@ -957,10 +907,8 @@ std::string cellTargetName(const juce::ValueTree& trackList, const juce::ValueTr
 }
 } // namespace
 
-TEST(Commands, RemoveTrackKeepsFolderRefsPointingAtTheSameTrack)
+TEST_F(Commands, RemoveTrackKeepsFolderRefsPointingAtTheSameTrack)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     // [X, A(folder), B, C] with B and C children of A.
@@ -1033,10 +981,8 @@ TEST(Commands, RemoveTrackKeepsFolderRefsPointingAtTheSameTrack)
         << "the wire parentId reads the folder-less sentinel";
 }
 
-TEST(Commands, RemoveTrackKeepsSongPlanCellsOnTheSameTrack)
+TEST_F(Commands, RemoveTrackKeepsSongPlanCellsOnTheSameTrack)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     ASSERT_GE(cmds.addTrack("T0"), 0);
@@ -1108,10 +1054,8 @@ TEST(Commands, RemoveTrackKeepsSongPlanCellsOnTheSameTrack)
 // dangling durable ref would silently re-point at the brand-new track; the prune
 // must leave nothing to re-point. Assert both premises (highest id, id reused)
 // so the test can never pass vacuously.
-TEST(Commands, RemoveTrackPrunesRefsSoAReusedIdCannotRePoint)
+TEST_F(Commands, RemoveTrackPrunesRefsSoAReusedIdCannotRePoint)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     // [T0, Folder(type 2), T1] — T1 is created LAST, so it holds the highest id.
@@ -1178,10 +1122,8 @@ TEST(Commands, RemoveTrackPrunesRefsSoAReusedIdCannotRePoint)
 }
 
 
-TEST(Commands, MoveTrackKeepsFolderRefsPointingAtTheSameTrack)
+TEST_F(Commands, MoveTrackKeepsFolderRefsPointingAtTheSameTrack)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     // [A(folder), B(child of A), X].
@@ -1224,10 +1166,8 @@ TEST(Commands, MoveTrackKeepsFolderRefsPointingAtTheSameTrack)
 // discipline: mutate, drain the routing rebuild, assert the LIVE tree plus the
 // ReadModel projection of the cascade.
 
-TEST(Commands, DuplicateFolderCopyDoesNotClaimChildren)
+TEST_F(Commands, DuplicateFolderCopyDoesNotClaimChildren)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     // [A(folder), B, C] with B and C children of A.
@@ -1282,10 +1222,8 @@ TEST(Commands, DuplicateFolderCopyDoesNotClaimChildren)
     EXPECT_EQ(snap.tracks[copyIdx].parentId, -1);
 }
 
-TEST(Commands, DuplicateChildCopyLinksIntoFolder)
+TEST_F(Commands, DuplicateChildCopyLinksIntoFolder)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     // [A(folder), B(child of A), C].
@@ -1337,10 +1275,8 @@ TEST(Commands, DuplicateChildCopyLinksIntoFolder)
     EXPECT_FALSE(snap.tracks[2].effectiveMuted);
 }
 
-TEST(Commands, DuplicateTrackRefWriteIsOneUndoUnit)
+TEST_F(Commands, DuplicateTrackRefWriteIsOneUndoUnit)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     // [A(folder), B(child of A)].
@@ -1379,10 +1315,8 @@ TEST(Commands, DuplicateTrackRefWriteIsOneUndoUnit)
 
 // A foreign (unresolvable) parentTrackID is LEFT ALONE: duplicating must not
 // index it and must not invent a childTrackIDs entry anywhere.
-TEST(Commands, DuplicateTrackLeavesForeignParentRefAlone)
+TEST_F(Commands, DuplicateTrackLeavesForeignParentRefAlone)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
     ASSERT_GE(seedTrack(engine, "A"), 0);
@@ -1437,10 +1371,8 @@ int indexOfTrackId(AudioEngine& engine, int id)
 
 // G1/G3: the id is stamped at creation, is non-zero, is what the command
 // interface reports, and SURVIVES a reorder and a removal of another track.
-TEST(Commands, StableTrackIDsSurviveMoveAndRemoval)
+TEST_F(Commands, StableTrackIDsSurviveMoveAndRemoval)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     const int a = seedTrack(engine, "A");
     const int b = seedTrack(engine, "B");
@@ -1476,10 +1408,8 @@ TEST(Commands, StableTrackIDsSurviveMoveAndRemoval)
 // G2: ids are unique, and a duplicate is a NEW entity — copy() must not inherit
 // the source's id (two live entities sharing one identity breaks every id-based
 // reference and the allocator's own invariant).
-TEST(Commands, DuplicateGetsAFreshIDAndAllIDsStayUnique)
+TEST_F(Commands, DuplicateGetsAFreshIDAndAllIDsStayUnique)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     const int src = seedTrack(engine, "Source");
     const int srcID = trackIdAt(engine, src);
@@ -1513,10 +1443,8 @@ TEST(Commands, DuplicateGetsAFreshIDAndAllIDsStayUnique)
 
 // G5: this is the property sendIndex lacks — removing a send renumbers the ones
 // above it while every surviving send keeps its identity.
-TEST(Commands, SendIDsSurviveRemoveSendWhileSendIndexRenumbers)
+TEST_F(Commands, SendIDsSurviveRemoveSendWhileSendIndexRenumbers)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     ASSERT_GE(seedTrack(engine, "S"), 0);
 
@@ -1548,10 +1476,8 @@ TEST(Commands, SendIDsSurviveRemoveSendWhileSendIndexRenumbers)
 // G4: the load-path backfill. A tree saved before B1 (or copied in from another
 // model) has no ids; scanAndSyncTrackIDs gives every TRACK and SEND one, keeps
 // the order, is idempotent, and never mints a duplicate of an id already present.
-TEST(Commands, ScanAndSyncTrackIDsBackfillsLegacyTrees)
+TEST_F(Commands, ScanAndSyncTrackIDsBackfillsLegacyTrees)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto& cmds = engine.getProjectCommands();
     ASSERT_GE(seedTrack(engine, "Keep1"), 0);
     ASSERT_GE(seedTrack(engine, "Keep2"), 0);
@@ -1607,10 +1533,8 @@ TEST(Commands, ScanAndSyncTrackIDsBackfillsLegacyTrees)
 // explicit `trackId: 0` reaches here as index 0 (see the low-index case below).
 
 // G1 + G3 + G4 + G6: the track half of the rule.
-TEST(Commands, StableTrackRefResolverPrefersTheIdAndRefusesTheRest)
+TEST_F(Commands, StableTrackRefResolverPrefersTheIdAndRefusesTheRest)
 {
-    AudioEngine engine;
-    engine.initialize();
     const int a = seedTrack(engine, "A");
     const int b = seedTrack(engine, "B");
     const int c = seedTrack(engine, "C");
@@ -1706,10 +1630,8 @@ TEST(Commands, StableTrackRefResolverPrefersTheIdAndRefusesTheRest)
 // G1 + G5: the send half — same rule, plus the one property B1 gave sendID:
 // after `removeSend(0)` the SURVIVOR is still addressed by its sendID while its
 // sendIndex has renumbered.
-TEST(Commands, StableSendRefResolverAddressesTheSurvivorByIdentity)
+TEST_F(Commands, StableSendRefResolverAddressesTheSurvivorByIdentity)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, "S"), 0);
     auto& cmds = engine.getProjectCommands();
     ASSERT_EQ(cmds.createSend(0, 1, 0.25f, false).sendIndex, 0);   // A
@@ -1784,10 +1706,8 @@ TEST(Commands, StableSendRefResolverAddressesTheSurvivorByIdentity)
 // (`folderId` / `folderID`) — a folder IS a track in TRACK_LIST, and the message
 // must name the FOLDER argument, not the track one (the surfaces hand a missing
 // folder argument straight through, so the text is the whole UX).
-TEST(Commands, StableFolderRefUsesTheFolderKeyNames)
+TEST_F(Commands, StableFolderRefUsesTheFolderKeyNames)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, "Folder"), 0);
     ASSERT_GE(seedTrack(engine, "Child"), 0);
     const auto tl = engine.getProjectModel().getTrackListTree();

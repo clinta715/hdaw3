@@ -17,21 +17,26 @@ namespace frontend {
 DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJsonValue& params) {
     const auto o = paramsObject(params);
     auto& cmds = engine.getAudioEngineCommands();
+    // B2: the TRACK_LIST the stable-id track resolution reads (the ONE shared
+    // rule in common/StableRefResolve.h; moveTrack/getTrackSends precedent).
+    const juce::ValueTree trackList = engine.getProjectModel().getTrackListTree();
 
     if (m == "setSample") {
-        int ti, si; std::string filePath; int root = 60;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+        int ti, si; std::string filePath; int root = 60; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr)
             || !requireString(o, "filePath", filePath, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex, filePath required");
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, filePath required");
         if (o.contains("rootNote") && o.value("rootNote").isDouble())
             root = static_cast<int>(o.value("rootNote").toDouble(60));
         cmds.setSamplerSample(ti, si, filePath, root);
         return { false, QJsonValue::Null };
     }
     if (m == "setParam") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex required");
         auto fxSlots = engine.getReadModel().getFxSlots(ti);
         if (si < 0 || si >= static_cast<int>(fxSlots.size()) || fxSlots[si].fxType != "sampler")
             return makeError(-32602, "slot is not a sampler");
@@ -56,27 +61,30 @@ DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJso
         return { false, QJsonValue::Null };
     }
     if (m == "setMode") {
-        int ti, si; std::string mode;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+        int ti, si; std::string mode; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr)
             || !requireString(o, "mode", mode, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex, mode required");
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, mode required");
         cmds.setSamplerMode(ti, si, mode);
         return { false, QJsonValue::Null };
     }
     if (m == "setSliceMode") {
-        int ti, si; std::string sliceMode;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+        int ti, si; std::string sliceMode; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr)
             || !requireString(o, "sliceMode", sliceMode, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex, sliceMode required");
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, sliceMode required");
         double grid = optDouble(o, "sliceGrid", 0.25, nullptr);
         double sens = optDouble(o, "sliceSensitivity", 0.5, nullptr);
         cmds.setSamplerSliceMode(ti, si, sliceMode, grid, sens);
         return { false, QJsonValue::Null };
     }
     if (m == "detectSlices") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         std::string sm = optString(o, "sliceMode", "transient");
         double grid = optDouble(o, "sliceGrid", 0.25, nullptr);
         double sens = optDouble(o, "sliceSensitivity", 0.5, nullptr);
@@ -89,18 +97,20 @@ DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJso
                                     {"slicePoints", pts}} };
     }
     if (m == "triggerSlice") {
-        int ti, si, idx; float vel = 0.8f;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+        int ti, si, idx; float vel = 0.8f; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr)
             || !requireInt(o, "sliceIndex", idx, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex, sliceIndex required");
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, sliceIndex required");
         double v = optDouble(o, "velocity", 0.8, nullptr);
         auto r = cmds.triggerSamplerSlice(ti, si, idx, static_cast<float>(v));
         return { false, QJsonObject{{"ok", r.ok}, {"totalSlices", r.totalSlices}} };
     }
     if (m == "getState") {
-        int ti, si;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackIndex and slotIndex required");
+        int ti, si; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
         auto s = engine.getReadModel().getSamplerState(ti, si);
         QJsonObject obj;
         obj["sampleFile"] = QString::fromStdString(s.sampleFile);
@@ -133,10 +143,11 @@ DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJso
         return { false, obj };
     }
     if (m == "setKeyRange") {
-        int ti, si, keyLow, keyHigh;
-        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+        int ti, si, keyLow, keyHigh; DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", si, nullptr)
             || !requireInt(o, "keyLow", keyLow, nullptr) || !requireInt(o, "keyHigh", keyHigh, nullptr))
-            return makeError(-32602, "trackIndex, slotIndex, keyLow, keyHigh required");
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, keyLow, keyHigh required");
         cmds.setSamplerKeyRange(ti, si, keyLow, keyHigh);
         return { false, QJsonObject{{"ok", true}, {"keyRangeLow", keyLow}, {"keyRangeHigh", keyHigh}} };
     }

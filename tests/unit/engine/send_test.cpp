@@ -18,6 +18,19 @@
 #include <string>
 #include <vector>
 
+#include "shared_engine_fixture.h"
+
+// One shared engine per process (see shared_engine_fixture.h). Each suite keeps
+// its own fixture class so --gtest_filter=<Suite>.* is unchanged. Suites that
+// also hold tests which build NO engine (pure DSP/probe tests) still use TEST_F
+// for all of them: gtest forbids mixing TEST and TEST_F in one suite, and the
+// fixture's per-test project reset is negligible for those tests.
+class Send : public hdaw_test::SharedEngineSuite {};
+class BusSendCreate : public hdaw_test::SharedEngineSuite {};
+class BusFxParam : public hdaw_test::SharedEngineSuite {};
+class InternalFilterDsp : public hdaw_test::SharedEngineSuite {};
+class BusSetTarget : public hdaw_test::SharedEngineSuite {};
+
 namespace {
 // Zero-track default contract (v0.33+): createDefaultProject() ships an empty
 // TRACK_LIST — tests own their setup. Send tests need a host track (0) plus a
@@ -33,10 +46,8 @@ int seedTrack(AudioEngine& engine, int count = 1)
 }
 } // namespace
 
-TEST(Send, ReadModelReturnsSends)
+TEST_F(Send, ReadModelReturnsSends)
 {
-    AudioEngine engine;
-    engine.initialize();
 
     // Zero-track default (v0.33+): seed the two tracks this test uses (host
     // track 0 + send target 1) and drain the coalesced routing rebuild.
@@ -82,10 +93,8 @@ TEST(Send, ReadModelReturnsSends)
     EXPECT_TRUE(sends[1].bypassed);
 }
 
-TEST(Send, SetLevelThroughCommands)
+TEST_F(Send, SetLevelThroughCommands)
 {
-    AudioEngine engine;
-    engine.initialize();
 
     // Zero-track default (v0.33+): seed the two tracks this test uses (host
     // track 0 + send target 1) and drain the coalesced routing rebuild.
@@ -117,10 +126,8 @@ TEST(Send, SetLevelThroughCommands)
     ASSERT_NE(rm, nullptr);
 }
 
-TEST(Send, SetModeThroughCommands)
+TEST_F(Send, SetModeThroughCommands)
 {
-    AudioEngine engine;
-    engine.initialize();
 
     // Zero-track default (v0.33+): seed the two tracks this test uses (host
     // track 0 + send target 1) and drain the coalesced routing rebuild.
@@ -147,10 +154,8 @@ TEST(Send, SetModeThroughCommands)
     EXPECT_TRUE(sends[0].isPreFader);
 }
 
-TEST(Send, SetBypassedThroughCommands)
+TEST_F(Send, SetBypassedThroughCommands)
 {
-    AudioEngine engine;
-    engine.initialize();
 
     // Zero-track default (v0.33+): seed the two tracks this test uses (host
     // track 0 + send target 1) and drain the coalesced routing rebuild.
@@ -178,10 +183,8 @@ TEST(Send, SetBypassedThroughCommands)
     EXPECT_TRUE(sends[0].bypassed);
 }
 
-TEST(Send, StateSurvivesRoutingGraphRebuild)
+TEST_F(Send, StateSurvivesRoutingGraphRebuild)
 {
-    AudioEngine engine;
-    engine.initialize();
 
     // Zero-track default (v0.33+): seed the two tracks this test uses (host
     // track 0 + send target 1) and drain the coalesced routing rebuild.
@@ -311,10 +314,8 @@ juce::ValueTree findBusInTree(const juce::ValueTree& busList, int busID)
 
 // G1: a created bus exists as a live processor, and it is the TREE that put it
 // there — the same assertions hold after an independent rebuildRoutingGraph.
-TEST(BusSendCreate, CreateBusAndSendReachTheLiveGraph)
+TEST_F(BusSendCreate, CreateBusAndSendReachTheLiveGraph)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 2), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -399,10 +400,8 @@ TEST(BusSendCreate, CreateBusAndSendReachTheLiveGraph)
 
 // Gate 4/9: a removal cascades to every send that targeted the bus (a dangling
 // sendTarget is a silent dead node in RoutingManager::addSend).
-TEST(BusSendCreate, RemoveBusCascadesSendsFromTreeAndLiveGraph)
+TEST_F(BusSendCreate, RemoveBusCascadesSendsFromTreeAndLiveGraph)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 2), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -447,10 +446,8 @@ TEST(BusSendCreate, RemoveBusCascadesSendsFromTreeAndLiveGraph)
 
 // Rejections must be loud (ok=false + error) and leave the tree untouched — an
 // accepted-but-invalid node is a silent no-op further down (Gate 2).
-TEST(BusSendCreate, RejectionsLeaveTheTreeUntouched)
+TEST_F(BusSendCreate, RejectionsLeaveTheTreeUntouched)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 2), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -509,10 +506,8 @@ TEST(BusSendCreate, RejectionsLeaveTheTreeUntouched)
 
 // G5: createBus opens the undo unit and createSend joins it, so the
 // "create the bus, then route to it" idiom reverts as ONE undo step.
-TEST(BusSendCreate, UndoRevertsBusAndSendAsOneUnit)
+TEST_F(BusSendCreate, UndoRevertsBusAndSendAsOneUnit)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 2), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -535,10 +530,8 @@ TEST(BusSendCreate, UndoRevertsBusAndSendAsOneUnit)
 }
 
 // The logged clamp: a send level is a linear non-negative gain.
-TEST(BusSendCreate, CreateSendClampsNegativeLevelAndHonoursPreFader)
+TEST_F(BusSendCreate, CreateSendClampsNegativeLevelAndHonoursPreFader)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -697,10 +690,8 @@ float peakNear(const std::vector<float>& out, int index)
 } // namespace
 
 // G1/G2: the command's value is on the running return and in the tree.
-TEST(BusFxParam, SetParamReachesTheLiveProcessorAndTheTree)
+TEST_F(BusFxParam, SetParamReachesTheLiveProcessorAndTheTree)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -725,10 +716,8 @@ TEST(BusFxParam, SetParamReachesTheLiveProcessorAndTheTree)
 // G2: the value is re-applied after rebuildRoutingGraph AND after a
 // prepareToPlay (which re-runs resetFxChain), including a value written before
 // the bus's processor ever existed.
-TEST(BusFxParam, ValuesSurviveRebuildAndReprepare)
+TEST_F(BusFxParam, ValuesSurviveRebuildAndReprepare)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
 
     // Written BEFORE the graph is prepared: the tree is the only carrier here,
@@ -768,10 +757,8 @@ TEST(BusFxParam, ValuesSurviveRebuildAndReprepare)
 
 // G3: clamping and rejection at the command entry point (lesson 23), with no
 // mutation of any kind on a rejection.
-TEST(BusFxParam, ClampsOutOfRangeAndRejectsBadTargets)
+TEST_F(BusFxParam, ClampsOutOfRangeAndRejectsBadTargets)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -838,7 +825,7 @@ TEST(BusFxParam, ClampsOutOfRangeAndRejectsBadTargets)
 // The delay bus is the full 6-param delay (the shared InternalDelay DSP backs
 // all six), the line's capacity is sized so the def's 5 s top is reachable
 // rather than silently clipped, and it adds no PDC latency.
-TEST(BusFxParam, DelayBusHoldsTheFullDefRange)
+TEST_F(BusFxParam, DelayBusHoldsTheFullDefRange)
 {
     HDAW::FxBusProcessor delayBus("Test Delay", "delay");
     delayBus.prepareToPlay(96000.0, 512);         // the worst case for a fixed capacity
@@ -862,7 +849,7 @@ TEST(BusFxParam, DelayBusHoldsTheFullDefRange)
 // produces repeats the bare DelayLine could not — measurably more tail energy
 // and a much longer tail than the same send with Feedback 0. Assertions are on
 // the rendered send→return signal, never on the stored value.
-TEST(BusFxParam, DelayBusFeedbackMakesTheReturnRepeat)
+TEST_F(BusFxParam, DelayBusFeedbackMakesTheReturnRepeat)
 {
     constexpr float kDelaySec = 0.05f;                      // 2205 samples
     const int delaySamps = juce::roundToInt(kDelaySec * 44100.0f);
@@ -902,7 +889,7 @@ TEST(BusFxParam, DelayBusFeedbackMakesTheReturnRepeat)
 // G-C3-3: SyncToTempo is real on the return — the tap spacing follows Division
 // AND the project BPM, measured on the rendered signal. The playhead is the
 // production path (FxBusProcessor reads getPlayHead() like Track does).
-TEST(BusFxParam, DelayBusSyncFollowsDivisionAndProjectBpm)
+TEST_F(BusFxParam, DelayBusSyncFollowsDivisionAndProjectBpm)
 {
     HDAW::TransportManager transport;
     HDAW::InternalPlayHead playHead(transport);
@@ -930,7 +917,7 @@ TEST(BusFxParam, DelayBusSyncFollowsDivisionAndProjectBpm)
 
 // G-C3-4: a hostile feedback cannot run the recursion away, and the Delay Time
 // def top (5 s) is real rather than aliased by a short line.
-TEST(BusFxParam, DelayBusClampsHostileFeedbackAndHoldsTheFiveSecondTop)
+TEST_F(BusFxParam, DelayBusClampsHostileFeedbackAndHoldsTheFiveSecondTop)
 {
     // Feedback 5.0 clamps to the def max 0.99 at both entries, and ~4.6 s of
     // input through it (230 round trips) stays finite and bounded. Unclamped it
@@ -977,10 +964,8 @@ TEST(BusFxParam, DelayBusClampsHostileFeedbackAndHoldsTheFiveSecondTop)
 
 // G-C3-6: the delay's new params live on the BUS node and are re-applied after
 // rebuildRoutingGraph(), where the rebuilt return still repeats.
-TEST(BusFxParam, DelayParamsSurviveRebuildAndDriveTheRebuiltReturn)
+TEST_F(BusFxParam, DelayParamsSurviveRebuildAndDriveTheRebuiltReturn)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -1025,7 +1010,7 @@ TEST(BusFxParam, DelayParamsSurviveRebuildAndDriveTheRebuiltReturn)
 // The live-apply contract: each bus type's params reach the RENDERED signal,
 // not just the atomic readback (a stored-but-unapplied param would pass every
 // other test in this suite).
-TEST(BusFxParam, ParamChangesTheRenderedOutput)
+TEST_F(BusFxParam, ParamChangesTheRenderedOutput)
 {
     const float gainDown = busSineRms("eq", 2, -24.0f);
     const float gainUp   = busSineRms("eq", 2, 24.0f);
@@ -1063,7 +1048,7 @@ TEST(BusFxParam, ParamChangesTheRenderedOutput)
 
 // The shared def table is the track-FX table for the same type: one parameter
 // space for the surfaces, not two.
-TEST(BusFxParam, DefTableMatchesTrackFxDefs)
+TEST_F(BusFxParam, DefTableMatchesTrackFxDefs)
 {
     for (const char* type : { "reverb", "eq", "compressor", "delay", "filter" })
     {
@@ -1120,10 +1105,8 @@ TEST(BusFxParam, DefTableMatchesTrackFxDefs)
 
 // G4 basis: the shared read shaping (both surfaces return these strings) sees
 // every bus of the default project, sorted by busID, with the right defs.
-TEST(BusFxParam, ReadShapingDescribesTheDefaultBuses)
+TEST_F(BusFxParam, ReadShapingDescribesTheDefaultBuses)
 {
-    AudioEngine engine;
-    engine.initialize();
     auto busList = engine.getProjectModel().getBusListTree();
     ASSERT_TRUE(busList.isValid());
 
@@ -1251,7 +1234,7 @@ double filterGainAt(HDAW::InternalFilter& f, double freqHz, int samples = 200000
 // modes have gain 1/k = Resonance/2 — the property the 2026-09-09 hand-rolled
 // variant broke (it never swept its cutoff). Measured on the extracted class
 // directly, in the steady state, with the values the surfaces advertise.
-TEST(InternalFilterDsp, IsExactAtTheCutoffInEveryMode)
+TEST_F(InternalFilterDsp, IsExactAtTheCutoffInEveryMode)
 {
     for (const float res : { 0.7f, 2.0f })
     {
@@ -1290,7 +1273,7 @@ TEST(InternalFilterDsp, IsExactAtTheCutoffInEveryMode)
 // G5 at the DSP entry: every param clamps to its def, Mode is the int enum it
 // is advertised as (rounded, so a fractional value cannot fall through the mode
 // switch to lowpass), and an unknown index mutates nothing.
-TEST(InternalFilterDsp, ClampsEveryParamAndIgnoresUnknownIndexes)
+TEST_F(InternalFilterDsp, ClampsEveryParamAndIgnoresUnknownIndexes)
 {
     HDAW::InternalFilter f;
     f.prepare(44100.0);
@@ -1315,7 +1298,7 @@ TEST(InternalFilterDsp, ClampsEveryParamAndIgnoresUnknownIndexes)
 // Lowpass and ~0.01 in Highpass; a 5 kHz send is the mirror image; and moving
 // the cutoff in Lowpass moves the band. A param that reads back but never
 // reaches the DSP fails here.
-TEST(BusFxParam, FilterBusModeAndCutoffChangeTheRenderedAudio)
+TEST_F(BusFxParam, FilterBusModeAndCutoffChangeTheRenderedAudio)
 {
     const double bassLp   = filterBusSineRms(0, 1000.0f, 100.0);
     const double bassHp   = filterBusSineRms(1, 1000.0f, 100.0);
@@ -1352,10 +1335,8 @@ TEST(BusFxParam, FilterBusModeAndCutoffChangeTheRenderedAudio)
 // the track filter's defs, its params clamp at the command AND the processor, an
 // unknown paramIndex is rejected with no mutation, and the values survive a
 // rebuild.
-TEST(BusSendCreate, CreateFilterBusAndShapeItsParams)
+TEST_F(BusSendCreate, CreateFilterBusAndShapeItsParams)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
     ASSERT_TRUE(ensureLiveRoutingGraph(engine));
 
@@ -1426,10 +1407,8 @@ TEST(BusSendCreate, CreateFilterBusAndShapeItsParams)
 // already nests buses — no new routing), and what reaches the master must come
 // out high-passed: the same chain in Lowpass keeps the low band, Highpass drops
 // it, measured on the live processors in graph order.
-TEST(BusFxParam, FilterBusChainedBehindADelayBusHighPassesTheReturn)
+TEST_F(BusFxParam, FilterBusChainedBehindADelayBusHighPassesTheReturn)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
     auto& cmds = engine.getProjectCommands();
     auto busList = engine.getProjectModel().getBusListTree();
@@ -1583,10 +1562,8 @@ int busTargetOf(AudioEngine& engine, int busID)
 // with busTarget 0) is re-parented behind a filter bus added later, with its own
 // child bus following it, and then moved back. Every assertion is on the LIVE
 // graph (a tree-only assertion would pass even if RoutingManager never moved).
-TEST(BusSetTarget, ReparentRewiresTheLiveGraphAndCarriesTheSubtree)
+TEST_F(BusSetTarget, ReparentRewiresTheLiveGraphAndCarriesTheSubtree)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
 
     auto& cmds = engine.getProjectCommands();
@@ -1671,10 +1648,8 @@ TEST(BusSetTarget, ReparentRewiresTheLiveGraphAndCarriesTheSubtree)
 // children); re-parenting can, and the loop can be several hops deep, so the
 // check walks the PROPOSED PARENT's chain and refuses when it meets the bus being
 // moved. Every refusal names its reason and leaves the tree byte-identical.
-TEST(BusSetTarget, CyclesMasterAndUnknownIdsAreRefusedWithNoTreeChange)
+TEST_F(BusSetTarget, CyclesMasterAndUnknownIdsAreRefusedWithNoTreeChange)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
 
     auto& cmds = engine.getProjectCommands();
@@ -1755,10 +1730,8 @@ TEST(BusSetTarget, CyclesMasterAndUnknownIdsAreRefusedWithNoTreeChange)
 
 // G4 — atomicity: a re-parent is ONE undo unit. A single undo restores the old
 // parent, and the next rebuild projects the restored tree.
-TEST(BusSetTarget, OneUndoRevertsAReparent)
+TEST_F(BusSetTarget, OneUndoRevertsAReparent)
 {
-    AudioEngine engine;
-    engine.initialize();
     ASSERT_GE(seedTrack(engine, 1), 0);
 
     auto& cmds = engine.getProjectCommands();

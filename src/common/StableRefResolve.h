@@ -48,10 +48,17 @@
 // verbatim (tests/unit/frontend/bus_send_rpc_test.cpp,
 // tests/unit/frontend/add_fx_parity_test.cpp).
 //
-// NOT in scope (stated so it is a documented boundary, not a discovery trap):
-// the fx / automation / plugin / clip tools keep taking the POSITIONAL trackId.
-// An id-holding caller reaches a track's properties, its folder membership and
-// its sends through B2; anything else still goes through the index.
+// Scope after B2b (2026-09-25): the TRACK ref is accepted across the track,
+// send, folder, fx / automation / plugin / sampler / psy-fm / matrix / midi-fx
+// / fx-chain families — every tool and RPC twin that addresses a track parses
+// it through resolveTrackRef with spelling-preserving keys, and the twin tests
+// pin one text per family on both surfaces. Still POSITIONAL by design: the
+// sub-entity arguments that are not entities with stable ids (slotIndex,
+// paramIndex, laneName, programIndex), the batch/clip tools that were never
+// B2b families (their trackId stays the index), and the three deliberately
+// positional read routes (read.getTrack, read.getTrackMeter,
+// pluginParam.getParamText) plus route-only methods with no MCP twin
+// (project.removeAutomationPoint et al).
 
 #include "../model/ProjectModel.h"
 

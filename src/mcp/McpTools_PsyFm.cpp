@@ -1,5 +1,9 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -22,16 +26,20 @@ void registerPsyFmTools(McpServer& s, AudioEngine* e)
 
 s.registerTool({"psy_fm_load_preset",
         "Load a psytrance FM preset routing (growlBass, acidLead, metallicPluck, riser) into a psy_fm FX slot. "
-        "Sets algorithm, modulation matrix, and default ratios/feedback/envelopes.",
+        "Sets algorithm, modulation matrix, and default ratios/feedback/envelopes. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({
             {"trackId",  QJsonObject{{"type","integer"}}},
+            {"trackID",  QJsonObject{{"type","integer"}}},
             {"slotIndex", QJsonObject{{"type","integer"}}},
             {"preset",   QJsonObject{{"type","string"},
                 {"enum", QJsonArray{"growlBass","acidLead","metallicPluck","riser"}}}}
-        }, {"trackId","slotIndex","preset"}),
+        }, {"slotIndex","preset"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -47,14 +55,18 @@ s.registerTool({"psy_fm_load_preset",
 
 s.registerTool({"psy_fm_get_analysis",
         "Get the current analysis data from a psy_fm FX slot (active voices, per-operator EG levels). "
-        "Returns live:false when the audio engine is unavailable (no audio device).",
+        "Returns live:false when the audio engine is unavailable (no audio device). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({
             {"trackId",  QJsonObject{{"type","integer"}}},
+            {"trackID",  QJsonObject{{"type","integer"}}},
             {"slotIndex", QJsonObject{{"type","integer"}}}
-        }, {"trackId","slotIndex"}),
+        }, {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -98,19 +110,23 @@ s.registerTool({"psy_fm_get_analysis",
 
 s.registerTool({"psy_fm_set_mod_route",
         "Add or update a modulation route on a psy_fm FX slot's modulation matrix. "
-        "Routes are persisted in the project tree and survive save/load/rebuild.",
+        "Routes are persisted in the project tree and survive save/load/rebuild. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({
             {"trackId",  QJsonObject{{"type","integer"}}},
+            {"trackID",  QJsonObject{{"type","integer"}}},
             {"slotIndex", QJsonObject{{"type","integer"}}},
             {"source",    QJsonObject{{"type","string"},
                 {"enum", QJsonArray{"ratioSweepLFO","feedbackLFO","modWheel","velocity","barClock"}}}},
             {"dest",      QJsonObject{{"type","string"},
                 {"enum", QJsonArray{"op1Ratio","op2Ratio","op3Ratio","op4Ratio","op5Ratio","op6Ratio","op6Feedback"}}}},
             {"depth",     QJsonObject{{"type","number"}}}
-        }, {"trackId","slotIndex","source","dest","depth"}),
+        }, {"slotIndex","source","dest","depth"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -133,14 +149,18 @@ s.registerTool({"psy_fm_mod_matrix_debug",
         "budget-scaled contribution actually applied. Op6Feedback routes share a per-destination "
         "budget: when the summed |depth| exceeds 1.0, every feedback contribution is scaled by "
         "1/total. Also returns base vs computed (simulated apply()) ratios/feedback and the live "
-        "source values. No mutation, no audio render.",
+        "source values. No mutation, no audio render. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({
             {"trackId",  QJsonObject{{"type","integer"}}},
+            {"trackID",  QJsonObject{{"type","integer"}}},
             {"slotIndex", QJsonObject{{"type","integer"}}}
-        }, {"trackId","slotIndex"}),
+        }, {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -160,14 +180,18 @@ s.registerTool({"psy_fm_mod_matrix_debug",
         }});
 
 s.registerTool({"psy_fm_clear_mod_matrix",
-        "Clear all modulation routes on a psy_fm FX slot.",
+        "Clear all modulation routes on a psy_fm FX slot. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({
             {"trackId",  QJsonObject{{"type","integer"}}},
+            {"trackID",  QJsonObject{{"type","integer"}}},
             {"slotIndex", QJsonObject{{"type","integer"}}}
-        }, {"trackId","slotIndex"}),
+        }, {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())

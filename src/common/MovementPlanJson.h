@@ -4,6 +4,7 @@
 // produce byte-identical text BY CONSTRUCTION (AGENTS.md feature-parity
 // contract). Header-only; JUCE + Qt only.
 #include "ProjectCommands.h"   // ProjectCommands::MovementEvent / MovementPlanResult
+#include "StableRefResolve.h"  // resolveTrackRef (the ONE shared rule)
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -20,7 +21,19 @@ namespace HDAW {
 // receives the exact tool text ("events array required") on failure. Every
 // per-event default (trackId -1, start 0.0, end 16.0, paramID -1, seed 12345,
 // startValue/endValue only when present) is preserved verbatim.
-inline bool parseMovementPlan(const QJsonObject& args,
+//
+// B2b split: WITH the stable `trackID` the ONE shared rule
+// (common/StableRefResolve.h) resolves strictly and a bad ref (unknown id,
+// disagreement) fails the WHOLE plan naming the id, before anything is
+// applied: a stale id after a reorder is exactly the caller bug the rule
+// refuses to guess around, and "nothing mutated on a malformed argument" is
+// the single-track tools' contract too. WITHOUT `trackID` the per-event parse
+// is BYTE-FOR-BYTE the pre-B2b one: positional `trackId` with its historical
+// -1 default, so a track the apply layer then reports per-event ("track not
+// found") — never a whole-plan refusal. The per-event error channel stays for
+// apply-level misses (lane conflicts, bad windows) — its existing purpose.
+inline bool parseMovementPlan(const juce::ValueTree& trackList,
+                              const QJsonObject& args,
                               std::vector<ProjectCommands::MovementEvent>& events,
                               std::string& error)
 {
@@ -36,7 +49,39 @@ inline bool parseMovementPlan(const QJsonObject& args,
     {
         const auto o = ev.toObject();
         ProjectCommands::MovementEvent me;
-        me.trackIndex = o.value("trackId").toInt(-1);
+        if (o.contains("trackID"))
+        {
+            int index = HDAW::kNoRef, stableID = 0;
+            if (o.contains("trackId"))
+            {
+                if (! o.value("trackId").isDouble())
+                {
+                    error = "missing or non-numeric param: trackId";
+                    return false;
+                }
+                index = static_cast<int>(o.value("trackId").toDouble());
+            }
+            if (! o.value("trackID").isDouble())
+            {
+                error = "missing or non-numeric param: trackID";
+                return false;
+            }
+            stableID = static_cast<int>(o.value("trackID").toDouble());
+            const auto ref = resolveTrackRef(trackList, index, stableID);
+            if (! ref.ok)
+            {
+                error = ref.error;
+                return false;
+            }
+            me.trackIndex = ref.index;
+        }
+        else
+        {
+            // Pre-B2b parse, byte-for-byte: `toInt(-1)` — an absent OR
+            // non-numeric positional is the "no track" default the apply
+            // layer reports per-event.
+            me.trackIndex = o.value("trackId").toInt(-1);
+        }
         me.startBeats = o.value("start").toDouble(0.0);
         me.endBeats   = o.value("end").toDouble(16.0);
         me.preset     = o.value("preset").toString().toStdString();
@@ -72,13 +117,14 @@ inline QString movementPlanResultText(const ProjectCommands::MovementPlanResult&
 // ONE entry point for apply_movement_plan: parse + apply + report. Returns the
 // exact tool text (error text when *outOk is left false).
 inline QString applyMovementPlanToolText(ProjectCommands& commands,
+                                         const juce::ValueTree& trackList,
                                          const QJsonObject& args,
                                          bool* outOk = nullptr)
 {
     if (outOk) *outOk = false;
     std::vector<ProjectCommands::MovementEvent> events;
     std::string error;
-    if (! parseMovementPlan(args, events, error))
+    if (! parseMovementPlan(trackList, args, events, error))
         return QString::fromStdString(error);
 
     const auto res = commands.applyMovementPlan(events);

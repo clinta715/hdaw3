@@ -81,7 +81,8 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     }
     else if (ns == method::Settings) return dispatchSettings(engine, m, params);
     else if (ns == method::Transport)   return dispatchTransport(engine.getTransportCommands(), m, params);
-    else if (ns == method::AudioGraph)  return dispatchAudioGraph(engine.getAudioGraphCommands(), m, params);
+    else if (ns == method::AudioGraph)  return dispatchAudioGraph(engine.getAudioGraphCommands(),
+                                                                    engine.getProjectModel().getTrackListTree(), m, params);
     else if (ns == method::Read) {
         // getWaveformPeaks needs AudioEngine (for ProjectPool), not just ReadModel
         if (m == "getWaveformPeaks") {
@@ -111,9 +112,13 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
         // algorithm), documented in the ledger note.
         if (m == "getFmSynthState") {
             const auto o = paramsObject(params);
-            int ti, si;
-            if (!requireInt(o, "trackId", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-                return makeError(-32602, "trackId and slotIndex required");
+            int ti, si; DispatchResult err;
+            // B2b: `trackId` (index) or the stable `trackID` — the ONE shared
+            // rule (common/StableRefResolve.h); the MCP fm_synth_get_state
+            // twin resolves the same way, so the failure text cannot drift.
+            if (!trackIndexArg(o, engine.getProjectModel().getTrackListTree(), ti, &err)
+                || !requireInt(o, "slotIndex", si, nullptr))
+                return err.isError ? err : makeError(-32602, "trackId and slotIndex required");
             bool ok = false;
             const QString text = HDAW::fmSynthStateToolText(engine, ti, si, &ok);
             if (!ok)

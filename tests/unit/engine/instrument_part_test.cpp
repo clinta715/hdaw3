@@ -12,6 +12,14 @@
 #include "engine/TrackFXSlot.h"
 #include "engine/ExportManager.h"
 #include "model/ProjectModel.h"
+#include "shared_engine_fixture.h"
+
+// One shared engine per process (see shared_engine_fixture.h). Each suite name
+// keeps its own fixture class so --gtest_filter=<Suite>.* is unchanged.
+class InstrumentPart : public hdaw_test::SharedEngineSuite {};
+class AutoGain : public hdaw_test::SharedEngineSuite {};
+class GlobalScale : public hdaw_test::SharedEngineSuite {};
+class InstrumentPartRole : public hdaw_test::SharedEngineSuite {};
 
 // G1 + G2 suites for the instrument-part composer (Task A):
 //   addInstrumentPart — track + instrument FX slot + phrase + paint in ONE
@@ -87,10 +95,9 @@ bool tyrellN6Available()
 
 } // namespace
 
-TEST(InstrumentPart, CompositeCreatesTrackFxAndPhraseInOneUndoUnit)
+TEST_F(InstrumentPart, CompositeCreatesTrackFxAndPhraseInOneUndoUnit)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     const int baseline = engine.getReadModel().getTrackCount();
 
     ProjectCommands::InstrumentPartParams params;
@@ -130,10 +137,9 @@ TEST(InstrumentPart, CompositeCreatesTrackFxAndPhraseInOneUndoUnit)
     EXPECT_TRUE(engine.getReadModel().getFxSlots(res.trackIndex).empty());
 }
 
-TEST(InstrumentPart, WholeSongPlacementCoversProject)
+TEST_F(InstrumentPart, WholeSongPlacementCoversProject)
 {
-    AudioEngine engine;
-    engine.initialize();
+
 
     auto& pc = engine.getProjectCommands();
 
@@ -166,10 +172,9 @@ TEST(InstrumentPart, WholeSongPlacementCoversProject)
         << "wholeSong placement must cover the project duration";
 }
 
-TEST(InstrumentPart, PluginIdWritesPluginSlot)
+TEST_F(InstrumentPart, PluginIdWritesPluginSlot)
 {
-    AudioEngine engine;
-    engine.initialize();
+
 
     ProjectCommands::InstrumentPartParams params;
     params.trackName = "Lead";
@@ -189,10 +194,9 @@ TEST(InstrumentPart, PluginIdWritesPluginSlot)
     EXPECT_EQ(fx[0].pluginId, "test.plugin.id");
 }
 
-TEST(AutoGain, DeterministicSineHitsTarget)
+TEST_F(AutoGain, DeterministicSineHitsTarget)
 {
-    AudioEngine engine;
-    engine.initialize();
+
 
     const juce::File sine = writeSineWav(2.0); // 220 Hz @ amp 0.5 → RMS ≈ 0.3536
 
@@ -223,10 +227,9 @@ TEST(AutoGain, DeterministicSineHitsTarget)
     sine.deleteFile();
 }
 
-TEST(AutoGain, TooLoudTargetClampsAtUnity)
+TEST_F(AutoGain, TooLoudTargetClampsAtUnity)
 {
-    AudioEngine engine;
-    engine.initialize();
+
 
     const juce::File sine = writeSineWav(2.0);
 
@@ -245,10 +248,9 @@ TEST(AutoGain, TooLoudTargetClampsAtUnity)
     sine.deleteFile();
 }
 
-TEST(AutoGain, SilentTrackErrors)
+TEST_F(AutoGain, SilentTrackErrors)
 {
-    AudioEngine engine;
-    engine.initialize();
+
 
     auto& pc = engine.getProjectCommands();
     const int trackIndex = pc.addTrack("Silent", -1, -1, 0);
@@ -265,10 +267,9 @@ TEST(AutoGain, SilentTrackErrors)
 
 // ─── G2 — programIndex ─────────────────────────────────────────────
 
-TEST(InstrumentPart, ProgramIndexRequiresPluginId)
+TEST_F(InstrumentPart, ProgramIndexRequiresPluginId)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     const int baseline = engine.getReadModel().getTrackCount();
 
     ProjectCommands::InstrumentPartParams params;
@@ -283,10 +284,9 @@ TEST(InstrumentPart, ProgramIndexRequiresPluginId)
     EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
 }
 
-TEST(InstrumentPart, ProgramIndexOutOfRangeErrors)
+TEST_F(InstrumentPart, ProgramIndexOutOfRangeErrors)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     const int baseline = engine.getReadModel().getTrackCount();
 
     ProjectCommands::InstrumentPartParams params;
@@ -313,13 +313,10 @@ TEST(InstrumentPart, ProgramIndexOutOfRangeErrors)
     EXPECT_TRUE(res2.error.empty()) << res2.error;
 }
 
-TEST(InstrumentPart, ProgramIndexSetsLiveProgram)
+TEST_F(InstrumentPart, ProgramIndexSetsLiveProgram)
 {
     if (!tyrellN6Available())
         GTEST_SKIP() << "HDAW_REAL_PLUGIN_TESTS not set or TyrellN6 missing";
-
-    AudioEngine engine;
-    engine.initialize();
 
     ProjectCommands::InstrumentPartParams params;
     params.trackName = "Lead";
@@ -377,10 +374,9 @@ ProjectCommands::InstrumentPartParams loudLeadPart(uint64_t seed)
 // restructure lowered single-part peak from ~1.13 to ~0.28; four coherent
 // additions push the mix past 1.0, triggering the global-scale path). The
 // fader is raised into the created headroom, in ONE undo unit.
-TEST(GlobalScale, ClippedMixScaledDown)
+TEST_F(GlobalScale, ClippedMixScaledDown)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     auto& pc = engine.getProjectCommands();
 
     // Stack 4 identical Lead parts so the full mix clips at unity (v0.24.0 gain
@@ -426,10 +422,9 @@ TEST(GlobalScale, ClippedMixScaledDown)
 
 // Default path (allowGlobalScale=false): clamps at unity exactly as before,
 // master bus untouched.
-TEST(GlobalScale, DefaultLeavesMasterUntouched)
+TEST_F(GlobalScale, DefaultLeavesMasterUntouched)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     auto& pc = engine.getProjectCommands();
 
     auto res = pc.addInstrumentPart(loudLeadPart(42));
@@ -452,10 +447,9 @@ TEST(GlobalScale, DefaultLeavesMasterUntouched)
 // (clamps) while the mix probe measures a true peak ≈ 0.35 < 1.0. (The fm_synth
 // default patch is velocity-insensitive, so an instrument part can't be quieted
 // this way — the sine is the deterministic quiet source.)
-TEST(GlobalScale, NonClippingMixUntouched)
+TEST_F(GlobalScale, NonClippingMixUntouched)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     auto& pc = engine.getProjectCommands();
 
     const juce::File sine = writeSineWav(2.0);
@@ -503,7 +497,11 @@ int maxPitch(const std::vector<NoteSnapshot>& notes)
 // exactly like a hand-configured bass part (BassLine, low range, tight
 // noteDuration, velocities, targetRms). Same seed + same effective params →
 // identical notes, and gain staging renders the same fader / measured RMS.
-TEST(InstrumentPartRole, RoleBassEqualsHandConfigured)
+// Uses TEST_F (gtest forbids mixing TEST/TEST_F in one suite) but keeps its
+// TWO private engines: it compares the role path and the hand path on two
+// SEPARATE projects that must coexist, which one shared engine cannot hold.
+// The fixture's per-test reset of the shared engine is harmless here.
+TEST_F(InstrumentPartRole, RoleBassEqualsHandConfigured)
 {
     AudioEngine roleEngine;
     roleEngine.initialize();
@@ -574,10 +572,9 @@ TEST(InstrumentPartRole, RoleBassEqualsHandConfigured)
 // role:"Bass" + explicit style/density/range/velocities (bits set) → the
 // explicit values win over the role defaults; explicit targetRms=0 skips the
 // gain-stage render entirely.
-TEST(InstrumentPartRole, ExplicitParamsOverrideRoleDefaults)
+TEST_F(InstrumentPartRole, ExplicitParamsOverrideRoleDefaults)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     auto& pc = engine.getProjectCommands();
 
     ProjectCommands::InstrumentPartParams params;
@@ -657,10 +654,9 @@ TEST(InstrumentPartRole, ExplicitParamsOverrideRoleDefaults)
 
 // Unknown role → clean validation error BEFORE any mutation: the project is
 // untouched (track count unchanged, no clip added).
-TEST(InstrumentPartRole, UnknownRoleRejectedCleanly)
+TEST_F(InstrumentPartRole, UnknownRoleRejectedCleanly)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     const int baseline = engine.getReadModel().getTrackCount();
 
     ProjectCommands::InstrumentPartParams params;
@@ -677,10 +673,9 @@ TEST(InstrumentPartRole, UnknownRoleRejectedCleanly)
 
 // Role matching is case-insensitive: "bass", "BASS" and "Bass" all resolve to
 // the same preset and produce identical parts.
-TEST(InstrumentPartRole, RoleCaseInsensitive)
+TEST_F(InstrumentPartRole, RoleCaseInsensitive)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     auto& pc = engine.getProjectCommands();
 
     auto addBass = [&](const std::string& role, uint64_t seed) {
@@ -715,10 +710,9 @@ TEST(InstrumentPartRole, RoleCaseInsensitive)
 // role:"" is the legacy path: with every role-defaultable field explicitly
 // provided, role:"bass" (all bits set) is byte-identical to role:"" with the
 // same explicit values.
-TEST(InstrumentPartRole, EmptyRoleLegacyBehavior)
+TEST_F(InstrumentPartRole, EmptyRoleLegacyBehavior)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     auto& pc = engine.getProjectCommands();
 
     auto addPart = [&](const std::string& role, uint32_t mask) {
@@ -770,10 +764,9 @@ TEST(InstrumentPartRole, EmptyRoleLegacyBehavior)
 // instrument slot. Before this the only lever was pluginId, so the one-command-per-part path
 // could not select psy_fm / growl_bass / psyarp / sampler / sub_synth at all, and the fm_synth
 // default was undocumented (docs/handoffs/2026-09-21-mcp-dogfood-composition.md).
-TEST(InstrumentPart, ExplicitFxTypeSelectsTheInstrumentSlot)
+TEST_F(InstrumentPart, ExplicitFxTypeSelectsTheInstrumentSlot)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     auto& cmds = engine.getProjectCommands();
     const int baseline = engine.getReadModel().getTrackCount();
 
@@ -806,10 +799,9 @@ TEST(InstrumentPart, ExplicitFxTypeSelectsTheInstrumentSlot)
 // undo unit. Before this a peak-1.0 mix cost one auto_gain_to_target call AND one undo entry
 // per track, so undoing a gain pass took N undos
 // (docs/handoffs/2026-09-21-mcp-dogfood-composition.md).
-TEST(InstrumentPart, BatchGainStagingIsOneUndoUnit)
+TEST_F(InstrumentPart, BatchGainStagingIsOneUndoUnit)
 {
-    AudioEngine engine;
-    engine.initialize();
+
     auto& pc = engine.getProjectCommands();
     const int t0 = pc.addTrack("GainA");
     const int t1 = pc.addTrack("GainB");

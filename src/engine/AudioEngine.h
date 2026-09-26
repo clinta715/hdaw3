@@ -204,6 +204,20 @@ public:
         return forceFullRebuild_;
     }
 
+    // Change B (default-device open): request input channels only when the
+    // current device type actually exposes capture endpoints. Pure predicate
+    // (no device state) so both branches are unit-testable without hardware —
+    // AudioEngineReadFacadeTest.ShouldRequestInputsCoversBothBranches.
+    static bool shouldRequestInputs(const juce::StringArray& inputDeviceNames)
+    {
+        return ! inputDeviceNames.isEmpty();
+    }
+
+    // Test seam (change B): the input-channel count the default-device open
+    // requested — 2 when inputs exist (unchanged behaviour), 0 when the device
+    // type is capture-less and the doomed 2-in attempt is skipped.
+    int debugDefaultDeviceInitInputs() const { return defaultDeviceInitInputs_; }
+
 private:
     // ValueTree::Listener overrides
     void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property) override;
@@ -254,6 +268,8 @@ private:
     // Test seams (see debug* getters above).
     uint64_t incrementalOpsApplied_ = 0;
     uint64_t fullRebuilds_ = 0;
+    // Change B test seam: inputs requested by the last default-device open.
+    int defaultDeviceInitInputs_ = -1;
     // Live-routing seam fallback counter (atomic: ensureLiveRouting may be
     // reached from MCP/command worker threads via the param service).
     std::atomic<uint64_t> liveRoutingRebuilds_{ 0 };

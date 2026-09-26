@@ -351,8 +351,14 @@ TEST_F(ApplyPresetToolTest, VirusRomRouteQueuesCc0AndProgramChange)
 {
     ASSERT_FALSE(resultIsError(callTool(*server, 1, "add_track",
         QJsonObject{{"name", "Track"}})));
+    // The id must still match the gearmulator family so apply_preset picks the VirusRom
+    // route (isVirusGearmulatorPluginId: Osirus/OsTIrus/Vavra/Xenia/JE8086,
+    // src/common/PresetApply.h:68-70), but it MUST NOT contain "osirus"/"ostirus"/"virus":
+    // the isolated child's warmup gate is name-based (src/proxy/host/PluginHost.cpp:1131-1135),
+    // so such a fake pays a 12 s audio warmup + a 1 s-watchdog minidump even though it never
+    // loads (it falls back to passthrough). "Vavra" satisfies the route and not the gate.
     ASSERT_EQ(resultText(callTool(*server, 2, "add_fx",
-        QJsonObject{{"trackId", 0}, {"pluginId", "OsirusFake.clap"}})), QString("slot=0"));
+        QJsonObject{{"trackId", 0}, {"pluginId", "VavraFake.clap"}})), QString("slot=0"));
 
     auto r = callTool(*server, 3, "apply_preset",
         QJsonObject{{"trackId", 0}, {"slotIndex", 0},

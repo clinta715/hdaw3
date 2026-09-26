@@ -1,5 +1,9 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -63,8 +67,10 @@ void registerEnvelopeTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"generate_automation_envelope",
-        "Generate an envelope shape on an automation lane.",
+        "Generate an envelope shape on an automation lane. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+                   {"trackID",  QJsonObject{{"type","integer"}}},
                    {"lane",     QJsonObject{{"oneOf", QJsonArray{
                        QJsonObject{{"type","integer"}},
                        QJsonObject{{"type","string"}}}}}},
@@ -79,10 +85,12 @@ void registerEnvelopeTools(McpServer& s, AudioEngine* e)
                    {"density",  QJsonObject{{"type","number"}}},
                    {"smooth",   QJsonObject{{"type","number"}}},
                    {"seed",     QJsonObject{{"type","integer"}}}},
-                  {"trackId","lane","shape"}),
+                  {"lane","shape"}),
         "envelope",
         [e](const QJsonObject& a) -> McpToolResult {
-            int trackId = a.value("trackId").toInt(-1);
+            int trackId; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), trackId, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             auto laneRef = a.value("lane");
             auto lane = findLane(e, trackId, laneRef);
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);

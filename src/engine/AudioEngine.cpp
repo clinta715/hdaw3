@@ -61,6 +61,51 @@ bool isLoopbackHost(const QString& host)
     QHostAddress addr;
     return addr.setAddress(host) && addr.isLoopback();
 }
+
+// Change B: process-wide memo of the default device type's capture-endpoint
+// state. Enumerating audio devices is expensive on Windows (a WASAPI scan on a
+// capture-less box) and the answer is stable for the process lifetime, so
+// repeated AudioEngine constructions/enumerations must not repay it.
+//   0 = not yet determined, 1 = inputs present, -1 = capture-less.
+int g_captureEndpointState = 0;
+
+// True when the default device type (the one AudioDeviceManager::initialise
+// would pick) exposes at least one capture endpoint. The first call triggers
+// the one-time device-type scan; later calls read the memo.
+bool defaultDeviceTypeHasInputs(juce::AudioDeviceManager& dm)
+{
+    // TEST-ONLY override (dead by default in production): forces the
+    // capture-less branch so the "opens output-only directly" behaviour is
+    // covered deterministically on a box that does have capture endpoints
+    // (AudioEngineReadFacadeTest.ForcedCapturelessOpensOutputOnly). Read per
+    // call (NOT cached) so it takes effect regardless of when it is set
+    // relative to the first engine construction.
+    const bool forceNoCapture =
+        juce::SystemStats::getEnvironmentVariable("HDAW_TEST_FORCE_NO_CAPTURE", "") == "1";
+    if (forceNoCapture)
+    {
+        HDAW_LOG("AudioEngine", "capture-endpoint probe: TEST override HDAW_TEST_FORCE_NO_CAPTURE=1 -> no capture endpoints");
+        return false;
+    }
+
+    if (g_captureEndpointState == 0)
+    {
+        // getAvailableDeviceTypes() populates + scans the platform types and
+        // selects the current type with devices — the same selection
+        // initialiseWithDefaultDevices() would make.
+        dm.getAvailableDeviceTypes();
+        auto* type = dm.getCurrentDeviceTypeObject();
+        const juce::StringArray inputs = (type != nullptr) ? type->getDeviceNames(true) : juce::StringArray();
+        const bool has = type != nullptr && AudioEngine::shouldRequestInputs(inputs);
+        g_captureEndpointState = has ? 1 : -1;
+        HDAW_LOG("AudioEngine", juce::String("capture-endpoint probe (memoized): type='")
+            + (type != nullptr ? type->getTypeName() : juce::String("(null)"))
+            + "' inputs=" + juce::String(inputs.size())
+            + (inputs.isEmpty() ? juce::String() : " [" + inputs.joinIntoString(", ") + "]")
+            + (has ? " -> inputs present" : " -> none - default device opens output-only"));
+    }
+    return g_captureEndpointState == 1;
+}
 } // namespace
 
 AudioEngine::AudioEngine()
@@ -158,13 +203,30 @@ void AudioEngine::initialize()
     // Initialize plugin manager — load cache (scan happens asynchronously after UI starts)
     pluginManager.loadCache();
 
-    // Initialize default audio device (2 in, 2 out) as fallback, retrying
-    // output-only when no capture device exists.
-    // Fallback for environments without a capture device (e.g. RDP sessions
-    // with render-only endpoints): JUCE fails the whole open if the requested
-    // input count can't be satisfied, so retry output-only rather than running
-    // with no device at all.
+    // Initialize default audio device. Change B: when the default device type
+    // exposes no capture endpoints the (2 in, 2 out) attempt is GUARANTEED to
+    // fail — JUCE fails the whole open if the requested input count cannot be
+    // satisfied — and on a capture-less box costs ~175 ms per engine start
+    // (measured). Probe the device type once (memoized per process) and open
+    // output-only directly in that case. With inputs present the previous
+    // behaviour is unchanged: try (2,2) and fall back to output-only on any
+    // other error cause (e.g. a render-only endpoint that still reports inputs).
     auto initDefaultDevice = [this]() {
+        const bool requestInputs = defaultDeviceTypeHasInputs(deviceManager);
+        defaultDeviceInitInputs_ = requestInputs ? 2 : 0;
+
+        if (!requestInputs)
+        {
+            HDAW_LOG("AudioEngine", "no capture endpoint - opening default device output-only (skipping the 2-in attempt)");
+            auto err = deviceManager.initialiseWithDefaultDevices(0, 2);
+            if (err.isNotEmpty())
+            {
+                juce::Logger::writeToLog("AudioEngine::initialize Error: " + err);
+                HDAW_LOG("AudioEngine", "output-only device init failed: " + err);
+            }
+            return;
+        }
+
         auto err = deviceManager.initialiseWithDefaultDevices(2, 2);
         if (err.isNotEmpty())
         {

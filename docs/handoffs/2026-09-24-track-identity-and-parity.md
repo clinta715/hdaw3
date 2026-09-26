@@ -164,6 +164,40 @@ keep the index) — see §5.
 - **B2's scope cut (candidate B2b):** the fx/automation/plugin tools that take `trackId` do not accept
   `trackID`. An agent holding an id must resolve it for those. Extend the same resolver when it
   matters.
+
+  **2026-09-25 — B2b SHIPPED.** This bullet — and the §3 sentence "**Deliberately NOT wired** on the
+  fx/automation/plugin tools … see §5" — are history now. Scope: ~49 MCP tools
+  (`src/mcp/McpTools_{FxSlot,FxChain,FxPreset,FmSynth,Sampler,PsyFm,Matrix,Envelope,Automation,MidiFx}.cpp`)
+  and ~44 RPC routes
+  (`src/frontend/router/Router_{Audio,Plugin,Read,AudioGraph,Sampler,PsyFm,Matrix,Project}.cpp`,
+  `Router_AudioGraph.h` signature, `FrontendRouter.cpp` callsite) accept the optional stable
+  `trackID` through the ONE shared rule `src/common/StableRefResolve.h::resolveTrackRef`, plus the
+  shared entry points `src/common/AutomationPresetRequest.h` (`automation_preset`) and
+  `src/common/MovementPlanJson.h` (`apply_movement_plan`, per-event — a bad ref fails the whole plan
+  before anything is applied). Rules: the stable id wins; an unknown id errors `unknown trackID N`; a
+  positional+id disagreement names each surface's OWN positional spelling (`trackId X and trackID Y
+  disagree` on the tools, `trackIndex X and trackID Y disagree` on the routes that spell
+  `trackIndex`) because the keys are spelling-preserving; positional-alone is byte-identical;
+  presence is decided by `contains()`; the sentinels survive (`set_fader_authoritative` -1 = all
+  tracks, `audition_patch` wildcard). Twins: 10 family twins in `AddFxParityTest` (id-only drives
+  the right track with a decoy untouched; unknown-id text identical on both surfaces; disagreement
+  text pinned per surface, nothing mutated) + `McpCoverageTest.TrackIdAloneDrivesTheFxAndAutomationTools`
+  (id-only through the live transport). Gates: `AddFxParityTest.*:BusSendRpcTest.*` 59/59, schema
+  pair 2/2, regression smoke 113/113, `node tools/rpc_parity_map.mjs` → `rpc_parity_map.inc`
+  byte-unchanged (307 tools / 411 rpc / mapped 295 / mcp-only 12). Still positional by design:
+  `slotIndex` / `paramIndex` / `laneName` / `programIndex` (no stable ids for sub-entities), the
+  batch/clip tools, and three read routes (`read.getTrack`, `read.getTrackMeter`,
+  `pluginParam.getParamText`).
+
+  **2026-09-26 — final contract nuance + full-suite evidence.** The parsing is SPLIT: with the
+  stable `trackID` key present, resolution is strict (`resolveTrackRef`: id wins, `unknown trackID
+  N`, spelling-preserving disagreement text); with `trackID` absent the behaviour is byte-for-byte
+  legacy — all historical positional spellings including the `trackIndex`/`trackId` dual-reads,
+  historical defaults such as `automation_preset`'s -1 track, and historical validation precedence
+  and error texts. That split is what keeps every pre-existing parity pin green while adding id
+  support. Gates: parity suites 80/80 (`AddFxParityTest` 27, `BusSendRpcTest` 32,
+  `MissingRouteParityTest` 12, `FmLibraryParityTest` 9) + coverage pair 2/2 + the authoritative
+  full run (2026-09-26): 2027/2027 executed, 1988 passed, 39 skipped, 0 failures.
 - **`*FX` CLAP editions cannot process audio** — cross-repo (the plugin builds); our side already
   filters them out of `list_plugins` and rejects them with an explicit message
   (`src/common/FxPluginIdCheck.h`). No repo-side work.
@@ -276,6 +310,37 @@ python -m graphify update . --force ; graphify explain <newSymbol>
   every surface; the shift payload tells position-mirroring clients what renumbered.
 - **`trackID` acceptance on fx/automation/plugin tools is still CUT (B2b, declined for now).** An
   agent holding only an id must resolve it to an index for those tools.
+
+  **2026-09-25 — B2b SHIPPED** (the bullet above is history). Scope, condensed: ~49 MCP tools
+  (`src/mcp/McpTools_{FxSlot,FxChain,FxPreset,FmSynth,Sampler,PsyFm,Matrix,Envelope,Automation,MidiFx}.cpp`)
+  and ~44 RPC routes
+  (`src/frontend/router/Router_{Audio,Plugin,Read,AudioGraph,Sampler,PsyFm,Matrix,Project}.cpp`) take
+  the optional stable `trackID` via the one shared rule
+  `src/common/StableRefResolve.h::resolveTrackRef`, plus the shared entry points
+  `src/common/AutomationPresetRequest.h` (`automation_preset`) and
+  `src/common/MovementPlanJson.h` (`apply_movement_plan`, per-event — a bad ref fails the whole plan
+  before applying). Rules: the stable id wins; an unknown id errors `unknown trackID N`;
+  positional-alone is byte-identical; presence is decided by `contains()`; the disagreement text is
+  spelling-preserving per surface (`trackId X and trackID Y disagree` on the tools,
+  `trackIndex X and trackID Y disagree` on the routes that spell `trackIndex`) because the keys are
+  spelling-preserving; the sentinels survive (`set_fader_authoritative` -1 = all tracks,
+  `audition_patch` wildcard). Twins: 10 family twins in `AddFxParityTest` +
+  `McpCoverageTest.TrackIdAloneDrivesTheFxAndAutomationTools`. Gates:
+  `AddFxParityTest.*:BusSendRpcTest.*` 59/59, schema pair 2/2, regression smoke 113/113,
+  `node tools/rpc_parity_map.mjs` → `rpc_parity_map.inc` byte-unchanged (307 tools / 411 rpc /
+  mapped 295 / mcp-only 12). Still positional by design: `slotIndex` / `paramIndex` / `laneName` /
+  `programIndex`, the batch/clip tools, and `read.getTrack` / `read.getTrackMeter` /
+  `pluginParam.getParamText`.
+
+  **2026-09-26 — final contract nuance + full-suite evidence.** The parsing is SPLIT: with the
+  stable `trackID` key present, resolution is strict (`resolveTrackRef`: id wins, `unknown trackID
+  N`, spelling-preserving disagreement text); with `trackID` absent the behaviour is byte-for-byte
+  legacy — all historical positional spellings including the `trackIndex`/`trackId` dual-reads,
+  historical defaults such as `automation_preset`'s -1 track, and historical validation precedence
+  and error texts. That split is what keeps every pre-existing parity pin green while adding id
+  support. Gates: parity suites 80/80 (`AddFxParityTest` 27, `BusSendRpcTest` 32,
+  `MissingRouteParityTest` 12, `FmLibraryParityTest` 9) + coverage pair 2/2 + the authoritative
+  full run (2026-09-26): 2027/2027 executed, 1988 passed, 39 skipped, 0 failures.
 - **Saved projects upgrade transparently on load.** No `formatVersion` bump was needed: the
   migration is idempotent and detects the vocabulary per node. Save→load→save is byte-stable for the
   ref properties (`DurableRefMigration.SaveLoadSaveKeepsTheNewVocabularyByteStable`).

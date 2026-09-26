@@ -16,6 +16,10 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "../engine/AudioEngine.h"
 #include "../common/MatrixPresetService.h"
 
@@ -69,22 +73,29 @@ void registerMatrixTools(McpServer& s, AudioEngine* e)
         " steps carrying SysEx queue through the send_fx_midi path and return"
         " {queued,captureDeferred:true}; nodalred2x morph steps load their .syx file through the"
         " load_nord_bank path. Realtime mutation: not undoable; capture via project save."
-        " Same payloads as the matrix.applyPreset RPC method.",
+        " Same payloads as the matrix.applyPreset RPC method. "
+        + mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({ { "engine", QJsonObject{ { "type", "string" } } },
                    { "id", QJsonObject{ { "type", "string" } } },
                    { "trackId", QJsonObject{ { "type", "integer" } } },
+                   { "trackID", QJsonObject{ { "type", "integer" } } },
                    { "slotIndex", QJsonObject{ { "type", "integer" } } },
                    { "captureToTree", QJsonObject{ { "type", "boolean" } } } },
-                  QJsonArray{ "engine", "id", "trackId", "slotIndex" }),
+                  QJsonArray{ "engine", "id", "slotIndex" }),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             // Required-argument shape stays a surface concern (MCP reports it as tool
             // text, the RPC as -32602); everything semantic is the service's.
-            if (!a.contains("trackId") || !a.contains("slotIndex"))
+            // B2: the track ref resolves through the ONE shared rule; today's
+            // "both required" text stays for a call naming neither key.
+            if ((!a.contains("trackId") && !a.contains("trackID")) || !a.contains("slotIndex"))
                 return McpToolResult::text("trackId and slotIndex required", true);
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             const auto r = HDAW::applyMatrixPreset(
                 *e, a.value("engine").toString(), a.value("id").toString(),
-                a.value("trackId").toInt(-1), a.value("slotIndex").toInt(-1),
+                ti, a.value("slotIndex").toInt(-1),
                 a.value("captureToTree").toBool(true));
             if (!r.ok)
                 return McpToolResult::text(QString::fromStdString(r.error), true);

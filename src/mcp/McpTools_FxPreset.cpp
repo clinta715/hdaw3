@@ -1,5 +1,9 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "PresetRoute.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
@@ -26,13 +30,17 @@ void registerFxPresetTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"list_plugin_presets",
-        "List all preset/program names of a plugin FX slot. Uses the preset cache when available (populated during plugin scanning); falls back to querying the live plugin instance.",
+        "List all preset/program names of a plugin FX slot. Uses the preset cache when available (populated during plugin scanning); falls back to querying the live plugin instance. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}},
-                 {"trackId","slotIndex"}),
+                 {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -105,14 +113,18 @@ s.registerTool({"search_plugin_presets",
         }});
 
 s.registerTool({"load_plugin_preset",
-        "Load a preset/program by index on a plugin FX slot.",
+        "Load a preset/program by index on a plugin FX slot. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"programIndex", QJsonObject{{"type","integer"}}}},
-                 {"trackId","slotIndex","programIndex"}),
+                 {"slotIndex","programIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
@@ -126,15 +138,20 @@ s.registerTool({"load_plugin_preset",
 
 s.registerTool({"load_plugin_preset_file",
         "Load a preset file into a plugin FX slot via setStateInformation. "
-        "Supports .SerumPreset (Serum 2 XferJson), .fxp (standard VST2 FPCh, Serum 2 layout), and .syx (DX7 SysEx) files.",
+        "Supports .SerumPreset (Serum 2 XferJson), .fxp (standard VST2 FPCh, Serum 2 layout), and .syx (DX7 SysEx) files. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                   {"trackID",   QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"filePath",  QJsonObject{{"type","string"}}}},
-                  {"trackId","slotIndex","filePath"}),
+                  {"slotIndex","filePath"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             return runLoadPluginPresetFile(*e,
-                a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+                ti, a.value("slotIndex").toInt(),
                 a.value("filePath").toString());
         }});
 

@@ -5125,6 +5125,46 @@ TEST_F(McpCoverageTest, StableIdErrorsNameTheIdAndMutateNothing) {
     EXPECT_NE(idFirst, idSecond);
 }
 
+// B2b on the fx/automation families, through the LIVE transport (the schema
+// an agent actually calls through): `trackID` alone drives set_fx_bypass and
+// add_automation_point onto the id's OWN track — asserted on the live state,
+// so a surface that silently dropped the id would land the write on the
+// always-valid index 0 and fail the untouched-neighbour assertions.
+TEST_F(McpCoverageTest, TrackIdAloneDrivesTheFxAndAutomationTools) {
+    auto& cmds = engine->getProjectCommands();
+    const int second = cmds.addTrack("Second");
+    ASSERT_EQ(second, 1);
+    engine->drainPendingRoutingRebuild();
+    auto tl = engine->getProjectModel().getTrackListTree();
+    const int idFirst = static_cast<int>(tl.getChild(0).getProperty(IDs::trackID, 0));
+    const int idSecond = static_cast<int>(tl.getChild(1).getProperty(IDs::trackID, 0));
+    ASSERT_GT(idFirst, 0);
+    ASSERT_NE(idFirst, idSecond);
+
+    // set_fx_bypass by id: an eq slot on each track, then only the id's flips.
+    for (int t = 0; t < 2; ++t) {
+        auto addFx = call("add_fx", { { "trackId", t }, { "fxType", "eq" } });
+        ASSERT_FALSE(isError(addFx)) << text(addFx).toStdString();
+    }
+    auto bypass = call("set_fx_bypass",
+                       { { "trackID", idSecond }, { "slotIndex", 0 }, { "bypassed", true } });
+    ASSERT_FALSE(isError(bypass)) << text(bypass).toStdString();
+    EXPECT_TRUE(engine->getReadModel().getFxSlots(1)[0].bypassed);
+    EXPECT_FALSE(engine->getReadModel().getFxSlots(0)[0].bypassed)
+        << "the neighbouring track must stay untouched";
+
+    // add_automation_point by id: the point lands on the id's own lane.
+    ASSERT_TRUE(cmds.addAutomationLane(0, "ByID", 2000));
+    ASSERT_TRUE(cmds.addAutomationLane(1, "ByID", 2000));
+    auto point = call("add_automation_point",
+                      { { "trackID", idSecond }, { "lane", "ByID" }, { "time", 1.0 },
+                        { "value", 0.5 } });
+    ASSERT_FALSE(isError(point)) << text(point).toStdString();
+    EXPECT_EQ(engine->getReadModel().getAutomationPoints(1, "ByID").size(), 1u);
+    EXPECT_TRUE(engine->getReadModel().getAutomationPoints(0, "ByID").empty())
+        << "the neighbouring track's lane must stay empty";
+}
+
 // G5 on MCP: `sendID` alone addresses the survivor of a removal, and a removed
 // send's id is refused rather than resolving to whatever took its slot.
 TEST_F(McpCoverageTest, SendIdAloneAddressesTheSurvivorAfterASplice) {

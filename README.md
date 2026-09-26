@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.38.0
+**Current version**: 0.39.0
 
 ## Quick start
 
@@ -25,7 +25,42 @@ defaults to RelWithDebInfo; pass `Debug` for breakpoint debugging. The Electron
 frontend is a separate project (AGENTS.md "DEPRECATED 2026-09-23") — engine work
 never builds it.
 
-## What works today (v0.38.0)
+## What works today (v0.39.0)
+
+### v0.39.0 session highlights (2026-09-25/26)
+- **Stable `trackID` accepted across the fx/automation/plugin surfaces (B2b)**:
+  ~49 MCP tools and ~44 RPC routes (plus the shared `automation_preset` /
+  `apply_movement_plan` entry points) take the optional stable `trackID` via the
+  ONE shared rule in `src/common/StableRefResolve.h`. Parsing is split: with
+  `trackID` present resolution is strict (id wins, `unknown trackID N`,
+  spelling-preserving disagreement text); with it absent, behaviour is
+  byte-for-byte legacy. Pinned by 10 family twins in `AddFxParityTest` + schema
+  coverage; the parity ledger is unchanged (307 tools / 411 methods).
+- **Library registry merge-on-save**: `registry.json` no longer clobbers
+  entries written by scripts or a second engine (in-memory wins for ids it
+  owns, unknown on-disk ids are kept and adopted, explicit removals stay
+  removed per process) — `FileLibraryTest.RegistryMergeOnSave*`.
+- **Engine fixes**: the Virus-family warmup no longer trips the child's 1s-hang
+  watchdog into writing a 330-670 MB minidump per spawn (real hangs still
+  dump); the default audio-device open skips the doomed 2-in attempt when the
+  device type has no capture endpoint (memoized per process).
+- **Test infrastructure**: the harness self-isolates (temp / user-data /
+  QSettings, with a read-mirror of the real caches), the shard runner counts
+  unique failures, detects incomplete shards, passes exactly one
+  `--gtest_filter` per process and verifies intended-vs-executed coverage, and
+  a shared-engine fixture removes per-test engine construction (`Commands`:
+  39.5 s → ~1 s; four more suites: 369 → 49 ms/test).
+- **Two long-standing test defects fixed at the root**: the "exports 3+ ignore
+  live tree changes" report is DISPROVEN (an enabled Volume automation lane owns
+  the parameter in the offline render — audit isolation must use mute; pinned by
+  `ExportVolumeBypass.*`), and the intermittent shard-death class was a
+  test-side use-after-free in `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`
+  (declaration order), fixed and 25/25 stable.
+- **PsyDub v3.2**: breakdown tail carried into the drop edge (held tonic from
+  beat 632) — beats 636-640 went −46 → −16.5 dBFS with the drop untouched.
+- **Authoritative baseline**: 287 suites / 2027 tests; `run-tests-sharded.ps1
+  -Shards 2` executes 2027/2027 — 1988 passed, 39 skipped, 0 failures in
+  27.1 min.
 
 ### v0.38.0 session highlights (2026-09-24/25)
 - **RPC parity ledger closed**: all 10 formerly unresolved rows are now mapped
@@ -412,6 +447,35 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.39.0 — Stable trackID acceptance (B2b), registry merge-on-save, engine fixes, test-infra hardening
+
+- **B2b: `trackID` on fx/automation/plugin surfaces.** ~49 MCP tools + ~44 RPC
+  routes (and the shared `automation_preset` / `apply_movement_plan` entry
+  points) accept the optional stable `trackID` through
+  `src/common/StableRefResolve.h`. Strict when the key is present (id wins;
+  `unknown trackID N`; spelling-preserving disagreement text), byte-for-byte
+  legacy when absent. 10 family twins in `AddFxParityTest` +
+  `McpCoverageTest.TrackIdAloneDrivesTheFxAndAutomationTools`; parity ledger
+  unchanged (307 tools / 411 methods / mapped 295 / mcp-only 12).
+- **`registry.json` merge-on-save** (fixes the trap-#4 clobber): external
+  registry entries survive engine restarts; explicit removals stay removed.
+  `FileLibraryTest.RegistryMergeOnSave*` (red/green + mutation-proven).
+- **Engine**: the Virus warmup no longer writes a 330-670 MB hang-minidump per
+  spawn (real hangs still dump, `PluginIsolation.VirusWarmupWritesNoHangDump` /
+  `RealHangWritesHangDump`); the default device open skips the doomed 2-in/2-out
+  attempt when no capture endpoint exists (`AudioEngineReadFacadeTest.*`).
+- **Test infrastructure**: harness self-isolation (TMP/TEMP, user-data,
+  QSettings) + cache read-mirror; shard runner unique-failure counting,
+  incomplete-shard detection, one `--gtest_filter` per process, intended-vs-
+  executed coverage; shared-engine fixture (369 → 49 ms/test on the converted
+  suites); `run_fast_tests.bat`'s stale ~3.3 min figure corrected.
+- **Disproven/fixed**: the "exports 3+ ignore live tree changes" report was an
+  audit artifact (Volume automation owns the parameter offline —
+  `ExportVolumeBypass.VolumeAutomationOverridesTreeFader`,
+  `MultiExportRereadsLiveTree`); `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`
+  carried a test-side use-after-free (the intermittent shard-death class).
+- **PsyDub v3.2** breakdown tail fix (held tonic into the drop edge).
 
 ### v0.35.0 — Seeded cell style defaults, apply_preset dispatch, six-role song-session, plugin verdicts
 

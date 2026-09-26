@@ -2745,9 +2745,17 @@ TEST (InternalFx, SaturatorNeutralFidelity)
 // docs/core-synths-agentic-guide.md §5/§7: every load is confirmed with
 // get_fx_capture_status (poll to settled) + a solo audition rms > 0.001, and
 // list_fx_params is asserted non-empty per synth track BEFORE any automation
-// (G3/G4). Preset loads happen BEFORE the render sequence, so the open
-// export-isolation bug (exports 3+ re-render a fixed tree state,
-// docs/testing-mcp.md) cannot bite the deliverable.
+// (G3/G4). Preset loads happen BEFORE the render sequence; ordering is a
+// cost/simplicity choice, not a correctness workaround. The former
+// export-isolation concern (exports 3+ in a session "re-render a fixed tree
+// state", docs/testing-mcp.md) was DISPROVEN 2026-09-25: those stem audits
+// isolated with setTrackVolume, while an enabled paramID-1 "Volume" automation
+// lane owns the parameter in the offline render (Track.cpp:557-561; before the
+// first point AutomationManager.h:59-77 returns points.front().second, so the
+// audit lane's first point (beat 672, 1.0) evaluated to exactly 1.0), so only
+// tracks WITHOUT a Volume lane (the sampler `kick`) obeyed the fader. Pinned by
+// tests/unit/engine/export_volume_bypass_test.cpp
+// (VolumeAutomationOverridesTreeFader / MultiExportRereadsLiveTree).
 //
 // Style spec (v2, DarkForestV5 discipline): 138 BPM, 4/4, F natural minor
 // via the degree helper fMinorDeg + 8-bar progressions progA/progB (NOTHING
@@ -3200,6 +3208,12 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         const int clipId = cmds.addMidiClip (leadT, 0.0, totalBeats, "bm");
         ASSERT_GE (clipId, 0);
         addNotes (cmds, clipId, bm, 80, 3.0);
+        // 4c tail fix: the phrase's last note dies at ~623, so beats 624-640
+        // feed the lead reverb nothing and the tail decays to -46 dBFS right
+        // before the drop. A held tonic (F4, vel 80) from 632 rings into the
+        // drop edge (640) and carries the tail: 636-640 sits at -16.5 dBFS
+        // while the drop windows (640-672) stay within 0.01 dB of baseline.
+        addNotes (cmds, clipId, { { fMinorDeg (0, 4), 632.0 } }, 80, 8.0);
     }
 
     // ---- DUB SKANK (Osirus): offbeat 7th stabs (the genre hook), echo -----
@@ -3390,8 +3404,10 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     // silent slot makes every A/B equal, trap from finding F-A). Internal
     // engines (sub_synth / psy_fm) are verified by solo render only. G4:
     // list_fx_params non-empty asserted per synth slot BEFORE any automation.
-    // ALL loads happen BEFORE the render sequence, so the open export-isolation
-    // bug (exports 3+ ignore tree changes) cannot affect the deliverable.
+    // ALL loads happen BEFORE the render sequence; the former export-isolation
+    // concern (exports 3+ ignore tree changes) was DISPROVEN 2026-09-25 (pinned
+    // by export_volume_bypass_test.MultiExportRereadsLiveTree), so the ordering
+    // is a cost choice, not a correctness workaround.
     // =====================================================================
     auto pumpMsg = [&] (int ms) {
         if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
@@ -3799,14 +3815,20 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         return computePeak (out);
     };
 
-    // ---- STEM AUDIT: DROPPED in v3 (reported choice). Every engine's
+    // ---- STEM AUDIT: DROPPED in v3 for RUNTIME COST. Every engine's
     // audibility is already proven by the G3 solo auditions above (rms >
     // 0.001 through the actual slot chain), and v3's renders spawn THREE
     // isolated CLAP children per export (Virus 12 s OS warmup + microQ + n2x),
-    // so six stem exports would cost many minutes AND hit the documented
-    // export-isolation bug (exports 3+ in a session re-render a fixed tree
-    // state, docs/testing-mcp.md) — the pass could only ever measure stale
-    // mixes, never audibility. Diagnostic-only in v2 for exactly that reason.
+    // so six stem exports would cost many minutes. The 2026-09-24 report that
+    // this pass "hit the export-isolation bug (exports 3+ in a session
+    // re-render a fixed tree state, docs/testing-mcp.md)" was DISPROVEN
+    // 2026-09-25: those stem audits silenced tracks via setTrackVolume, but an
+    // enabled paramID-1 "Volume" lane owns the parameter in the offline render
+    // (Track.cpp:557-561; before the first point AutomationManager.h:59-77
+    // returns points.front().second, so the audit lane's first point
+    // (beat 672, 1.0) evaluated to exactly 1.0), so only tracks without a
+    // Volume lane (the sampler `kick`) obeyed the fader.
+    // Pinned by export_volume_bypass_test.MultiExportRereadsLiveTree.
 
     // Restore the mix faders exactly as v2 wrote them (the audit pass is gone,
     // but the volume map must still match the mix design before the render).

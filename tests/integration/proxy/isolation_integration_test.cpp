@@ -34,6 +34,47 @@ static juce::File findBuiltTestPlugin() {
 // Spawn lifecycle tests
 // ========================================================================
 
+namespace {
+// Set a process env var (inherited by the child: CreateProcessA runs with a
+// null environment block) and return its previous value so the test restores
+// it. Used to point the child's %TEMP% at a scratch dir and to arm the
+// test-only hang hook / warmup override.
+std::string setChildEnv(const char* name, const std::string& value)
+{
+    char buf[4096]{};
+    const DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
+    std::string old = (n > 0 && n < sizeof(buf)) ? std::string(buf, n) : std::string();
+    SetEnvironmentVariableA(name, value.c_str());
+    return old;
+}
+
+void restoreChildEnv(const char* name, const std::string& old)
+{
+    SetEnvironmentVariableA(name, old.empty() ? nullptr : old.c_str());
+}
+
+// The child watchdog writes "hdaw_plugin_host_processBlock hung for 1s.dmp"
+// into its %TEMP%. List that pattern in `dir`.
+int countHungDumps(const juce::File& dir, juce::StringArray& names)
+{
+    names.clear();
+    for (const auto& entry : juce::RangedDirectoryIterator(dir, false, "*hung*.dmp"))
+    {
+        auto f = entry.getFile();
+        names.add(f.getFileName() + " (" + juce::String(f.getSize()) + " bytes)");
+    }
+    return names.size();
+}
+
+juce::File freshScratchDir(const juce::String& tag)
+{
+    auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                   .getChildFile("hdaw_watchdog_" + tag);
+    dir.deleteRecursively();
+    return dir;
+}
+} // namespace
+
 TEST(PluginIsolation, HostExePathResolves) {
     auto path = ProxyProcessManager::getHostExePath();
     EXPECT_FALSE(path.empty());
@@ -2271,4 +2312,133 @@ TEST(PluginIsolation, ProgramBridgeThroughProxy) {
     EXPECT_EQ(slot.getCurrentProgram(), 1);
 
     mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// ========================================================================
+// Change A — the hang watchdog must not mistake the INTENTIONAL Virus warmup
+// (which blocks the control thread inside processBlock for its whole
+// real-time-paced duration) for a hang. Before the fix every virus-family
+// spawn wrote a 330-670 MB "processBlock hung for 1s" minidump into the
+// child's %TEMP% (measured 4.5 GB across 15 spawns).
+// ========================================================================
+TEST(PluginIsolation, VirusWarmupWritesNoHangDump) {
+    auto scratch = freshScratchDir("warmup");
+    ASSERT_TRUE(scratch.createDirectory());
+
+    const std::string oldTmp  = setChildEnv("TMP",  scratch.getFullPathName().toStdString());
+    const std::string oldTemp = setChildEnv("TEMP", scratch.getFullPathName().toStdString());
+    const std::string oldSec  = setChildEnv("HDAW_CHILD_WARMUP_SECONDS", "2");
+
+    ProxyProcessManager mgr;
+    const uint32_t slot = 9480;
+    // A Virus-named path that does not exist: loadPlugin falls back to the
+    // internal passthrough processor, and the name-based family gate still runs
+    // the intentional warmup pump.
+    ASSERT_TRUE(mgr.spawnPluginHost("C:\\fake\\Osirus.vst3", slot));
+    auto* pipe = mgr.getPipe(slot);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = slot;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse resp{};
+    const auto t0 = std::chrono::steady_clock::now();
+    ASSERT_TRUE(pipe->receiveResp(resp)) << "child should answer PREPARE";
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    EXPECT_EQ(resp.result, 1u);
+    // Real-time-paced warmup: >1 s proves the control thread held
+    // processBlockActive long enough for the old 1 s watchdog to fire.
+    EXPECT_GT(elapsedMs, 1000) << "warmup did not run long enough to exercise the watchdog";
+
+    // Let any (pre-fix) dump finish writing before measuring, while the child
+    // is still alive.
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    juce::StringArray dumps;
+    countHungDumps(scratch, dumps);
+    std::fprintf(stderr, "MARK warmup scratch=%s dumps=%s\n",
+                 scratch.getFullPathName().toRawUTF8(),
+                 dumps.isEmpty() ? "(none)" : dumps.joinIntoString("; ").toRawUTF8());
+    EXPECT_EQ(dumps.size(), 0)
+        << "watchdog dump(s) produced by the intentional warmup: " << dumps.joinIntoString(", ");
+
+    mgr.killPluginHost(slot, KillMode::KillHard);
+    restoreChildEnv("HDAW_CHILD_WARMUP_SECONDS", oldSec);
+    restoreChildEnv("TEMP", oldTemp);
+    restoreChildEnv("TMP",  oldTmp);
+    scratch.deleteRecursively();
+}
+
+// ========================================================================
+// Change A — a GENUINE hang must still dump. The test-only HDAW_TEST_HANG_MS
+// hook (PassthroughProcessor::processBlock) holds one processBlock call for
+// 2500 ms; with no warmup running the 1 s watchdog must write the minidump.
+// ========================================================================
+TEST(PluginIsolation, RealHangWritesHangDump) {
+    auto scratch = freshScratchDir("realhang");
+    ASSERT_TRUE(scratch.createDirectory());
+
+    const std::string oldTmp  = setChildEnv("TMP",  scratch.getFullPathName().toStdString());
+    const std::string oldTemp = setChildEnv("TEMP", scratch.getFullPathName().toStdString());
+    const std::string oldHang = setChildEnv("HDAW_TEST_HANG_MS", "2500");
+
+    ProxyProcessManager mgr;
+    const uint32_t slot = 9481;
+    ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", slot));
+    auto* pipe = mgr.getPipe(slot);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = slot;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+    ProxyResponse resp{};
+    ASSERT_TRUE(pipe->receiveResp(resp));
+    EXPECT_EQ(resp.result, 1u);
+
+    auto* shm = mgr.getShm(slot);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+    int retries = 100;
+    while (hdr->numChannels == 0 && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GT(hdr->numChannels, 0u) << "child didn't initialize shared memory header";
+
+    const uint32_t blockSize = hdr->blockSize > 0 ? hdr->blockSize : 512;
+    const uint32_t numChannels = hdr->numChannels > 0 ? hdr->numChannels : 2;
+    std::vector<float> input(blockSize * numChannels, 0.0f);
+    ASSERT_TRUE(shm->writeInput(input.data(), static_cast<uint32_t>(input.size())));
+
+    juce::StringArray dumps;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (countHungDumps(scratch, dumps) > 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+    EXPECT_GE(dumps.size(), 1)
+        << "a genuine processBlock hang produced no minidump";
+    // Let MiniDumpWriteDump finish before measuring/killing so the reported
+    // size is the real dump, not a zero-byte placeholder.
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    countHungDumps(scratch, dumps);
+    EXPECT_GT(scratch.getChildFile("hdaw_plugin_host_processBlock hung for 1s.dmp").getSize(), 0)
+        << "minidump was created but is empty";
+    std::fprintf(stderr, "MARK realhang scratch=%s dumps=%s\n",
+                 scratch.getFullPathName().toRawUTF8(),
+                 dumps.isEmpty() ? "(none)" : dumps.joinIntoString("; ").toRawUTF8());
+
+    mgr.killPluginHost(slot, KillMode::KillHard);
+    restoreChildEnv("HDAW_TEST_HANG_MS", oldHang);
+    restoreChildEnv("TEMP", oldTemp);
+    restoreChildEnv("TMP",  oldTmp);
+    scratch.deleteRecursively();
 }

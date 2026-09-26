@@ -120,6 +120,13 @@ private:
     // would race the plugin).
     std::vector<uint8_t> pendingStateFromRing;
     std::atomic<bool> warmupActive{false};
+    // Expected wall duration (ms) of the in-flight Virus warmup. The watchdog
+    // suppresses its dump while warmupActive is set and instead uses
+    // warmupExpectedMs + 1000 as the real-hang threshold: the intentional
+    // warmup blocking the audio-loop flag is expected, while a genuine hang
+    // during/after it is still captured. Written (release) BEFORE warmupActive
+    // is raised and never zeroed, so the pair is race-free under acquire loads.
+    std::atomic<int> warmupExpectedMs{0};
     void applyPendingRingState();
 
     // Last state successfully handed to the plugin. Re-applied after
@@ -148,7 +155,9 @@ private:
     std::thread watchdogThread;
 
     // Watchdog: set by audio thread before processBlock, cleared after.
-    // If set for >5s, the watchdog writes a minidump.
+    // If it stays set for >1s the watchdog writes a minidump — EXCEPT during
+    // the intentional Virus warmup, where the threshold is
+    // warmupExpectedMs + 1s (see warmupExpectedMs above).
     std::atomic<bool> processBlockActive{false};
     std::atomic<bool> dumpWritten{false};
 

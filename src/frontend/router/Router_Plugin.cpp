@@ -29,6 +29,9 @@ DispatchResult dispatchPlugin(PluginService& s, AudioEngine& engine, const QStri
                               const QJsonValue& params,
                               FrontendServer* server) {
     const auto o = paramsObject(params);
+    // B2: the TRACK_LIST the stable-id track resolution reads (the ONE shared
+    // rule in common/StableRefResolve.h; moveTrack/getTrackSends precedent).
+    const juce::ValueTree trackList = engine.getProjectModel().getTrackListTree();
     auto pluginInfoToJson = [](const PluginInfo& p) {
         return QJsonObject{
             { "name",            QString::fromStdString(p.name) },
@@ -103,8 +106,10 @@ DispatchResult dispatchPlugin(PluginService& s, AudioEngine& engine, const QStri
         // property while the RPC reported a loader error) — keep the schema and the check in sync.
         int ti = 0, si = 0;
         std::string filePath;
-        if (!requireInt(o, "trackId", ti, nullptr))
-            return makeError(-32602, "trackId required");
+        // B2: `trackId` (index) or the stable `trackID` — the ONE shared rule.
+        DispatchResult err;
+        if (!trackIndexArg(o, trackList, ti, &err))
+            return err;
         if (!requireInt(o, "slotIndex", si, nullptr))
             return makeError(-32602, "slotIndex required");
         if (!requireString(o, "filePath", filePath, nullptr))
@@ -176,9 +181,10 @@ DispatchResult dispatchPlugin(PluginService& s, AudioEngine& engine, const QStri
         // which is the lifecycle call's sanctioned context for in-process
         // instances — identical to the pre-existing audio.swapFxSnapshot /
         // audio.captureFxSnapshot setStateInformation routes.
-        int ti, si;
-        if (!requireInt(o, "trackId", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
-            return makeError(-32602, "trackId and slotIndex required");
+        int ti, si; DispatchResult err;
+        // B2: `trackId` (index) or the stable `trackID` — the ONE shared rule.
+        if (!trackIndexArg(o, trackList, ti, &err) || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackId and slotIndex required");
         std::string filePath;
         if (!requireString(o, "filePath", filePath, nullptr))
             return makeError(-32602, "filePath required");
@@ -208,8 +214,12 @@ int findPluginSlotIndex(AudioEngine& engine, int trackIndex, const std::string& 
 DispatchResult dispatchPluginParam(AudioEngine& engine, const QString& m, const QJsonValue& params) {
     auto& s = engine.getPluginParamService();
     const auto o = paramsObject(params);
+    // B2: the TRACK_LIST the stable-id track resolution reads (the ONE shared
+    // rule in common/StableRefResolve.h; moveTrack/getTrackSends precedent).
+    const juce::ValueTree trackList = engine.getProjectModel().getTrackListTree();
     if (m == "getParams") {
-        int i; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "trackIndex and pluginID required");
+        int i; std::string id; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "pluginID", id, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and pluginID required");
         // Persisted offline-replay overrides for this slot: an index present in
         // the ledger will also be replayed into every tree-copy render
         // (export_audio / audition_plugin / verify_part). Lets a client — and an
@@ -246,9 +256,9 @@ DispatchResult dispatchPluginParam(AudioEngine& engine, const QString& m, const 
         return { false, QString::fromStdString(s.getParamText(i, id, pi, v)) };
     }
     if (m == "setParam") {
-        int i, pi; std::string id; float v;
-        if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "paramIndex", pi, nullptr) || !requireFloat(o, "normalizedValue", v, nullptr))
-            return makeError(-32602, "trackIndex, pluginID, paramIndex, normalizedValue required");
+        int i, pi; std::string id; float v; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "paramIndex", pi, nullptr) || !requireFloat(o, "normalizedValue", v, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex, pluginID, paramIndex, normalizedValue required");
         // Route through the shared command layer (same path as MCP
         // set_fx_param) so the write is ALSO persisted into the slot's
         // offline-replay ledger: a bare PluginParamService::setParam reaches
@@ -262,14 +272,14 @@ DispatchResult dispatchPluginParam(AudioEngine& engine, const QString& m, const 
         }
         s.setParam(i, id, pi, v); return { false, QJsonValue::Null };
     }
-    if (m == "getProgramCount")  { int i; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "trackIndex and pluginID required"); return { false, s.getProgramCount(i, id) }; }
-    if (m == "getCurrentProgram"){ int i; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "trackIndex and pluginID required"); return { false, s.getCurrentProgram(i, id) }; }
-    if (m == "getProgramName")   { int i, pi; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "programIndex", pi, nullptr)) return makeError(-32602, "trackIndex, pluginID, programIndex required"); return { false, QString::fromStdString(s.getProgramName(i, id, pi)) }; }
-    if (m == "setCurrentProgram"){ int i, pi; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "programIndex", pi, nullptr)) return makeError(-32602, "trackIndex, pluginID, programIndex required"); s.setCurrentProgram(i, id, pi); return { false, QJsonValue::Null }; }
+    if (m == "getProgramCount")  { int i; std::string id; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "pluginID", id, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and pluginID required"); return { false, s.getProgramCount(i, id) }; }
+    if (m == "getCurrentProgram"){ int i; std::string id; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "pluginID", id, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and pluginID required"); return { false, s.getCurrentProgram(i, id) }; }
+    if (m == "getProgramName")   { int i, pi; std::string id; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "programIndex", pi, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, pluginID, programIndex required"); return { false, QString::fromStdString(s.getProgramName(i, id, pi)) }; }
+    if (m == "setCurrentProgram"){ int i, pi; std::string id; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "programIndex", pi, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, pluginID, programIndex required"); s.setCurrentProgram(i, id, pi); return { false, QJsonValue::Null }; }
     if (m == "listPrograms") {
-        int i; std::string id;
-        if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr))
-            return makeError(-32602, "trackIndex and pluginID required");
+        int i; std::string id; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "pluginID", id, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex and pluginID required");
         int count = s.getProgramCount(i, id);
         int current = s.getCurrentProgram(i, id);
         QJsonArray arr;

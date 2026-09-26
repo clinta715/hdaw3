@@ -1,5 +1,9 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -23,15 +27,19 @@ void registerSamplerTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"sampler_set_sample",
-        "Load an audio file into a sampler FX slot.",
+        "Load an audio file into a sampler FX slot. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"filePath",  QJsonObject{{"type","string"}}},
                   {"rootNote",  QJsonObject{{"type","integer"}}}},
-                  {"trackId","slotIndex","filePath"}),
+                  {"slotIndex","filePath"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -52,13 +60,17 @@ s.registerTool({"sampler_set_sample",
         }});
 
 s.registerTool({"sampler_get_state",
-        "Get the current state of a sampler FX slot.",
+        "Get the current state of a sampler FX slot. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}},
-                  {"trackId","slotIndex"}),
+                  {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -122,16 +134,20 @@ s.registerTool({"sampler_get_state",
         }});
 
 s.registerTool({"set_sampler_param",
-        "Set a sampler FX slot parameter. Either a named slot property ({property, value}: mono, playReverse, transpose, baseNote) or a real parameter value by paramIndex. Unknown property names are an ERROR — keyRange has its own tool (set_sampler_key_range).",
+        "Set a sampler FX slot parameter. Either a named slot property ({property, value}: mono, playReverse, transpose, baseNote) or a real parameter value by paramIndex. Unknown property names are an ERROR — keyRange has its own tool (set_sampler_key_range). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",    QJsonObject{{"type","integer"}}},
+                  {"trackID",    QJsonObject{{"type","integer"}}},
                   {"slotIndex",  QJsonObject{{"type","integer"}}},
                   {"paramIndex", QJsonObject{{"type","integer"}}},
                   {"property",   QJsonObject{{"type","string"}}},
                   {"value",      QJsonObject{{"type","number"}}}},
-                  {"trackId","slotIndex"}),
+                  {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -176,15 +192,19 @@ s.registerTool({"set_sampler_param",
         }});
 
 s.registerTool({"set_sampler_mode",
-        "Set a sampler FX slot's playback mode. mode in {classic, one-shot, slice}.",
+        "Set a sampler FX slot's playback mode. mode in {classic, one-shot, slice}. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"mode",      QJsonObject{{"type","string"},
                       {"enum", QJsonArray{"classic","one-shot","slice"}}}}},
-                  {"trackId","slotIndex","mode"}),
+                  {"slotIndex","mode"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -198,17 +218,21 @@ s.registerTool({"set_sampler_mode",
         }});
 
 s.registerTool({"detect_sampler_slices",
-        "Detect slice points for a sampler FX slot (transient or grid mode) and store them. Returns {ok, totalSlices, slicePoints} (normalized 0..1).",
+        "Detect slice points for a sampler FX slot (transient or grid mode) and store them. Returns {ok, totalSlices, slicePoints} (normalized 0..1). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",          QJsonObject{{"type","integer"}}},
+                  {"trackID",         QJsonObject{{"type","integer"}}},
                   {"slotIndex",        QJsonObject{{"type","integer"}}},
                   {"sliceMode",        QJsonObject{{"type","string"},
                       {"enum", QJsonArray{"transient","grid"}}}},
                   {"sliceGrid",        QJsonObject{{"type","number"}}},
                   {"sliceSensitivity", QJsonObject{{"type","number"}}}},
-                  {"trackId","slotIndex"}),
+                  {"slotIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -229,15 +253,19 @@ s.registerTool({"detect_sampler_slices",
         }});
 
 s.registerTool({"trigger_sampler_slice",
-        "Audition one slice of a sampler FX slot in slice mode. Returns {ok, totalSlices}.",
+        "Audition one slice of a sampler FX slot in slice mode. Returns {ok, totalSlices}. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",    QJsonObject{{"type","integer"}}},
+                  {"trackID",    QJsonObject{{"type","integer"}}},
                   {"slotIndex",  QJsonObject{{"type","integer"}}},
                   {"sliceIndex", QJsonObject{{"type","integer"}}},
                   {"velocity",   QJsonObject{{"type","number"}}}},
-                  {"trackId","slotIndex","sliceIndex"}),
+                  {"slotIndex","sliceIndex"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))
@@ -253,15 +281,19 @@ s.registerTool({"trigger_sampler_slice",
         }});
 
 s.registerTool({"set_sampler_key_range",
-        "Set the MIDI note range for a sampler FX slot. When a key range is set (keyLow and keyHigh are 0..127), only MIDI notes in that range are rendered by this sampler; notes outside the range pass to the next slot. Set both to -1 to restore full-range (default behavior). Enables multiple samplers on one track to each handle different note ranges (e.g. riser + downlifter).",
+        "Set the MIDI note range for a sampler FX slot. When a key range is set (keyLow and keyHigh are 0..127), only MIDI notes in that range are rendered by this sampler; notes outside the range pass to the next slot. Set both to -1 to restore full-range (default behavior). Enables multiple samplers on one track to each handle different note ranges (e.g. riser + downlifter). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"keyLow",    QJsonObject{{"type","integer"},{"minimum",-1},{"maximum",127}}},
                   {"keyHigh",   QJsonObject{{"type","integer"},{"minimum",-1},{"maximum",127}}}},
-                  {"trackId","slotIndex","keyLow","keyHigh"}),
+                  {"slotIndex","keyLow","keyHigh"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
+            int ti; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), ti, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             int si = a.value("slotIndex").toInt();
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= static_cast<int>(fxSlots.size()))

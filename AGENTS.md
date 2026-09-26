@@ -10,7 +10,7 @@ touching `processBlock`, DSP chains, render/export, playback paths, plugin isola
 or internal/external FX contracts require discussion with the user FIRST, with effort
 + risk notes. Rendering and playback stability outrank new features.
 
-**Current scope:** JUCE 8 desktop DAW, v0.37.0, React 19 + TS frontend (Zustand,
+**Current scope:** JUCE 8 desktop DAW, v0.39.0, React 19 + TS frontend (Zustand,
 Vite). Engine state via JSON-RPC 2.0 over WebSocket (8766) + HTTP (8765); bundled
 SPA or Electron shell. Feature history: `README.md`; per-version changes: git log.
 
@@ -18,18 +18,22 @@ SPA or Electron shell. Feature history: `README.md`; per-version changes: git lo
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 31 lessons, full narratives** (one-line index below) |
+| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 32 lessons, full narratives** (one-line index below) |
 | [`docs/architecture.md`](docs/architecture.md) | Build details, key classes, GUI-engine decoupling, beats-vs-seconds |
 | [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread rules, hardening, plugin isolation, latency/quality |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | JUCE pitfalls (scan blacklisting, setProperty no-op, FX clamping) |
 | [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md) | Frontend pitfalls (stale closures, optimistic placement) |
 | [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | Listener contract, delta-sync limits |
-| [`docs/testing-mcp.md`](docs/testing-mcp.md) | gtest suite, TransportLoopback seam, MCP architecture |
-| [`docs/hardware-va-suite.md`](docs/hardware-va-suite.md) | Core-synth CLAPs: devices, patch pipelines, per-engine status (§9) |
+| [`docs/testing-mcp.md`](docs/testing-mcp.md) | gtest suite + TransportLoopback + MCP architecture + environmental-failure/flake catalog |
+| [`docs/mcp-server-ops.md`](docs/mcp-server-ops.md) | MCP server ops/lifecycle |
+| [`docs/hardware-va-suite.md`](docs/hardware-va-suite.md) | Core-synth CLAPs: devices, patch pipelines (per-engine status: [`docs/va-suite-status-log.md`](docs/va-suite-status-log.md)) |
+| [`docs/va-suite-status-log.md`](docs/va-suite-status-log.md) | Per-engine VA-suite status |
 | [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) | Composition recipes via MCP |
+| [`docs/psytrance-va-and-production.md`](docs/psytrance-va-and-production.md) | Psytrance production + VA-suite traps |
 | [`docs/composition-toolkit.md`](docs/composition-toolkit.md) | Generative/randomization/modulation toolkit overview |
 | [`docs/build-and-testing.md`](docs/build-and-testing.md) | Build traps (ninja_deps, suppressed regen), sharding, housekeeping |
 | [`docs/postmortem-silent-clap-export.md`](docs/postmortem-silent-clap-export.md) | Canonical multi-cause writeup (lessons 11-15) |
+| [`docs/handoffs/INDEX.md`](docs/handoffs/INDEX.md) | Handoff index — chronological table, newest supersedes older statements |
 | [`docs/handoffs/`](docs/handoffs/) | Session handoffs (completed-work context, not live specs) |
 | [`docs/plans/`](docs/plans/) | Current plans |
 
@@ -55,7 +59,45 @@ tree has new files and the cache is warm afterwards (a later hook rebuild then k
 them: 20873 → 20963 with `InternalDelay` intact). Verify with `graphify explain
 <newSymbol>` before trusting a "rebuilt" log line.
 
-**codebase-memory** MCP — semantic index for "where is X implemented" questions.
+**Freshness badge caveat (measured 2026-09-24):** `graphify_status` reports **STALE**
+whenever the working tree has uncommitted changes — even *immediately* after a full
+rebuild — because with the index-metadata file missing it falls back to a git heuristic
+that compares HEAD against the working tree, not the tree the graph was built from. A
+`python -m graphify update . --force` re-extracted 1279 files (2026-09-24: 21,285 nodes /
+36,799 edges / 987 communities; edges up from 36,601, node count slightly down — hence
+`--force`) and the badge still said STALE with the same 21 dirty files. Do not re-run the
+update in a loop on the badge alone: verify content currency with `graphify explain
+<newSymbol>` or MCP `get_node` — a symbol from an uncommitted file proved the rebuild had
+taken the working tree. A clean tree reads FRESH. That CLI refresh also rewrote
+`graphify-out/.graphify_root` back to `.` (see the marker gotcha below), so re-apply the
+absolute path after every update.
+
+**MCP marker gotcha (measured 2026-09-24):** the `dsh-graphify` DSH plugin resolves
+`graphify-out/.graphify_root` **against `graphify-out/` itself**, while graphify's own
+readers resolve it against the run-time **CWD**. A relative marker (`.` — what
+`watch.py::_graphify_root_marker_value` writes for a relative `graphify update .`)
+therefore resolved to `graphify-out`, and every MCP graph query failed with a doubled
+path: `graphify-out\graphify-out\graph.json`. The marker now holds this repo's
+**absolute** path, which both readers resolve correctly. Because a code rebuild rewrites
+the marker verbatim from the `update` argument, a later `python -m graphify update .
+--force` can reintroduce `.`; if graphify MCP reports the doubled path again, rewrite
+`graphify-out/.graphify_root` with the absolute repo path and reload the profile.
+
+**Patched locally (2026-09-24):** the plugin's `lib/detector.js` now resolves a relative
+marker against the **scanned project directory** instead of `graphDir`, which is the
+correct semantics — exercised directly against this repo with the marker set to `.`, it
+returns the project root. Two consequences: the edit lives in
+`~/.dsh/profiles/web/node_modules/dsh-graphify/lib/`, so it is **lost on any
+`dsh-graphify` upgrade and must be re-applied**; and it only loads when the harness
+restarts, because a live patch reload does not bust Node's ESM module cache. The absolute
+marker above is the standing second line of defence while the patch is not loaded.
+
+**codebase-memory** MCP — semantic index for "where is X implemented" questions. Advisory
+only: graphify stays authoritative for structure/blast radius. Installed globally
+(`npm i -g codebase-memory-mcp@0.11.0` — the npm postinstall must be allowed
+(`--allow-scripts=codebase-memory-mcp`) or the 301 MB native runtime is never
+downloaded), wired into the DSH profile's `cordis.patch.yml`, and checked with
+`index_status` before trusting results.
 
 ## Lessons learned (one-line index — full narratives in [`docs/lessons-learned.md`](docs/lessons-learned.md))
 
@@ -97,6 +139,7 @@ them: 20873 → 20963 with `InternalDelay` intact). Verify with `graphify explai
     small, save often.
 30. **Batch tree surgery at the LIST level** — removeAllChildren fires the listener per child; swap the container node.
 31. **Patch selection needs a variety mechanism** — deterministic ranking repeats; select_patch = cluster-stratified + seeded + ledger.
+32. **An enabled Volume automation lane owns the parameter in the offline render** — audit isolation must use mute, not `setTrackVolume`.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 
@@ -121,6 +164,13 @@ exactly; give each route a twin test asserting the same failure on both surfaces
 Adding a tool requires `node tools/rpc_parity_map.mjs` — the ratchet gate fails
 otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
 
+**Parity ledger CLOSED (as of 2026-09-25): 307 tools / 411 methods / mapped 295 /
+mcp-only 12 / unresolved 0.** The route-addition recipe: one shared `src/common/`
+shaper both surfaces call + a twin test asserting the same behaviour on both
+surfaces + `node tools/rpc_parity_map.mjs` regeneration — the ledger tracks
+names/routes only, so an argument-only change needs no regeneration but DOES
+need the twins.
+
 **DEPRECATED (2026-09-23):** this parity rule still binds the **engine** surfaces —
 `src/mcp/` and the JSON-RPC router in `src/frontend/router/` (namespace constants
 in `src/frontend/FrontendRpc.h`, parity ledger, `RpcNamespaceCoverage` gate, twin
@@ -139,7 +189,7 @@ separate project and is no longer a delivery target.
   `load_virus_preset` / `load_je8086_preset` / `load_nord_bank`; matrix movement via
   `list_matrix_presets` / `apply_matrix_preset`. **pluginId arguments are BARE names
   ('Vavra.clap') and must resolve against the scan DB (lesson 28).** Loader status is
-  evidence-gated per engine — see hardware-va-suite.md §9; confirm via
+  evidence-gated per engine — see `docs/va-suite-status-log.md`; confirm via
   `get_fx_capture_status` + a render, never the param list alone.
 - **Corpus + variety**: patch libraries ingest sidecar metadata;
   `related_samples` (deterministic ranking) for "find similar";
@@ -169,12 +219,29 @@ separate project and is no longer a delivery target.
 
 ## Build
 
-- Configure/build: `cmake --build build --config Debug` (or `build-fast.bat [test|all]`)
+- **Agent builds: use `dsh-build-fast.bat [test|all|debug]`** — sandbox-safe
+  wrapper (no PowerShell/.NET calls, auto-detects VS-bundled cmake/ninja).
+  `build-fast.bat` remains for human use. Same interface.
+- **Ninja is the preferred generator** — the build dir is Ninja-configured;
+  incremental rebuilds use direct mtime tracking (no .sln scan). `/Z7` embedded
+  debug info (CMakeLists.txt) eliminates C1041 PDB contention under parallel cl.
+  `dsh-build-fast.bat ninja` reconfigures (one-time).
+- **sccache is OFF and stays OFF** — PCH (`target_precompile_headers`) makes
+  nearly every TU non-cacheable (/Fp /Yc fingerprint mismatches). Do not enable
+  `-DHDAW_USE_SCCACHE=ON` unless running a no-PCH workflow.
+- **Concurrent builds are unsafe** — check before launching a build: if another
+  build is running on the same `build/` dir, abort. Never hard-kill a build
+  (truncates `.ninja_deps` → full rebuild).
+- **Sandbox behavior (DSH ConstrainedLanguage):** native commands (`cl`,
+  `cmake`, `ninja`, `git`, `python`) work fine. `esbuild`/`tsx`/`tsdown` fail
+  with `spawn EPERM` (frontend builds need an unsandboxed terminal). `pnpm`
+  writes outside workspace need `danger-full-access`. ACL fix for `D:\`:
+  `icacls "D:\pdf\roo projects\hdaw3" /grant "DOMAIN\user:(OI)(CI)(WO)"`.
+- Configure/build: `cmake --build build --config Debug` (or `dsh-build-fast.bat`)
 - Outputs: `build/HDAW.exe`, `build/HDAW_headless.exe`, `build/hdaw_tests.exe` (flat Ninja layout)
 - **Do NOT run `build/Release/HDAW.exe`** — stale binary.
 - After editing `CMakeLists.txt` (adding sources/targets): re-run
   `cmake -S . -B build` explicitly — suppressed-regeneration trap.
-- Never hard-kill a build (truncates `.ninja_deps` → full rebuild).
 - **Frontend:** `cd frontend; npm run build`, then rebuild the C++ project.
   **DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
   date — do NOT build it (`npm run build`, `frontend\build.bat`). Engine-only
@@ -213,6 +280,34 @@ tool calls, and update bash-legacy `&&` in docs on sight. `cmake --build` never
 re-runs CMake here (`CMAKE_SUPPRESS_REGENERATION=ON`): after editing
 `CMakeLists.txt`, run `cmake -S . -B build` explicitly.
 
+**Sandbox write-denial gotcha (measured 2026-09-24):** when every `pwsh`/`bash` tool
+call fails *before running* with `SetNamedSecurityInfoW failed (Win32 5):
+grantWrite(<workspace>)`, the ACL runner cannot apply its Low-integrity label:
+`SetNamedSecurityInfoW(…, LABEL_SECURITY_INFORMATION …)` needs the object's
+**WRITE_OWNER** right, and `D:\` project directories here grant the user only `Modify`
+(via Authenticated Users) — enough to rewrite a DACL as owner, but not to label it. Only
+the shell (ACL restricted-token) path is affected; `read`/`write`/`edit` are not. Grant
+the owner the right once per workspace — it persists in the DACL, and the runner then
+provisions normally (capability ACE `S-1-4-…:(W,D,DC)`, `Everyone:(DENY)(DC)`,
+`Mandatory Label\Low`, and `TMP`/`TEMP` rewritten to a private `%TEMP%\dsh-<id>`):
+
+```powershell
+icacls "<workspace>" /grant "<DOMAIN>\<user>:(OI)(CI)(WO)"
+```
+
+Directories under `%USERPROFILE%` normally carry FullControl and never hit this; any
+other workspace granting only `Modify` will.
+
+**ConstrainedLanguage consequence (measured 2026-09-24):** once the sandbox provisions
+successfully, confined shell commands run in **PowerShell ConstrainedLanguage** — the
+restricted token triggers PowerShell's lockdown, so `New-Object`, `Add-Type`, COM, and
+other .NET type creation fail with `Cannot create type. Only core types are supported in
+this language mode` (an unsandboxed shell stays `FullLanguage`). Core cmdlets, property
+access, and native commands (git, python, cmake, the test binaries) are unaffected, so
+builds and tests still run — but ACL/registry/WMI diagnostics, which lean on .NET types,
+need an approved unsandboxed shell. This surfaced only after the WRITE_OWNER fix above:
+while provisioning failed, the confined child was not genuinely restricted.
+
 ## How frontend changes reach the running app
 
 **DEPRECATED (2026-09-23):** the Electron frontend is a separate project — do NOT
@@ -233,16 +328,26 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
 
 - **C++ engine (gtest):** `build/hdaw_tests.exe` (`build-fast.bat test`; `all` also
   builds `hdaw_plugin_host.exe` for the isolation suites). Filter:
-  `--gtest_filter=Suite.*`. Fast tier: `run_fast_tests.bat`. Full serial baseline
-  2026-09-23: **1865 tests / 277 suites — 1825 pass, 39 skipped, 1 failure**:
-  `RespawnPath.RealPathPassesThrough`, a deterministic PRE-EXISTING red test
-  (Windows path normalisation in `tests/unit/proxy/crash_recovery_test.cpp`, an
-  untouched file — full analysis in `docs/testing-mcp.md`). Two more
-  environment-dependent hazards are documented there too:
-  `PluginIsolation.LargeStateRoundTripThroughProxy` is the historical solo-pass
-  flake, and `McpServer.HttpRoundTrip` binds a **fixed port 18765**, so it fails
-  whenever a live engine holds it (measured 2026-09-22: 4 failures with an engine
-  on the port, 2 with it free). The earlier "1 flake" note (2026-09-21) is stale.
+  `--gtest_filter=Suite.*`. **Authoritative baseline 2026-09-26: 287 suites /
+  2027 tests (0 DISABLED).** Canonical full run:
+  `powershell -NoProfile -File run-tests-sharded.ps1 -Shards 2` — 2027/2027
+  executed, **1988 passed, 39 skipped, 0 failures**, 27.1 min wall (every shard
+  `ran == intended`: 850/850, 855/855, 322/322). Fast tier: `run_fast_tests.bat`
+  — the old ~3.3 min figure for it is stale (the tier is ~1900 tests at
+  ~0.5-0.9 s each); use the shard runner for full-suite numbers. Every run is
+  sandbox-safe because the test harness self-isolates: `tests/test_main.cpp`
+  redirects temp (`TMP`/`TEMP`), the user-data root
+  (`USERPROFILE`/`APPDATA`/`LOCALAPPDATA`) and `QSettings` (INI store under
+  `<repo>/.tmp_tests/…`) when the defaults are unwritable. The baseline failures
+  previously documented here no longer reproduce —
+  `RespawnPath.RealPathPassesThrough` (the old Windows-path red, now
+  platform-gated), `PluginIsolation.LargeStateRoundTripThroughProxy` (the old
+  solo-pass flake, root-caused and fixed) and `McpServer.HttpRoundTrip` (the old
+  fixed-port-18765 hazard) all pass in the authoritative run. The remaining
+  environmental classes are catalogued in `docs/testing-mcp.md`: the sandbox
+  write-denial class is handled by the harness self-redirect above, and the
+  load-sensitive `McpJobs.AnalyzeTuningWaitFalsePollMatchesSynchronousResult`
+  passes solo and in the full run but is timing-sensitive under heavy load.
 - **Deviceless pattern:** suites needing an audio route fail with `getTrack() ==
   nullptr` when no device — environmental, don't blame your change (lessons 9/17).
 - **DEPRECATED (2026-09-23):** the Electron frontend is a separate project — do NOT

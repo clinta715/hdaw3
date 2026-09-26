@@ -129,6 +129,18 @@ public:
     void releaseResources() override {}
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
     {
+        // TEST-ONLY real-hang hook (dead by default in production): when
+        // HDAW_TEST_HANG_MS=N>0 is present in the environment the child holds
+        // this call for N ms, so the watchdog's "genuine hang still dumps" path
+        // stays covered by a deterministic test
+        // (PluginIsolation.RealHangWritesHangDump). Read once per process;
+        // unset/0 -> no sleep.
+        static const int testHangMs = [] {
+            const auto v = juce::SystemStats::getEnvironmentVariable("HDAW_TEST_HANG_MS", "");
+            return v.isEmpty() ? 0 : v.getIntValue();
+        }();
+        if (testHangMs > 0)
+            juce::Thread::sleep(testHangMs);
         (void)buffer;
     }
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
@@ -964,11 +976,31 @@ int PluginHost::run()
     if (!noChildWorkers)
         watchdogThread = std::thread([this]() {
         int hangMs = 0;
+        bool inWarmupPrev = false;
         while (running.load()) {
             Sleep(250);
-            if (processBlockActive.load(std::memory_order_acquire) && !dumpWritten.load()) {
+            const bool active = processBlockActive.load(std::memory_order_acquire);
+            const bool inWarmup = warmupActive.load(std::memory_order_acquire);
+            // The intentional Virus warmup pumps processBlock on the control
+            // thread for its whole (real-time paced) duration, so
+            // processBlockActive is legitimately held true well past the 1 s
+            // hang threshold. Do NOT dump for that — but do keep counting, so
+            // that a genuine hang during the warmup still dumps once the
+            // expected warmup duration + 1 s has elapsed.
+            const bool justFinishedWarmup = inWarmupPrev && !inWarmup;
+            inWarmupPrev = inWarmup;
+            if (justFinishedWarmup) {
+                // The warmup's continuous processBlockActive stretch ended
+                // normally (it cleared the flag). Restart the counter so the
+                // audio loop taking over is not instantly mistaken for a hang.
+                hangMs = 0;
+            }
+            if (active && !dumpWritten.load()) {
                 hangMs += 250;
-                if (hangMs >= 1000) {
+                const int thresholdMs = inWarmup
+                    ? warmupExpectedMs.load(std::memory_order_acquire) + 1000
+                    : 1000;
+                if (hangMs >= thresholdMs) {
                     dumpWritten.store(true);
                     writeMinidump("processBlock hung for 1s");
                 }
@@ -1151,6 +1183,13 @@ void PluginHost::controlLoop()
                             int pumped = 0;
                             HDAW_LOG("plugin_host", "virus warmup: " + juce::String(totalBlocks)
                                  + " blocks (" + juce::String(warmupSeconds) + "s audio)");
+                            // Publish the expected wall duration BEFORE raising
+                            // warmupActive (release): the watchdog reads it with
+                            // an acquire load once it sees warmupActive set, and
+                            // uses warmupExpectedMs + 1 s as the hang threshold.
+                            warmupExpectedMs.store(static_cast<int>(
+                                static_cast<double>(totalBlocks) * preparedBlockSize
+                                / preparedSampleRate * 1000.0), std::memory_order_release);
                             warmupActive.store(true, std::memory_order_release);
                             // Pace the warmup at ~real time: the emulated OS's
                             // bring-up sequencing is wall-clock driven (hardware

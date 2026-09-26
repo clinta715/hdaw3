@@ -1,5 +1,9 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+// B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
+// the ONE shared rule in common/StableRefResolve.h, whose error text is what
+// the RPC twin reports for the same request.
+#include "McpArgs.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -24,16 +28,21 @@ namespace mcp {
 
 void registerAutomationTools(McpServer& s, AudioEngine* e)
 {
-    s.registerTool({"add_automation_point", "Add a point to an automation lane (paramID integer preferred; name accepted).",
+    s.registerTool({"add_automation_point", "Add a point to an automation lane (paramID integer preferred; name accepted). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"trackID", QJsonObject{{"type","integer"}}},
                   {"lane",   QJsonObject{{"oneOf", QJsonArray{
                       QJsonObject{{"type","integer"}},
                       QJsonObject{{"type","string"}}}}}},
                   {"time",   QJsonObject{{"type","number"}}},
-                  {"value",  QJsonObject{{"type","number"}}}}, {"trackId","lane","time","value"}),
+                  {"value",  QJsonObject{{"type","number"}}}}, {"lane","time","value"}),
         "automation",
         [e](const QJsonObject& a) -> McpToolResult {
-            auto lane = findLane(e, a.value("trackId").toInt(), a.value("lane"));
+            int trackId; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), trackId, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            auto lane = findLane(e, trackId, a.value("lane"));
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             auto pl = lane.getChildWithName(IDs::POINT_LIST);
@@ -45,7 +54,7 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
             pt.setProperty(IDs::gain, a.value("value").toDouble(), &um);
             pl.addChild(pt, -1, &um);
             if (auto* proc = e->getMainProcessor())
-                proc->rebuildAutomationCache(a.value("trackId").toInt());
+                proc->rebuildAutomationCache(trackId);
             return McpToolResult::text("ok");
         }});
 
@@ -57,15 +66,19 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
         QJsonObject laneSchema{{"oneOf", QJsonArray{QJsonObject{{"type","integer"}}, QJsonObject{{"type","string"}}}}};
         QJsonObject modeSchema{{"type","string"}, {"enum", QJsonArray{"replace","append"}}};
         QJsonObject props{{"trackId", QJsonObject{{"type","integer"}}},
+                          {"trackID", QJsonObject{{"type","integer"}}},
                           {"lane", laneSchema},
                           {"points", pointsSchema},
                           {"mode", modeSchema}};
         s.registerTool({"set_automation_points",
-            "Set multiple automation points on a lane at once (bulk). Replaces all existing points or appends.",
-            objSchema(props, QJsonArray{"trackId","lane","points"}),
+            "Set multiple automation points on a lane at once (bulk). Replaces all existing points or appends. " +
+            mcp::stableRefRuleText("trackID", "trackId"),
+            objSchema(props, QJsonArray{"lane","points"}),
             "automation",
         [e](const QJsonObject& a) -> McpToolResult {
-            int trackId = a.value("trackId").toInt();
+            int trackId; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), trackId, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             auto lane = findLane(e, trackId, a.value("lane"));
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
             auto& um = e->getProjectModel().getUndoManager();
@@ -91,31 +104,53 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
         }});
     }
 
-    s.registerTool({"set_automation_enabled", "Enable or disable an automation lane.",
+    s.registerTool({"set_automation_enabled", "Enable or disable an automation lane. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"trackID", QJsonObject{{"type","integer"}}},
                   {"lane",   QJsonObject{{"oneOf", QJsonArray{
                       QJsonObject{{"type","integer"}},
                       QJsonObject{{"type","string"}}}}}},
-                  {"enabled",QJsonObject{{"type","boolean"}}}}, {"trackId","lane","enabled"}),
+                  {"enabled",QJsonObject{{"type","boolean"}}}}, {"lane","enabled"}),
         "automation",
         [e](const QJsonObject& a) -> McpToolResult {
-            auto lane = findLane(e, a.value("trackId").toInt(), a.value("lane"));
+            int trackId; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), trackId, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            auto lane = findLane(e, trackId, a.value("lane"));
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
             lane.setProperty(IDs::automationEnabled, a.value("enabled").toBool(),
                              &e->getProjectModel().getUndoManager());
             if (auto* proc = e->getMainProcessor())
-                proc->rebuildAutomationCache(a.value("trackId").toInt());
+                proc->rebuildAutomationCache(trackId);
             return McpToolResult::text("ok");
         }});
 
     s.registerTool({"set_fader_authoritative",
-        "Disable (or re-enable) ALL Volume automation lanes on a track so the fader is authoritative in playback/export. trackId -1 = every track. Automation points are kept; only the enabled flag toggles. Mirrors project.setFaderAuthoritative (one shared command path).",
+        "Disable (or re-enable) ALL Volume automation lanes on a track so the fader is authoritative in playback/export. trackId -1 = every track. Automation points are kept; only the enabled flag toggles. Mirrors project.setFaderAuthoritative (one shared command path). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",        QJsonObject{{"type","integer"}}},
-                  {"authoritative",  QJsonObject{{"type","boolean"}}}}, {"trackId","authoritative"}),
+                  {"trackID",        QJsonObject{{"type","integer"}}},
+                  {"authoritative",  QJsonObject{{"type","boolean"}}}}, {"authoritative"}),
         "automation",
         [e](const QJsonObject& a) -> McpToolResult {
+            // B2: resolve the ref first; the all-tracks wildcard (`trackId -1`,
+            // "every track") survives as the no-argument shape — the shared
+            // rule treats index<0 as "no positional argument", so the sentinel
+            // is applied when NEITHER key names a track.
+            const int rawTrackId = a.contains("trackId")
+                ? a.value("trackId").toInt(HDAW::kNoRef) : HDAW::kNoRef;
+            if (rawTrackId < 0 && !a.contains("trackID"))
+            {
+                e->getProjectCommands().setFaderAuthoritative(
+                    -1, a.value("authoritative").toBool());
+                return McpToolResult::text("ok");
+            }
+            int trackId; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), trackId, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             e->getProjectCommands().setFaderAuthoritative(
-                a.value("trackId").toInt(-1), a.value("authoritative").toBool());
+                trackId, a.value("authoritative").toBool());
             return McpToolResult::text("ok");
         }});
 
@@ -126,14 +161,18 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
     // 3000 + busID*8 + paramIndex.
     // Mirrors project.addAutomationLane / project.removeAutomationLane so the
     // UI and MCP share one command path (AGENTS.md feature-parity contract).
-    s.registerTool({"add_automation_lane", "Create an automation lane, optionally bound to a target paramID (1=volume, 2=pan, 3=mute, 100+slotIndex*100+paramIndex for a plugin FX param, 2000+sendIndex for a send level, or 3000+busID*8+paramIndex for a bus FX param). With replace=true and a nonzero paramID the call instead takes ownership of the lane already bound to that paramID: it is renamed to laneName in place, keeping its points, so a post-arrangement automation pass can re-run and re-assert \"the lane bound to paramID N is mine, named X\" in one call. A laneName already bound to a different paramID still fails.",
+    s.registerTool({"add_automation_lane", "Create an automation lane, optionally bound to a target paramID (1=volume, 2=pan, 3=mute, 100+slotIndex*100+paramIndex for a plugin FX param, 2000+sendIndex for a send level, or 3000+busID*8+paramIndex for a bus FX param). With replace=true and a nonzero paramID the call instead takes ownership of the lane already bound to that paramID: it is renamed to laneName in place, keeping its points, so a post-arrangement automation pass can re-run and re-assert \"the lane bound to paramID N is mine, named X\" in one call. A laneName already bound to a different paramID still fails. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
                   {"laneName",  QJsonObject{{"type","string"}}},
                   {"paramID",   QJsonObject{{"type","integer"}}},
-                  {"replace",   QJsonObject{{"type","boolean"}}}}, {"trackId","laneName"}),
+                  {"replace",   QJsonObject{{"type","boolean"}}}}, {"laneName"}),
         "automation",
         [e](const QJsonObject& a) -> McpToolResult {
-            int trackId = a.value("trackId").toInt(-1);
+            int trackId; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), trackId, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             QString laneNameQ = a.value("laneName").toString();
             if (laneNameQ.isEmpty()) return McpToolResult::text("laneName required", true);
             int paramID = a.value("paramID").toInt(0);
@@ -145,14 +184,18 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
-    s.registerTool({"remove_automation_lane", "Remove an automation lane (by paramID integer, or by name string).",
+    s.registerTool({"remove_automation_lane", "Remove an automation lane (by paramID integer, or by name string). " +
+        mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"trackID", QJsonObject{{"type","integer"}}},
                   {"lane",   QJsonObject{{"oneOf", QJsonArray{
                       QJsonObject{{"type","integer"}},
-                      QJsonObject{{"type","string"}}}}}}}, {"trackId","lane"}),
+                      QJsonObject{{"type","string"}}}}}}}, {"lane"}),
         "automation",
         [e](const QJsonObject& a) -> McpToolResult {
-            int trackId = a.value("trackId").toInt(-1);
+            int trackId; std::string refErr;
+            if (!trackIndexArg(a, e->getProjectModel().getTrackListTree(), trackId, refErr))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
             auto ref = a.value("lane");
             // Resolve the lane by paramID/name, then delete by its name (the
             // command path addresses lanes by name; findLane handles both).
@@ -194,6 +237,7 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
             QString::fromUtf8(
                 "Apply named automation presets to an EXISTING lane over beat windows. Presets:\n") +
             presetsDoc +
+            mcp::stableRefRuleText("trackID", "trackId") + QString::fromUtf8(" ") +
             QString::fromUtf8(
                 "Windows are BEATS at this boundary; the tree stores SECONDS and values are "
                 "normalized 0..1 (converted exactly like generate_automation_envelope; density is "
@@ -207,6 +251,7 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
         s.registerTool({"automation_preset",
             description.toUtf8().constData(),
             objSchema({{"trackId",    QJsonObject{{"type","integer"}}},
+                       {"trackID",    QJsonObject{{"type","integer"}}},
                        {"lane",       laneSchema},
                        {"preset",     QJsonObject{{"type","string"}}},
                        {"start",      QJsonObject{{"type","number"}}},
@@ -218,7 +263,7 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
                        {"clear",      QJsonObject{{"type","boolean"}}},
                        {"seed",       QJsonObject{{"type","integer"}}},
                        {"enable",     QJsonObject{{"type","boolean"}}}},
-                      {"trackId","lane"}),
+                      {"lane"}),
             "automation",
             [e](const QJsonObject& a) -> McpToolResult {
                 // Shared shaping + application (src/common/AutomationPresetRequest.h)
@@ -232,8 +277,11 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"apply_movement_plan",
         "Batch 'movement plan' for the FX & Automation choreography pass: apply automation "
-        "presets across MULTIPLE tracks/sections in ONE undo unit. events: [{trackId (req), "
-        "preset (req), start, end, paramID, laneName, startValue, endValue, seed}]. Presets: "
+        "presets across MULTIPLE tracks/sections in ONE undo unit. events: [{trackId or the "
+        "stable trackID (one required), "
+        "preset (req), start, end, paramID, laneName, startValue, endValue, seed}]. " +
+        mcp::stableRefRuleText("trackID", "trackId") + " "
+        "An unknown trackID fails the whole plan before anything is applied. Presets: "
         "pump/macro/openClose/riser/sine/square/subtleLife/randomDrift/steppedGate/phaseSweep/"
         "delayThrow. paramID default 1 (volume — reuses the built-in Volume lane); pass the "
         "compound pid (100+slotIndex*100+paramIndex) for plugin FX params. Lane resolution "
@@ -252,6 +300,7 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
             {"type","object"},
             {"properties", QJsonObject{
                 {"trackId",    QJsonObject{{"type","integer"}}},
+                {"trackID",    QJsonObject{{"type","integer"}}},
                 {"preset",     QJsonObject{{"type","string"}}},
                 {"start",      QJsonObject{{"type","number"}}},
                 {"end",        QJsonObject{{"type","number"}}},
@@ -260,13 +309,14 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
                 {"startValue", QJsonObject{{"type","number"}}},
                 {"endValue",   QJsonObject{{"type","number"}}},
                 {"seed",       QJsonObject{{"type","integer"}}}}},
-            {"required", QJsonArray{"trackId","preset"}}}}}}}, {"events"}),
+            {"required", QJsonArray{"preset"}}}}}}}, {"events"}),
         "automation",
         [e](const QJsonObject& a) -> McpToolResult {
             // Shared shaping + application (src/common/MovementPlanJson.h) — the
             // RPC twin calls the SAME entry point, byte-identical by construction.
             bool ok = false;
-            const QString text = HDAW::applyMovementPlanToolText(e->getProjectCommands(), a, &ok);
+            const QString text = HDAW::applyMovementPlanToolText(
+                e->getProjectCommands(), e->getProjectModel().getTrackListTree(), a, &ok);
             return McpToolResult::text(text, ! ok);
         }});
     }

@@ -227,6 +227,43 @@ void FileLibraryManager::loadRegistry() {
 
 void FileLibraryManager::saveRegistry() {
     std::lock_guard<std::mutex> lock(mutex);
+    // registry.json is shared state: external writers (scripts, a second
+    // engine) may add entries between load and save; merge instead of
+    // clobber. removedIds keeps removals sticky for this process.
+    std::unordered_set<juce::String> memoryIds;
+    for (const auto& lib : libraries) memoryIds.insert(lib.id);
+
+    if (registryFile.existsAsFile()) {
+        auto content = registryFile.loadFileAsString();
+        auto json = juce::JSON::parse(content);
+        auto* obj = json.getDynamicObject();
+        auto* libsArray = obj ? obj->getProperty("libraries").getArray() : nullptr;
+        if (libsArray) {
+            // Parse exactly like loadRegistry. On-disk entries this manager
+            // does not own survive (in on-disk order, appended after what it
+            // owns) and are adopted into `libraries` so later saves and
+            // getLibraryIds see them. Memory is authoritative for ids it
+            // knows; ids explicitly removed stay removed.
+            for (int i = 0; i < libsArray->size(); ++i) {
+                auto* eObj = (*libsArray)[i].getDynamicObject();
+                if (!eObj) continue;
+                LibraryInfo info;
+                info.id = eObj->getProperty("id").toString();
+                if (info.id.isEmpty()) continue;
+                if (memoryIds.count(info.id) > 0) continue;
+                if (removedIds.count(info.id) > 0) continue;
+                info.name = eObj->getProperty("name").toString();
+                info.path = eObj->getProperty("path").toString();
+                info.type = eObj->getProperty("type").toString();
+                info.lastScan = eObj->getProperty("lastScan").toString();
+                info.fileCount = (int)eObj->getProperty("fileCount");
+                info.autoScan = (bool)eObj->getProperty("autoScan");
+                libraries.push_back(info);
+                memoryIds.insert(info.id);
+            }
+        }
+    }
+
     juce::DynamicObject::Ptr root = new juce::DynamicObject();
     juce::Array<juce::var> libs;
     for (const auto& lib : libraries) {
