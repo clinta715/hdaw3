@@ -149,6 +149,20 @@ QString suggestFor(const QString& role, const Descriptors& desc, const RoleTarge
     return parts.join("; ");
 }
 
+// B5: a full-mix render has no per-role verdict - every role row is reported
+// SKIPPED (not a failure) with the stem hint, instead of judging the whole
+// mix's spectrum against per-role targets.
+QJsonObject skippedRoleCheck(const QString& role)
+{
+    QJsonObject out;
+    out["role"] = role;
+    out["pass"] = true;
+    out["skipped"] = true;
+    out["reason"] = QString("full-mix render: per-role checks need a per-role stem; "
+                            "pass role=%1 with the stem render").arg(role);
+    return out;
+}
+
 // Defensive: older sidecars may omit "skipped" on unknown-role check failures
 QString ensureSidecarSkippedFlag(const QString& json)
 {
@@ -215,32 +229,21 @@ QJsonObject checkRole(const QString& roleIn, const Descriptors& d)
 // from the unified object, so a caller sees one shape and a deterministic key order.
 void unifyTuningShape(QJsonObject& out)
 {
-    const QJsonObject d = out.value("descriptors").toObject();
     if (!out.contains("loop"))
         out["loop"] = QJsonObject{ { "note", "offline loop: analysis + suggestion only; "
                                              "re-render via export then re-analyze until pass "
                                              "or max 3" } };
-    // The no-role form reports per-role checks for EVERY target, computed from the reported
-    // descriptors — identical to the C++ fallback's checks, whatever produced the descriptors.
+    // The no-role form (B5) reports per-role checks as SKIPPED - a full mix has
+    // no per-role verdict - identical to the C++ fallback's no-role checks,
+    // whatever produced the descriptors.
     if (!out.contains("check") && !out.contains("checks"))
     {
-        Descriptors desc;
-        desc.centroid = d.value("centroid").toDouble();
-        desc.bandwidth = d.value("bandwidth").toDouble();
-        desc.rolloff85 = d.value("rolloff85").toDouble();
-        desc.rolloff95 = d.value("rolloff95").toDouble();
-        desc.melLow = d.value("mel_low").toDouble();
-        desc.melMid = d.value("mel_mid").toDouble();
-        desc.melHigh = d.value("mel_high").toDouble();
-        desc.rms = d.value("rms").toDouble();
-        desc.peak = d.value("peak").toDouble();
-        desc.duration = d.value("duration_s").toDouble();
-        desc.sampleRate = d.value("sampleRate").toDouble(48000.0);
         QJsonObject checks;
         const auto targets = roleTargets();
         for (auto it = targets.begin(); it != targets.end(); ++it)
-            checks[it.key()] = checkRole(it.key(), desc);
+            checks[it.key()] = skippedRoleCheck(it.key());
         out["checks"] = checks;
+        out["role_checks_applicable"] = false;
     }
 }
 
@@ -383,12 +386,16 @@ TuningAnalysisResult runAnalysis(const QString& wavPath, const QString& role)
         out["pass"] = chk.value("pass");
         out["suggestion"] = chk.value("suggestion");
     } else {
-        // if no role, include per-role checks for all
+        // B5: no role -> the render is treated as a FULL MIX; per-role pass/fail
+        // rows would be meaningless (every role target is judged against the
+        // same master spectrum - 5/6 failed on a release-pass master in the
+        // vector-bloom session). Descriptors + summary ARE the master verdict;
+        // per-role checks are reported SKIPPED with the stem hint.
+        out["role_checks_applicable"] = false;
         QJsonObject checks;
-        auto targets = roleTargets();
-        for (auto it = targets.begin(); it != targets.end(); ++it) {
-            checks[it.key()] = checkRole(it.key(), desc);
-        }
+        const auto targets = roleTargets();
+        for (auto it = targets.begin(); it != targets.end(); ++it)
+            checks[it.key()] = skippedRoleCheck(it.key());
         out["checks"] = checks;
     }
     // loop note

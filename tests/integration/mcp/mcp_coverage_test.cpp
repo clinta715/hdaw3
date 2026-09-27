@@ -4915,7 +4915,31 @@ TEST_F(McpCoverageTest, AnalyzeTuningUnknownRoleSkipped) {
         << "unknown role must be skipped; got: [" << text(r).toStdString() << "]";
     EXPECT_FALSE(check.value("pass").toBool(true));
     EXPECT_TRUE(check.value("error").toString().contains("unknown role"));
+}
 
+// B5: WITHOUT a role, the render is treated as a FULL MIX - per-role pass/fail
+// rows would be meaningless (every role target judged against the same master
+// spectrum; 5/6 failed on a release-pass master in the vector-bloom session).
+// The no-role form must report every role check SKIPPED (not failed) and mark
+// role checks not-applicable.
+TEST_F(McpCoverageTest, AnalyzeTuningNoRoleSkipsRoleChecks) {
+    const QString wavPath = makePercussionLoopWav();
+    ASSERT_FALSE(wavPath.isEmpty());
+
+    auto r = call("analyze_tuning", {{"wavPath", wavPath}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+
+    const auto out = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_FALSE(out.value("role_checks_applicable").toBool(true));
+    const auto checks = out.value("checks").toObject();
+    ASSERT_FALSE(checks.isEmpty()) << text(r).toStdString();
+    for (const auto& roleKey : checks.keys()) {
+        const auto row = checks.value(roleKey).toObject();
+        EXPECT_TRUE(row.value("skipped").toBool(false))
+            << "role " << roleKey.toStdString() << " must be skipped on a full mix";
+        EXPECT_TRUE(row.value("pass").toBool(false))
+            << "skipped role rows are not failures (" << roleKey.toStdString() << ")";
+    }
     juce::File(wavPath.toStdString()).deleteFile();
 }
 

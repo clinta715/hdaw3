@@ -32,6 +32,9 @@ void registerTuningTools(McpServer& s, AudioEngine* e)
         "Use to verify psytrance tuning: kick <120Hz, bass 60-250Hz, arp/lead 400-3000Hz, hat >6kHz. "
         "Offline analysis+suggestion only; re-render via export then re-analyze (loop up to 3 times). "
         "unknown role values return skipped:true and are not evaluated. "
+        "Without role: the render is treated as a FULL MIX - descriptors + summary are the "
+        "master verdict, and per-role checks come back skipped:true (they need a per-role "
+        "stem; pass role=<role> with the stem). "
         "Optional wait=false returns immediately with {jobId,state:'running',pollWith:'poll_job'}; poll poll_job for the result. "
         "RPC twin: tuning.analyze returns the same payload (poll tuning.jobStatus when wait=false).",
         objSchema({

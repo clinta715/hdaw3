@@ -167,6 +167,15 @@ TEST_F(TuningRpcTest, AnalyzePayloadMatchesMcp) {
     const QJsonObject all { { "wavPath", wav } };
     const QJsonObject allRpc = rpcPayload("tuning.analyze", all);
     EXPECT_EQ(allRpc, mcpObject("analyze_tuning", all));
+    // B5: the no-role form is FULL-MIX mode - per-role checks are skipped, not failed.
+    EXPECT_FALSE(allRpc.value("role_checks_applicable").toBool(true));
+    const auto b5Rows = allRpc.value("checks").toObject();
+    ASSERT_FALSE(b5Rows.isEmpty());
+    for (auto it = b5Rows.begin(); it != b5Rows.end(); ++it) {
+        EXPECT_TRUE(it.value().toObject().value("skipped").toBool(false))
+            << "role " << it.key().toStdString() << " must be skipped in no-role mode";
+        EXPECT_TRUE(it.value().toObject().contains("pass"));
+    }
     // Both analysis paths now emit the SAME no-role shape (retrofit item 6): per-role `checks`
     // synthesized from the reported descriptors plus the `loop` note, so a caller can rely on it
     // whichever path ran (the Python sidecar used to omit both).
