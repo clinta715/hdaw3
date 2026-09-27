@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.39.1
+**Current version**: 0.39.2
 
 ## Quick start
 
@@ -25,7 +25,7 @@ defaults to RelWithDebInfo; pass `Debug` for breakpoint debugging. The Electron
 frontend is a separate project (AGENTS.md "DEPRECATED 2026-09-23") — engine work
 never builds it.
 
-## What works today (v0.39.1)
+## What works today (v0.39.2)
 
 ### v0.39.0 session highlights (2026-09-25/26)
 - **Stable `trackID` accepted across the fx/automation/plugin surfaces (B2b)**:
@@ -476,6 +476,15 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
   `MultiExportRereadsLiveTree`); `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`
   carried a test-side use-after-free (the intermittent shard-death class).
 - **PsyDub v3.2** breakdown tail fix (held tonic into the drop edge).
+### v0.39.2 — Backlog closeout: B4-B8 + vector-bloom clamp trims (2026-09-27)
+
+- **B4**: dead `anyPartialSampler` pre-clear removed — a bypassed key-ranged sampler is now transparent (was silently wiping the track's pre-FX buffer). `MultiSamplerChain.BypassedKeyRangeSamplerPassesAudioThrough` pins it.
+- **B5**: `analyze_tuning` without `role` = full-mix mode — descriptors + summary are the master verdict, per-role checks report `skipped:true` with the stem hint instead of 5/6 meaningless fails.
+- **B6**: target-aware verdict — optional `targets` (masterRms ±5% mono convention, ceilingHitPctMax, kickProminenceMin, targetDurationSeconds) adds per-target `targetChecks` rows + a `targets` gate to `mix_report`/`mix_verdict` on both surfaces; per-channel `ceilingHitPct` (frames with any |sample| ≥ 0.999) closes the mono-peak blindness. Conventions pinned in `brief.schema.json`.
+- **B7 (vector-bloom polish)**: transient-edge trims at the 7 reported clamp boundaries (5 ms clip fade-ins × 14 clips + per-note gains × 32 notes) — the windowed edges verify 0 clamp frames; re-render passes `mix_verdict` ok with `ceilingHitPct` 0.00023% (vs the 5% brief budget). Full-render FS pins elsewhere documented as known-issue.
+- **B8**: build TMP/TEMP scratch default in both build scripts (closes the LNK1104 class); locked-DLL + render-log + 394 MB debug-log leftovers cleared; `:ninja` block parse bug fixed.
+- **Tooling**: `scripts/mcp_call.py` (stdio MCP client: tools/list, schemas, desc, call, run steps.json) + `scripts/patch_pi_fabric_advisor.py` (fabric advisor prose-coercion patch).
+
 ### v0.39.1 — Engine bugfixes: pattern round-trip, automation_preset sections, sampler hasSound (2026-09-26)
 
 - **Three filed engine bugs fixed (2026-09-26).** `import_pattern` round-trips the FULL document (verbatim `extraJson` passthrough for notes/role/descriptor + ONE builder for save/import/export — `PatternLibraryTest.ImportExportRoundTripsPayload`); `automation_preset` sections honor `cycles`/`midPoint` per-section + top-level fallback (the silent drop was the near-silent-breakdown class — `AddFxParityTest.SectionsFormCyclesReachThePlanOnBothSurfaces` + `Automation.SinePresetCyclesSpanAllCycleCounts`); `sampler_get_state.hasSound` is the LIVE decoded check with `hasSampleFile` as the property-only companion, emitted by ONE shaper (`src/common/SamplerStateJson.h`) on the MCP tool and both RPC routes. Parity ledger unchanged (307/411/mapped 295).

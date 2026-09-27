@@ -10,7 +10,7 @@ touching `processBlock`, DSP chains, render/export, playback paths, plugin isola
 or internal/external FX contracts require discussion with the user FIRST, with effort
 + risk notes. Rendering and playback stability outrank new features.
 
-**Current scope:** JUCE 8 desktop DAW, v0.39.1, React 19 + TS frontend (Zustand,
+**Current scope:** JUCE 8 desktop DAW, v0.39.2, React 19 + TS frontend (Zustand,
 Vite). Engine state via JSON-RPC 2.0 over WebSocket (8766) + HTTP (8765); bundled
 SPA or Electron shell. Feature history: `README.md`; per-version changes: git log.
 
