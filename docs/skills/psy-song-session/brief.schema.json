@@ -30,9 +30,10 @@
       "patternId": {"type":"string"}, "role": {"type":"string"}, "bpm": {"type":"number"},
       "key": {"type":"string"}, "bars": {"type":"integer"}, "source": {"type":"string"} } } },
     "targets": { "type": "object", "properties": {
-      "masterRms": { "type": "number", "description": "target linear RMS, e.g. 0.21" },
-      "ceilingHitPctMax": { "type": "number", "description": "max fraction of samples at the masterGain ceiling, e.g. 5.0" },
-      "kickProminenceMin": { "type": "number" } } },
+      "masterRms": { "type": "number", "description": "target linear RMS of the MONO-DOWNMIX ((L+R)/2) master - exactly what mix_report's rms measures; checked within +/-5% by mix_verdict's targets gate, e.g. 0.16" },
+      "ceilingHitPctMax": { "type": "number", "description": "max % of frames with ANY channel |sample| >= 0.999 (per-channel FS-clamp probe - the mono peak/rms cannot see one-sided clamps), e.g. 5.0" },
+      "kickProminenceMin": { "type": "number" },
+      "targetDurationSeconds": { "type": "number", "description": "expected render length in seconds incl. tail (checked within +/-2 s)" } } },
     "artifacts": { "type": "object", "properties": {
       "renders": { "type": "array", "items": { "type": "object", "properties": {
         "path": {"type":"string"}, "gateResults": {"type":"object"} } } } } }

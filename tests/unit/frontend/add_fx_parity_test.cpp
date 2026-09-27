@@ -31,6 +31,7 @@
 #include "engine/AudioEngine.h"
 #include "engine/PsyFmState.h"   // B2b: decodeRoutes for the psy_fm matrix seam
 #include "common/AutomationPresetRequest.h"  // B2: parse-level sections regression
+#include <juce_audio_formats/juce_audio_formats.h>  // B6: twin-test wav staging
 #include "frontend/FrontendRouter.h"
 #include "common/TrackIdRefs.h"   // design B3: stable-id folder refs
 #include "mcp/McpServer.h"
@@ -1073,6 +1074,52 @@ TEST_F(AddFxParityTest, SectionsFormCyclesReachThePlanOnBothSurfaces) {
     EXPECT_NEAR(std::get<1>(routeSide), 0.0, 1e-3);
     EXPECT_NEAR(std::get<2>(toolSide), 1.0, 1e-3);
     EXPECT_NEAR(std::get<2>(routeSide), 1.0, 1e-3);
+}
+
+// B6 twin: the brief's targets gate rides the SHARED shapers (MixReportJson /
+// MixVerdict), so the MCP and RPC payloads must match byte-for-byte - and the
+// rows must actually land (targetChecks + targetsOk on both surfaces).
+TEST_F(AddFxParityTest, MixTargetsGateMatchesOnBothSurfaces) {
+    juce::File wavFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("hdaw_b6_targets_twin.wav");
+    wavFile.deleteFile();
+    {
+        std::unique_ptr<juce::FileOutputStream> out(wavFile.createOutputStream());
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            wav.createWriterFor(out.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        out.release();
+        const int kSamples = 44100 * 3;
+        juce::AudioBuffer<float> buffer(1, kSamples);
+        for (int i = 0; i < kSamples; ++i)
+            buffer.setSample(0, i, 0.3f * std::sin(2.0f * 3.14159265f * 220.0f * i / 44100.0f));
+        writer->writeFromAudioSampleBuffer(buffer, 0, kSamples);
+    }
+
+    // 0.3 sine -> rms ~ 0.212: |0.212 - 0.21| is inside the +/-5% masterRms band.
+    const QJsonObject targets{ { "masterRms", 0.21 }, { "ceilingHitPctMax", 5.0 } };
+
+    // mix_report twin: identical payloads, rows land on both surfaces.
+    const QJsonObject reportArgs{ { "filePath", wavFile.getFullPathName().toStdString().c_str() },
+                                  { "targets", targets } };
+    const QJsonValue toolReport = mcpValue("mix_report", reportArgs);
+    ASSERT_TRUE(toolReport.isObject()) << mcpText("mix_report", reportArgs).toStdString();
+    EXPECT_EQ(rpcPayload("audio.mixReport", reportArgs), toolReport);
+    EXPECT_EQ(toolReport.toObject().value("targetChecks").toArray().size(), 2);
+    EXPECT_TRUE(toolReport.toObject().value("targetsOk").toBool());
+
+    // mix_verdict twin: the targets gate rides the shared composer.
+    const QJsonObject verdictArgs{ { "filePath", wavFile.getFullPathName().toStdString().c_str() },
+                                   { "targets", targets } };
+    const QJsonValue toolVerdict = mcpValue("mix_verdict", verdictArgs);
+    ASSERT_TRUE(toolVerdict.isObject()) << mcpText("mix_verdict", verdictArgs).toStdString();
+    EXPECT_EQ(rpcPayload("audio.mixVerdict", verdictArgs), toolVerdict);
+    const auto gates = toolVerdict.toObject().value("gates").toObject();
+    ASSERT_TRUE(gates.contains("targets"));
+    EXPECT_TRUE(gates.value("targets").toObject().value("ok").toBool());
+
+    wavFile.deleteFile();
 }
 
 TEST_F(AddFxParityTest, StableTrackIdDrivesAutomationPresetAndPlanOnBothSurfaces) {

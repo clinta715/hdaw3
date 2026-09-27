@@ -185,7 +185,7 @@ echo [dsh-build] Configuring with Ninja (one-time setup)...
 if "%CMAKE_PREFIX_PATH%"=="" if exist "C:\Qt\6.11.2\msvc2022_64" set "CMAKE_PREFIX_PATH=C:\Qt\6.11.2\msvc2022_64"
 "!CMAKE_EXE!" -S "%ROOT%." -B "%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%CONFIG% -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH% -DCMAKE_MAKE_PROGRAM="!NINJA_EXE!"
 if %errorlevel% neq 0 (
-    echo [dsh-build] ERROR: Ninja configure failed (rc=%errorlevel%).
+    echo [dsh-build] ERROR: Ninja configure failed ^(rc=!errorlevel!^).
     exit /b 1
 )
 echo [dsh-build] Ninja configured. Now run 'dsh-build-fast' for fast incremental builds.
@@ -206,7 +206,7 @@ if "%CMAKE_PREFIX_PATH%"=="" if exist "C:\Qt\6.11.2\msvc2022_64" set "CMAKE_PREF
     -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld" ^
     -DCMAKE_MODULE_LINKER_FLAGS="-fuse-ld=lld"
 if %errorlevel% neq 0 (
-    echo [dsh-build] ERROR: clang-cl configure failed (rc=%errorlevel%).
+    echo [dsh-build] ERROR: clang-cl configure failed ^(rc=!errorlevel!^).
     exit /b 1
 )
 echo [dsh-build] clang-cl configured in build-clang/.

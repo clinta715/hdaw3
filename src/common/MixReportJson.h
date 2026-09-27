@@ -49,4 +49,15 @@ MixReportPayloadResult buildMixReportPayload(const QString& filePath,
 // rather than re-implemented per surface.
 void applyDropVsBuildGate(QJsonObject& root, const QJsonObject& planKinds, double ratio);
 
+// B6: per-target PASS/FAIL rows from the brief's `targets` object (masterRms,
+// ceilingHitPctMax, kickProminenceMin, targetDurationSeconds), appended to the
+// report payload as `targetChecks` + `targetsOk`. Shared by mix_report and the
+// mix_verdict composer so both surfaces gate identically. Conventions (pinned
+// 2026-09-27): masterRms compares the MONO-DOWNMIX rms within ±5% of the
+// target (the 2026-09-26 vector-bloom reconciliation precedent: −4.75% mono
+// passed by hand); ceilingHitPctMax is a hard ceiling; kickProminenceMin a
+// floor; targetDurationSeconds allows ±2 s (render tail). Absent keys are
+// skipped; an empty `targets` is a no-op.
+void applyTargetGates(QJsonObject& root, const QJsonObject& targets);
+
 } // namespace HDAW

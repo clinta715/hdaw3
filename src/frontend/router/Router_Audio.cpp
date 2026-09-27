@@ -130,6 +130,7 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
             ? HDAW::structureAuditJson(HDAW::auditSongStructure(
                   engine.getProjectModel().getTrackListTree(), plan, bpm))
             : QJsonObject{};
+        const QJsonObject targets = o.value("targets").toObject();
 
         // Error codes travel with the failure (a message-string test would be fragile):
         // -32602 for the caller's windows, -32603 for everything the harness/file did.
@@ -137,7 +138,8 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
             int code;
             MixReportError(int c, const std::string& w) : std::runtime_error(w), code(c) {}
         };
-        auto buildPayload = [filePath, windows, planKinds, bpm, ratio, structureJson]() -> QJsonObject {
+        auto buildPayload = [filePath, windows, planKinds, bpm, ratio, structureJson,
+                             targets]() -> QJsonObject {
             auto built = HDAW::buildMixReportPayload(QString::fromStdString(filePath), windows, bpm);
             if (!built.error.isEmpty())
                 throw MixReportError(-32603, built.error.toStdString());
@@ -146,6 +148,7 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
             QJsonObject root = built.payload;
             if (!structureJson.isEmpty()) root["structure"] = structureJson;
             if (!planKinds.isEmpty()) HDAW::applyDropVsBuildGate(root, planKinds, ratio);
+            if (!targets.isEmpty()) HDAW::applyTargetGates(root, targets);
             return root;
         };
 
@@ -215,11 +218,13 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
             }
         }
 
+        const QJsonObject targets = o.value("targets").toObject();
         const auto v = HDAW::buildMixVerdict(QString::fromStdString(filePath), windows, planKinds,
                                              bpm, ratio, structureJson,
                                              HDAW::modulationCoverageJson(
                                                  engine.getProjectModel().getTrackListTree()),
-                                             o.value("introSeconds").toDouble(2.0));
+                                             o.value("introSeconds").toDouble(2.0),
+                                             targets);
         if (!v.error.isEmpty())
             return makeError(-32603, v.error);
         return { false, v.verdict };

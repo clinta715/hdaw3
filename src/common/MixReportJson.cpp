@@ -117,6 +117,9 @@ MixReportPayloadResult buildMixReportPayload(const QString& filePath,
         // (`any bin peak >= 0.999`, MixReport.h). Without it an agent had to interpret a float
         // to notice a slamming mix (2026-09-21 dogfood: peak 1.0, no verdict).
         { "clipping", rep.peak >= 0.999 },
+        // B6: per-channel FS-clamp probe — the mono peak/rms above are blind to
+        // one-sided clamps ((+1.0, -1.0) averages to 0). See MixReport.h.
+        { "ceilingHitPct", rep.ceilingHitPct },
         { "measurementSuspicious", rep.measurementSuspicious } };
     if (rep.hasPumpDepth)
         root["pumpDepth"] = rep.pumpDepth;
@@ -143,6 +146,48 @@ MixReportPayloadResult buildMixReportPayload(const QString& filePath,
 
     out.payload = root;
     return out;
+}
+
+void applyTargetGates(QJsonObject& root, const QJsonObject& targets)
+{
+    if (targets.isEmpty()) return;
+    const double rms = root.value("rms").toDouble();
+    const double ceilingPct = root.value("ceilingHitPct").toDouble();
+    const double kick = root.value("kickProminence").toDouble();
+    const double duration = root.value("duration").toDouble();
+    QJsonArray rows;
+    bool allPass = true;
+    auto add = [&](const char* name, double expected, double actual, bool pass,
+                   const char* op) {
+        rows.append(QJsonObject{ { "target", name }, { "expected", expected },
+                                 { "actual", actual }, { "op", op }, { "pass", pass } });
+        if (!pass) allPass = false;
+    };
+    if (targets.contains("masterRms"))
+    {
+        const double t = targets.value("masterRms").toDouble();
+        // ±5% band on the MONO-DOWNMIX rms (convention pinned in brief.schema.json).
+        const bool pass = t > 0.0 && std::fabs(rms - t) <= 0.05 * t;
+        add("masterRms", t, rms, pass, "within 5%");
+    }
+    if (targets.contains("ceilingHitPctMax"))
+    {
+        const double t = targets.value("ceilingHitPctMax").toDouble();
+        add("ceilingHitPctMax", t, ceilingPct, ceilingPct <= t, "at most");
+    }
+    if (targets.contains("kickProminenceMin"))
+    {
+        const double t = targets.value("kickProminenceMin").toDouble();
+        add("kickProminenceMin", t, kick, kick >= t, "at least");
+    }
+    if (targets.contains("targetDurationSeconds"))
+    {
+        const double t = targets.value("targetDurationSeconds").toDouble();
+        const bool pass = t > 0.0 && std::fabs(duration - t) <= 2.0;
+        add("targetDurationSeconds", t, duration, pass, "within 2s");
+    }
+    root["targetChecks"] = rows;
+    root["targetsOk"] = allPass;
 }
 
 void applyDropVsBuildGate(QJsonObject& root, const QJsonObject& planKinds, double ratio)

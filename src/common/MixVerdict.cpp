@@ -29,7 +29,8 @@ MixVerdictResult buildMixVerdict(const QString& filePath,
                                  double dropBuildRatio,
                                  const QJsonObject& structureAudit,
                                  const QJsonObject& modulationCoverage,
-                                 double introSeconds)
+                                 double introSeconds,
+                                 const QJsonObject& targets)
 {
     MixVerdictResult out;
 
@@ -76,6 +77,24 @@ MixVerdictResult buildMixVerdict(const QString& filePath,
                                                       { "dropVsBuild", lg.value("dropVsBuild") } });
             for (const auto& i : lg.value("issues").toArray())
                 issues.append(i);
+        }
+    }
+
+    // 3b) targets — the brief's per-target PASS/FAIL rows (B6), when supplied.
+    if (!targets.isEmpty())
+    {
+        applyTargetGates(report, targets);
+        const bool ok = report.value("targetsOk").toBool();
+        gates["targets"] = gate(ok, QJsonObject{ { "checks", report.value("targetChecks") } });
+        for (const auto& r : report.value("targetChecks").toArray())
+        {
+            const auto o = r.toObject();
+            if (!o.value("pass").toBool())
+                issues.append(QString("target %1: expected %2 (%3), measured %4")
+                                  .arg(o.value("target").toString())
+                                  .arg(o.value("expected").toDouble())
+                                  .arg(o.value("op").toString())
+                                  .arg(o.value("actual").toDouble()));
         }
     }
 

@@ -413,12 +413,18 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "back to the plan's); without it, sections (seconds) or the whole file are measured. "
         "introSeconds > 0 (default 2) runs the intro-blast gate. The modulation gate uses the same "
         "audit as modulation.coverage / audit_modulation_coverage. READ-ONLY: no render, no "
-        "mutation. Calls the same engine command as the audio.mixVerdict RPC.",
+        "mutation. Calls the same engine command as the audio.mixVerdict RPC. targets (the brief's "
+        "targets object: masterRms, ceilingHitPctMax, kickProminenceMin, targetDurationSeconds) "
+        "adds a targets gate with per-target PASS/FAIL rows — masterRms is the MONO-DOWNMIX "
+        "((L+R)/2) linear RMS checked within ±5%; ceilingHitPctMax counts frames with any "
+        "channel |sample| >= 0.999 (per-channel — the mono peak/rms cannot see one-sided "
+        "clamps); targetDurationSeconds allows ±2 s of render tail.",
         objSchema({{"filePath",        QJsonObject{{"type","string"}}},
                   {"fromPlan",        QJsonObject{{"type","boolean"}}},
                   {"bpm",             QJsonObject{{"type","number"}}},
                   {"dropBuildRatio",  QJsonObject{{"type","number"}}},
                   {"introSeconds",    QJsonObject{{"type","number"}}},
+                  {"targets",         QJsonObject{{"type","object"}}},
                   {"sections", QJsonObject{{"type","array"},{"items", QJsonObject{
                         {"type","object"},
                         {"properties", QJsonObject{
@@ -469,11 +475,13 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
                 }
             }
 
+            const QJsonObject targets = a.value("targets").toObject();
             const auto v = HDAW::buildMixVerdict(filePath, windows, planKinds, bpm, ratio,
                                                  structureJson,
                                                  HDAW::modulationCoverageJson(
                                                      e->getProjectModel().getTrackListTree()),
-                                                 a.value("introSeconds").toDouble(2.0));
+                                                 a.value("introSeconds").toDouble(2.0),
+                                                 targets);
             if (!v.error.isEmpty())
                 return McpToolResult::text(v.error, true);
             return McpToolResult::text(QString::fromUtf8(
@@ -496,13 +504,15 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "\"loudnessGates\": each drop section's RMS against the build that precedes it (gate passes "
         "at >= dropBuildRatio, default 0.9) with per-drop rows and issue strings — a build louder "
         "than its payoff is a FAIL (thin the build cells or lift the drop). Optional wait=false returns immediately "
-        "with {jobId,state:'running',pollWith:'poll_job'}; poll poll_job for the result.",
+        "with {jobId,state:'running',pollWith:'poll_job'}; poll poll_job for the result. "
+        "Optional targets (the brief's targets object) adds targetChecks rows + targetsOk — see mix_verdict.",
         objSchema({
             {"filePath", QJsonObject{{"type","string"}}},
             {"bpm",      QJsonObject{{"type","number"}}},
             {"fromPlan", QJsonObject{{"type","boolean"}}},
             {"wait",     QJsonObject{{"type","boolean"}}},
             {"dropBuildRatio", QJsonObject{{"type","number"}}},
+            {"targets",        QJsonObject{{"type","object"}}},
             {"sections", QJsonObject{
                 {"type","array"},
                 {"items", QJsonObject{
@@ -549,14 +559,16 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
                     e->getProjectModel().getTrackListTree(), plan, bpm));
                 hasStructure = true;
             }
+            const QJsonObject targets = a.value("targets").toObject();
             const bool wait = a.value("wait").toBool(true);
             if (!wait) {
                 const int id = McpJobs::instance().submit("mix_report",
                     [filePath, bpm, sectionsArg, hasSections, structureJson, hasStructure,
-                     planKinds, dropBuildRatio]() {
+                     planKinds, dropBuildRatio, targets]() {
                         QJsonObject root = runMixReportAnalysis(filePath, bpm, sectionsArg, hasSections);
                         if (hasStructure) root["structure"] = structureJson;
                         if (!planKinds.isEmpty()) HDAW::applyDropVsBuildGate(root, planKinds, dropBuildRatio);
+                        if (!targets.isEmpty()) HDAW::applyTargetGates(root, targets);
                         return root;
                     });
                 QJsonObject payload{{"jobId", id}, {"state", "running"}, {"pollWith", "poll_job"}};
@@ -566,6 +578,7 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
                 QJsonObject root = runMixReportAnalysis(filePath, bpm, sectionsArg, hasSections);
                 if (hasStructure) root["structure"] = structureJson;
                 if (!planKinds.isEmpty()) HDAW::applyDropVsBuildGate(root, planKinds, dropBuildRatio);
+                if (!targets.isEmpty()) HDAW::applyTargetGates(root, targets);
                 return McpToolResult::text(QString::fromUtf8(
                     QJsonDocument(root).toJson(QJsonDocument::Compact)));
             } catch (const std::exception& ex) {

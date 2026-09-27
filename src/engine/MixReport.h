@@ -40,6 +40,15 @@ namespace HDAW {
 //   * kickProminence — whole-file kick-vs-low-mid energy ratio,
 //     E(35-110) / (E(35-110) + E(120-320)) in [0,1]; 0 when the denominator
 //     is zero (no content in either region).
+//   * ceilingHitPct — percentage of FRAMES with ANY channel |sample| >= 0.999
+//     (the house clipping threshold — the intro-blast probe and the mix_verdict
+//     clipping gate use it too). PER-CHANNEL on purpose: the mono (L+R)/2
+//     downmix that rms/peak measure is blind to one-channel full-scale clamps
+//     ((+1.0, -1.0) downmixes to 0) — exactly the frames this metric counts.
+//   * RMS CONVENTION (pinned 2026-09-27, B6): every rms/peak here is the
+//     MONO-DOWNMIX ((L+R)/2) signal, NOT per-channel energy. The brief's
+//     targets.masterRms is defined against this same signal (see
+//     docs/skills/psy-song-session/brief.schema.json).
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum MixBandIndex {
@@ -70,8 +79,10 @@ struct SectionReport {
 struct MixReport {
     double duration = 0.0;    // seconds
     double sampleRate = 0.0;  // Hz
-    double peak = 0.0;        // whole file
-    double rms = 0.0;         // whole file
+    double peak = 0.0;        // whole file (mono downmix — see convention above)
+    double rms = 0.0;         // whole file (mono downmix — see convention above)
+    double ceilingHitPct = 0.0; // % of frames with ANY channel |x| >= 0.999
+    long ceilingHitFrames = 0;  // raw frame count behind ceilingHitPct
     double bands[kMixNumBands] = {};  // whole-file band energies
     bool hasPumpDepth = false;
     double pumpDepth = 0.0;
@@ -105,7 +116,8 @@ private:
     static constexpr int kFftOrder = 12;        // 4096-point FFT
     static constexpr int kMinPumpBeats = 8;
 
-    struct SampleStats { double sum = 0.0, sumSq = 0.0, peak = 0.0; long count = 0; };
+    struct SampleStats { double sum = 0.0, sumSq = 0.0, peak = 0.0; long count = 0;
+                         long ceilingFrames = 0; };
     struct Spectral {
         double band[kMixNumBands] = {};
         double kick = 0.0;      // 35-110 Hz
@@ -203,6 +215,17 @@ inline void MixReportAnalyzer::streamRange(juce::AudioFormatReader& reader,
             if (std::fabs(d) > out.stats.peak)
                 out.stats.peak = std::fabs(d);
 
+            // B6: per-channel ceiling probe — the mono downmix above cannot see
+            // a one-channel full-scale clamp ((+1.0, -1.0) averages to 0).
+            for (int c = 0; c < numChannels; ++c)
+            {
+                if (std::fabs(static_cast<double>(buf.getSample(c, i))) >= 0.999)
+                {
+                    ++out.stats.ceilingFrames;
+                    break;
+                }
+            }
+
             if (beatLenSamples > 0.0)
             {
                 const int64_t bi = static_cast<int64_t>(
@@ -299,6 +322,9 @@ inline bool MixReportAnalyzer::analyze(const juce::File& wav,
     {
         out.peak = whole.stats.peak;
         out.rms = std::sqrt(whole.stats.sumSq / static_cast<double>(whole.stats.count));
+        out.ceilingHitFrames = whole.stats.ceilingFrames;
+        out.ceilingHitPct = 100.0 * static_cast<double>(whole.stats.ceilingFrames)
+                            / static_cast<double>(whole.stats.count);
     }
     for (int b = 0; b < kMixNumBands; ++b)
         out.bands[b] = whole.spectral.windows > 0

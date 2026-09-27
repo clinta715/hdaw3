@@ -333,3 +333,104 @@ TEST(MixReportTest, DegenerateAndOutOfFileSectionsError)
 
     f.deleteFile();
 }
+
+// B6: ceilingHitPct counts PER-CHANNEL full-scale frames that the mono
+// (L+R)/2 downmix cannot see. For the 20 clamped frames L=+1.0 and R=-1.0
+// average to EXACT zero, so rms/peak measure nothing of them - precisely the
+// one-sided-clamp blindness that motivated the metric (the vector-bloom
+// 19-frame R-channel clamp was invisible to the mono peak).
+TEST(MixReportTest, CeilingHitPctCountsPerChannelClampsMonoBlind)
+{
+    constexpr double sr = 48000.0;
+    constexpr int len = static_cast<int>(sr);  // 1 s
+    constexpr int kClampFrames = 20;
+    juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("hdaw_mix_report_ceiling_"
+                                     + juce::String(juce::Random::getSystemRandom().nextInt())
+                                     + ".wav");
+    f.deleteFile();
+    {
+        std::unique_ptr<juce::FileOutputStream> out(f.createOutputStream());
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            wav.createWriterFor(out.get(), sr, 2, 24, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        out.release();
+        juce::AudioBuffer<float> buf(2, len);
+        buf.clear();
+        for (int i = 0; i < len; ++i)
+        {
+            const float v = static_cast<float>(
+                0.25 * std::sin(2.0 * juce::MathConstants<double>::pi * 440.0 * i / sr));
+            buf.setSample(0, i, v);
+            buf.setSample(1, i, v);
+        }
+        // Clamped frames: L pinned at +1.0, R at -1.0 -> mono contribution 0.
+        for (int i = 0; i < kClampFrames; ++i)
+        {
+            buf.setSample(0, 100 + i, 1.0f);
+            buf.setSample(1, 100 + i, -1.0f);
+        }
+        writer->writeFromAudioSampleBuffer(buf, 0, len);
+    }
+
+    HDAW::MixReport rep;
+    juce::String err;
+    ASSERT_TRUE(HDAW::MixReportAnalyzer::analyze(f, {}, 0.0, rep, err)) << err.toStdString();
+    EXPECT_EQ(rep.ceilingHitFrames, kClampFrames);
+    EXPECT_NEAR(rep.ceilingHitPct, 100.0 * kClampFrames / sr, 1e-9);
+    // Mono blindness proof: the clamps contribute NOTHING to the mono peak
+    // (0.25 sine + exact-cancelling clamps), yet the metric sees every frame.
+    EXPECT_LT(rep.peak, 0.26);
+    f.deleteFile();
+}
+
+// B6: the shared targets shaper - rows, conventions, and the +/-5% masterRms
+// band (the vector-bloom precedent: -4.75% mono passed by hand).
+TEST(MixReportTest, TargetGatesShapeRowsAndPass)
+{
+    QJsonObject root{
+        { "rms", 0.1524 },        // -4.75% against 0.16 -> inside the +/-5% band
+        { "ceilingHitPct", 0.000065 },
+        { "kickProminence", 0.62 },
+        { "duration", 304.714 } };
+    HDAW::applyTargetGates(root, QJsonObject{
+        { "masterRms", 0.16 },
+        { "ceilingHitPctMax", 5.0 },
+        { "kickProminenceMin", 0.6 },
+        { "targetDurationSeconds", 304.7 } });
+    ASSERT_TRUE(root.contains("targetChecks"));
+    EXPECT_TRUE(root.value("targetsOk").toBool());
+    const auto rows = root.value("targetChecks").toArray();
+    ASSERT_EQ(rows.size(), 4);
+    EXPECT_EQ(rows[0].toObject().value("target").toString().toStdString(), "masterRms");
+    EXPECT_TRUE(rows[0].toObject().value("pass").toBool());
+    EXPECT_TRUE(rows[1].toObject().value("pass").toBool());
+    EXPECT_TRUE(rows[2].toObject().value("pass").toBool());
+    EXPECT_TRUE(rows[3].toObject().value("pass").toBool());
+
+    // Out-of-band masterRms (-6%) fails, and a quiet mix fails the floor gates.
+    QJsonObject quiet{
+        { "rms", 0.1504 }, { "ceilingHitPct", 6.0 },
+        { "kickProminence", 0.4 }, { "duration", 300.0 } };
+    HDAW::applyTargetGates(quiet, QJsonObject{
+        { "masterRms", 0.16 },
+        { "ceilingHitPctMax", 5.0 },
+        { "kickProminenceMin", 0.6 },
+        { "targetDurationSeconds", 304.7 } });
+    EXPECT_FALSE(quiet.value("targetsOk").toBool());
+    const auto fails = quiet.value("targetChecks").toArray();
+    EXPECT_FALSE(fails[0].toObject().value("pass").toBool()) << "-6% is outside the +/-5% band";
+    EXPECT_FALSE(fails[1].toObject().value("pass").toBool());
+    EXPECT_FALSE(fails[2].toObject().value("pass").toBool());
+    EXPECT_FALSE(fails[3].toObject().value("pass").toBool()) << "|300 - 304.7| = 4.7 s exceeds the +/-2 s window";
+}
+
+// B6: empty targets is a no-op (no rows, no targetsOk key).
+TEST(MixReportTest, TargetGatesNoopOnEmptyTargets)
+{
+    QJsonObject root{ { "rms", 0.1 } };
+    HDAW::applyTargetGates(root, QJsonObject{});
+    EXPECT_FALSE(root.contains("targetChecks"));
+    EXPECT_FALSE(root.contains("targetsOk"));
+}

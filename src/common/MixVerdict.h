@@ -35,6 +35,9 @@ struct MixVerdictResult
 // `structureAuditJson(...)` payload and `modulationCoverage` the `modulationCoverageJson(...)`
 // payload (an empty object skips that gate).
 // `introSeconds` > 0 enables the intro-blast gate over that opening window.
+// `targets` (B6) is the brief's targets object (masterRms, ceilingHitPctMax,
+// kickProminenceMin, targetDurationSeconds); non-empty adds a `targets` gate
+// whose rows come from the shared applyTargetGates shaper (conventions there).
 MixVerdictResult buildMixVerdict(const QString& filePath,
                                  std::vector<SectionWindow> windows,
                                  const QJsonObject& planKinds,
@@ -42,6 +45,7 @@ MixVerdictResult buildMixVerdict(const QString& filePath,
                                  double dropBuildRatio,
                                  const QJsonObject& structureAudit,
                                  const QJsonObject& modulationCoverage,
-                                 double introSeconds);
+                                 double introSeconds,
+                                 const QJsonObject& targets = {});
 
 } // namespace HDAW

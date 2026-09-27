@@ -125,6 +125,7 @@ safe). It shards small suites whole and large ones per test. Run it with
   made `./build/hdaw_tests.exe --gtest_filter='VerifyPart.*'` fail 9/13 with
   `export failed: Could not create output file`; with the in-harness redirect and NO external
   `TMP`/`TEMP` override the same filter is **13/13 in 11.4 s** (`.tmp_*` is gitignored).
+- **Corrupted build dir after a concurrent-build race (2026-09-27).** Editing sources WHILE a sharded run is in flight makes each shard's ninja rebuild race the others and the edit: symptom class = wandering SIGSEGV/exit-127 in heavy engine suites (death point moves between runs on the SAME binary; dying tests pass solo; raw FAILED lines 0; no crash artifacts) plus `C1083: Cannot open compiler generated file: Permission denied` on subsequent builds. Recovery: delete `build/CMakeFiles`, `.ninja_deps`, `.ninja_log`, reconfigure (`dsh-build-fast.bat ninja`), full rebuild — verified: the full suite ran 2045/2045 green afterward. Prevention: never edit sources during a sharded run.
 - **The build scripts self-redirect `TMP`/`TEMP` (2026-09-27, B8).** `dsh-build-fast.bat` and
   `build-fast.bat` point the toolchain's temp at `<repo>/.tmp_build_scratch/lnk` (gitignored via
   the `.tmp_*` glob; `HDAW_BUILD_TMP` overrides) before the MSVC bootstrap, so `link.exe`'s
