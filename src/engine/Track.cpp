@@ -646,18 +646,14 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                 }
             }
         }
-        // Multi-sampler key-range buffer management: if any sampler in the
-        // chain has a key range set, clear the buffer once so partial samplers
-        // accumulate cleanly without stale audio from earlier FX.
-        if (!midiMessages.isEmpty())
-        {
-            bool anyPartialSampler = false;
-            for (const auto& s : fxChain)
-                if (s && s->getType() == "sampler" && s->hasKeyRange())
-                    { anyPartialSampler = true; break; }
-            if (anyPartialSampler)
-                buffer.clear();
-        }
+        // B4 (2026-09-27): the old anyPartialSampler pre-clear (any key-ranged
+        // sampler present → buffer.clear()) is REMOVED. The REPLACE slot clears
+        // unconditionally every block (renderSamplerIntoChain), so the pre-clear
+        // was dead for every engaged chain — and worse, it keyed on hasKeyRange()
+        // NOT engagement, so a BYPASSED key-ranged sampler with flowing MIDI
+        // wiped the whole pre-FX buffer to exact silence (a bypassed slot must be
+        // transparent). Pinned by
+        // MultiSamplerChain.BypassedKeyRangeSamplerPassesAudioThrough.
 
         // Multi-sampler SUM (2026-09-26): the FIRST engaged sampler in the
         // chain replaces the buffer exactly as a lone sampler always has;

@@ -338,3 +338,50 @@ TEST_F(MultiSamplerChain, NoTriggeredNotesRenderSilence)
     const auto out = renderBlock(0, -1, -1);
     EXPECT_LT(renderedRms(out), 1e-6f) << "an untriggered chain must stay silent";
 }
+
+// (e) B4: a BYPASSED key-ranged sampler must be TRANSPARENT. The old
+// anyPartialSampler pre-clear keyed on hasKeyRange() (not engagement): with
+// MIDI flowing it wiped the whole pre-FX buffer to exact silence even when
+// every sampler in the chain was bypassed. Seed the input buffer with a
+// constant and assert it survives the chain.
+TEST_F(MultiSamplerChain, BypassedKeyRangeSamplerPassesAudioThrough)
+{
+    auto& cmds = engine.getProjectCommands();
+    const int t = cmds.addTrack("MultiSamplerChainBypass", -1, -1, 0);
+    ASSERT_GE(t, 0);
+    cmds.addFxSlot(t, std::string("sampler"), -1, std::string());
+    engine.drainPendingRoutingRebuild();
+    cmds.setSamplerKeyRange(t, 0, 42, 45);
+    cmds.setFxSlotBypassed(t, 0, true);
+    engine.drainPendingRoutingRebuild();
+
+    auto* proc = engine.getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    auto* track = proc->getTrack(t);
+    ASSERT_NE(track, nullptr);
+    auto& chain = track->getFXChain();
+    ASSERT_EQ(chain.size(), 1u);
+    ASSERT_NE(chain[0], nullptr);
+    chain[0]->setSamplerSoundForTest(makeRootedSine(42));
+
+    constexpr int kTotal = 2048;
+    juce::AudioBuffer<float> out(2, kTotal);
+    out.clear();
+    const int kChunk = juce::jmax(1, track->getBlockSize());
+    for (int start = 0; start < kTotal; start += kChunk)
+    {
+        const int count = juce::jmin(kChunk, kTotal - start);
+        juce::AudioBuffer<float> block(2, count);
+        // Pre-FX upstream signal: a constant the chain must NOT wipe.
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < count; ++i)
+                block.setSample(ch, i, 0.25f);
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 42, 0.5f), 0);
+        track->processBlock(block, midi);
+        for (int ch = 0; ch < 2; ++ch)
+            out.copyFrom(ch, start, block, ch, 0, count);
+    }
+    EXPECT_GT(renderedRms(out), 0.05f)
+        << "a bypassed key-ranged sampler must not silence the track (the old pre-clear wiped it to 0)";
+}

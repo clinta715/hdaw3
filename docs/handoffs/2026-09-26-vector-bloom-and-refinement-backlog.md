@@ -75,7 +75,7 @@ Each row: repro + what a fix needs.
 - **Fix needs:** expose the live check (e.g. `hasSound` = live +
   `hasSampleFile` = property), MCP + RPC twin (parity rule), regression test.
 
-### B4 — Multi-sampler fix leftovers (CLEANUP)
+### B4 — Multi-sampler fix leftovers (FIXED 2026-09-27, follow-up session)
 
 - **Repro/known state:** (a) new C4267 size_t→int warnings at
   `TrackFXSlot.h:1276-1277` from the fix. (b) `Track.cpp`'s `anyPartialSampler`
@@ -137,6 +137,7 @@ Each row: repro + what a fix needs.
 - **B2** — root cause was the SECTIONS parse, not the generator (pure math proven healthy for cycles 1..8 by simulation): the sections form never read `cycles`/`midPoint` (no per-section key, no top-level fallback), so `{cycles:6}` landed the 24-cycle len/4 default. Fixed in `src/common/AutomationPresetRequest.h` + tool schema/description. Tests: `Automation.SinePresetCyclesSpanAllCycleCounts`, `Automation.SinePresetDefaultCyclesIsWindowLengthOver4`, `AddFxParityTest.SectionsFormCyclesReachThePlanOnBothSurfaces` (both surfaces).
 - **B3** — `SamplerStateSnapshot.hasSampleFile` (property) + live `hasSound` emitted by ONE shaper `src/common/SamplerStateJson.h` on MCP `sampler_get_state`, `sampler.getState`, `read.getSamplerState` (the read route had also lost the slice/voice fields). Tests: `GuiFuncTest.SamplerGetStateHasSoundIsLiveNotPropertyOnly`, `FrontendServer.SamplerGetStateLiveHasSoundPlusHasSampleFile`.
 - Gates: 298-test regression net (Automation, PatternLibrary, AddFxParity, MissingRouteParity, GuiFunc, FrontendServer, McpCoverage, sampler suites) 0 failures; parity ratchet ledger unchanged (307/411/mapped 295). Lessons: #33 resolution + new #34 (AGENTS.md index 34). Full sharded run NOT re-run — baseline numbers in AGENTS.md still cite the 2026-09-26 authoritative run.
+- **B4 (2026-09-27)** — the `anyPartialSampler` pre-clear is REMOVED (`Track.cpp`): the REPLACE slot clears unconditionally every block, so the pre-clear was dead for engaged chains — and it keyed on `hasKeyRange()` NOT engagement, so a BYPASSED key-ranged sampler with flowing MIDI wiped the whole pre-FX buffer to silence. Now transparent. Pinned by `MultiSamplerChain.BypassedKeyRangeSamplerPassesAudioThrough` (new) + the four existing chain cases green. (a) C4267: verified ZERO in a full header rebuild — already clean in the committed tree (the casts at the old handoff lines exist). (c) bypass-toggle race: stays documented as self-correcting (revisit only if bypass toggling becomes hot).
 - **B8 (2026-09-27)** — both build scripts now default `TMP`/`TEMP` to `<repo>/.tmp_build_scratch/lnk` (`HDAW_BUILD_TMP` overrides; `.tmp_*` gitignored; printed once per run), closing the LNK1104 class at the source. Housekeeping: `build/SoundTouch.dll.locked-20260926` + `.render_log` deleted. The 394 MB `%TEMP%\hdaw_debug.log` remains — held open by the live engine; delete after an engine stop (or `cleanup-stale.ps1 -Apply`). Verified: `dsh-build-fast.bat test` relinked under the scratch TMP.
 
 ## 4. Contracts worth remembering
