@@ -478,3 +478,87 @@ TEST(Automation, G3_PostPassRerunIsIdempotent)
         EXPECT_DOUBLE_EQ(second[i].second, first[i].second) << "point " << i << " value";
     }
 }
+
+// B2 regression gate (sine cycles degenerate): across cycles 1..8 the written
+// points must span the full startValue..endValue range with EXACTLY `cycles`
+// rising crossings of 0.9. Window [256,352) beats is the vector-bloom
+// breakdown section where a sections-form sine {cycles:6} audibly collapsed —
+// the pure generator is healthy (proven by simulation), so this pins the
+// beats→seconds conversion + density scaling + ValueTree write end to end.
+TEST(Automation, SinePresetCyclesSpanAllCycleCounts)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+
+    for (int cycles = 1; cycles <= 8; ++cycles)
+    {
+        const std::string laneName = "Breath" + std::to_string(cycles);
+        ASSERT_TRUE(cmds.addAutomationLane(0, laneName, 2000 + cycles));
+
+        HDAW::AutomationPreset::PresetWindow w;
+        w.start = 256.0;
+        w.end = 352.0;
+        w.preset = HDAW::AutomationPreset::Preset::Sine;
+        w.cycles = static_cast<double>(cycles);
+        const std::vector<HDAW::AutomationPreset::PresetWindow> windows{ w };
+
+        int added = 0;
+        const std::string err =
+            cmds.applyAutomationPreset(0, laneName, windows, /*clear*/ true, 12345, &added);
+        ASSERT_TRUE(err.empty()) << "cycles " << cycles << ": " << err;
+
+        const auto pts = lanePoints(engine, 0, laneName);
+        ASSERT_EQ(pts.size(), static_cast<size_t>(added));
+
+        double minValue = 1.0, maxValue = 0.0;
+        int crossings = 0;
+        bool above = false;
+        for (const auto& pt : pts)
+        {
+            if (pt.second < minValue) minValue = pt.second;
+            if (pt.second > maxValue) maxValue = pt.second;
+            if (! above && pt.second >= 0.9) { ++crossings; above = true; }
+            else if (above && pt.second < 0.9) above = false;
+        }
+        EXPECT_NEAR(maxValue, 1.0, 1e-3) << "cycles " << cycles << " must reach the top";
+        EXPECT_NEAR(minValue, 0.0, 1e-3) << "cycles " << cycles << " must reach the floor";
+        EXPECT_EQ(crossings, cycles)
+            << "cycles " << cycles << ": a dropped cycles arg lands the len/4 default";
+    }
+}
+
+// Default preserved: no cycles argument → the len/4 default (96/4 = 24 on the
+// same window).
+TEST(Automation, SinePresetDefaultCyclesIsWindowLengthOver4)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
+    ASSERT_TRUE(cmds.addAutomationLane(0, "Breath", 2100));
+
+    HDAW::AutomationPreset::PresetWindow w;
+    w.start = 256.0;
+    w.end = 352.0;
+    w.preset = HDAW::AutomationPreset::Preset::Sine;
+    const std::vector<HDAW::AutomationPreset::PresetWindow> windows{ w };
+
+    int added = 0;
+    const std::string err =
+        cmds.applyAutomationPreset(0, "Breath", windows, /*clear*/ true, 12345, &added);
+    ASSERT_TRUE(err.empty()) << err;
+
+    const auto pts = lanePoints(engine, 0, "Breath");
+    ASSERT_EQ(pts.size(), static_cast<size_t>(added));
+
+    int crossings = 0;
+    bool above = false;
+    for (const auto& pt : pts)
+    {
+        if (! above && pt.second >= 0.9) { ++crossings; above = true; }
+        else if (above && pt.second < 0.9) above = false;
+    }
+    EXPECT_EQ(crossings, 24);
+}

@@ -26,8 +26,11 @@
 #include <QJsonValue>
 #include <QString>
 
+#include <tuple>
+
 #include "engine/AudioEngine.h"
 #include "engine/PsyFmState.h"   // B2b: decodeRoutes for the psy_fm matrix seam
+#include "common/AutomationPresetRequest.h"  // B2: parse-level sections regression
 #include "frontend/FrontendRouter.h"
 #include "common/TrackIdRefs.h"   // design B3: stable-id folder refs
 #include "mcp/McpServer.h"
@@ -989,6 +992,89 @@ TEST_F(AddFxParityTest, StableTrackIdDrivesAutomationPointsOnBothSurfaces) {
 // (src/common/AutomationPresetRequest.h / MovementPlanJson.h) with the DEFAULT
 // keys, so (b) and (c) are byte-identical on both surfaces — and the success
 // path is cheap here (a lane + a named preset), so (a) is pinned too.
+// B2 twin (sections form): per-section cycles/midPoint must reach the plan on
+// BOTH surfaces. The sections parse used to drop both keys silently (while
+// startValue/endValue had the top-level fallback), so a sections-form sine
+// {cycles:6} landed the len/4 default (24 cycles over the 96-beat window) and
+// the vector-bloom breakdown collapsed to near-silence.
+TEST_F(AddFxParityTest, SectionsFormCyclesReachThePlanOnBothSurfaces) {
+    const TwoTracks t = seedTargetAndDecoy();
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_TRUE(cmds.addAutomationLane(t.targetIdx, "Breath", 2001));
+    ASSERT_TRUE(cmds.addAutomationLane(t.decoyIdx, "Breath", 2002));
+    engine->drainPendingRoutingRebuild();
+
+    // The parse layer directly: per-section cycles AND midPoint parse, and the
+    // top-level fallback applies when a section omits them.
+    {
+        HDAW::AutomationPresetRequest req;
+        std::string parseError;
+        const QJsonObject parseArgs{
+            { "midPoint", 0.25 },
+            { "sections", QJsonArray{ QJsonObject{
+                { "start", 0.0 }, { "end", 16.0 },
+                { "preset", "openClose" }, { "cycles", 6 }, { "midPoint", 0.75 } } } } };
+        ASSERT_TRUE(HDAW::parseAutomationPresetRequest(parseArgs, req, parseError)) << parseError;
+        ASSERT_EQ(req.windows.size(), 1);
+        ASSERT_TRUE(req.windows[0].cycles.has_value());
+        EXPECT_DOUBLE_EQ(*req.windows[0].cycles, 6.0);
+        ASSERT_TRUE(req.windows[0].midPoint.has_value());
+        EXPECT_DOUBLE_EQ(*req.windows[0].midPoint, 0.75);
+
+        HDAW::AutomationPresetRequest fallbackReq;
+        const QJsonObject fallbackArgs{
+            { "cycles", 3.0 },
+            { "sections", QJsonArray{ QJsonObject{
+                { "start", 0.0 }, { "end", 16.0 }, { "preset", "sine" } } } } };
+        ASSERT_TRUE(HDAW::parseAutomationPresetRequest(fallbackArgs, fallbackReq, parseError))
+            << parseError;
+        ASSERT_TRUE(fallbackReq.windows[0].cycles.has_value());
+        EXPECT_DOUBLE_EQ(*fallbackReq.windows[0].cycles, 3.0)
+            << "top-level cycles must fall back into sections windows";
+    }
+
+    const QJsonObject mcpArgs{
+        { "trackID", t.targetID }, { "lane", "Breath" },
+        { "sections", QJsonArray{ QJsonObject{
+            { "start", 256.0 }, { "end", 352.0 },
+            { "preset", "sine" }, { "cycles", 6 } } } } };
+    const QJsonValue toolPayload = mcpValue("automation_preset", mcpArgs);
+    ASSERT_TRUE(toolPayload.isObject())
+        << mcpText("automation_preset", mcpArgs).toStdString();
+    EXPECT_GT(toolPayload.toObject().value("pointsAdded").toInt(), 0);
+
+    const QJsonObject rpcArgs{
+        { "trackID", t.decoyID }, { "lane", "Breath" },
+        { "sections", QJsonArray{ QJsonObject{
+            { "start", 256.0 }, { "end", 352.0 },
+            { "preset", "sine" }, { "cycles", 6 } } } } };
+    EXPECT_EQ(rpcPayload("project.applyAutomationPreset", rpcArgs), toolPayload);
+
+    // Same lane outcome on both surfaces: exactly 6 rising 0.9-crossings over
+    // the full 0..1 span — the dropped-cycles default would show 24.
+    const auto crossingsOf = [&](int track) {
+        const auto pts = engine->getReadModel().getAutomationPoints(track, "Breath");
+        double minValue = 1.0, maxValue = 0.0;
+        int crossings = 0;
+        bool above = false;
+        for (const auto& p : pts) {
+            if (static_cast<double>(p.value) < minValue) minValue = p.value;
+            if (static_cast<double>(p.value) > maxValue) maxValue = p.value;
+            if (! above && p.value >= 0.9f) { ++crossings; above = true; }
+            else if (above && p.value < 0.9f) above = false;
+        }
+        return std::make_tuple(crossings, minValue, maxValue);
+    };
+    const auto toolSide = crossingsOf(t.targetIdx);
+    const auto routeSide = crossingsOf(t.decoyIdx);
+    EXPECT_EQ(std::get<0>(toolSide), 6);
+    EXPECT_EQ(std::get<0>(routeSide), 6);
+    EXPECT_NEAR(std::get<1>(toolSide), 0.0, 1e-3);
+    EXPECT_NEAR(std::get<1>(routeSide), 0.0, 1e-3);
+    EXPECT_NEAR(std::get<2>(toolSide), 1.0, 1e-3);
+    EXPECT_NEAR(std::get<2>(routeSide), 1.0, 1e-3);
+}
+
 TEST_F(AddFxParityTest, StableTrackIdDrivesAutomationPresetAndPlanOnBothSurfaces) {
     const TwoTracks t = seedTargetAndDecoy();
     auto& cmds = engine->getProjectCommands();

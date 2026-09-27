@@ -461,6 +461,26 @@ public:
     // in the shared InternalDelay (slice C3).
     void setTempo(double bpm) { delay.setTempo(bpm); }
 
+    // Multi-sampler chain accumulation (2026-09-26): the chain loop
+    // (Track::processBlock) marks every sampler slot AFTER the first engaged
+    // one so its voices are ADDED to the earlier samplers' sum instead of
+    // erasing it (SamplerEngine::render CLEARS its target buffer). Per-block
+    // chain context, written before process() — plain bool, same idiom as
+    // setTempo. Default false keeps standalone callers (warmup loops, tests)
+    // on the exact replace behavior a lone sampler always had.
+    void setSamplerAccumulate(bool accumulate) { samplerAccumulate_ = accumulate; }
+
+    // Chain-order bookkeeping for the multi-sampler SUM: true when this slot
+    // is a sampler that process() will actually render this block (engine
+    // prepared and not bypassed) — i.e. whether it owns/replaces the chain
+    // buffer. Relaxed load matches process()'s own bypass read; a mid-block
+    // bypass toggle can mislabel at most one block (self-corrects next block).
+    bool isEngagedSampler() const
+    {
+        return activeType == ActiveType::Sampler && sampler != nullptr
+            && ! bypassed.load(std::memory_order_relaxed);
+    }
+
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
 
     // --- Boot-state baseline (D-lite: isolated state-transfer guard) ---------
@@ -869,6 +889,12 @@ public:
                 if (!sampler)
                     sampler = std::make_unique<SamplerEngine>();
                 sampler->prepare (spec.sampleRate, static_cast<int> (spec.maximumBlockSize));
+                // Multi-sampler accumulate scratch: sized HERE (PREPARE —
+                // lesson 14), never in the process path. Holds the running
+                // sum of earlier samplers' output across render()'s clear
+                // (see renderSamplerIntoChain).
+                samplerPreserve_.setSize (static_cast<int> (spec.numChannels),
+                                          static_cast<int> (spec.maximumBlockSize));
                 // Push initial params from internalParamValues
                 SamplerEngine::Params sp;
                 sp.env.attack  = (internalParamValues.size() > 0) ? internalParamValues[0] : 0.005f;
@@ -1151,15 +1177,15 @@ public:
                         else
                             remainder.addEvent(msg, static_cast<int>(metadata.samplePosition));
                     }
-                    buffer.clear();
-                    sampler->render(buffer, inRange);
+                    renderSamplerIntoChain(buffer, inRange);
                     midiMessages = remainder;
                 }
                 else
                 {
-                    // Full-range: current behavior (clears + consumes all notes)
-                    buffer.clear();
-                    sampler->render(buffer, midiMessages);
+                    // Full-range: consumes ALL notes (buffer handling per
+                    // renderSamplerIntoChain: replace for the first sampler,
+                    // accumulate for the later ones).
+                    renderSamplerIntoChain(buffer, midiMessages);
                     midiMessages.clear();
                 }
             }
@@ -1726,6 +1752,44 @@ private:
     // -1 = full range (default, current behavior); 0..127 = restricted range.
     int keyRangeLow_ = -1;
     int keyRangeHigh_ = -1;
+
+    // Multi-sampler chain accumulation: true when an EARLIER engaged sampler
+    // in the same chain already owned the buffer this block (set per-block by
+    // Track::processBlock via setSamplerAccumulate). samplerPreserve_ holds
+    // the running sum across render()'s clear; it is sized in prepare(), so
+    // it survives prepareToPlay recreation and rebuildFXChain (which prepares
+    // every rebuilt slot) with no extra restore path (Gate 1/10).
+    bool samplerAccumulate_ = false;
+    juce::AudioBuffer<float> samplerPreserve_;
+
+    // Buffer rule for the sampler branch of process().
+    // REPLACE (default / first engaged sampler in the chain): the sampler owns
+    // the chain buffer — clear + render, byte-identical to the pre-fix
+    // single-sampler behavior (SamplerEngine::render clears its target and
+    // adds its voices into it).
+    // ACCUMULATE (later samplers in a multi-sampler chain): keep the earlier
+    // samplers' running sum across render()'s clear, then add this slot's
+    // voices on top — N sampler slots SUM in chain order, and a slot with no
+    // in-range notes adds nothing instead of silencing the chain.
+    // RT-safe: samplerPreserve_ is sized in prepare() (lesson 14); the work is
+    // copyFrom/addFrom arithmetic only — no allocation, lock, I/O or strings.
+    void renderSamplerIntoChain (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+    {
+        if (! samplerAccumulate_)
+        {
+            buffer.clear();
+            sampler->render (buffer, midi);
+            return;
+        }
+        const int numSamples  = buffer.getNumSamples();
+        const int numChannels = juce::jmin (buffer.getNumChannels(),
+                                            samplerPreserve_.getNumChannels());
+        for (int ch = 0; ch < numChannels; ++ch)
+            samplerPreserve_.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+        sampler->render (buffer, midi);   // clears the buffer, writes this slot's voices
+        for (int ch = 0; ch < numChannels; ++ch)
+            buffer.addFrom (ch, 0, samplerPreserve_, ch, 0, numSamples);
+    }
 
     void wireEditorClosedCallback();
 

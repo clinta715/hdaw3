@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.39.0
+**Current version**: 0.39.1
 
 ## Quick start
 
@@ -25,7 +25,7 @@ defaults to RelWithDebInfo; pass `Debug` for breakpoint debugging. The Electron
 frontend is a separate project (AGENTS.md "DEPRECATED 2026-09-23") — engine work
 never builds it.
 
-## What works today (v0.39.0)
+## What works today (v0.39.1)
 
 ### v0.39.0 session highlights (2026-09-25/26)
 - **Stable `trackID` accepted across the fx/automation/plugin surfaces (B2b)**:
@@ -476,6 +476,25 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
   `MultiExportRereadsLiveTree`); `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`
   carried a test-side use-after-free (the intermittent shard-death class).
 - **PsyDub v3.2** breakdown tail fix (held tonic into the drop edge).
+### v0.39.1 — Engine bugfixes: pattern round-trip, automation_preset sections, sampler hasSound (2026-09-26)
+
+- **Three filed engine bugs fixed (2026-09-26).** `import_pattern` round-trips the FULL document (verbatim `extraJson` passthrough for notes/role/descriptor + ONE builder for save/import/export — `PatternLibraryTest.ImportExportRoundTripsPayload`); `automation_preset` sections honor `cycles`/`midPoint` per-section + top-level fallback (the silent drop was the near-silent-breakdown class — `AddFxParityTest.SectionsFormCyclesReachThePlanOnBothSurfaces` + `Automation.SinePresetCyclesSpanAllCycleCounts`); `sampler_get_state.hasSound` is the LIVE decoded check with `hasSampleFile` as the property-only companion, emitted by ONE shaper (`src/common/SamplerStateJson.h`) on the MCP tool and both RPC routes. Parity ledger unchanged (307/411/mapped 295).
+- **Multi-sampler chain render fix (2026-09-26).** In a chain with two or more
+  `sampler` slots, every sampler slot called `buffer.clear()` on the SHARED
+  chain buffer before `SamplerEngine::render()` (itself clear-then-voice-add),
+  so each sampler erased all earlier slots' audio — only the LAST sampler slot
+  survived, and a later sampler with zero in-range notes wiped the chain to
+  exact silence (found via the psy-song-session vector-bloom build: a 2-slot
+  hats chain — closed KR 42-45, open KR 46-49 — with only pitch-42 notes
+  rendered silent). Chain-level accumulate fix in `src/engine/TrackFXSlot.h` +
+  `src/engine/Track.cpp`: the first engaged sampler keeps the legacy replace
+  path verbatim (single-sampler chains byte-identical), every later engaged
+  sampler preserves the running sum across `render()`'s clear (PREPARE-time
+  scratch `samplerPreserve_`) and adds its voices on top in chain order;
+  bypassed slots early-return as before. Zero new realtime-unsafe ops
+  (copyFrom/addFrom arithmetic only). Pinned by `MultiSamplerChain.*`
+  (`tests/unit/engine/sampler_key_range_test.cpp`) — 4 deterministic cases
+  through the real `Track::processBlock` chain loop; full sampler batch 40/40.
 
 ### v0.35.0 — Seeded cell style defaults, apply_preset dispatch, six-role song-session, plugin verdicts
 

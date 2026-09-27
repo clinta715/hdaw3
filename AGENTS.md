@@ -10,7 +10,7 @@ touching `processBlock`, DSP chains, render/export, playback paths, plugin isola
 or internal/external FX contracts require discussion with the user FIRST, with effort
 + risk notes. Rendering and playback stability outrank new features.
 
-**Current scope:** JUCE 8 desktop DAW, v0.39.0, React 19 + TS frontend (Zustand,
+**Current scope:** JUCE 8 desktop DAW, v0.39.1, React 19 + TS frontend (Zustand,
 Vite). Engine state via JSON-RPC 2.0 over WebSocket (8766) + HTTP (8765); bundled
 SPA or Electron shell. Feature history: `README.md`; per-version changes: git log.
 
@@ -140,6 +140,8 @@ downloaded), wired into the DSH profile's `cordis.patch.yml`, and checked with
 30. **Batch tree surgery at the LIST level** — removeAllChildren fires the listener per child; swap the container node.
 31. **Patch selection needs a variety mechanism** — deterministic ranking repeats; select_patch = cluster-stratified + seeded + ledger.
 32. **An enabled Volume automation lane owns the parameter in the offline render** — audit isolation must use mute, not `setTrackVolume`.
+33. **A per-slot loop must not clear a SHARED chain buffer** — only the last sampler slot survived; first engaged sampler replaces, later ones accumulate (`samplerPreserve_`). Property-only health reads (`hasSound`) can mask a no-sound state.
+34. **An accepted-arg-dropped key is a silent no-op** — every parse shape must parse every key (`automation_preset` sections silently dropped `cycles`/`midPoint` → near-silent breakdown); assert the observable effect, not the success payload.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 

@@ -8,6 +8,7 @@
 // the MCP twins call (get_master_fx_params / list_clip_takes).
 #include "../../common/MasterFxAccess.h"
 #include "../../common/ClipTakesJson.h"
+#include "../../common/SamplerStateJson.h"
 #include "../../model/ProjectModel.h"   // IDs:: namespace (MASTER_FX)
 
 #include <QJsonArray>
@@ -175,29 +176,10 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& trackList,
     if (m == "sampler.getState") {
         int ti, si; DispatchResult err;
         if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", si, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
-        auto s = r.getSamplerState(ti, si);
-        QJsonObject obj;
-        obj["sampleFile"] = QString::fromStdString(s.sampleFile);
-        obj["mode"] = QString::fromStdString(s.mode);
-        obj["rootNote"] = s.rootNote;
-        obj["transpose"] = s.transpose;
-        obj["mono"] = s.mono;
-        obj["playReverse"] = s.playReverse;
-        QJsonObject env;
-        env["attack"] = static_cast<double>(s.attack);
-        env["hold"] = static_cast<double>(s.hold);
-        env["decay"] = static_cast<double>(s.decay);
-        env["sustain"] = static_cast<double>(s.sustain);
-        env["release"] = static_cast<double>(s.release);
-        obj["envelope"] = env;
-        obj["sampleStart"] = static_cast<double>(s.sampleStart);
-        obj["sampleEnd"] = static_cast<double>(s.sampleEnd);
-        obj["glide"] = static_cast<double>(s.glide);
-        obj["hasSound"] = s.hasSound;
-        obj["activeVoices"] = s.activeVoices;
-        obj["keyRangeLow"] = s.keyRangeLow;
-        obj["keyRangeHigh"] = s.keyRangeHigh;
-        return { false, obj };
+        // B3: the shared shaper (common/SamplerStateJson.h) — the same
+        // object the sampler.getState route and the MCP sampler_get_state
+        // emit (the hand-rolled copy here had lost the slice*/voice fields).
+        return { false, HDAW::samplerStateJson(r.getSamplerState(ti, si)) };
     }
     return makeError(-32601, "unknown read method: " + m);
 }

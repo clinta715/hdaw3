@@ -18,6 +18,10 @@ need one, STOP and report back to the orchestrator instead.
 ## Procedure
 1. **Ingest**: `add_library {name, path, type}` per source pack (type: audio|patch|midi),
    then `scan_library {id}`. Poll until scanning completes; never assume scan state.
+   Registry note: externally-written registry entries survive an engine restart —
+   `saveRegistry` merges the on-disk registry (in-memory entries win for ids the
+   manager owns; unknown on-disk ids are kept and adopted) — but MCP `add_library`
+   remains the front door while an engine may run (09-25 handoff §4b).
    **Hardware VA patch libraries**: the synthesizer bank libraries are decoded offline
    by the timbre-lib pipelines (the *orchestrator* runs them - your surface is MCP-only):
    `je8086_patch.py` (JP-8080 -> `<bank>.je8086.json` plus an exploded per-patch tree),

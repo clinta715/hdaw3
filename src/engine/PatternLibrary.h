@@ -16,6 +16,12 @@ struct PatternPreset {
     juce::String style;          // Style enum name, e.g. "TrapHiHat"
     juce::String paramsJson;     // Base PhraseParams as JSON string
     juce::String styleParamsJson; // Style-specific params as JSON string
+    // B1: verbatim passthrough of imported top-level fields the library does
+    // not manage (notes, role, descriptor, ...) — a compact JSON object
+    // string. Keeps import→load/export round-tripping the FULL document
+    // instead of only the preset envelope (vector-bloom: 10/10 hollow
+    // imports). Empty when there is nothing to preserve.
+    juce::String extraJson;
 };
 
 struct PatternIndexEntry {

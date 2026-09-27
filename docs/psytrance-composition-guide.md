@@ -123,9 +123,12 @@ FileLibraryManager ingests them on scan: sidecar key overrides the native
 chroma guess; sidecar bpm fills in when the entry has none. `search_library`
 key/BPM filters therefore match analyzed pads/loops directly.
 
-- `lib_analyze.py --library` writes the registry via script — safe only when NO
-  engine is running (an engine restart clobbers externally-written registry
-  entries; while a DAW/MCP engine may run, register via MCP `add_library`).
+- `lib_analyze.py --library` writes the registry via script — externally-written
+  registry entries now SURVIVE an engine restart (2026-09-25: `saveRegistry`
+  merges the on-disk registry — in-memory entries win for ids the manager owns,
+  unknown on-disk ids are kept and adopted, `removedIds` sticky per process);
+  while a DAW/MCP engine may run, register via MCP `add_library` (the recommended
+  front door).
 - Sidecars land as `<file>.timbre.json` next to each sample; `scan_library`
   ingests them (async — poll `list_libraries` fileCount/lastScan for done).
 - Pack filenames inside `E:\samples` are reliable role hints; analysis CLAP
@@ -158,9 +161,10 @@ Gating on the filename would have put sour notes in the arrangement. Always run
 `add_notes`.
 
 - Only a fraction of `E:\samples` / `E:\midi` is HDAW-**registered**. Register per pack
-  via MCP `add_library {name, path, type}` then `scan_library {id}` — the script path
-  (`register_library.py`) is safe only when NO engine runs, because an engine restart
-  clobbers externally written registry entries.
+  via MCP `add_library {name, path, type}` then `scan_library {id}` — the recommended
+  front door while an engine may run. The script path (`register_library.py`) is also
+  safe now: external registry writes survive an engine restart (merge-on-save,
+  2026-09-25).
 - Several large roots are still **unexpanded archives**, invisible to `search_library`
   until extracted: `samples.7z` 20.9 GB, `_Drum Loops.7z` 20.5 GB,
   `_Percussion Loops.7z` 26.5 GB, `_real_leads.7z` 7.0 GB, `_FXs.7z` 2.5 GB,

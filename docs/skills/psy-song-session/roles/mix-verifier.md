@@ -6,7 +6,7 @@ You render and MEASURE. You are the quality gate between the Arranger and
 FADERS and master-bus processing only — never notes, clips, or instruments.
 
 ## Surface area
-`export_audio`, `cancel_export`, `mix_report`, `analyze_tuning`, `verify_part`,
+`export_audio`, `cancel_export`, `mix_report`, `mix_verdict`, `analyze_tuning`, `verify_part`,
 `auto_gain_to_target`, `set_track` (fader/volume ONLY), `set_master_fx_param`,
 `set_master_fx_bypassed`, `debug_audio`, `engine_info`, `get_project_summary`,
 `snapshot_project`, `list_tracks`, `save_project`, `load_project`,
@@ -23,7 +23,11 @@ them, bounce back to the orchestrator for an Arranger pass.
 2. **Render ASYNC (Bug-4 mitigation)**: `export_audio` WITHOUT `wait` (the bridge
    kills long-blocking calls) — then poll file size and `engine_info` `exporting`
    until done. Verify the WAV actually has audio (duration + nonzero peaks) before
-   consuming it — file size lies.
+   consuming it — file size lies. **Multi-CLAP budget**: several CLAP children
+   boot sequentially while the bake budget assumes ONE Virus warmup — raise
+   `HDAW_RENDER_WINDOW_WAIT_MS` / `HDAW_EXPORT_BAKE_TIMEOUT_MS` for multi-CLAP
+   renders or the export times out (defaults at the
+   `tests/unit/engine/psytrance_composition_stress_test.cpp` entry).
 3. **Measure**: `mix_report` with `fromPlan: true` when a song plan is set —
    the windows derive from engine state (bpm falls back to the plan's), so brief
    sections are never retyped; pass explicit sections only for planless projects.
@@ -65,9 +69,16 @@ them, bounce back to the orchestrator for an Arranger pass.
    main drop lacks audible clap/snare/backbeat, or if no lead/stab/motif appears
    by the brief's first drop. Route local identity failures to the owning layer;
    route section-arc failures to FX & Automation Engineer.
-8. **Verdict**: PASS/FAIL per gate with numbers; on FAIL, name the FIX and the
-   owning role (Layer Agent: local sound/pattern/modulation; FX Automation:
-   global movement choreography; Sound Selector: bad palette; Curator: bad source).
+8. **Release gate + verdict**: run `mix_verdict` on the FINAL render + the song
+   plan — it composes the gates above (audible, clipping, loudness drop-vs-build,
+   structure variety, modulation coverage, intro blast) into one release-readiness
+   verdict, and it is the last gate before PASS. Then PASS/FAIL per gate with
+   numbers; on FAIL, name the FIX and the owning role (Layer Agent: local
+   sound/pattern/modulation; FX Automation: global movement choreography; Sound
+   Selector: bad palette; Curator: bad source). The fix-first loop iterates on
+   WINDOWED renders against the running engine (`verify_part` with
+   `startBeat`/`endBeat`, short export windows) — full-length renders only at
+   gates and freeze-last.
 9. **Persist**: only after a PASS verdict — `save_project` to the variant file.
 
 ## Gates
@@ -79,3 +90,4 @@ them, bounce back to the orchestrator for an Arranger pass.
       unmarked >8-bar hat-only or bass+hat-only spans, audible backbeat in drops,
       lead/stab/motif present by first drop.
 - [ ] Verdict + next action, bounded to 3 re-render loops.
+- [ ] `mix_verdict` (final render + plan) passes before PASS.

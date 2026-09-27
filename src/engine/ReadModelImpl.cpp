@@ -629,6 +629,7 @@ SamplerStateSnapshot ReadModelImpl::getSamplerState(int trackIndex, int slotInde
         return snap;
 
     snap.sampleFile = slotTree.getProperty("sampleFile", "").toString().toStdString();
+    snap.hasSampleFile = !snap.sampleFile.empty(); // B3: property-only health signal
     snap.mode = slotTree.getProperty("mode", "classic").toString().toStdString();
     snap.rootNote = static_cast<int>(slotTree.getProperty("rootNote", 60));
     snap.transpose = static_cast<int>(slotTree.getProperty("transpose", 0));

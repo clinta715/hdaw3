@@ -2,8 +2,80 @@
 #include "PatternLibrary.h"
 #include <juce_core/juce_core.h>
 #include <algorithm>
+#include <memory>
 
 namespace HDAW {
+
+namespace {
+
+// ── B1: full-document round-trip helpers ──
+// Top-level keys PatternLibrary manages itself; everything else in an
+// imported or stored document (notes, role, descriptor, ...) travels
+// verbatim through PatternPreset::extraJson so import→load/export
+// round-trips the FULL document (the vector-bloom session got hollow
+// envelopes: 10/10 imports lost notes/role/descriptor).
+constexpr const char* kManagedKeys[] = {
+    "version", "name", "description", "category", "author",
+    "createdAt", "style", "tags", "params", "styleParams"
+};
+
+// Serialize the unmanaged top-level properties of `obj` as a compact JSON
+// object string; empty when there is nothing to preserve.
+juce::String serializeExtraProperties(const juce::DynamicObject* obj)
+{
+    if (obj == nullptr)
+        return {};
+    // Refcounted owner — NOT unique_ptr: the var below also references the
+    // clone, so a unique_ptr would double-free when the temporary var drops
+    // the last reference.
+    juce::DynamicObject::Ptr extra = obj->clone().release();
+    for (const char* k : kManagedKeys)
+        extra->removeProperty(juce::Identifier(k));
+    const juce::String text = juce::JSON::toString(juce::var(extra.get()), false);
+    return (text == "{}") ? juce::String() : text;
+}
+
+// The ONE preset→JSON builder for save / import / export (three copies of
+// this envelope construction are how B1 drifted in the first place). Extras
+// go in FIRST — they never carry managed keys (serializeExtraProperties
+// strips them) — then every managed field overwrites, so managed wins by
+// construction.
+juce::DynamicObject::Ptr buildOutputObject(const PatternPreset& preset)
+{
+    std::unique_ptr<juce::DynamicObject> base;
+    if (preset.extraJson.isNotEmpty())
+    {
+        auto parsed = juce::JSON::parse(preset.extraJson);
+        if (auto* parsedObj = parsed.getDynamicObject())
+            base = parsedObj->clone();
+    }
+    if (base == nullptr)
+        base = std::make_unique<juce::DynamicObject>();
+    juce::DynamicObject::Ptr obj(base.release());
+
+    obj->setProperty("version", preset.version);
+    obj->setProperty("name", preset.name);
+    obj->setProperty("description", preset.description);
+    obj->setProperty("category", preset.category);
+    obj->setProperty("author", preset.author);
+    obj->setProperty("createdAt", preset.createdAt);
+    obj->setProperty("style", preset.style);
+
+    juce::Array<juce::var> tagsArr;
+    for (const auto& tag : preset.tags)
+        tagsArr.add(tag);
+    obj->setProperty("tags", tagsArr);
+
+    if (preset.paramsJson.isNotEmpty())
+        obj->setProperty("params", juce::JSON::parse(preset.paramsJson));
+
+    if (preset.styleParamsJson.isNotEmpty())
+        obj->setProperty("styleParams", juce::JSON::parse(preset.styleParamsJson));
+
+    return obj;
+}
+
+} // namespace
 
 PatternLibrary::PatternLibrary(const juce::File& patternsRoot)
     : root(patternsRoot)
@@ -44,31 +116,7 @@ bool PatternLibrary::savePattern(const PatternPreset& preset, juce::String& outE
 
     juce::File file = categoryDir.getChildFile(sanitized + ".json");
 
-    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
-    obj->setProperty("version", preset.version);
-    obj->setProperty("name", preset.name);
-    obj->setProperty("description", preset.description);
-    obj->setProperty("category", preset.category);
-    obj->setProperty("author", preset.author);
-    obj->setProperty("createdAt", preset.createdAt);
-    obj->setProperty("style", preset.style);
-
-    juce::Array<juce::var> tagsArr;
-    for (const auto& tag : preset.tags)
-        tagsArr.add(tag);
-    obj->setProperty("tags", tagsArr);
-
-    if (preset.paramsJson.isNotEmpty())
-    {
-        auto paramsJson = juce::JSON::parse(preset.paramsJson);
-        obj->setProperty("params", paramsJson);
-    }
-
-    if (preset.styleParamsJson.isNotEmpty())
-    {
-        auto styleParamsJson = juce::JSON::parse(preset.styleParamsJson);
-        obj->setProperty("styleParams", styleParamsJson);
-    }
+    juce::DynamicObject::Ptr obj = buildOutputObject(preset);
 
     juce::String jsonText = juce::JSON::toString(obj.get(), true);
     if (!file.replaceWithText(jsonText))
@@ -151,6 +199,8 @@ bool PatternLibrary::loadPattern(const juce::String& id, PatternPreset& outPrese
     outPreset.styleParamsJson = obj->hasProperty("styleParams")
         ? juce::JSON::toString(obj->getProperty("styleParams"), true)
         : juce::String();
+
+    outPreset.extraJson = serializeExtraProperties(obj);
 
     return true;
 }
@@ -268,6 +318,10 @@ bool PatternLibrary::importPattern(const juce::String& jsonString, juce::String&
         ? juce::JSON::toString(obj->getProperty("styleParams"), true)
         : juce::String();
 
+    // B1: preserve unmanaged top-level fields (notes/role/descriptor/...)
+    // verbatim — import used to store only the preset envelope.
+    preset.extraJson = serializeExtraProperties(obj);
+
     if (!validatePreset(preset, outError))
         return false;
 
@@ -298,25 +352,7 @@ bool PatternLibrary::importPattern(const juce::String& jsonString, juce::String&
         sanitized = file.getFileNameWithoutExtension();
     }
 
-    juce::DynamicObject::Ptr cleanObj = new juce::DynamicObject();
-    cleanObj->setProperty("version", preset.version);
-    cleanObj->setProperty("name", preset.name);
-    cleanObj->setProperty("description", preset.description);
-    cleanObj->setProperty("category", preset.category);
-    cleanObj->setProperty("author", preset.author);
-    cleanObj->setProperty("createdAt", preset.createdAt);
-    cleanObj->setProperty("style", preset.style);
-
-    juce::Array<juce::var> tagsArr;
-    for (const auto& tag : preset.tags)
-        tagsArr.add(tag);
-    cleanObj->setProperty("tags", tagsArr);
-
-    if (preset.paramsJson.isNotEmpty())
-        cleanObj->setProperty("params", juce::JSON::parse(preset.paramsJson));
-
-    if (preset.styleParamsJson.isNotEmpty())
-        cleanObj->setProperty("styleParams", juce::JSON::parse(preset.styleParamsJson));
+    juce::DynamicObject::Ptr cleanObj = buildOutputObject(preset);
 
     juce::String cleanJson = juce::JSON::toString(cleanObj.get(), true);
     if (!file.replaceWithText(cleanJson))
@@ -348,25 +384,7 @@ bool PatternLibrary::exportPattern(const juce::String& id, juce::String& outJson
     if (!loadPattern(id, preset, outError))
         return false;
 
-    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
-    obj->setProperty("version", preset.version);
-    obj->setProperty("name", preset.name);
-    obj->setProperty("description", preset.description);
-    obj->setProperty("category", preset.category);
-    obj->setProperty("author", preset.author);
-    obj->setProperty("createdAt", preset.createdAt);
-    obj->setProperty("style", preset.style);
-
-    juce::Array<juce::var> tagsArr;
-    for (const auto& tag : preset.tags)
-        tagsArr.add(tag);
-    obj->setProperty("tags", tagsArr);
-
-    if (preset.paramsJson.isNotEmpty())
-        obj->setProperty("params", juce::JSON::parse(preset.paramsJson));
-
-    if (preset.styleParamsJson.isNotEmpty())
-        obj->setProperty("styleParams", juce::JSON::parse(preset.styleParamsJson));
+    juce::DynamicObject::Ptr obj = buildOutputObject(preset);
 
     outJson = juce::JSON::toString(obj.get(), true);
     return true;

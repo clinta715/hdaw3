@@ -519,4 +519,67 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     offline copy. Pinned by
     `ExportVolumeBypass.VolumeAutomationOverridesTreeFader` /
     `ExportVolumeBypass.MultiExportRereadsLiveTree`.
+33. **A per-slot loop must not clear a SHARED buffer — and property-only health
+    reads (`hasSound`) can mask a no-sound state.** In an FX chain with two or
+    more `sampler` slots, every sampler slot called `buffer.clear()` on the
+    shared chain buffer before `SamplerEngine::render()` (which is itself
+    clear-then-voice-add), so each sampler slot erased all earlier slots' audio
+    — only the LAST sampler slot survived. A later sampler with zero in-range
+    notes wiped the chain to exact silence. Discovered via the psy-song-session
+    vector-bloom build: a 2-slot hats chain (closed KR 42-45, open KR 46-49)
+    with only pitch-42 notes rendered silent. Fix (2026-09-26,
+    `src/engine/TrackFXSlot.h` + `src/engine/Track.cpp`): chain-level
+    accumulate — the FIRST engaged sampler keeps the legacy replace path
+    verbatim (single-sampler chains byte-identical), every LATER engaged sampler
+    preserves the running sum across `render()`'s clear (PREPARE-time scratch
+    `samplerPreserve_`) and adds its voices on top in chain order; bypassed
+    slots early-return as before. Zero new realtime-unsafe ops
+    (`copyFrom`/`addFrom` arithmetic only). Risk check (hdaw-guard graph gate):
+    TrackFXSlot is God Node #5 (165 edges, community TrackFXSlot) and Track is
+    God Node #9 (136, community Track) — both directly modified; blast confined
+    to the sampler branch + the chain loop (other ActiveTypes byte-identical;
+    export and live share the same `Track::processBlock`). Secondary finding,
+    fixed the same day: `sampler_get_state.hasSound` was property-only
+    (non-empty sampleFile string), so a slot with no decoded sound read "has
+    sound". Now `hasSound` is the LIVE `currentSound()` check and
+    `hasSampleFile` the property-only companion, emitted by the ONE shared
+    shaper `src/common/SamplerStateJson.h` on the MCP tool and both RPC
+    routes (`GuiFuncTest.SamplerGetStateHasSoundIsLiveNotPropertyOnly`,
+    `FrontendServer.SamplerGetStateLiveHasSoundPlusHasSampleFile`). **Rules:** (a) when a per-slot loop shares one buffer, the first
+    contributor replaces and later ones accumulate — never let a slot clear a
+    buffer it does not own; (b) a health read taken from a property alone can
+    mask the real state. Pinned by `MultiSamplerChain.*`
+    (`tests/unit/engine/sampler_key_range_test.cpp`) — 4 deterministic cases
+    through the real `Track::processBlock` chain loop (first-slot-only audible,
+    last-slot-only audible, both sum in chain order, none silent); full sampler
+    batch 40/40
+    (`MultiSamplerChain.*:SamplerKeyRange.*:SamplerFxSlot.*:SamplerEngine.*:SamplerVoice.*:SamplerSound.*:AudioPoolDedup.*`).
+34. **An accepted-arg-dropped key is a silent no-op — every parse shape must
+    parse every key.** `automation_preset` accepts two request shapes
+    (top-level window, or `sections[]`). The sections parse read
+    `startValue`/`endValue` (with top-level fallback) but never
+    `cycles`/`midPoint` — neither per-section nor as fallback — so a
+    sections-form sine `{cycles:6}` silently became the len/4 default (24
+    cycles over the 96-beat breakdown) and the pad-filter section collapsed to
+    near-silence (−88.6% RMS; the earlier `cycles:4` attempt via the
+    top-level form worked, which pointed the hunt at a generator that was in
+    fact healthy — simulation proved the pure math spans 0..1 for every cycle
+    count; the drop lived in the parse). Fix (2026-09-26,
+    `src/common/AutomationPresetRequest.h`): per-section cycles/midPoint +
+    the same top-level fallback startValue/endValue already had; tool schema +
+    description updated. Pinned by
+    `AddFxParityTest.SectionsFormCyclesReachThePlanOnBothSurfaces` (exactly 6
+    rising 0.9-crossings on BOTH surfaces) and
+    `Automation.SinePresetCyclesSpanAllCycleCounts` (cycles 1..8 → exactly
+    `cycles` crossings, full span). **Rules:** (a) a request with multiple
+    shapes must parse every key in every shape — test one key per shape; (b) a
+    success payload (`pointsAdded`) cannot prove an argument landed — assert
+    the OBSERVABLE effect (here, the written lane's oscillation count); (c)
+    the same silent-loss class hollowed `import_pattern` (three hand-rolled
+    preset-serialization copies; PatternPreset carried only the envelope, so
+    notes/role/descriptor were dropped) — fixed the same day with a verbatim
+    `extraJson` passthrough + ONE builder for save/import/export
+    (`PatternLibraryTest.ImportExportRoundTripsPayload`); the pattern load
+    paths now share `src/common/PatternPresetJson.h` (the RPC copy had also
+    lost category/author/createdAt).
 

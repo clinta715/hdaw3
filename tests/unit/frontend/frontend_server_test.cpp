@@ -1168,6 +1168,110 @@ TEST(FrontendServer, SamplerRpcFamily) {
     client.close();
     s.tearDown();
 }
+
+// B3: sampler.getState's hasSound must be the LIVE decoded-sound check and
+// hasSampleFile the property-only signal — the pair that unmasks a
+// staged-but-silent slot (lesson 33). Negative leg: a garbage file passes the
+// existence check, never decodes. Positive leg: once the audio thread adopts
+// the staged sound (transport.play with track volume 0 keeps output silent),
+// hasSound flips true while hasSampleFile stays true.
+TEST(FrontendServer, SamplerGetStateLiveHasSoundPlusHasSampleFile) {
+    EngineAndServer s;
+    s.setUp();
+    seedTrack(s.engine);
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject addParams{ { "trackIndex", 0 }, { "fxType", "sampler" } };
+    auto addResp = client.call(1, "project.addFxSlot", addParams);
+    ASSERT_FALSE(addResp.contains("error"));
+    auto readResp = client.call(2, "read.getFxSlots", QJsonObject{ { "trackIndex", 0 } });
+    ASSERT_FALSE(readResp.contains("error"));
+    int slot = -1;
+    for (const auto& v : readResp.value("result").toArray()) {
+        auto o = v.toObject();
+        if (o.value("fxType").toString() == "sampler") {
+            slot = o.value("slotIndex").toInt(-1);
+            break;
+        }
+    }
+    ASSERT_GE(slot, 0) << "sampler slot not found";
+    s.engine.drainPendingRoutingRebuild();
+
+    // Negative leg: garbage bytes — staged property, never a decoded sound.
+    auto garbage = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("hdaw_b3_rpc_garbage.wav");
+    garbage.replaceWithText("not audio at all");
+    auto setGarbage = client.call(3, "sampler.setSample",
+        QJsonObject{ { "trackIndex", 0 }, { "slotIndex", slot },
+                     { "filePath", garbage.getFullPathName().toStdString().c_str() } });
+    ASSERT_FALSE(setGarbage.contains("error"));
+    s.engine.drainPendingRoutingRebuild();
+    auto negResp = client.call(4, "sampler.getState",
+        QJsonObject{ { "trackIndex", 0 }, { "slotIndex", slot } });
+    ASSERT_FALSE(negResp.contains("error"));
+    const auto negState = negResp.value("result").toObject();
+    EXPECT_TRUE(negState.value("hasSampleFile").toBool());
+    EXPECT_FALSE(negState.value("hasSound").toBool())
+        << "property-only hasSound masks a staged-but-silent slot (lesson 33)";
+
+    // Positive leg: a real WAV; hasSound flips once the sound is adopted.
+    const int len = 8000;
+    const double sr = 44100.0;
+    auto validFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("hdaw_b3_rpc_valid.wav");
+    validFile.deleteFile();
+    {
+        juce::WavAudioFormat wav;
+        auto* fileOut = new juce::FileOutputStream(validFile);
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            wav.createWriterFor(fileOut, sr, 1, 16, {}, 0));
+        if (writer == nullptr) delete fileOut;
+        ASSERT_NE(writer, nullptr);
+        juce::AudioBuffer<float> data(1, len);
+        for (int i = 0; i < len; ++i)
+            data.setSample(0, i, static_cast<float>(i) / static_cast<float>(len));
+        writer->writeFromAudioSampleBuffer(data, 0, len);
+        writer->flush();
+    }
+    auto setValid = client.call(5, "sampler.setSample",
+        QJsonObject{ { "trackIndex", 0 }, { "slotIndex", slot },
+                     { "filePath", validFile.getFullPathName().toStdString().c_str() } });
+    ASSERT_FALSE(setValid.contains("error"));
+
+    client.call(6, "project.setTrackVolume",
+                QJsonObject{ { "trackId", 0 }, { "volume", 0.0 } });
+    auto playResp = client.call(7, "transport.play");
+    ASSERT_FALSE(playResp.contains("error"));
+
+    auto* proc = s.engine.getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    auto* track = proc->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto& chain = track->getFXChain();
+    ASSERT_GT(static_cast<int>(chain.size()), slot);
+    auto* sampler = chain[slot] ? chain[slot]->samplerEngineForTest() : nullptr;
+    ASSERT_NE(sampler, nullptr);
+    auto deadline = QDateTime::currentMSecsSinceEpoch() + 3000;
+    while (sampler->currentSound() == nullptr && QDateTime::currentMSecsSinceEpoch() < deadline)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    ASSERT_NE(sampler->currentSound(), nullptr)
+        << "audio thread never adopted the staged sampler sound";
+
+    auto posResp = client.call(8, "sampler.getState",
+        QJsonObject{ { "trackIndex", 0 }, { "slotIndex", slot } });
+    ASSERT_FALSE(posResp.contains("error"));
+    const auto posState = posResp.value("result").toObject();
+    EXPECT_TRUE(posState.value("hasSound").toBool());
+    EXPECT_TRUE(posState.value("hasSampleFile").toBool());
+
+    client.call(9, "transport.stop");
+    garbage.deleteFile();
+    validFile.deleteFile();
+    client.close();
+    s.tearDown();
+}
 // Kill-switch: with HDAW_FORCE_FULL_SYNC armed, a change that would normally
 // broadcast an incremental delta (a pure clip add) is routed to a fullSync
 // instead, so the delta path can be disabled in the field if drift surfaces.

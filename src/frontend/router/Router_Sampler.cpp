@@ -2,6 +2,7 @@
 #include "RouterHelpers.h"
 
 #include "../../engine/AudioEngine.h"
+#include "../../common/SamplerStateJson.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -111,36 +112,11 @@ DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJso
         if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
             || !requireInt(o, "slotIndex", si, nullptr))
             return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
-        auto s = engine.getReadModel().getSamplerState(ti, si);
-        QJsonObject obj;
-        obj["sampleFile"] = QString::fromStdString(s.sampleFile);
-        obj["mode"] = QString::fromStdString(s.mode);
-        obj["rootNote"] = s.rootNote;
-        obj["transpose"] = s.transpose;
-        obj["mono"] = s.mono;
-        obj["playReverse"] = s.playReverse;
-        QJsonObject env;
-        env["attack"] = static_cast<double>(s.attack);
-        env["hold"] = static_cast<double>(s.hold);
-        env["decay"] = static_cast<double>(s.decay);
-        env["sustain"] = static_cast<double>(s.sustain);
-        env["release"] = static_cast<double>(s.release);
-        obj["envelope"] = env;
-        obj["sampleStart"] = static_cast<double>(s.sampleStart);
-        obj["sampleEnd"] = static_cast<double>(s.sampleEnd);
-        obj["glide"] = static_cast<double>(s.glide);
-        obj["hasSound"] = s.hasSound;
-        obj["activeVoices"] = s.activeVoices;
-        obj["sliceMode"] = QString::fromStdString(s.sliceMode);
-        obj["sliceGrid"] = static_cast<double>(s.sliceGrid);
-        obj["sliceSensitivity"] = static_cast<double>(s.sliceSensitivity);
-        QJsonArray slicePoints;
-        for (float p : s.slicePoints)
-            slicePoints.append(static_cast<double>(p));
-        obj["slicePoints"] = slicePoints;
-        obj["keyRangeLow"] = s.keyRangeLow;
-        obj["keyRangeHigh"] = s.keyRangeHigh;
-        return { false, obj };
+        // B3: ONE shared payload shaper (common/SamplerStateJson.h) so this
+        // route, read.getSamplerState and the MCP sampler_get_state emit the
+        // identical object by construction.
+        return { false,
+                 HDAW::samplerStateJson(engine.getReadModel().getSamplerState(ti, si)) };
     }
     if (m == "setKeyRange") {
         int ti, si, keyLow, keyHigh; DispatchResult err;

@@ -125,6 +125,13 @@ graphify-out/
 .opencode/opencode.json
 .opencode/plugins/
 
+# Agent skill-discovery root: a junction to docs/skills, so harnesses that never
+# scan docs/skills (DSH looks only at .agents/skills, .dsh/skills, ~/.agents,
+# ~/.dsh) see every skill and its sibling resources without duplication.
+# Never recurse into it — a recursive delete or ACL reset follows the junction
+# into the canonical files. Regenerable plumbing, not shared project state.
+.agents/
+
 # Build/test log scratch
 build_output*.txt
 test_output*.txt

@@ -221,7 +221,9 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
                 {"end",        QJsonObject{{"type","number"}}},
                 {"preset",     QJsonObject{{"type","string"}}},
                 {"startValue", QJsonObject{{"type","number"}}},
-                {"endValue",   QJsonObject{{"type","number"}}}}},
+                {"endValue",   QJsonObject{{"type","number"}}},
+                {"cycles",     QJsonObject{{"type","number"}}},
+                {"midPoint",   QJsonObject{{"type","number"}}}}},
             {"required", QJsonArray{"start","end"}}};
         QJsonObject sectionsSchema{{"type","array"}, {"items", sectionItem}};
         QJsonObject laneSchema{{"oneOf", QJsonArray{
@@ -243,7 +245,7 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
                 "normalized 0..1 (converted exactly like generate_automation_envelope; density is "
                 "a 0.25-beat grid). The lane must already exist — create it with add_automation_lane "
                 "first; built-in lanes like \"Volume\" work by name. With sections, each section's "
-                "preset/startValue/endValue override the top-level ones; without sections, preset + "
+                "preset/startValue/endValue/cycles/midPoint override the top-level ones; without sections, preset + "
                 "start + end form the single window. clear=true removes existing points inside each "
                 "window before writing. seed 0 = non-deterministic (default 12345 = reproducible). "
                 "The lane is enabled after this call unless enable=false.");

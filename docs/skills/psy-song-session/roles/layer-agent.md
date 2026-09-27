@@ -47,7 +47,10 @@ wait: false}` + `poll_job`. Paths MUST be absolute (cwd-relative exports
 silently write nothing — smoke run 2026-09-11). For PERCUSSION layers also:
 `verify_part` each EXISTING percussion track solo BEFORE writing — a sampler
 whose keyRange doesn't cover the written note pitch renders silent (real bug
-caught on Neon Mycelium layer 3: clap keyRange 42-42 vs pitch-60 notes).
+caught on Neon Mycelium layer 3: clap keyRange 42-42 vs pitch-60 notes). **Iterate windowed**: pass-level checks
+go through `verify_part` with `startBeat`/`endBeat` (or short export windows)
+against the running engine; the full cumulative render stays at handoff —
+full-length renders only at gates (09-25 §4f + 09-26 §4 trap 5).
 
 **G2 — Register budget.** Read `get_cells` + `list_notes` across the EXISTING
 melodic layers; count the parts whose occupied register (note min..max)
@@ -86,7 +89,10 @@ measured. Never fix the mix by editing someone else's layer.
 - **Melodic:** ONE high part allowed per song (your lead, ≤ MIDI 88 effective).
   Prefer a transpose MIDI FX (`add_midi_fx`) over note editing when lowering a
   register — reversible and atomic. Add the stacked basis (octave-down + 7th +
-  octave-up) ONLY if the part is filtered.
+  octave-up) ONLY if the part is filtered. A sustained layer that ends a
+  breakdown must ring INTO the drop edge — a held note covering the decay window
+  (e.g. a held tonic at the second-to-last phrase, length reaching the drop
+  boundary); reverb room/wet automation is NOT the fix (09-26 §2 + §4c).
 - **Percussion:** build a VARIED bed — offbeat hats, backbeat clap, your role
   on the down beat, ghost notes via `set_note_chance` / `set_note_velocities`.
   A mono straight 4x4 with a single hat loop is a FAIL for a percussion layer.

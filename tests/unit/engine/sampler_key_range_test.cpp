@@ -167,3 +167,174 @@ TEST(SamplerKeyRange, RebuildRestoresKeyRange)
     EXPECT_EQ(snap.keyRangeLow, 48);
     EXPECT_EQ(snap.keyRangeHigh, 72);
 }
+
+// ── Multi-sampler chain SUM (2026-09-26 regression) ─────────────────────────
+// Pre-fix each sampler slot called buffer.clear() on the SHARED chain buffer
+// (TrackFXSlot::process sampler branch), so every slot ERASED the earlier
+// slots' audio and only the LAST sampler survived — a later slot with zero
+// in-range notes rendered the whole chain exact silence. These tests render a
+// real 2-slot key-ranged chain through Track::processBlock (the same path live
+// playback AND the export bake use) and pin the four cases on the OUTPUT.
+
+namespace {
+
+// Deterministic sine with an explicit root note, so a slot playing its own
+// root renders at rate 1.0 — BOTH slots then produce the identical waveform
+// and the both-slots sum is exactly 2x the single-slot render (clean math).
+static std::shared_ptr<const HDAW::SamplerSound> makeRootedSine(int rootNote)
+{
+    HDAW::SamplerSound::Builder b;
+    b.numChannels = 1; b.length = 44100; b.nativeSampleRate = 44100.0;
+    b.rootNote = rootNote;
+    b.sampleStart = 0.0; b.sampleEnd = 1.0;
+    b.data[0] = std::make_unique<float[]>(44100);
+    for (int i = 0; i < 44100; ++i)
+        b.data[0][i] = static_cast<float>(std::sin(6.2831853 * 441.0 * i / 44100.0));
+    return b.build();
+}
+
+float renderedRms(const juce::AudioBuffer<float>& b)
+{
+    double acc = 0.0;
+    for (int ch = 0; ch < b.getNumChannels(); ++ch)
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            const double s = b.getSample(ch, i);
+            acc += s * s;
+        }
+    const int n = b.getNumChannels() * b.getNumSamples();
+    return n > 0 ? static_cast<float>(std::sqrt(acc / n)) : 0.0f;
+}
+
+float renderedPeak(const juce::AudioBuffer<float>& b)
+{
+    float peak = 0.0f;
+    for (int ch = 0; ch < b.getNumChannels(); ++ch)
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            peak = juce::jmax(peak, std::abs(b.getSample(ch, i)));
+    return peak;
+}
+
+class MultiSamplerChain : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        engine.initialize();
+        auto& cmds = engine.getProjectCommands();
+        engine.drainPendingRoutingRebuild();
+
+        // THREE identical 2-slot chains on three tracks, so one fixture can
+        // render the combined and the single-slot cases on independent
+        // sampler voices (voices persist across processBlock calls).
+        for (int t = 0; t < 3; ++t)
+        {
+            trackIds[t] = cmds.addTrack("MultiSamplerChain", -1, -1, 0);
+            ASSERT_GE(trackIds[t], 0);
+            cmds.addFxSlot(trackIds[t], std::string("sampler"), -1, std::string());
+            cmds.addFxSlot(trackIds[t], std::string("sampler"), -1, std::string());
+            engine.drainPendingRoutingRebuild();
+
+            // Slot 0 answers notes 42-45, slot 1 answers notes 46-49
+            // (the hats-chain shape from the bug report).
+            cmds.setSamplerKeyRange(trackIds[t], 0, 42, 45);
+            cmds.setSamplerKeyRange(trackIds[t], 1, 46, 49);
+            engine.drainPendingRoutingRebuild();
+        }
+
+        auto* proc = engine.getMainProcessor();
+        ASSERT_NE(proc, nullptr);
+        for (int t = 0; t < 3; ++t)
+        {
+            tracks[t] = proc->getTrack(trackIds[t]);
+            ASSERT_NE(tracks[t], nullptr);
+            auto& chain = tracks[t]->getFXChain();
+            ASSERT_EQ(chain.size(), 2u);
+            for (size_t s = 0; s < chain.size(); ++s)
+            {
+                ASSERT_NE(chain[s], nullptr);
+                // No RNG anywhere: slot 0 plays its root (42), slot 1 its
+                // root (47) — identical waveforms, deterministic output.
+                chain[s]->setSamplerSoundForTest(makeRootedSine(s == 0 ? 42 : 47));
+            }
+        }
+    }
+
+    // Render 2048 samples through the real chain loop in DEVICE-SIZED chunks
+    // (slots are prepared for at most getBlockSize() per call). The notes
+    // (sentinel -1 = none) fire at sample 0 of the first chunk only.
+    juce::AudioBuffer<float> renderBlock(int trackIndex, int noteA, int noteB = -1)
+    {
+        auto* t = tracks[trackIndex];
+        constexpr int kTotal = 2048;
+        const int kChunk = juce::jmax(1, t->getBlockSize());
+        juce::AudioBuffer<float> out(2, kTotal);
+        out.clear();
+        for (int start = 0; start < kTotal; start += kChunk)
+        {
+            const int count = juce::jmin(kChunk, kTotal - start);
+            juce::AudioBuffer<float> block(2, count);
+            block.clear();
+            juce::MidiBuffer midi;
+            if (start == 0)
+            {
+                if (noteA >= 0) midi.addEvent(juce::MidiMessage::noteOn(1, noteA, 0.5f), 0);
+                if (noteB >= 0) midi.addEvent(juce::MidiMessage::noteOn(1, noteB, 0.5f), 0);
+            }
+            t->processBlock(block, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                out.copyFrom(ch, start, block, ch, 0, count);
+        }
+        return out;
+    }
+
+    AudioEngine engine;
+    int trackIds[3] = {};
+    HDAW::Track* tracks[3] = {};
+};
+
+} // namespace
+
+// (a) Notes trigger ONLY slot 0 → non-silent output. Pre-fix slot 1 wiped it
+// to exact silence (the closed-hats symptom).
+TEST_F(MultiSamplerChain, FirstSlotOnlyRendersAudibleOutput)
+{
+    const auto out = renderBlock(0, 42);
+    EXPECT_GT(renderedRms(out), 1e-4f) << "slot 0's audio must survive the later sampler slot";
+    EXPECT_LT(renderedPeak(out), 1.0f);
+}
+
+// (b) Notes trigger ONLY the last slot → non-silent. This worked pre-fix —
+// pin it so the fix cannot regress it.
+TEST_F(MultiSamplerChain, LastSlotOnlyRendersAudibleOutput)
+{
+    const auto out = renderBlock(0, 47);
+    EXPECT_GT(renderedRms(out), 1e-4f) << "the last sampler slot must still render alone";
+    EXPECT_LT(renderedPeak(out), 1.0f);
+}
+
+// (c) Notes trigger BOTH slots → their outputs SUM in chain order: louder
+// than either alone (exactly 2x here — identical waveforms) and no more than
+// the plain sum (nothing renders twice).
+TEST_F(MultiSamplerChain, BothSlotsSumInChainOrder)
+{
+    const auto both = renderBlock(0, 42, 47);
+    const auto onlyFirst = renderBlock(1, 42);
+    const auto onlyLast = renderBlock(2, 47);
+    const float rBoth = renderedRms(both);
+    const float rFirst = renderedRms(onlyFirst);
+    const float rLast = renderedRms(onlyLast);
+    ASSERT_GT(rFirst, 1e-4f);
+    ASSERT_GT(rLast, 1e-4f);
+    EXPECT_GT(rBoth, (rFirst + rLast) * 0.9f)
+        << "both slots' energy must be present in the sum (pre-fix kept only the last)";
+    EXPECT_LT(rBoth, (rFirst + rLast) * 1.1f)
+        << "the sum must not exceed the plain sum of the two slots";
+}
+
+// (d) Notes trigger NEITHER slot → silence (unchanged).
+TEST_F(MultiSamplerChain, NoTriggeredNotesRenderSilence)
+{
+    const auto out = renderBlock(0, -1, -1);
+    EXPECT_LT(renderedRms(out), 1e-6f) << "an untriggered chain must stay silent";
+}

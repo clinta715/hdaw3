@@ -56,7 +56,10 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    band (lead ~400 Hz–3 kHz per `analyze_tuning` targets), not fader gain alone.
 6. **Audition everything**: `audition_plugin {trackIndex, slotIndex}` must report
    audible (solo peak > -80 dBFS). NOTE the argument is `trackIndex`, not `trackId`
-   — the engine rejects `trackId` with "unknown property". Silent-at-default presets
+   — the engine rejects `trackId` with "unknown property". This stays true after
+   the stable-ref work: `audition_plugin` and `verify_part` are `trackIndex`-only,
+   while the fx/automation/plugin tool families take the optional stable `trackID`
+   (prefer it when you hold a stable id). Silent-at-default presets
    are rejected, not shipped. Sampler roles: `sampler_set_sample` + `sampler_get_state` to verify.
    **After any `sub_synth_import_sysex`, read the slot back and set `Cutoff`**: a
    Virus patch with a closed filter imports at 20 Hz and renders near-silent while
@@ -88,7 +91,11 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
 
 ## Hardware VA suite
 See `../reference.md` for per-engine loader status. Use `select_patch` for
-variety, `apply_preset` to load, `tone_verity` to confirm.
+variety, `apply_preset` to load, `tone_verity` to confirm. **Fake/test plugin
+ids are NOT free**: a name containing `osirus`/`ostirus`/`virus` trips the
+child's name-based warmup (~12 s) and its hang-watchdog minidump even when the
+plugin does not exist (the intentional Virus warmup itself no longer trips the
+1 s-hang minidump — 09-26 handoff §2).
 
 ## Gates (all must hold)
 - [ ] Every role in the brief has an unmuted track with a working instrument.

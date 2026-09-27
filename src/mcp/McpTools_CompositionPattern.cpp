@@ -17,6 +17,7 @@
 #include "../engine/ProjectBackup.h"
 #include "../common/KeyConflict.h"
 #include "../common/ScaleNote.h"
+#include "../common/PatternPresetJson.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -287,26 +288,12 @@ s.registerTool({"load_pattern",
             juce::String err;
             if (!patternLib.loadPattern(a.value("id").toString().toStdString(), preset, err))
                 return McpToolResult::text(jstr(err), true);
-            QJsonObject obj{
-                {"name",     jstr(preset.name)},
-                {"style",    jstr(preset.style)},
-                {"category", jstr(preset.category)},
-                {"description", jstr(preset.description)},
-                {"author",   jstr(preset.author)},
-                {"createdAt", jstr(preset.createdAt)}
-            };
-            if (!preset.paramsJson.isEmpty()) {
-                auto doc = QJsonDocument::fromJson(preset.paramsJson.toRawUTF8());
-                if (doc.isObject()) obj["params"] = doc.object();
-            }
-            if (!preset.styleParamsJson.isEmpty()) {
-                auto doc = QJsonDocument::fromJson(preset.styleParamsJson.toRawUTF8());
-                if (doc.isObject()) obj["styleParams"] = doc.object();
-            }
-            QJsonArray tags;
-            for (const auto& t : preset.tags) tags.append(jstr(t));
-            obj["tags"] = tags;
-            return McpToolResult::text(QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+            // B1: ONE shared shaper (common/PatternPresetJson.h) — the RPC
+            // twin (composition.loadPattern) emits the same object, and
+            // preserved import extras (notes/role/descriptor) surface here.
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(HDAW::patternPresetToJson(preset))
+                    .toJson(QJsonDocument::Compact)));
         }});
 
 s.registerTool({"delete_pattern",

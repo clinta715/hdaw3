@@ -17,6 +17,7 @@
 #include "../../common/AudioGraphCommands.h"
 #include "../../common/PlacePatternsRequest.h"
 #include "../../common/ScaleNote.h"
+#include "../../common/PatternPresetJson.h"
 #include "../../engine/PatternLibrary.h"
 #include "../../engine/MidiAnalyzer.h"
 
@@ -444,16 +445,12 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         juce::String err;
         if (!patternLib.loadPattern(juce::String(id), preset, err))
             return makeError(-32603, QString::fromStdString(err.toStdString()));
-        QJsonArray tagsArr;
-        for (const auto& t : preset.tags) tagsArr.append(QString::fromStdString(t.toStdString()));
-        return { false, QJsonObject{
-            { "name", QString::fromStdString(preset.name.toStdString()) },
-            { "style", QString::fromStdString(preset.style.toStdString()) },
-            { "params", QString::fromStdString(preset.paramsJson.toStdString()) },
-            { "styleParams", QString::fromStdString(preset.styleParamsJson.toStdString()) },
-            { "description", QString::fromStdString(preset.description.toStdString()) },
-            { "tags", tagsArr }
-        } };
+        // B1: ONE shared shaper (common/PatternPresetJson.h) — the same
+        // object the MCP load_pattern emits; preserved import extras
+        // (notes/role/descriptor) surface here too. The hand-rolled copy
+        // dropped category/author/createdAt (surface drift) and stringified
+        // params/styleParams.
+        return { false, HDAW::patternPresetToJson(preset) };
     }
 
     if (m == "deletePattern") {

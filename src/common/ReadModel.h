@@ -260,6 +260,10 @@ struct SamplerStateSnapshot {
     float sampleEnd = 1.0f;
     float glide = 0.0f;
     bool hasSound = false;
+    // B3: property-only companion — non-empty sampleFile, independent of
+    // decode success. hasSound is the LIVE decoded check (currentSound());
+    // the pair unmasks a "staged but silent" slot (lesson 33).
+    bool hasSampleFile = false;
     int activeVoices = 0;
     std::string sliceMode = "transient";
     double sliceGrid = 0.25;

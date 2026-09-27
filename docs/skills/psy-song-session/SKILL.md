@@ -1,3 +1,8 @@
+---
+name: psy-song-session
+description: Orchestrates a psytrance song as six scoped subagent roles (Curator, Pattern Researcher, Sound Selector, Arranger, FX & Automation Engineer, Mix Verifier) plus optional layer-agents, around an immutable Song Brief and machine-verifiable gates. Use for end-to-end multi-role song sessions, layered final-track builds, and engine-safe role dispatch.
+---
+
 # psy-song-session: agentic song-writing pipeline
 
 Orchestrates a psytrance song as six scoped subagent roles (Curator, Pattern
@@ -87,7 +92,7 @@ capture the shape, then rebuilt layer by layer when the track goes final.
 
 A handoff WITHOUT gate evidence is rejected. Evidence = machine output:
 `tone_verity`, `param_verity`, `param_verity_corpus`, `mix_report`,
-`audit_modulation_coverage`, `audit_song_structure`. Prose is not evidence.
+`mix_verdict`, `audit_modulation_coverage`, `audit_song_structure`. Prose is not evidence.
 Render variance (~±2% RMS for emulated synths): use spectral properties for
 A/B; the probe's baseline spread is the trust threshold.
 

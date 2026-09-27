@@ -659,13 +659,23 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                 buffer.clear();
         }
 
+        // Multi-sampler SUM (2026-09-26): the FIRST engaged sampler in the
+        // chain replaces the buffer exactly as a lone sampler always has;
+        // every later sampler ADDS its voices on top (TrackFXSlot keeps the
+        // running sum across SamplerEngine::render's clear). A bypassed
+        // sampler early-returns without rendering, so it never claims the
+        // "first" replace slot and never silences the samplers before it.
+        bool samplerSounded = false;
         for (const auto& slot : fxChain)
         {
             if (slot)
             {
                 slot->setTempo(bpm);
+                slot->setSamplerAccumulate(samplerSounded);
                 slot->applyAutomation();
                 slot->process(buffer, midiMessages);
+                if (slot->isEngagedSampler())
+                    samplerSounded = true;
             }
         }
         stateLock.exit();

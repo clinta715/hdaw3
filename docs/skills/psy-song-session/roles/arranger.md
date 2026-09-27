@@ -12,7 +12,7 @@ standard is the psytrance composition guide
 ## Surface area
 Plan/cell tools (preferred path):
 `set_song_plan`, `get_song_plan`, `apply_song_brief`, `export_song_brief`,
-`set_cell`, `get_cells`, `fill_cells`, `reroll`, `remove_cell`,
+`set_cell`, `set_cells`, `get_cells`, `fill_cells`, `reroll`, `remove_cell`,
 `get_clip_provenance`, `save_section_template`, `load_section_template`.
 Legacy/one-shot writers below remain for sketch work:
 `get_project_summary`, `list_tracks`, `list_clips`, `get_clip`, `list_notes`,
@@ -46,9 +46,11 @@ library ingestion or preset choice (Sound Selector) except to READ the palette.
    becomes engine state and sections materialize as typed arranger regions, each
    a named address for every later mutation; `get_song_plan` reads the resolved
    beat windows back. Never hand-retype section windows.
-3. **Fill with cells, then fix**: bind content recipes to (section, role) cells —
-   `set_cell` per role from the brief's palette map and the Pattern Researcher's
-   stock (`phrase`/`rhythm`/`pattern`/`harvest`/`break` sources; omit seed for
+3. **Fill with cells, then fix**: batch-bind content recipes to the
+   (section, role) matrix with `set_cells` (ONE undo unit, one round trip — a
+   9-role × 10-section track is 55 cells; per-role `set_cell` is the one-at-a-time
+   form) from the brief's palette map and the Pattern Researcher's stock
+   (`phrase`/`rhythm`/`pattern`/`harvest`/`break` sources; omit seed for
    plan-derived variation; omit euclidean rhythm params for seeded per-song
    variation, or set `corpusRole` (kick/snare/clap/hats/perc/...) for a
    corpus-bank groove) — then ONE `fill_cells {mode:"all"}` (one undo unit;
@@ -59,7 +61,15 @@ library ingestion or preset choice (Sound Selector) except to READ the palette.
    throwaway sketches only — structure coming from them is not pinned.
 4. **Fill layer windows completely**: generators under-fill tail windows
    (hats/snare/arp stopping early is the known artifact) — tile each track's own
-   last-4-bars pattern to its window end; the pad's chained window clips are the model.
+   last-4-bars pattern to its window end; the pad's chained window clips are the
+   model. **Breakdown tail (PsyDub fix)**: a breakdown's melodic tail must ring
+   INTO the drop edge — a held note covering the decay window (e.g. a held tonic
+   at the second-to-last phrase, length reaching the drop boundary). Reverb
+   room/wet automation is NOT the fix; the fix is arrangement-level (tail window
+   gate in the PsyDub work: beats 636-640 needed > -40 dBFS). **Iterate windowed**:
+   compose/fix through WINDOWED renders against the running engine (`verify_part`
+   with `startBeat`/`endBeat`, short preview windows); full-length renders only at
+   gates and freeze-last — `test/gfreeze` is a regression pin, not a sketchpad.
 5. **Melodic voices that get filtered need a basis**: chords, or
    note + octave-down + 7th-up + octave-up (one `add_notes` batch, stack voices
    quieter than the lead line). A 16 ms single-line blip under an open filter is

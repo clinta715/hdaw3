@@ -154,3 +154,117 @@ TEST_F(PatternLibraryTest, SanitizedNameTruncates)
     ASSERT_EQ(files.size(), 1u);
     EXPECT_LE(files[0].getFileNameWithoutExtension().length(), 64);
 }
+
+// ── B1 regression: import→export must round-trip the FULL document ──
+// The import contract (docs/skills/psy-song-session/roles/pattern-researcher.md)
+// carries notes/role/descriptor at top level; import used to store only the
+// preset envelope, so export_pattern came back hollow (vector-bloom session:
+// 10/10 hollow on 2026-09-26).
+TEST_F(PatternLibraryTest, ImportExportRoundTripsPayload)
+{
+    const juce::String json = R"({
+        "version": 1,
+        "name": "VB Kick",
+        "style": "FourFloorKick",
+        "role": "kick",
+        "descriptor": {"bpm": 140, "key": "G minor", "bars": 1, "noteCount": 4},
+        "notes": [
+            {"pitch": 36, "startBeat": 0.0, "durationBeats": 0.5, "velocity": 112},
+            {"pitch": 36, "startBeat": 1.0, "durationBeats": 0.5, "velocity": 96}
+        ]
+    })";
+
+    juce::String id, error;
+    ASSERT_TRUE(lib->importPattern(json, id, error)) << error.toStdString();
+
+    juce::String exported, exportErr;
+    ASSERT_TRUE(lib->exportPattern(id, exported, exportErr)) << exportErr.toStdString();
+
+    // Named local — the var owns the parsed object; a temporary would free it
+    // at the end of the statement and leave `obj` dangling.
+    const auto parsed = juce::JSON::parse(exported);
+    auto* obj = parsed.getDynamicObject();
+    ASSERT_NE(obj, nullptr);
+    // Managed envelope fields survive...
+    EXPECT_EQ(obj->getProperty("name").toString(), juce::String("VB Kick"));
+    EXPECT_EQ(obj->getProperty("style").toString(), juce::String("FourFloorKick"));
+    EXPECT_EQ(static_cast<int>(obj->getProperty("version")), 1);
+    // ...and the unmanaged payload round-trips.
+    EXPECT_EQ(obj->getProperty("role").toString(), juce::String("kick"));
+
+    auto* notes = obj->getProperty("notes").getArray();
+    ASSERT_NE(notes, nullptr);
+    EXPECT_EQ(notes->size(), 2);
+    auto* firstNote = (*notes)[0].getDynamicObject();
+    ASSERT_NE(firstNote, nullptr);
+    EXPECT_EQ(static_cast<int>(firstNote->getProperty("pitch")), 36);
+    EXPECT_NEAR(static_cast<double>(firstNote->getProperty("startBeat")), 0.0, 1e-9);
+    EXPECT_EQ(static_cast<int>(firstNote->getProperty("velocity")), 112);
+
+    auto* descriptor = obj->getProperty("descriptor").getDynamicObject();
+    ASSERT_NE(descriptor, nullptr);
+    EXPECT_EQ(static_cast<int>(descriptor->getProperty("bpm")), 140);
+    EXPECT_EQ(descriptor->getProperty("key").toString(), juce::String("G minor"));
+}
+
+TEST_F(PatternLibraryTest, LoadPatternPreservesExtras)
+{
+    const juce::String json = R"({
+        "version": 1,
+        "name": "VB Bass",
+        "style": "RollingBass",
+        "role": "bass",
+        "notes": [{"pitch": 33, "startBeat": 0.0, "durationBeats": 0.25, "velocity": 100}]
+    })";
+
+    juce::String id, error;
+    ASSERT_TRUE(lib->importPattern(json, id, error)) << error.toStdString();
+
+    HDAW::PatternPreset loaded;
+    ASSERT_TRUE(lib->loadPattern(id, loaded, error)) << error.toStdString();
+    EXPECT_EQ(loaded.name, "VB Bass");
+    EXPECT_FALSE(loaded.extraJson.isEmpty());
+
+    const auto parsedExtras = juce::JSON::parse(loaded.extraJson);
+    auto* extras = parsedExtras.getDynamicObject();
+    ASSERT_NE(extras, nullptr);
+    EXPECT_EQ(extras->getProperty("role").toString(), juce::String("bass"));
+    auto* notes = extras->getProperty("notes").getArray();
+    ASSERT_NE(notes, nullptr);
+    EXPECT_EQ(notes->size(), 1);
+}
+
+TEST_F(PatternLibraryTest, ImportNameCollisionKeepsPayload)
+{
+    const juce::String json = R"({
+        "version": 1, "name": "Same Name", "style": "S", "role": "perc",
+        "notes": [{"pitch": 40, "startBeat": 0.0, "durationBeats": 0.5, "velocity": 90}]
+    })";
+
+    juce::String idA, idB, error;
+    ASSERT_TRUE(lib->importPattern(json, idA, error)) << error.toStdString();
+    ASSERT_TRUE(lib->importPattern(json, idB, error)) << error.toStdString();
+    EXPECT_NE(idA, idB) << "the collision rename must still register the second id";
+
+    juce::String exported, exportErr;
+    ASSERT_TRUE(lib->exportPattern(idB, exported, exportErr)) << exportErr.toStdString();
+    const auto parsedB = juce::JSON::parse(exported);
+    auto* obj = parsedB.getDynamicObject();
+    ASSERT_NE(obj, nullptr);
+    EXPECT_EQ(obj->getProperty("role").toString(), juce::String("perc"));
+    auto* notes = obj->getProperty("notes").getArray();
+    ASSERT_NE(notes, nullptr);
+    EXPECT_EQ(notes->size(), 1);
+}
+
+TEST_F(PatternLibraryTest, SaveWithoutExtrasOmitsThem)
+{
+    juce::String error;
+    ASSERT_TRUE(lib->savePattern(makeTestPreset("No Extras"), error)) << error.toStdString();
+
+    juce::String exported, exportErr;
+    ASSERT_TRUE(lib->exportPattern("user/test/No Extras", exported, exportErr))
+        << exportErr.toStdString();
+    // A save-built preset has no extras: no phantom payload keys appear.
+    EXPECT_FALSE(exported.contains("\"notes\""));
+}

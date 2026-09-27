@@ -15,6 +15,7 @@
 #include "../engine/TrackFXSlot.h"
 #include "../engine/Dx7SysexImport.h"
 #include "../engine/MidiFx.h"
+#include "../common/SamplerStateJson.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -78,59 +79,16 @@ s.registerTool({"sampler_get_state",
             if (fxSlots[si].fxType != "sampler")
                 return McpToolResult::text("slot is not a sampler", true);
 
-            auto& model = e->getProjectModel();
-            auto slotTree = model.getTrackListTree().getChild(ti)
-                .getChildWithName(IDs::FX_CHAIN).getChild(si);
-            if (!slotTree.isValid())
-                return McpToolResult::text("slot tree not found", true);
-
-            QJsonObject state;
-            state["sampleFile"] = QString::fromStdString(slotTree.getProperty("sampleFile", "").toString().toStdString());
-            state["mode"] = QString::fromStdString(slotTree.getProperty("mode", "classic").toString().toStdString());
-            state["rootNote"] = static_cast<int>(slotTree.getProperty("rootNote", 60));
-            state["transpose"] = static_cast<int>(slotTree.getProperty("transpose", 0));
-            state["mono"] = static_cast<bool>(slotTree.getProperty("mono", false));
-            state["playReverse"] = static_cast<bool>(slotTree.getProperty("playReverse", false));
-
-            QJsonObject env;
-            env["attack"] = static_cast<double>(slotTree.getProperty("param_0", 0.005));
-            env["decay"] = static_cast<double>(slotTree.getProperty("param_1", 0.1));
-            env["sustain"] = static_cast<double>(slotTree.getProperty("param_2", 0.9));
-            env["release"] = static_cast<double>(slotTree.getProperty("param_3", 0.1));
-            state["envelope"] = env;
-
-            auto* proc = e->getMainProcessor();
-            if (proc)
-            {
-                auto* track = proc->getTrack(ti);
-                if (track)
-                {
-                    auto& chain = track->getFXChain();
-                    if (si < static_cast<int>(chain.size()) && chain[si])
-                    {
-                        auto* engine = chain[si]->samplerEngineForTest();
-                        if (engine)
-                            state["activeVoices"] = engine->activeVoiceCount();
-                    }
-                }
-            }
-
-            state["hasSound"] = !slotTree.getProperty("sampleFile", "").toString().isEmpty();
-            state["sliceMode"] = QString::fromStdString(slotTree.getProperty("sliceMode", "transient").toString().toStdString());
-            state["sliceGrid"] = static_cast<double>(slotTree.getProperty("sliceGrid", 0.25));
-            state["sliceSensitivity"] = static_cast<double>(slotTree.getProperty("sliceSensitivity", 0.5));
-            QJsonArray slicePoints;
-            juce::StringArray sliceTokens = juce::StringArray::fromTokens(
-                slotTree.getProperty("slicePoints", "").toString(), ",", "");
-            for (const auto& tok : sliceTokens)
-                slicePoints.append(tok.trim().getDoubleValue());
-            state["slicePoints"] = slicePoints;
-
-            state["keyRangeLow"] = static_cast<int>(slotTree.getProperty("keyRangeLow", -1));
-            state["keyRangeHigh"] = static_cast<int>(slotTree.getProperty("keyRangeHigh", -1));
-
-            return McpToolResult::text(
-                QString::fromUtf8(QJsonDocument(state).toJson(QJsonDocument::Compact)));
+            // B3: the shared payload shaper (common/SamplerStateJson.h) reads
+            // the ReadModel snapshot — hasSound is the LIVE decoded-sound
+            // check (SamplerEngine::currentSound()), hasSampleFile the
+            // property-only signal. The old property-only read masked
+            // staged-but-silent slots (lesson 33) and had drifted from the
+            // RPC payloads.
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(HDAW::samplerStateJson(
+                                  e->getReadModel().getSamplerState(ti, si)))
+                    .toJson(QJsonDocument::Compact)));
         }});
 
 s.registerTool({"set_sampler_param",

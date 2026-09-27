@@ -107,6 +107,19 @@ inline bool parseAutomationPresetRequest(const QJsonObject& args,
                 w.endValue = obj.value("endValue").toDouble();
             else if (args.contains("endValue"))
                 w.endValue = args.value("endValue").toDouble();
+            // B2: cycles/midPoint get the same per-section + top-level
+            // fallback treatment as startValue/endValue. The sections parse
+            // used to drop both silently, so a sections-form sine
+            // {cycles:6} fell back to the len/4 default (24 cycles on the
+            // vector-bloom breakdown window) and audibly collapsed.
+            if (obj.contains("cycles"))
+                w.cycles = obj.value("cycles").toDouble();
+            else if (args.contains("cycles"))
+                w.cycles = args.value("cycles").toDouble();
+            if (obj.contains("midPoint"))
+                w.midPoint = obj.value("midPoint").toDouble();
+            else if (args.contains("midPoint"))
+                w.midPoint = args.value("midPoint").toDouble();
             if (! (w.end > w.start))
             {
                 error = QString("bad window: end (%1) must be > start (%2)")

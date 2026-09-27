@@ -1348,4 +1348,37 @@ TEST_F(GuiFuncTest, SamplerSetModeRoundTrip) {
     EXPECT_EQ(state.value("mode").toString().toStdString(), "slice");
 }
 
+// B3 regression (silent-hats incident, lesson 33): hasSound must be the LIVE
+// decoded-sound check, not the sampleFile property. A staged file that never
+// decodes (garbage bytes pass the tool's existence check) must report
+// hasSound=false + hasSampleFile=true — property-only semantics reported
+// hasSound=true here, which read "green" during staging while the render was
+// silent.
+TEST_F(GuiFuncTest, SamplerGetStateHasSoundIsLiveNotPropertyOnly) {
+    auto add = call("add_fx", {{"trackId", 0}, {"fxType", "sampler"}});
+    ASSERT_FALSE(isError(add)) << text(add).toStdString();
+    QString addText = text(add);
+    int slot = addText.mid(addText.indexOf('=') + 1).toInt();
+    engine->drainPendingRoutingRebuild();
+
+    auto garbage = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("hdaw_b3_mcp_garbage_sample.wav");
+    garbage.replaceWithText("this is not audio data");
+
+    auto set = call("sampler_set_sample",
+                    {{"trackId", 0}, {"slotIndex", slot},
+                     {"filePath", garbage.getFullPathName().toStdString().c_str()}});
+    EXPECT_FALSE(isError(set)) << text(set).toStdString();
+    engine->drainPendingRoutingRebuild();
+
+    auto state = QJsonDocument::fromJson(
+        callText("sampler_get_state", {{"trackId", 0}, {"slotIndex", slot}}).toString().toUtf8()).object();
+    EXPECT_TRUE(state.value("hasSampleFile").toBool())
+        << "a non-empty sampleFile must set hasSampleFile";
+    EXPECT_FALSE(state.value("hasSound").toBool())
+        << "property-only hasSound masks a staged-but-silent slot (lesson 33)";
+
+    garbage.deleteFile();
+}
+
 } // namespace

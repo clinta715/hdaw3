@@ -36,8 +36,15 @@ arrangement/track/FX/automation mutation, `export_audio`.
 
 ## import_pattern JSON contract (learned from the validator)
 `{ "version": 1, "name": "...", "style": "...", "role": "...", "notes": [{pitch, startBeat, durationBeats, velocity}] }`
-— version/name/style/notes are required; notes are pattern-local beats. Pattern
-library starts EMPTY (no factory patterns). place_patterns consumes
+— version/name/style/notes are required; notes are pattern-local beats. The
+pattern library is NOT empty at session start: prior sessions leave stock
+(2026-09-26 evidence: pre-existing entries incl. verified 4x4 kick bars and
+offbeat-hat bars), so run `list_patterns` first and reuse what fits before
+mining. NOTE (2026-09-26, fixed same day): `import_pattern` used to report
+success yet store a hollow envelope — `export_pattern` after import returned no
+notes/role/descriptor (round-trip regression-tested: `PatternLibraryTest.ImportExportRoundTripsPayload`); verifying every import with `export_pattern` is still cheap insurance;
+and `save_pattern` remains the path for generation params. An engine
+issue was filed. place_patterns consumes
 analyze_midi_file `patterns[]` verbatim (per-placement octave/velocityScale/reverse
 transforms — no key transpose; conform material at the source). The same
 `patterns[]` note shape is what `harvest` cell sources take (cell
