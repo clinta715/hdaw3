@@ -125,6 +125,12 @@ safe). It shards small suites whole and large ones per test. Run it with
   made `./build/hdaw_tests.exe --gtest_filter='VerifyPart.*'` fail 9/13 with
   `export failed: Could not create output file`; with the in-harness redirect and NO external
   `TMP`/`TEMP` override the same filter is **13/13 in 11.4 s** (`.tmp_*` is gitignored).
+- **The build scripts self-redirect `TMP`/`TEMP` (2026-09-27, B8).** `dsh-build-fast.bat` and
+  `build-fast.bat` point the toolchain's temp at `<repo>/.tmp_build_scratch/lnk` (gitignored via
+  the `.tmp_*` glob; `HDAW_BUILD_TMP` overrides) before the MSVC bootstrap, so `link.exe`'s
+  `lnk{GUID}.tmp` writes never hit a denied real `%TEMP%` — the LNK1104 class hit twice on
+  2026-09-26 (09-26 trap 4) is closed at the source. `setlocal` scopes the override to the
+  script's process tree; the resolved scratch dir is printed once per run.
 - **The harness also isolates the engine's other user-scope roots (widened 2026-09-25).**
   `tests/test_main.cpp` now probes two more roots at the top of `main` (same ordering rule:
   before `ScopedComInit`, `MessagePumpThread::start()` and `QCoreApplication`) and redirects the

@@ -38,6 +38,19 @@ set "BUILD_DIR=%ROOT%build"
 if "%COMPILER%"=="clang" set "BUILD_DIR=%ROOT%build-clang"
 if not "%HDAW_BUILD_DIR%"=="" set "BUILD_DIR=%HDAW_BUILD_DIR%"
 
+REM -- Build scratch TMP/TEMP (B8) --------------------------------------------
+REM The low-integrity sandbox denies the real %TEMP% and link.exe dies on
+REM lnk{GUID}.tmp (LNK1104). Point the toolchain's temp at a workspace scratch
+REM (gitignored via the .tmp_* glob) so ninja, cl and link all inherit a
+REM writable TMP. setlocal scopes this to this script's process tree; an
+REM inherited HDAW_BUILD_TMP overrides the default location.
+set "BUILD_SCRATCH=%ROOT%.tmp_build_scratch\lnk"
+if not "%HDAW_BUILD_TMP%"=="" set "BUILD_SCRATCH=%HDAW_BUILD_TMP%"
+if not exist "%BUILD_SCRATCH%" mkdir "%BUILD_SCRATCH%" 2>nul
+set "TMP=%BUILD_SCRATCH%"
+set "TEMP=%BUILD_SCRATCH%"
+echo [dsh-build] build scratch TMP/TEMP: %BUILD_SCRATCH%
+
 REM -- WSL time-sync hook (no-op on native Windows) ---------------------------
 call "%ROOT%scripts\time-sync.cmd" 2>nul
 
