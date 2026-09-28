@@ -16,7 +16,7 @@ void AudioEngineCommands::setClipCcPoints(int clipId, int controllerNumber,
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
 
-    um.beginNewTransaction("setClipCcPoints");
+    transactionBoundary("setClipCcPoints");
 
     auto ccList = clip.getChildWithName(IDs::CC_LIST);
     if (!ccList.isValid())
@@ -87,7 +87,7 @@ void AudioEngineCommands::generateAutomationEnvelope(int trackIndex, const std::
     auto generated = HDAW::EnvelopeGenerator::generate(genParams);
 
     auto& um = engine_.getProjectModel().getUndoManager();
-    um.beginNewTransaction("generate envelope");
+    transactionBoundary("generate envelope");
 
     auto pointList = autoLane.getChildWithName(IDs::POINT_LIST);
     if (pointList.isValid())
@@ -155,7 +155,7 @@ void AudioEngineCommands::generateClipGainEnvelope(int clipId,
         scaledPoints.emplace_back(t, v * 2.0);
 
     auto& um = engine_.getProjectModel().getUndoManager();
-    um.beginNewTransaction("generate clip gain envelope");
+    transactionBoundary("generate clip gain envelope");
 
     // Remove existing GAIN_ENVELOPE child.
     auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);

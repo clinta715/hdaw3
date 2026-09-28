@@ -59,11 +59,15 @@ test.describe("Batch A: Flatten arranger & missing-file relink", () => {
       name: "Content",
     });
 
-    const regionId = await rpcCall<string>(page, "project.addArrangerRegion", {
-      name: "Verse",
-      startTime: 0,
-      duration: 4,
-    });
+    const { regionID: regionId } = await rpcCall<{ regionID: string; unit: string }>(
+      page,
+      "project.addArrangerRegion",
+      {
+        name: "Verse",
+        startTime: 0,
+        duration: 4,
+      },
+    );
     const chainId = await rpcCall<string>(page, "project.addArrangerChain", {
       name: "Test Chain",
     });

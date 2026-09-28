@@ -18,10 +18,10 @@ SPA or Electron shell. Feature history: `README.md`; per-version changes: git lo
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 32 lessons, full narratives** (one-line index below) |
+| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 38 lessons, full narratives** (one-line index below) |
 | [`docs/architecture.md`](docs/architecture.md) | Build details, key classes, GUI-engine decoupling, beats-vs-seconds |
 | [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread rules, hardening, plugin isolation, latency/quality |
-| [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | JUCE pitfalls (scan blacklisting, setProperty no-op, FX clamping) |
+| [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | JUCE pitfalls (scan blacklisting, setProperty no-op, FX clamping, the `small`/`rpcndr.h` include-order macro collision, lesson 35) |
 | [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md) | Frontend pitfalls (stale closures, optimistic placement) |
 | [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | Listener contract, delta-sync limits |
 | [`docs/testing-mcp.md`](docs/testing-mcp.md) | gtest suite + TransportLoopback + MCP architecture + environmental-failure/flake catalog |
@@ -142,6 +142,10 @@ downloaded), wired into the DSH profile's `cordis.patch.yml`, and checked with
 32. **An enabled Volume automation lane owns the parameter in the offline render** — audit isolation must use mute, not `setTrackVolume`.
 33. **A per-slot loop must not clear a SHARED chain buffer** — only the last sampler slot survived; first engaged sampler replaces, later ones accumulate (`samplerPreserve_`). Property-only health reads (`hasSound`) can mask a no-sound state.
 34. **An accepted-arg-dropped key is a silent no-op** — every parse shape must parse every key (`automation_preset` sections silently dropped `cycles`/`midPoint` → near-silent breakdown); assert the observable effect, not the success payload.
+35. **A Windows macro can collide with a JUCE enum name** — `rpcndr.h`'s `small`→`char` vs `BadgeIconType{small}`; a Qt-then-JUCE include order breaks the build. Split the piece: Qt-light header + JUCE-heavy `.cpp` (`src/common/BatchEnd.h`).
+36. **JUCE undo boundaries are often deliberately UNPAIRED** — batch atomicity is a FLAG + one choke point (`AudioEngineCommands::transactionBoundary`), never a depth counter.
+37. **A windowed render does not predict the full render** — measure the window OUT of a full render and promote its stats before gating (`buildWindowReportPayload`).
+38. **The tool boundary has a silent-acceptance class** — refuse unknown keys and non-integral numbers with shared bytes (`requireInt` truncation, unknown expectation keys, over-stated ledger aliases).
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 
@@ -166,8 +170,8 @@ exactly; give each route a twin test asserting the same failure on both surfaces
 Adding a tool requires `node tools/rpc_parity_map.mjs` — the ratchet gate fails
 otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
 
-**Parity ledger CLOSED (as of 2026-09-25): 307 tools / 411 methods / mapped 295 /
-mcp-only 12 / unresolved 0.** The route-addition recipe: one shared `src/common/`
+**Parity ledger CLOSED (as of 2026-09-28): 317 tools / 419 methods / mapped 303 /
+mcp-only 14 / unresolved 0.** The route-addition recipe: one shared `src/common/`
 shaper both surfaces call + a twin test asserting the same behaviour on both
 surfaces + `node tools/rpc_parity_map.mjs` regeneration — the ledger tracks
 names/routes only, so an argument-only change needs no regeneration but DOES
@@ -216,8 +220,18 @@ separate project and is no longer a delivery target.
 - **Modulation-first**: device's own matrix → onboard FX → HDAW automation/track
   LFO → HDAW internal FX → third-party plugin last.
 - **Verification-first**: `param_verity` (audibility), `tone_verity` (envelope/pitch/AM),
-  `mix_report {fromPlan:true}` (structure + loudness gates) — verdicts are
+  `mix_report {fromPlan:true}` (structure + loudness gates), `verify_window` (render
+  the whole project, gate ONE beat window's promoted stats), `render_and_verify`
+  (render + `mix_verdict`-identical verdict in one call) — verdicts are
   deterministic; never trust "it should work".
+- **Archaeology + batching**: `query_notes` / `query_clips` (interval-overlap
+  beat windows, absolute beats, clip-clamped spans); `set_notes_gain` /
+  `set_clips_edit` (batch, one undo unit); `begin_batch` / `end_batch` (long-lived
+  stdio session, one named undo unit); `tool_help` (one tool's exact `tools/list`
+  entry); `whoami` (engine + transport + session project + batch state).
+- **Time windows in either unit**: every window-taking tool/call accepts the `*Beat`
+  and `*Sec` spellings plus its own key — disagreeing spellings are refused
+  (`src/common/WindowUnitArgs.h`; `docs/testing-mcp.md` § "Time windows").
 
 ## Build
 
@@ -330,11 +344,19 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
 
 - **C++ engine (gtest):** `build/hdaw_tests.exe` (`build-fast.bat test`; `all` also
   builds `hdaw_plugin_host.exe` for the isolation suites). Filter:
-  `--gtest_filter=Suite.*`. **Authoritative baseline 2026-09-26: 287 suites /
-  2027 tests (0 DISABLED).** Canonical full run:
-  `powershell -NoProfile -File run-tests-sharded.ps1 -Shards 2` — 2027/2027
-  executed, **1988 passed, 39 skipped, 0 failures**, 27.1 min wall (every shard
-  `ran == intended`: 850/850, 855/855, 322/322). Fast tier: `run_fast_tests.bat`
+  `--gtest_filter=Suite.*`. **Authoritative baseline (last COMPLETE run) 2026-09-26: 287 suites /
+  2027 tests (0 DISABLED):** `powershell -NoProfile -File run-tests-sharded.ps1 -Shards 2` —
+  2027/2027 executed, **1988 passed, 39 skipped, 0 failures**, 27.1 min wall (every shard
+  `ran == intended`: 850/850, 855/855, 322/322). **Caveat — 2026-09-28 run INCOMPLETE (2128 tests /
+  296 suites):** shard 0 **957/957** and the serial bucket **323/323** complete, shard 1 passes
+  **562** tests and then the process dies inside `PsytranceComposition.PsyDubFiveMinutes`
+  (**1814 passed, 0 unique failures, 1 incomplete shard**). The same access violation reproduces on
+  a pristine HEAD `f1551e4` build (stashed working tree, reconfigured, rebuilt), so the crash
+  **predates** the 2026-09-28 work; its neighbours (`FullProductionV4`, `DarkForestV5`,
+  `PluginIsolation.*` 51/51) are green. **Pre-existing instability of that one test — root cause
+  unknown** (catalogued in [`docs/testing-mcp.md`](docs/testing-mcp.md)). It is a caveat,
+  NOT a baseline. Note `-ExecutionPolicy Bypass` is needed when invoking the runner from a script
+  host (the `.ps1` is unsigned). Fast tier: `run_fast_tests.bat`
   — the old ~3.3 min figure for it is stale (the tier is ~1900 tests at
   ~0.5-0.9 s each); use the shard runner for full-suite numbers. Every run is
   sandbox-safe because the test harness self-isolates: `tests/test_main.cpp`

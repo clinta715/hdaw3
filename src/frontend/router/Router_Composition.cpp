@@ -11,6 +11,8 @@
 #include "../../common/ProjectCommands.h"
 #include "../../common/SongPlanView.h"
 #include "../../common/ParamVerity.h"
+#include "../../common/VerifyWindowJson.h"
+#include "../../common/RenderToolArgs.h"
 #include "../../common/KeyConflict.h"
 #include "../../model/ProjectModel.h"
 #include "../../engine/SongStructureAudit.h"
@@ -78,12 +80,13 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
 
     if (m == "setSongPlan") {
         ProjectCommands::SongPlanData plan;
+        DispatchResult intErr;
         plan.bpm = optDouble(o, "bpm", 120.0, nullptr);
-        plan.keyRoot = optInt(o, "keyRoot", 0, nullptr);
-        plan.scaleMode = optInt(o, "scaleMode", 1, nullptr);
+        if (!optInt(o, "keyRoot", plan.keyRoot, 0, &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", plan.scaleMode, 1, &intErr)) return intErr;
         plan.style = optString(o, "style", "");
         plan.seed = (uint64_t) (long long) optDouble(o, "seed", 0.0, nullptr);
-        plan.totalBars = optInt(o, "totalBars", 0, nullptr);
+        if (!optInt(o, "totalBars", plan.totalBars, 0, &intErr)) return intErr;
         const auto secs = o.value("sections");
         if (!secs.isArray()) return makeError(-32602, "sections array required");
         for (const auto& sv : secs.toArray()) {
@@ -300,19 +303,20 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!requireInt(o, "trackId", trackId, nullptr)) return makeError(-32602, "trackId required");
         if (!requireInt(o, "clipId", clipId, nullptr)) return makeError(-32602, "clipId required");
         AudioEngineCommands::BreakPatternParams bp;
+        DispatchResult intErr;
         bp.trackIndex = trackId;
         bp.clipId = clipId;
-        bp.slotIndex = optInt(o, "slotIndex", 0, nullptr);
+        if (!optInt(o, "slotIndex", bp.slotIndex, 0, &intErr)) return intErr;
         BreakPatternGenerator::Style style;
         if (!BreakPatternGenerator::styleFromName(o.value("style").toString("amen").toStdString(), style))
             return makeError(-32602, "unknown break style");
         bp.style = style;
-        bp.bars = optInt(o, "bars", 8, nullptr);
-        bp.grid = optInt(o, "grid", 4, nullptr);
+        if (!optInt(o, "bars", bp.bars, 8, &intErr)) return intErr;
+        if (!optInt(o, "grid", bp.grid, 4, &intErr)) return intErr;
         bp.dropFirst = o.value("dropFirst").toBool(false);
         bp.ghostFills = o.value("ghostFills").toInt(style == BreakPatternGenerator::Style::JungleEdit ? 1 : 0);
-        bp.velocityMin = optInt(o, "velocityMin", 60, nullptr);
-        bp.velocityMax = optInt(o, "velocityMax", 100, nullptr);
+        if (!optInt(o, "velocityMin", bp.velocityMin, 60, &intErr)) return intErr;
+        if (!optInt(o, "velocityMax", bp.velocityMax, 100, &intErr)) return intErr;
         bp.seed = o.contains("seed")
             ? (uint64_t) (long long) o.value("seed").toVariant().toULongLong() : 12345;
         auto r = engine.getAudioEngineCommands().generateChoppedBreak(bp);
@@ -647,17 +651,18 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         else if (styleStr == "Layered")         style = PhraseGenerator::Layered;
 
         PhraseGenerator::PhraseParams pp;
+        DispatchResult intErr;
         pp.style = style;
         pp.lengthBeats = optDouble(o, "lengthBeats", 4.0, nullptr);
-        pp.density = optInt(o, "density", 8, nullptr);
+        if (!optInt(o, "density", pp.density, 8, &intErr)) return intErr;
         pp.noteDuration = optDouble(o, "noteDuration", 0.5, nullptr);
-        pp.scaleRoot = optInt(o, "scaleRoot", 0, nullptr);
-        pp.scaleMode = optInt(o, "scaleMode", 0, nullptr);
-        pp.lowNote = optInt(o, "lowNote", 48, nullptr);
-        pp.highNote = optInt(o, "highNote", 84, nullptr);
-        pp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
-        pp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
-        pp.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt(o, "scaleRoot", pp.scaleRoot, 0, &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", pp.scaleMode, 0, &intErr)) return intErr;
+        if (!optInt(o, "lowNote", pp.lowNote, 48, &intErr)) return intErr;
+        if (!optInt(o, "highNote", pp.highNote, 84, &intErr)) return intErr;
+        if (!optInt(o, "minVelocity", pp.minVelocity, 60, &intErr)) return intErr;
+        if (!optInt(o, "maxVelocity", pp.maxVelocity, 110, &intErr)) return intErr;
+        if (!optInt<uint64_t>(o, "seed", pp.seed, 0, &intErr)) return intErr;
 
         // Parse styleParams for new styles
         if (o.contains("styleParams")) {
@@ -752,19 +757,20 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             return makeError(-32602, "chordType required");
 
         PhraseGenerator::ChordParams cp;
+        DispatchResult intErr;
         cp.chordType = chordType;
-        cp.voicing = optInt(o, "voicing", 0, nullptr);
-        cp.inversion = optInt(o, "inversion", 0, nullptr);
+        if (!optInt(o, "voicing", cp.voicing, 0, &intErr)) return intErr;
+        if (!optInt(o, "inversion", cp.inversion, 0, &intErr)) return intErr;
         cp.arpeggiate = optBool(o, "arpeggiate", false, nullptr);
         cp.arpeggioRate = optDouble(o, "arpeggioRate", 0.125, nullptr);
         cp.durationBeats = optDouble(o, "durationBeats", 2.0, nullptr);
-        cp.scaleRoot = optInt(o, "scaleRoot", 0, nullptr);
-        cp.scaleMode = optInt(o, "scaleMode", 0, nullptr);
-        cp.lowNote = optInt(o, "lowNote", 48, nullptr);
-        cp.highNote = optInt(o, "highNote", 84, nullptr);
-        cp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
-        cp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
-        cp.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt(o, "scaleRoot", cp.scaleRoot, 0, &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", cp.scaleMode, 0, &intErr)) return intErr;
+        if (!optInt(o, "lowNote", cp.lowNote, 48, &intErr)) return intErr;
+        if (!optInt(o, "highNote", cp.highNote, 84, &intErr)) return intErr;
+        if (!optInt(o, "minVelocity", cp.minVelocity, 60, &intErr)) return intErr;
+        if (!optInt(o, "maxVelocity", cp.maxVelocity, 110, &intErr)) return intErr;
+        if (!optInt<uint64_t>(o, "seed", cp.seed, 0, &intErr)) return intErr;
 
         double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
         auto notes = PhraseGenerator::generateChord(rootPitch, cp);
@@ -781,19 +787,20 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             return makeError(-32602, "patternIndex required");
 
         PhraseGenerator::ProgressionParams prp;
+        DispatchResult intErr;
         prp.patternIndex = patternIndex;
-        prp.chordTypeOverride = optInt(o, "chordTypeOverride", -1, nullptr);
+        if (!optInt(o, "chordTypeOverride", prp.chordTypeOverride, -1, &intErr)) return intErr;
         prp.arpeggiate = optBool(o, "arpeggiate", false, nullptr);
         prp.arpeggioRate = optDouble(o, "arpeggioRate", 0.125, nullptr);
         prp.durationBeats = optDouble(o, "durationBeats", 2.0, nullptr);
         prp.beatsPerChord = optDouble(o, "beatsPerChord", 4.0, nullptr);
-        prp.scaleRoot = optInt(o, "scaleRoot", 0, nullptr);
-        prp.scaleMode = optInt(o, "scaleMode", 0, nullptr);
-        prp.lowNote = optInt(o, "lowNote", 48, nullptr);
-        prp.highNote = optInt(o, "highNote", 84, nullptr);
-        prp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
-        prp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
-        prp.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt(o, "scaleRoot", prp.scaleRoot, 0, &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", prp.scaleMode, 0, &intErr)) return intErr;
+        if (!optInt(o, "lowNote", prp.lowNote, 48, &intErr)) return intErr;
+        if (!optInt(o, "highNote", prp.highNote, 84, &intErr)) return intErr;
+        if (!optInt(o, "minVelocity", prp.minVelocity, 60, &intErr)) return intErr;
+        if (!optInt(o, "maxVelocity", prp.maxVelocity, 110, &intErr)) return intErr;
+        if (!optInt<uint64_t>(o, "seed", prp.seed, 0, &intErr)) return intErr;
 
         const auto& patterns = PhraseGenerator::getProgressionPatterns();
         if (patternIndex < 0 || patternIndex >= static_cast<int>(patterns.size()))
@@ -808,12 +815,13 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
 
     if (m == "generateArrangement") {
         HDAW::ArrangementParams ap;
-        ap.bars        = optInt(o, "bars", 32, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "bars", ap.bars, 32, &intErr)) return intErr;
         ap.bpm         = optDouble(o, "bpm", engine.getTransportManager().getBPM(), nullptr);
-        ap.scaleRoot   = optInt(o, "scaleRoot", engine.getProjectModel().getScaleRoot(), nullptr);
-        ap.scaleMode   = optInt(o, "scaleMode", engine.getProjectModel().getScaleMode(), nullptr);
-        ap.seed        = optInt<uint64_t>(o, "seed", 0, nullptr);
-        ap.style       = optInt(o, "style", 0, nullptr);
+        if (!optInt(o, "scaleRoot", ap.scaleRoot, engine.getProjectModel().getScaleRoot(), &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", ap.scaleMode, engine.getProjectModel().getScaleMode(), &intErr)) return intErr;
+        if (!optInt<uint64_t>(o, "seed", ap.seed, 0, &intErr)) return intErr;
+        if (!optInt(o, "style", ap.style, 0, &intErr)) return intErr;
         ap.complexity  = optDouble(o, "complexity", 0.5, nullptr);
         ap.swingPercent= optDouble(o, "swingPercent", 50.0, nullptr);
         ap.enableKick      = optBool(o, "enableKick", true, nullptr);
@@ -848,19 +856,20 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             return makeError(-32602, "trackIndex required");
 
         RhythmPatternGenerator::Params rp;
-        rp.grid        = optInt(o, "grid", 16, nullptr);
-        rp.bars        = optInt(o, "bars", 1, nullptr);
-        rp.pulseA      = optInt(o, "pulseA", 4, nullptr);
-        rp.pulseB      = optInt(o, "pulseB", 3, nullptr);
-        rp.rotationA   = optInt(o, "rotationA", 1, nullptr);
-        rp.rotationB   = optInt(o, "rotationB", 1, nullptr);
-        rp.pitchA      = optInt(o, "pitchA", 36, nullptr);
-        rp.pitchB      = optInt(o, "pitchB", 42, nullptr);
-        rp.velocityA   = optInt(o, "velocityA", 112, nullptr);
-        rp.velocityB   = optInt(o, "velocityB", 96, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "grid", rp.grid, 16, &intErr)) return intErr;
+        if (!optInt(o, "bars", rp.bars, 1, &intErr)) return intErr;
+        if (!optInt(o, "pulseA", rp.pulseA, 4, &intErr)) return intErr;
+        if (!optInt(o, "pulseB", rp.pulseB, 3, &intErr)) return intErr;
+        if (!optInt(o, "rotationA", rp.rotationA, 1, &intErr)) return intErr;
+        if (!optInt(o, "rotationB", rp.rotationB, 1, &intErr)) return intErr;
+        if (!optInt(o, "pitchA", rp.pitchA, 36, &intErr)) return intErr;
+        if (!optInt(o, "pitchB", rp.pitchB, 42, &intErr)) return intErr;
+        if (!optInt(o, "velocityA", rp.velocityA, 112, &intErr)) return intErr;
+        if (!optInt(o, "velocityB", rp.velocityB, 96, &intErr)) return intErr;
         rp.dsl         = optString(o, "dsl", "");
-        rp.dslPitch    = optInt(o, "dslPitch", 39, nullptr);
-        rp.dslVelocity = optInt(o, "dslVelocity", 104, nullptr);
+        if (!optInt(o, "dslPitch", rp.dslPitch, 39, &intErr)) return intErr;
+        if (!optInt(o, "dslVelocity", rp.dslVelocity, 104, &intErr)) return intErr;
 
         // Optional corpus phrase: either a specific phrase id or a role +
         // index (0-based). A phrase drives the DSL voice alone (pulses off).
@@ -868,10 +877,11 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         const std::string phraseRole = optString(o, "phraseRole", "");
         if (!phraseId.empty() || !phraseRole.empty())
         {
+            int phraseIndex = 0;
+            if (!optInt(o, "phraseIndex", phraseIndex, 0, &intErr)) return intErr;
             const bool ok = !phraseId.empty()
                 ? RhythmPatternGenerator::applyPhrase(rp, phraseId)
-                : RhythmPatternGenerator::applyPhraseByRole(rp, phraseRole,
-                                                            optInt(o, "phraseIndex", 0, nullptr));
+                : RhythmPatternGenerator::applyPhraseByRole(rp, phraseRole, phraseIndex);
             if (!ok)
                 return makeError(-32602, !phraseId.empty()
                     ? QString("unknown phrase id: ") + QString::fromStdString(phraseId)
@@ -916,20 +926,21 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             return makeError(-32602, "style required (or provide role)");
         p.pluginId      = optString(o, "pluginId", "");
         p.fxType        = optString(o, "fxType", "");   // internal instrument slot (default fm_synth)
-        p.programIndex  = optInt(o, "programIndex", -1, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "programIndex", p.programIndex, -1, &intErr)) return intErr;
         p.lengthBeats   = optDouble(o, "lengthBeats", 4.0, nullptr);
         p.placement     = optString(o, "placement", "region");
         p.startBeat     = optDouble(o, "startBeat", 0.0, nullptr);
-        p.count         = optInt(o, "count", 1, nullptr);
-        p.scaleRoot     = optInt(o, "scaleRoot", -1, nullptr);
-        p.scaleMode     = optInt(o, "scaleMode", -1, nullptr);
-        p.density       = optInt(o, "density", 8, nullptr);
+        if (!optInt(o, "count", p.count, 1, &intErr)) return intErr;
+        if (!optInt(o, "scaleRoot", p.scaleRoot, -1, &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", p.scaleMode, -1, &intErr)) return intErr;
+        if (!optInt(o, "density", p.density, 8, &intErr)) return intErr;
         p.noteDuration  = optDouble(o, "noteDuration", 0.5, nullptr);
-        p.lowNote       = optInt(o, "lowNote", 48, nullptr);
-        p.highNote      = optInt(o, "highNote", 84, nullptr);
-        p.minVelocity   = optInt(o, "minVelocity", 60, nullptr);
-        p.maxVelocity   = optInt(o, "maxVelocity", 110, nullptr);
-        p.seed          = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt(o, "lowNote", p.lowNote, 48, &intErr)) return intErr;
+        if (!optInt(o, "highNote", p.highNote, 84, &intErr)) return intErr;
+        if (!optInt(o, "minVelocity", p.minVelocity, 60, &intErr)) return intErr;
+        if (!optInt(o, "maxVelocity", p.maxVelocity, 110, &intErr)) return intErr;
+        if (!optInt<uint64_t>(o, "seed", p.seed, 0, &intErr)) return intErr;
         p.targetRms     = optFloat(o, "targetRms", 0.0f, nullptr);
         p.windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
         p.verify        = optBool(o, "verify", false, nullptr);
@@ -1056,22 +1067,23 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             const auto ev = evv.toObject();
             const std::string kind = ev.value("kind").toString().toStdString();
             ProjectCommands::FxMidiEvent e;
-            e.channel = optInt(ev, "channel", 1, nullptr);
+            DispatchResult intErr;
+            if (!optInt(ev, "channel", e.channel, 1, &intErr)) return intErr;
             if (kind == "programChange") {
                 e.kind = ProjectCommands::FxMidiEvent::Kind::ProgramChange;
-                e.data1 = optInt(ev, "program", 0, nullptr);
+                if (!optInt(ev, "program", e.data1, 0, &intErr)) return intErr;
             } else if (kind == "controlChange") {
                 e.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;
-                e.data1 = optInt(ev, "controller", 0, nullptr);
-                e.data2 = optInt(ev, "value", 0, nullptr);
+                if (!optInt(ev, "controller", e.data1, 0, &intErr)) return intErr;
+                if (!optInt(ev, "value", e.data2, 0, &intErr)) return intErr;
             } else if (kind == "noteOn") {
                 e.kind = ProjectCommands::FxMidiEvent::Kind::NoteOn;
-                e.data1 = optInt(ev, "pitch", 60, nullptr);
-                e.data2 = optInt(ev, "velocity", 100, nullptr);
+                if (!optInt(ev, "pitch", e.data1, 60, &intErr)) return intErr;
+                if (!optInt(ev, "velocity", e.data2, 100, &intErr)) return intErr;
             } else if (kind == "noteOff") {
                 e.kind = ProjectCommands::FxMidiEvent::Kind::NoteOff;
-                e.data1 = optInt(ev, "pitch", 60, nullptr);
-                e.data2 = optInt(ev, "velocity", 0, nullptr);
+                if (!optInt(ev, "pitch", e.data1, 60, &intErr)) return intErr;
+                if (!optInt(ev, "velocity", e.data2, 0, &intErr)) return intErr;
             } else if (kind == "sysEx") {
                 if (!ev.contains("bytes") || !ev.value("bytes").isArray())
                     return makeError(-32602, "sysEx event requires a bytes array");
@@ -1106,18 +1118,19 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         // usedLiveParamState reports whether that actually happened.
         ProjectCommands::AuditionParams p;
         p.pluginId      = optString(o, "pluginId", "");
-        p.programIndex  = optInt(o, "programIndex", -1, nullptr);
-        p.trackIndex    = optInt(o, "trackIndex", -1, nullptr);
-        p.slotIndex     = optInt(o, "slotIndex", 0, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "programIndex", p.programIndex, -1, &intErr)) return intErr;
+        if (!optInt(o, "trackIndex", p.trackIndex, -1, &intErr)) return intErr;
+        if (!optInt(o, "slotIndex", p.slotIndex, 0, &intErr)) return intErr;
         p.style         = optString(o, "style", "Arpeggio");
         p.lengthBeats   = optDouble(o, "lengthBeats", 4.0, nullptr);
-        p.density       = optInt(o, "density", 8, nullptr);
+        if (!optInt(o, "density", p.density, 8, &intErr)) return intErr;
         p.noteDuration  = optDouble(o, "noteDuration", 0.5, nullptr);
-        p.lowNote       = optInt(o, "lowNote", 48, nullptr);
-        p.highNote      = optInt(o, "highNote", 84, nullptr);
-        p.minVelocity   = optInt(o, "minVelocity", 60, nullptr);
-        p.maxVelocity   = optInt(o, "maxVelocity", 110, nullptr);
-        p.seed          = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt(o, "lowNote", p.lowNote, 48, &intErr)) return intErr;
+        if (!optInt(o, "highNote", p.highNote, 84, &intErr)) return intErr;
+        if (!optInt(o, "minVelocity", p.minVelocity, 60, &intErr)) return intErr;
+        if (!optInt(o, "maxVelocity", p.maxVelocity, 110, &intErr)) return intErr;
+        if (!optInt<uint64_t>(o, "seed", p.seed, 0, &intErr)) return intErr;
         p.windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
         p.keepTrack     = optBool(o, "keepTrack", false, nullptr);
         p.liveParamState = optBool(o, "liveParamState", false, nullptr);
@@ -1148,7 +1161,9 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         int trackIndex;
         if (!requireInt(o, "trackIndex", trackIndex, nullptr))
             return makeError(-32602, "trackIndex required");
-        const int slotIndex = optInt(o, "slotIndex", 0, nullptr);
+        DispatchResult intErr;
+        int slotIndex;
+        if (!optInt(o, "slotIndex", slotIndex, 0, &intErr)) return intErr;
         const bool hasName = o.contains("paramName") && !o.value("paramName").toString().isEmpty();
         if (!hasName && !o.contains("paramIndex"))
             return makeError(-32602, "paramIndex or paramName required");
@@ -1176,12 +1191,12 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
                 return makeError(-32602, "unknown paramName: " + wantName);
             p.paramIndex = pi;
         } else {
-            p.paramIndex = optInt(o, "paramIndex", -1, nullptr);
+            if (!optInt(o, "paramIndex", p.paramIndex, -1, &intErr)) return intErr;
         }
         if (o.contains("steps") && o.value("steps").isArray())
             for (const auto& s : o.value("steps").toArray())
                 p.steps.push_back(static_cast<float>(s.toDouble()));
-        p.baselineRuns = optInt(o, "baselineRuns", 2, nullptr);
+        if (!optInt(o, "baselineRuns", p.baselineRuns, 2, &intErr)) return intErr;
         p.windowSeconds = optDouble(o, "windowSeconds", 2.0, nullptr);
         p.startBeat = optDouble(o, "startBeat", -1.0, nullptr);
 
@@ -1196,8 +1211,9 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!requireInt(o, "trackIndex", trackIndex, nullptr))
             return makeError(-32602, "trackIndex required");
         ProjectCommands::ParamCorpusParams p;
+        DispatchResult intErr;
         p.trackIndex = trackIndex;
-        p.slotIndex = optInt(o, "slotIndex", 0, nullptr);
+        if (!optInt(o, "slotIndex", p.slotIndex, 0, &intErr)) return intErr;
         if (o.contains("paramIndexes") && o.value("paramIndexes").isArray())
             for (const auto& v : o.value("paramIndexes").toArray())
                 p.paramIndexes.push_back(v.toInt());
@@ -1205,7 +1221,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (o.contains("steps") && o.value("steps").isArray())
             for (const auto& v : o.value("steps").toArray())
                 p.steps.push_back(static_cast<float>(v.toDouble()));
-        p.baselineRuns = optInt(o, "baselineRuns", 2, nullptr);
+        if (!optInt(o, "baselineRuns", p.baselineRuns, 2, &intErr)) return intErr;
         p.windowSeconds = optDouble(o, "windowSeconds", 2.0, nullptr);
         p.startBeat = optDouble(o, "startBeat", -1.0, nullptr);
         if (o.contains("outPath"))
@@ -1256,12 +1272,35 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         return { false, res };
     }
 
+    if (m == "verifyWindow") {
+        // MCP twin of verify_window (McpExportTool.cpp): render the WHOLE
+        // project through the shared export launcher, WAIT, measure ONLY the
+        // requested beat window, and gate THE WINDOW's own metrics
+        // (buildWindowReportPayload promotes them to the payload root). ONE
+        // shared ProjectCommands::verifyWindow, so payloads AND the
+        // inverted-window refusal are byte-identical to the tool's. `expect` is
+        // the tool's accepted alias of `targets`.
+        // The SAME argument parser the tool runs (common/RenderToolArgs.h):
+        // argument names, defaults and refusal bytes cannot drift, and a missing
+        // startBeat/endBeat fails with the MCP validator's exact wording.
+        HDAW::VerifyWindowArgs parsed;
+        QString argError;
+        if (!HDAW::parseVerifyWindowArgs(o, parsed, argError))
+            return makeError(-32602, argError);
+        auto r = c.verifyWindow(parsed.startBeat, parsed.endBeat, parsed.targets,
+                                parsed.outputPath, parsed.timeoutMs);
+        if (!r.ok)
+            return makeError(-32602, QString::fromStdString(r.error));
+        return { false, HDAW::buildVerifyWindowPayload(r) };
+    }
+
     if (m == "generatePsytrance") {
         HDAW::PsytranceParams p;
-        p.keyRoot = optInt(o, "keyRoot", 0, nullptr);
-        p.scaleMode = optInt(o, "scaleMode", 1, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "keyRoot", p.keyRoot, 0, &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", p.scaleMode, 1, &intErr)) return intErr;
         p.density = optDouble(o, "density", 0.7, nullptr);
-        p.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt<uint64_t>(o, "seed", p.seed, 0, &intErr)) return intErr;
         if (o.contains("sections") && o.value("sections").isArray())
         {
             for (const auto& sv : o.value("sections").toArray())
@@ -1312,10 +1351,11 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
 
     if (m == "generateArrangementCorpus") {
         HDAW::CorpusParams p;
-        p.keyRoot = optInt(o, "keyRoot", 0, nullptr);
-        p.scaleMode = optInt(o, "scaleMode", 1, nullptr);
-        p.seed = optInt(o, "seed", 0, nullptr);
-        p.totalBars = optInt(o, "totalBars", 0, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "keyRoot", p.keyRoot, 0, &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", p.scaleMode, 1, &intErr)) return intErr;
+        if (!optInt(o, "seed", p.seed, 0, &intErr)) return intErr;
+        if (!optInt(o, "totalBars", p.totalBars, 0, &intErr)) return intErr;
         if (o.contains("progressionA") && o.value("progressionA").isArray())
             for (const auto& v : o.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
         if (o.contains("progressionB") && o.value("progressionB").isArray())
@@ -1332,7 +1372,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         p.opts.lengthMode = lm == "short" ? 0 : lm == "extended" ? 2 : lm == "mid" ? 1 : -1;
         const QString im = optString(o, "introMode", "").c_str();
         p.opts.introMode = im == "fourOnFloor" ? 0 : im == "shortIntro" ? 1 : im == "midIntro" ? 2 : im == "longIntro" ? 3 : -1;
-        p.opts.bars = optInt(o, "bars", 0, nullptr);
+        if (!optInt(o, "bars", p.opts.bars, 0, &intErr)) return intErr;
         if (o.contains("constBass")) p.opts.constBass = o.value("constBass").toBool() ? 1 : 0;
         if (o.contains("lateNovelty")) p.opts.lateNovelty = o.value("lateNovelty").toBool() ? 1 : 0;
         if (o.contains("breakdown")) p.opts.breakdown = o.value("breakdown").toBool() ? 1 : 0;
@@ -1383,21 +1423,22 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
 
     if (m == "generatePsytranceMarkov") {
         HDAW::PsytranceMarkovParams p;
-        p.keyRoot = optInt(o, "keyRoot", 0, nullptr);
-        p.scaleMode = optInt(o, "scaleMode", 1, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "keyRoot", p.keyRoot, 0, &intErr)) return intErr;
+        if (!optInt(o, "scaleMode", p.scaleMode, 1, &intErr)) return intErr;
         p.density = optDouble(o, "density", 0.7, nullptr);
-        p.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
-        p.totalBars = optInt(o, "totalBars", 32, nullptr);
-        p.minTracks = optInt(o, "minTracks", 2, nullptr);
-        p.maxTracks = optInt(o, "maxTracks", 6, nullptr);
-        p.minPercTracks = optInt(o, "minPercTracks", 1, nullptr);
-        p.maxPercTracks = optInt(o, "maxPercTracks", 3, nullptr);
-        p.everyBars = optInt(o, "everyBars", 32, nullptr);
-        p.sectionCycleBars = optInt(o, "sectionCycleBars", 32, nullptr);
-        p.keyShiftDegrees = optInt(o, "keyShiftDegrees", 0, nullptr);
+        if (!optInt<uint64_t>(o, "seed", p.seed, 0, &intErr)) return intErr;
+        if (!optInt(o, "totalBars", p.totalBars, 32, &intErr)) return intErr;
+        if (!optInt(o, "minTracks", p.minTracks, 2, &intErr)) return intErr;
+        if (!optInt(o, "maxTracks", p.maxTracks, 6, &intErr)) return intErr;
+        if (!optInt(o, "minPercTracks", p.minPercTracks, 1, &intErr)) return intErr;
+        if (!optInt(o, "maxPercTracks", p.maxPercTracks, 3, &intErr)) return intErr;
+        if (!optInt(o, "everyBars", p.everyBars, 32, &intErr)) return intErr;
+        if (!optInt(o, "sectionCycleBars", p.sectionCycleBars, 32, &intErr)) return intErr;
+        if (!optInt(o, "keyShiftDegrees", p.keyShiftDegrees, 0, &intErr)) return intErr;
         p.percCorpusPhraseProb = optDouble(o, "percCorpusPhraseProb", 0.0, nullptr);
         p.melodyCorpusPhraseProb = optDouble(o, "melodyCorpusPhraseProb", 0.0, nullptr);
-        p.melodyTransposeMode = optInt(o, "melodyTransposeMode", 0, nullptr);
+        if (!optInt(o, "melodyTransposeMode", p.melodyTransposeMode, 0, &intErr)) return intErr;
         p.melodyContourMutation = optDouble(o, "melodyContourMutation", 0.0, nullptr);
         if (o.contains("progressionA") && o.value("progressionA").isArray())
             for (const auto& v : o.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
@@ -1425,11 +1466,11 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
                 const auto so = v.toObject();
                 HDAW::MarkovSectionSpec spec;
                 spec.type = optString(so, "type", "");
-                spec.bars = optInt(so, "bars", 8, nullptr);
-                spec.minTracks = optInt(so, "minTracks", -1, nullptr);
-                spec.maxTracks = optInt(so, "maxTracks", -1, nullptr);
-                spec.minPercTracks = optInt(so, "minPercTracks", -1, nullptr);
-                spec.maxPercTracks = optInt(so, "maxPercTracks", -1, nullptr);
+                if (!optInt(so, "bars", spec.bars, 8, &intErr)) return intErr;
+                if (!optInt(so, "minTracks", spec.minTracks, -1, &intErr)) return intErr;
+                if (!optInt(so, "maxTracks", spec.maxTracks, -1, &intErr)) return intErr;
+                if (!optInt(so, "minPercTracks", spec.minPercTracks, -1, &intErr)) return intErr;
+                if (!optInt(so, "maxPercTracks", spec.maxPercTracks, -1, &intErr)) return intErr;
                 p.sections.push_back(spec);
             }
         }

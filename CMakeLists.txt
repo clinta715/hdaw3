@@ -214,6 +214,7 @@ src/engine/StretchRenderer.cpp
     src/engine/LibraryClusterer.cpp
     src/engine/ClusterPresetStore.cpp
     src/common/MessagePumpThread.cpp
+    src/common/HeadlessArgs.cpp
     src/common/DeviceParamMap.cpp
     src/common/PsyFmModMatrixView.cpp
     src/common/ParamOverrideLedger.cpp
@@ -225,8 +226,10 @@ src/engine/StretchRenderer.cpp
     src/common/ParamVerity.cpp
     src/common/ToneVerity.cpp
     src/common/MixVerdict.cpp
+    src/common/BatchEnd.cpp
     src/common/ModulationCoverage.cpp
     src/common/NordBankLoader.cpp
+    src/common/ProjectQuery.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp

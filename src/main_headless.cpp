@@ -20,6 +20,7 @@
 #include "frontend/FrontendServer.h"
 #include "frontend/FrontendRpc.h"
 #include "common/DebugLog.h"
+#include "common/HeadlessArgs.h"
 #include "common/MessagePumpThread.h"
 #include "common/ScopedComInit.h"
 #include "common/SettingsKeys.h"
@@ -110,10 +111,24 @@ int main(int argc, char *argv[])
     HDAW_LOG("main_headless", QString("Mode: %1").arg(
         mcpStdio ? "MCP STDIO" : "HEADLESS FRONTEND (WebSocket)"));
 
+    // One-shot session bootstrap (docs/plans/2026-09-28-agent-mechanization.md §6):
+    // `--project <file>` / `--project=<file>` loads a project right after the
+    // deferred engine init. A malformed --project (no value) is a HARD error —
+    // never a silently empty project.
+    const HDAW::HeadlessArgs bootArgs = HDAW::parseHeadlessArgs(argc, argv);
+    if (!bootArgs.ok) {
+        HDAW_LOG("main_headless", QString("Argument error: %1")
+            .arg(QString::fromStdString(bootArgs.error)));
+        return 2;
+    }
+    if (bootArgs.hasProject && !mcpStdio)
+        HDAW_LOG("main_headless", "--project is only honored with --mcp-stdio; ignoring it");
+
     if (mcpStdio) {
         AudioEngine engine;
         mcp::McpServer server;
         server.setEngine(&engine);
+        server.setTransportName("stdio");
         mcp::registerAllTools(server);
         auto transport = std::make_unique<mcp::TransportStdio>();
         server.setTransport(transport.get());
@@ -124,7 +139,8 @@ int main(int argc, char *argv[])
 
         // Defer engine init + plugin scan so MCP can respond to initialize/tools/list
         // immediately. Tools that need the engine will return errors until it's ready.
-        QTimer::singleShot(0, [&engine] {
+        const QString projectToLoad = QString::fromStdString(bootArgs.projectPath);
+        QTimer::singleShot(0, [&engine, projectToLoad] {
             engine.initialize();
             if (engine.getPluginManager().getPlugins().empty())
             {
@@ -132,6 +148,22 @@ int main(int argc, char *argv[])
                 engine.getPluginManager().scanAll();
                 HDAW_LOG("main_headless", QString("Scan complete: %1 plugins").arg(
                     (int)engine.getPluginManager().getPlugins().size()));
+            }
+
+            // --project bootstrap: load AFTER initialize() and AFTER the plugin
+            // scan (plugin state restore needs the scanned plugins). A failed
+            // load exits 2 so the caller sees a NON-ZERO status instead of a
+            // silently empty project.
+            if (!projectToLoad.isEmpty()) {
+                const bool loaded = engine.getProjectCommands().loadProject(
+                    projectToLoad.toStdString());
+                if (!loaded) {
+                    HDAW_LOG("main_headless", QString("--project: FAILED to load %1")
+                        .arg(projectToLoad));
+                    QCoreApplication::exit(2);
+                    return;
+                }
+                HDAW_LOG("main_headless", QString("--project: loaded %1").arg(projectToLoad));
             }
         });
 

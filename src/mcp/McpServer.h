@@ -36,6 +36,11 @@ public:
 
     void setTransport(Transport* t);
     Transport* transport() const { return transport_; }
+    // Human-readable name of the transport this server is serving on ("stdio",
+    // "http", ...), reported by `whoami` so one call answers "what's running?".
+    // Set at every construction site; defaults to "unknown" when never set.
+    void setTransportName(const QString& name) { transportName_ = name; }
+    QString transportName() const { return transportName_; }
     void start();
     void stop();
 
@@ -79,6 +84,7 @@ private:
     QHash<QString, McpToolDef> tools_;
     Transport* transport_ = nullptr;
     AudioEngine* engine_ = nullptr;
+    QString transportName_ = QStringLiteral("unknown");
     std::atomic<bool> cancelFlag_{false};
 };
 }

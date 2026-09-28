@@ -2,9 +2,12 @@
 #include <cstring>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <juce_core/juce_core.h>
 #include "../engine/EnvelopeGenerator.h"
 #include "../engine/AutomationPreset.h"
@@ -50,6 +53,27 @@ inline std::vector<std::vector<uint8_t>> decodeFxPresetSysex(const juce::String&
     }
     return out;
 }
+
+// ── Edit-batch refusal texts (S7) ──────────────────────────────────────────
+// Shared so the begin_batch / end_batch tools and their tests assert the same
+// bytes. A batch owns the PROCESS-WIDE undo transaction, so begin_batch is
+// gated on a transport that owns the whole engine; the one-batch-at-a-time
+// rule is enforced by ProjectCommands::beginBatch returning false.
+inline std::string batchStdioRequiredError(const std::string& transport)
+{
+    return "begin_batch requires the stdio transport (current: " + transport
+           + ") - a batch owns the process-wide undo transaction";
+}
+inline std::string batchAlreadyOpenError(const std::string& name)
+{
+    return "a batch is already open (name \"" + name + "\") - call end_batch first";
+}
+inline constexpr const char* kNoOpenBatchError = "no open batch";
+
+// verify_window refusal (S4): ONE shared text for an inverted/empty window, so
+// the MCP tool and the RPC route fail byte-identically.
+inline constexpr const char* kVerifyWindowBadWindowError =
+    "startBeat/endBeat invalid: need startBeat < endBeat";
 }
 
 class ProjectCommands
@@ -287,6 +311,41 @@ public:
     // When sourceFiles[i] is non-empty, creates an audio clip; otherwise MIDI.
     // Returns the new clip IDs.
     virtual std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names, const std::vector<std::string>& sourceFiles = {}) = 0;
+
+    // ── Batch edits (S3 of docs/plans/2026-09-28-agent-mechanization.md) ──
+    // One undo unit + one round trip for N edits. `error` is surface-neutral
+    // text: the MCP tools (set_notes_gain / set_clips_edit) render it in-band,
+    // the RPC routes (project.setNotesGain / project.setClipsEdit) as a
+    // JSON-RPC error object — the SAME bytes on both surfaces.
+    struct BatchResult
+    {
+        bool ok = false;
+        int applied = 0;      // items written (0 on any refusal)
+        std::string error;    // non-empty iff !ok
+    };
+    // setNotesGain: write per-note gain on EVERY id in noteIds, in ONE
+    // transaction. REFUSES the whole batch (ok=false, applied=0, nothing
+    // written, no undo unit opened) when noteIds is empty or when ANY id is
+    // unknown — validate-then-apply, so a stale id never half-applies.
+    virtual BatchResult setNotesGain(const std::vector<int>& noteIds, float gain) = 0;
+
+    // One clip's PARTIAL edit: an unset optional leaves that property untouched
+    // (the partial-edit contract setClipGain & friends already have per call).
+    struct ClipEdit
+    {
+        int clipId = -1;
+        std::optional<double> start;      // beats (converted to seconds at the boundary)
+        std::optional<double> duration;   // beats
+        std::optional<double> gain;       // scalar multiplier
+        std::optional<double> fadeIn;     // seconds
+        std::optional<double> fadeOut;    // seconds
+        std::optional<std::string> name;
+        std::optional<bool> looping;
+    };
+    // setClipsEdit: apply every edit, in ONE transaction. Same validate-then-
+    // apply refusal as setNotesGain ("edits must not be empty", or the first
+    // unknown clipId, named).
+    virtual BatchResult setClipsEdit(const std::vector<ClipEdit>& edits) = 0;
 
     // Audio clip timestretch. Stretch is resolved at graph-build time and
     // rendered off-thread via StretchCache; it is NOT RT-parametric (no
@@ -771,10 +830,39 @@ public:
     virtual void beginTransaction(const std::string& name) = 0;
     virtual void endTransaction() = 0;
 
+    // ── Edit batch (S7) ────────────────────────────────────────────────────
+    // A batch is an EXPLICIT, engine-global undo group that spans several
+    // command calls: while one is open, EVERY ValueTree write that would
+    // normally open its own transaction — the command layer's own begin/
+    // endTransaction pair, and every internal undo-boundary a command draws —
+    // no-ops and joins the batch's single named unit instead. `endBatch` seals
+    // it (one undo reverts the whole batch) and clears the state.
+    //
+    // One batch at a time: `beginBatch` returns false when one is already open
+    // (the caller reports the open name), so a second caller can never silently
+    // join or nest it. The batch owns the PROCESS-WIDE undo transaction, so it
+    // is only exposed on a transport that owns the whole engine (the MCP stdio
+    // tools gate on that).
+    //
+    // Unlike the begin/endTransaction pair these are NOT raw undo boundaries:
+    // they track `batchActive_`/`batchName_` and can therefore never leak a
+    // counter (a batch is a flag, not a nesting depth).
+    virtual bool beginBatch(const std::string& name) = 0;
+    virtual bool endBatch() = 0;
+    virtual bool batchActive() const = 0;
+    virtual std::string batchName() const = 0;
+
     // Project lifecycle
     virtual void newProject() = 0;
     virtual bool saveProject(const std::string& filePath) = 0;
     virtual bool loadProject(const std::string& filePath) = 0;
+    // File path of the project currently loaded/saved THIS session (process
+    // lifetime, message thread only — never persisted, no SPSC/RT concern).
+    // Set by the command layer on a successful saveProject/loadProject and
+    // CLEARED by newProject(); "" when nothing has been loaded or saved yet.
+    // `whoami` reports it so one introspection call answers "what is running?".
+    // Default body: an implementation that never records a path reports "".
+    virtual std::string getProjectFilePath() const { return {}; }
 
     // Scale
     virtual void setScaleRoot(int root) = 0;
@@ -1110,6 +1198,43 @@ public:
     virtual VerifyPartResult verifyPart(int trackIndex, double windowSeconds = 4.0,
                                         double startBeat = 0.0, double endBeat = 0.0,
                                         bool soloOnly = false) = 0;
+
+    // ── verify_window (S4) ──
+    // Render→measure→compare in ONE call, for a BEAT window of the WHOLE
+    // project. The render goes through the export path on a tree COPY of the
+    // ENTIRE project (0 .. calculateProjectDuration, the same launcher
+    // export_audio uses) because a WINDOW-ONLY render is not predictive: plugin
+    // state re-bakes per window, and a windowed render measured 0 clamps while
+    // the full render carried 32 exact-FS frames
+    // (docs/handoffs/2026-09-28-v0.39.2-backlog-closeout.md §3). Only the
+    // REQUESTED WINDOW is then measured, and the window's own metrics become
+    // the report's ROOT (buildWindowReportPayload) so `targets` gates the
+    // WINDOW, not the file.
+    //
+    // The call WAITS for the render (bounded by timeoutMs) because its contract
+    // is measure-and-answer: one verify_window costs ~one full export.
+    // Inverted/empty window -> kVerifyWindowBadWindowError. `startSec`/`endSec`
+    // are the requested span converted at the project BPM (lesson 1);
+    // `durationSec` is the MEASURED (clamped) window span.
+    //
+    // The rendered WAV is KEPT (the plan wants the path for A/B) and is the
+    // CALLER's to clean up; a caller that passes an empty outputPath gets a
+    // process-unique file in the OS temp dir.
+    struct VerifyWindowResult {
+        bool ok = false;
+        std::string error;
+        std::string wavPath;
+        double startBeat = 0.0, endBeat = 0.0;    // requested window, beats
+        double startSec = 0.0, endSec = 0.0;      // requested window, seconds
+        double durationSec = 0.0;                 // measured window span, seconds
+        QJsonObject report;                       // window metrics at the ROOT
+        QJsonArray targetChecks;                  // report.targetChecks (B6 rows)
+        bool targetsOk = true;                    // report.targetsOk; true with no targets
+    };
+    virtual VerifyWindowResult verifyWindow(double startBeat, double endBeat,
+                                            const QJsonObject& targets,
+                                            const std::string& outputPath,
+                                            uint32_t timeoutMs = 600000) = 0;
 
     // ── ParamVerity (2026-09-22) ──
     // Per-(slot, param) audibility sweep: N baseline renders at the param's

@@ -29,6 +29,7 @@
 #include "../common/SongPlanView.h"
 #include "../common/MixReportJson.h"
 #include "../common/MixVerdict.h"
+#include "../common/MixVerdictInputs.h"
 #include "../common/ModulationCoverage.h"
 
 namespace mcp {
@@ -413,12 +414,13 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "back to the plan's); without it, sections (seconds) or the whole file are measured. "
         "introSeconds > 0 (default 2) runs the intro-blast gate. The modulation gate uses the same "
         "audit as modulation.coverage / audit_modulation_coverage. READ-ONLY: no render, no "
-        "mutation. Calls the same engine command as the audio.mixVerdict RPC. targets (the brief's "
-        "targets object: masterRms, ceilingHitPctMax, kickProminenceMin, targetDurationSeconds) "
-        "adds a targets gate with per-target PASS/FAIL rows — masterRms is the MONO-DOWNMIX "
-        "((L+R)/2) linear RMS checked within ±5%; ceilingHitPctMax counts frames with any "
-        "channel |sample| >= 0.999 (per-channel — the mono peak/rms cannot see one-sided "
-        "clamps); targetDurationSeconds allows ±2 s of render tail.",
+        "Calls the same engine command as the audio.mixVerdict RPC. targets (the brief's "
+        "targets object: masterRms, ceilingHitPctMax, kickProminenceMin, targetDurationSeconds, "
+        "rmsMin) adds a targets gate with per-target PASS/FAIL rows — masterRms is the "
+        "MONO-DOWNMIX ((L+R)/2) linear RMS checked within ±5%; ceilingHitPctMax counts frames "
+        "with any channel |sample| >= 0.999 (per-channel — the mono peak/rms cannot see "
+        "one-sided clamps); rmsMin is a LINEAR RMS floor (same units as the report's rms); "
+        "targetDurationSeconds allows ±2 s of render tail.",
         objSchema({{"filePath",        QJsonObject{{"type","string"}}},
                   {"fromPlan",        QJsonObject{{"type","boolean"}}},
                   {"bpm",             QJsonObject{{"type","number"}}},
@@ -438,50 +440,20 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
             const QString filePath = a.value("filePath").toString();
             if (filePath.isEmpty())
                 return McpToolResult::text("filePath is required", true);
-            double bpm = a.value("bpm").toDouble(0.0);
-            double ratio = a.value("dropBuildRatio").toDouble(0.9);
-            if (ratio <= 0.0 || ratio > 1.5) ratio = 0.9;
+            // ONE shared resolution with the RPC route and render_and_verify
+            // (src/common/MixVerdictInputs.h).
+            const auto inputs = HDAW::resolveMixVerdictInputs(
+                *e, a.value("fromPlan").toBool(false), a.value("sections").toArray(),
+                a.value("bpm").toDouble(0.0), a.value("targets").toObject(),
+                a.value("dropBuildRatio").toDouble(0.9),
+                a.value("introSeconds").toDouble(2.0), /*requirePlan=*/true);
+            if (!inputs.ok)
+                return McpToolResult::text(inputs.error, true);
 
-            std::vector<HDAW::SectionWindow> windows;
-            QJsonObject planKinds;
-            QJsonObject structureJson;
-            if (a.value("fromPlan").toBool(false))
-            {
-                if (!e)
-                    return McpToolResult::text("mix_verdict: engine unavailable", true);
-                const auto plan = e->getProjectCommands().getSongPlan();
-                if (plan.sections.empty())
-                    return McpToolResult::text("mix_verdict: no song plan set (fromPlan)", true);
-                if (bpm <= 0.0) bpm = plan.bpm;
-                const double spb = (bpm > 0.0) ? 60.0 / bpm : 0.5;
-                for (const auto& s : plan.sections)
-                {
-                    windows.push_back(HDAW::SectionWindow{ s.name, s.startBeat * spb,
-                                                          s.endBeat * spb });
-                    planKinds.insert(QString::fromStdString(s.name),
-                                     QString::fromStdString(s.kind));
-                }
-                structureJson = HDAW::structureAuditJson(HDAW::auditSongStructure(
-                    e->getProjectModel().getTrackListTree(), plan, bpm));
-            }
-            else
-            {
-                for (const auto& v : a.value("sections").toArray())
-                {
-                    const auto so = v.toObject();
-                    windows.push_back(HDAW::SectionWindow{ so.value("name").toString().toStdString(),
-                                                           so.value("start").toDouble(),
-                                                           so.value("end").toDouble() });
-                }
-            }
-
-            const QJsonObject targets = a.value("targets").toObject();
-            const auto v = HDAW::buildMixVerdict(filePath, windows, planKinds, bpm, ratio,
-                                                 structureJson,
-                                                 HDAW::modulationCoverageJson(
-                                                     e->getProjectModel().getTrackListTree()),
-                                                 a.value("introSeconds").toDouble(2.0),
-                                                 targets);
+            const auto v = HDAW::buildMixVerdict(filePath, inputs.windows, inputs.planKinds,
+                                                 inputs.bpm, inputs.dropBuildRatio,
+                                                 inputs.structureJson, inputs.modulationCoverage,
+                                                 inputs.introSeconds, inputs.targets);
             if (!v.error.isEmpty())
                 return McpToolResult::text(v.error, true);
             return McpToolResult::text(QString::fromUtf8(

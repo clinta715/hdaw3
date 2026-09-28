@@ -74,7 +74,9 @@ void registerArrangerTools(McpServer& s, AudioEngine* e)
 
     // --- Arranger Regions ---
     s.registerTool({"add_arranger_region",
-        "Add an arranger region. Returns the new regionID.",
+        "Add an arranger region. Returns {\"regionID\": <id>, \"unit\": <u>} where <u> is the "
+        "unit the window was read in: bare startTime/duration default to SECONDS, "
+        "startTimeBeat/durationBeat (or unit:\"beats\") are beats.",
         objSchema({{"name",      QJsonObject{{"type","string"}}},
                    {"startTime", QJsonObject{{"type","number"}}},
                    {"duration",  QJsonObject{{"type","number"}}},
@@ -87,7 +89,11 @@ void registerArrangerTools(McpServer& s, AudioEngine* e)
             double dur = a.value("duration").toDouble();
             int color = a.contains("color") ? a.value("color").toInt() : 0xFFd97706;
             auto id = e->getProjectCommands().addArrangerRegion(name, start, dur, color);
-            return McpToolResult::text(QString("regionID=%1").arg(QString::fromStdString(id)));
+            // S6c payload: the id under a named key, so the resolver's `unit`
+            // echo has a JSON object to land on (the dispatch inserts it).
+            const QJsonObject out{{"regionID", QString::fromStdString(id)}};
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(out).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"remove_arranger_region",
@@ -115,7 +121,9 @@ void registerArrangerTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"set_arranger_region_bounds",
-        "Set an arranger region's startTime and duration.",
+        "Set an arranger region's startTime and duration. Returns {\"ok\": true, \"unit\": <u>} "
+        "where <u> is the unit the window was read in: bare startTime/duration default to "
+        "SECONDS, startTimeBeat/durationBeat (or unit:\"beats\") are beats.",
         objSchema({{"regionID",  QJsonObject{{"type","string"}}},
                    {"startTime", QJsonObject{{"type","number"}}},
                    {"duration",  QJsonObject{{"type","number"}}}},
@@ -126,7 +134,9 @@ void registerArrangerTools(McpServer& s, AudioEngine* e)
             double start = a.value("startTime").toDouble();
             double dur = a.value("duration").toDouble();
             e->getProjectCommands().setArrangerRegionBounds(rid, start, dur);
-            return McpToolResult::text("ok");
+            // S6c payload: a status OBJECT (not bare "ok") so the resolver's
+            // `unit` echo has a JSON object to land on.
+            return McpToolResult::text(QStringLiteral("{\"ok\":true}"));
         }});
 
     s.registerTool({"set_arranger_region_color",

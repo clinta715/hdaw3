@@ -145,6 +145,7 @@ add_executable(hdaw_tests
     unit/engine/instrument_part_test.cpp
     unit/engine/audition_test.cpp
     unit/engine/verify_part_test.cpp
+    unit/engine/verify_window_test.cpp
     unit/engine/offline_render_exclusion_test.cpp
     unit/engine/offline_midi_fx_automation_test.cpp
     unit/engine/master_gain_test.cpp
@@ -170,6 +171,7 @@ add_executable(hdaw_tests
     unit/common/param_verity_math_test.cpp
     unit/common/tone_verity_test.cpp
     unit/common/message_pump_test.cpp
+    unit/common/headless_args_test.cpp
     unit/common/param_override_ledger_test.cpp
     unit/model/project_model_test.cpp
     unit/model/clip_slicing_test.cpp
@@ -187,8 +189,12 @@ add_executable(hdaw_tests
     unit/frontend/rpc_namespace_coverage_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     unit/frontend/bus_send_rpc_test.cpp
+    unit/frontend/query_notes_rpc_test.cpp
+    unit/frontend/batch_edit_rpc_test.cpp
+    unit/frontend/opt_int_rpc_test.cpp
     unit/frontend/add_fx_parity_test.cpp
     unit/frontend/missing_route_parity_test.cpp
+    unit/frontend/window_unit_parity_test.cpp
     unit/frontend/capability_route_parity_test.cpp
     unit/frontend/fm_library_parity_test.cpp
     integration/proxy/isolation_integration_test.cpp

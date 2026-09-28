@@ -100,7 +100,14 @@ std::optional<RaveImportOutcome> applyRaveOutput(AudioEngine& engine,
     const bool noImport = optBool(o, "noImport", false, nullptr);
     if (!noImport)
     {
-        const int trackIndex = optInt<int>(o, "trackIndex", -1, nullptr);
+        DispatchResult intErr;
+        int trackIndex;
+        if (!optInt<int>(o, "trackIndex", trackIndex, -1, &intErr))
+        {
+            if (errCode) *errCode = intErr.payload.toObject().value("code").toInt();
+            if (errText) *errText = intErr.payload.toObject().value("message").toString();
+            return std::nullopt;
+        }
         const double startBeats = optDouble(o, "startBeats", 0.0, nullptr);
         const bool alignToGrid = optBool(o, "alignToGrid", true, nullptr);
 
@@ -134,9 +141,16 @@ std::optional<RaveImportOutcome> applyRaveOutput(AudioEngine& engine,
             engine.getProjectCommands().setClipOffset(outcome.clipId, outcome.sourceOffsetSeconds);
     }
 
-    const int samplerTrack = optInt<int>(o, "samplerTrackIndex", -1, nullptr);
-    const int samplerSlot = optInt<int>(o, "samplerSlotIndex", -1, nullptr);
-    const int samplerRoot = optInt<int>(o, "samplerRootNote", 60, nullptr);
+    DispatchResult intErr;
+    int samplerTrack, samplerSlot, samplerRoot;
+    if (!optInt<int>(o, "samplerTrackIndex", samplerTrack, -1, &intErr)
+        || !optInt<int>(o, "samplerSlotIndex", samplerSlot, -1, &intErr)
+        || !optInt<int>(o, "samplerRootNote", samplerRoot, 60, &intErr))
+    {
+        if (errCode) *errCode = intErr.payload.toObject().value("code").toInt();
+        if (errText) *errText = intErr.payload.toObject().value("message").toString();
+        return std::nullopt;
+    }
     outcome.samplerRequested = (samplerTrack >= 0 && samplerSlot >= 0);
     if (!outcome.samplerRequested)
     {
@@ -231,7 +245,7 @@ bool parseSidecarRequest(const QJsonObject& o, HDAW::RaveTransformRequest& req, 
     req.pythonPath = o.value("pythonPath").toString().toStdString();
     req.scriptPath = o.value("scriptPath").toString().toStdString();
     req.temperature = optDouble(o, "temperature", 1.0, nullptr);
-    req.seed = optInt(o, "seed", 0, nullptr);
+    if (!optInt(o, "seed", req.seed, 0, err)) return false;
     return true;
 }
 
@@ -264,9 +278,9 @@ bool parseTrainingRequest(const QJsonObject& o, HDAW::RaveTrainingRequest& req, 
     req.name = o.value("name").toString().toStdString();
     req.pythonPath = o.value("pythonPath").toString().toStdString();
     req.scriptPath = o.value("scriptPath").toString().toStdString();
-    req.epochs = optInt(o, "epochs", 10, nullptr);
-    req.batchSize = optInt(o, "batchSize", 8, nullptr);
-    req.sampleRate = optInt(o, "sampleRate", 44100, nullptr);
+    if (!optInt(o, "epochs", req.epochs, 10, err)) return false;
+    if (!optInt(o, "batchSize", req.batchSize, 8, err)) return false;
+    if (!optInt(o, "sampleRate", req.sampleRate, 44100, err)) return false;
     if (req.epochs <= 0 || req.batchSize <= 0 || req.sampleRate <= 0)
     {
         if (err)
@@ -339,7 +353,8 @@ DispatchResult dispatchRave(AudioEngine& engine, const QString& m, const QJsonVa
         req.pythonPath = o.value("pythonPath").toString().toStdString();
         req.scriptPath = o.value("scriptPath").toString().toStdString();
         req.temperature = optDouble(o, "temperature", 1.0, nullptr);
-        req.seed = optInt(o, "seed", 0, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "seed", req.seed, 0, &intErr)) return intErr;
 
         const auto result = engine.getRaveService().transformFile(req);
         if (!result.ok)
@@ -390,7 +405,8 @@ DispatchResult dispatchRave(AudioEngine& engine, const QString& m, const QJsonVa
         req.pythonPath = o.value("pythonPath").toString().toStdString();
         req.scriptPath = o.value("scriptPath").toString().toStdString();
         req.temperature = optDouble(o, "temperature", 1.0, nullptr);
-        req.seed = optInt(o, "seed", 0, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "seed", req.seed, 0, &intErr)) return intErr;
 
         const auto result = engine.getRaveService().transformFile(req);
         if (!result.ok)

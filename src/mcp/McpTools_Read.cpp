@@ -2,6 +2,8 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+// Slice S2: the SAME beat-window builder the read.queryClips route calls.
+#include "common/ProjectQuery.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "common/Version.h"
@@ -102,7 +104,7 @@ void registerReadTools(McpServer& s, AudioEngine* e)
                         {"start", HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::startTime)), bpm)},
                         {"duration", HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::duration)), bpm)},
                         {"type", jstr(c.getProperty(IDs::clipType).toString())},
-                        {"gain", static_cast<double>(c.getProperty(IDs::gain))},
+                        {"gain", static_cast<double>(c.getProperty(IDs::gain, 1.0))},
                         {"fadeIn", static_cast<double>(c.getProperty(IDs::fadeIn))},
                         {"fadeOut", static_cast<double>(c.getProperty(IDs::fadeOut))},
                         {"looping", static_cast<bool>(c.getProperty(IDs::looping))},
@@ -133,7 +135,7 @@ void registerReadTools(McpServer& s, AudioEngine* e)
                         {"start", HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::startTime)), bpm)},
                         {"duration", HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::duration)), bpm)},
                         {"type", jstr(c.getProperty(IDs::clipType).toString())},
-                        {"gain", static_cast<double>(c.getProperty(IDs::gain))},
+                        {"gain", static_cast<double>(c.getProperty(IDs::gain, 1.0))},
                         {"fadeIn", static_cast<double>(c.getProperty(IDs::fadeIn))},
                         {"fadeOut", static_cast<double>(c.getProperty(IDs::fadeOut))},
                         {"looping", static_cast<bool>(c.getProperty(IDs::looping))},
@@ -159,6 +161,29 @@ void registerReadTools(McpServer& s, AudioEngine* e)
                 }
             }
             return McpToolResult::text(QString("clipId %1 not found").arg(cid), true);
+        }});
+
+    s.registerTool({"query_clips",
+        "List clips whose span INTERSECTS a project-beat window (overlap, not "
+        "containment). startBeat and endBeat are both required. Returns "
+        "{count, unit:\"beats\", rows:[{clipId, trackIndex, trackID, name, type, "
+        "startBeat, endBeat, durationBeats, muted, gain}]} in PROJECT (absolute) "
+        "beats. A clip that straddles the window boundary is returned; a looping "
+        "clip is reported once, by its own interval.",
+        objSchema({{"startBeat", QJsonObject{{"type","number"}}},
+                  {"endBeat",   QJsonObject{{"type","number"}}}}),
+        "project",
+        [e](const QJsonObject& a) -> McpToolResult {
+            double startBeat = 0.0, endBeat = 0.0; QString argErr;
+            if (!HDAW::readBeatWindowArgs(a, startBeat, endBeat, argErr))
+                return McpToolResult::text(argErr, true);
+            bool ok = true; QString err;
+            const QJsonObject payload = HDAW::buildClipQueryPayload(
+                e->getProjectModel().getTrackListTree(),
+                e->getReadModel().getTransport().bpm, startBeat, endBeat, &ok, &err);
+            if (!ok) return McpToolResult::text(err, true);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(payload).toJson(QJsonDocument::Compact)));
         }});
 }
 

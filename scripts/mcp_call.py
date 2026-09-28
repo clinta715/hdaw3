@@ -18,10 +18,47 @@ import json
 import subprocess
 import sys
 import os
+import shlex
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ENGINE = ROOT / "build" / "HDAW_headless.exe"
+
+# Extra engine argv (from --engine-args), appended after "--mcp-stdio". Parsed
+# in main(); EMPTY for a plain invocation.
+ENGINE_ARGS = []
+
+
+def parse_engine_args(argv):
+    """Extract `--engine-args "<extra>"` from argv (both `--engine-args X` and
+    `--engine-args=X` forms).
+
+    The value is extra engine spawn argv appended verbatim after `--mcp-stdio`,
+    e.g. `--engine-args "--project C:\\tmp\\p.hdaw"` to verify the one-shot
+    session bootstrap end-to-end. The value is split on whitespace; QUOTE any
+    single argument that contains spaces, e.g.
+    `--engine-args '--project "C:\\my projects\\p.hdaw"'`.
+    Returns (extra_args, argv_without_the_flag).
+    """
+    extra = []
+    cleaned = [argv[0]]
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a == "--engine-args":
+            if i + 1 >= len(argv):
+                sys.exit("--engine-args requires a value")
+            extra = [t.strip('"') for t in shlex.split(argv[i + 1], posix=False)]
+            i += 2
+            continue
+        if a.startswith("--engine-args="):
+            extra = [t.strip('"')
+                     for t in shlex.split(a[len("--engine-args="):], posix=False)]
+            i += 1
+            continue
+        cleaned.append(a)
+        i += 1
+    return extra, cleaned
 
 def spawn():
     env = dict(os.environ)
@@ -29,11 +66,15 @@ def spawn():
     scratch.mkdir(parents=True, exist_ok=True)
     env["TMP"] = env["TEMP"] = str(scratch)
     proc = subprocess.Popen(
-        [str(ENGINE), "--mcp-stdio"],
+        [str(ENGINE), "--mcp-stdio"] + ENGINE_ARGS,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL, cwd=str(ROOT), env=env,
         text=True, encoding="utf-8", bufsize=1)
     return proc
+
+# The engine's HDAW_LOG file lives in the child's TMP (redirected in spawn()),
+# NOT the client's own %TEMP%.
+CHILD_LOG = ROOT / ".tmp_build_scratch" / "lnk" / "hdaw_debug.log"
 
 def send(proc, payload):
     proc.stdin.write(json.dumps(payload) + "\n")
@@ -45,7 +86,15 @@ def recv(proc, msg_id, timeout=60):
     while time.time() < end:
         line = proc.stdout.readline()
         if not line:
-            raise RuntimeError("engine closed stdout")
+            # stdout closed => the engine died (e.g. a --project load failure
+            # exits 2). Report the exit code instead of silently hanging.
+            try:
+                code = proc.wait(timeout=5)
+            except Exception:
+                code = proc.poll()
+            raise RuntimeError(
+                f"engine exited (exit code {code}) before responding to id={msg_id} "
+                f"- check the debug log ({CHILD_LOG})")
         line = line.strip()
         if not line:
             continue
@@ -76,7 +125,9 @@ def brief(result):
         print(f"...[truncated, total {len(txt)} chars]")
 
 def main():
-    mode = sys.argv[1] if len(sys.argv) > 1 else "tools/list"
+    global ENGINE_ARGS
+    ENGINE_ARGS, argv = parse_engine_args(sys.argv)
+    mode = argv[1] if len(argv) > 1 else "tools/list"
     proc = spawn()
     try:
         session(proc)
@@ -88,13 +139,13 @@ def main():
             for t in tools:
                 print(t["name"])
         elif mode == "call":
-            name = sys.argv[2]
-            args = json.loads(sys.argv[3]) if len(sys.argv) > 3 else {}
-            brief(call(proc, name, args, timeout=int(sys.argv[4]) if len(sys.argv) > 4 else 60))
+            name = argv[2]
+            args = json.loads(argv[3]) if len(argv) > 3 else {}
+            brief(call(proc, name, args, timeout=int(argv[4]) if len(argv) > 4 else 60))
         elif mode == "desc":
             send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
             r = recv(proc, 2, 30)
-            want = set(sys.argv[2].split(",")) if len(sys.argv) > 2 else set()
+            want = set(argv[2].split(",")) if len(argv) > 2 else set()
             for t in r.get("result", {}).get("tools", []):
                 if t["name"] in want:
                     print("==", t["name"])
@@ -102,12 +153,12 @@ def main():
         elif mode == "schemas":
             send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
             r = recv(proc, 2, 30)
-            want = set(sys.argv[2].split(",")) if len(sys.argv) > 2 else None
+            want = set(argv[2].split(",")) if len(argv) > 2 else None
             for t in r.get("result", {}).get("tools", []):
                 if want is None or t["name"] in want:
                     print("==", t["name"], json.dumps(t.get("inputSchema", {}), ensure_ascii=False)[:900])
         elif mode == "run":
-            steps = json.load(open(sys.argv[2], encoding="utf-8"))
+            steps = json.load(open(argv[2], encoding="utf-8"))
             ident = 10
             for s in steps:
                 ident += 1
@@ -119,6 +170,11 @@ def main():
                     print("STEP ERROR:", e)
                     if s.get("stop_on_error", True):
                         break
+    except Exception as e:
+        # Loud failure (engine died mid-call, etc.) instead of a bare traceback
+        # or a silent hang.
+        print("ERROR:", e, file=sys.stderr)
+        sys.exit(1)
     finally:
         try:
             proc.stdin.close()

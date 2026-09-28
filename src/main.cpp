@@ -127,6 +127,7 @@ int main(int argc, char *argv[])
         AudioEngine engine;
         mcp::McpServer server;
         server.setEngine(&engine);
+        server.setTransportName("stdio");
         mcp::registerAllTools(server);
         auto* transport = new mcp::TransportStdio();
         server.setTransport(transport);

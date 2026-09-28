@@ -38,12 +38,45 @@ std::vector<std::string> AudioEngineCommands::getRedoDescriptions() const
 
 void AudioEngineCommands::beginTransaction(const std::string& name)
 {
-    engine_.getProjectModel().getUndoManager().beginNewTransaction(juce::String(name));
+    transactionBoundary(juce::String(name));
 }
 
 void AudioEngineCommands::endTransaction()
 {
+    transactionBoundary({});
+}
+
+// The ONE choke point every undo boundary routes through (see the header).
+// While a batch is open, boundaries are SUPPRESSED — the write joins the batch's
+// single unit instead of splitting it. With no batch open this is exactly the
+// old raw boundary, so today's per-command behaviour is unchanged.
+void AudioEngineCommands::transactionBoundary(const juce::String& name)
+{
+    if (batchActive_) return;
+    engine_.getProjectModel().getUndoManager().beginNewTransaction(name);
+}
+
+bool AudioEngineCommands::beginBatch(const std::string& name)
+{
+    // One batch at a time: a second caller must not silently join or nest it
+    // (the batch owns the process-wide undo transaction). The caller reports the
+    // open name via batchName().
+    if (batchActive_) return false;
+    engine_.getProjectModel().getUndoManager().beginNewTransaction(juce::String(name));
+    batchActive_ = true;
+    batchName_ = juce::String(name);
+    return true;
+}
+
+bool AudioEngineCommands::endBatch()
+{
+    if (!batchActive_) return false;
+    // Seal the group: the next boundary starts a fresh unit, so the batch's
+    // writes stay one undo step.
     engine_.getProjectModel().getUndoManager().beginNewTransaction({});
+    batchActive_ = false;
+    batchName_.clear();
+    return true;
 }
 
 // ─── ProjectCommands — Project lifecycle ──────────────────────────
@@ -51,6 +84,9 @@ void AudioEngineCommands::endTransaction()
 void AudioEngineCommands::newProject()
 {
     HDAW::ProjectSerializer::createNew(engine_.getProjectModel());
+    // A new project has no file: drop the recorded session path so `whoami`
+    // never reports a stale file for an unsaved project.
+    projectFilePath_.clear();
 
     QSettings s;
     double defaultTempo = s.value(SettingsKeys::kKeyDefaultTempo, 120.0).toDouble();
@@ -81,6 +117,7 @@ bool AudioEngineCommands::saveProject(const std::string& filePath)
     auto f = juce::File(filePath);
     bool ok = HDAW::ProjectSerializer::save(engine_.getProjectModel(), f, engine_.getMainProcessor());
     if (ok) {
+        projectFilePath_ = filePath;
         QSettings s;
         int maxBackups = s.value(SettingsKeys::kKeyMaxBackups, 10).toInt();
         HDAW::backupProject(f, maxBackups);
@@ -117,6 +154,11 @@ bool AudioEngineCommands::loadProject(const std::string& filePath)
         loading = false;
         return false;
     }
+
+    // Record the session path FIRST: every sendProgress() below drains the Qt
+    // queue (processEvents), which can re-enter the MCP layer — `whoami` must
+    // never observe a loaded tree with a stale/empty projectPath.
+    projectFilePath_ = filePath;
 
     // Migration: ensure all existing tracks have trackType property (default 0 = audio)
     auto trackList = engine_.getProjectModel().getTrackListTree();
@@ -308,7 +350,7 @@ std::string AudioEngineCommands::findMissingClipSourceFile(int clipId, const std
     if (found.isNotEmpty())
     {
         auto& um = engine_.getProjectModel().getUndoManager();
-        um.beginNewTransaction("Find missing clip source file");
+        transactionBoundary("Find missing clip source file");
         clip.setProperty(IDs::sourceFile, found, &um);
         if (auto* proc = engine_.getMainProcessor())
             proc->rebuildRoutingGraph();
@@ -325,7 +367,7 @@ ProjectCommands::RelinkResult AudioEngineCommands::relinkAllMissingFiles(const s
         return result;
 
     auto& um = engine_.getProjectModel().getUndoManager();
-    um.beginNewTransaction("Relink missing files");
+    transactionBoundary("Relink missing files");
 
     auto trackList = engine_.getProjectModel().getTrackListTree();
     bool anyRelinked = false;

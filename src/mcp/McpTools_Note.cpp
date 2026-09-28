@@ -1,7 +1,14 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+// B2 stable-id argument helpers (`trackIndex`/`trackID`) — the ONE shared rule.
+#include "McpArgs.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+// Slice S2: the SAME beat-window builder the read.queryNotes route calls.
+#include "common/ProjectQuery.h"
+// S3/B4: the SAME strict integer argument parser the JSON-RPC routes call
+// (parseIntArg / parseIntArray), so a non-integral id answers byte-identically.
+#include "common/BatchEditJson.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -101,7 +108,7 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
                     }
                 }
 
-                um.beginNewTransaction();
+                e->getProjectCommands().beginTransaction("Add notes");
                 QJsonArray ids;
                 int duplicatesSkipped = 0;
                 // Batch-internal exact-dup guard (P3-1): same (pitch, startBeat,
@@ -190,7 +197,7 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
             int vMin = a.value("velocityMin").toInt();
             int vMax = a.value("velocityMax").toInt();
             auto& um = e->getProjectModel().getUndoManager();
-            um.beginNewTransaction();
+            e->getProjectCommands().beginTransaction("Set note velocities");
             int modified = 0;
             for (int k = 0; k < nl.getNumChildren(); ++k) {
                 auto n = nl.getChild(k);
@@ -426,11 +433,47 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
                   {"gain", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",2.0}}}}, {"noteId","gain"}),
         "note",
         [e](const QJsonObject& a) -> McpToolResult {
-            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            // Defense in depth: the schema validator already pre-empts a
+            // non-integral `noteId` with "invalid params: noteId: expected
+            // integer"; if it ever does not, the shared parser (the SAME one
+            // the project.setNoteGain route calls) emits those exact bytes.
+            int noteId = 0; QString idErr;
+            if (!HDAW::parseIntArg(a, "noteId", noteId, idErr))
+                return McpToolResult::text(idErr, true);
+            int dummy = 0; auto n = findNote(e, noteId, &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             n.setProperty(IDs::noteGain, a.value("gain").toDouble(), &um);
             return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_notes_gain",
+        "Set the per-note gain multiplier (0.0 to 2.0) on MANY notes in ONE undo unit and one round trip. "
+        "The WHOLE batch is refused — nothing written, no undo unit — when noteIds is empty or names an unknown note.",
+        objSchema({{"noteIds", QJsonObject{{"type","array"},
+                       {"items", QJsonObject{{"type","integer"}}}}},
+                  {"gain", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",2.0}}}}, {}),
+        "note",
+        [e](const QJsonObject& a) -> McpToolResult {
+            // Type wording mirrors requireFloat/requireInt (RouterHelpers.h) so a
+            // missing/non-numeric argument answers identically on both surfaces.
+            // The integer-array walk is the SHARED parser
+            // (common/BatchEditJson.h), the same one project.setNotesGain calls:
+            // the validator pre-empts a non-integral id, and if it ever did not,
+            // the handler would emit the validator's exact bytes. noteIds is
+            // checked BEFORE gain, the order the route uses, so a request that is
+            // wrong in both places names the same argument on both surfaces.
+            std::vector<int> ids; QString idErr;
+            if (!HDAW::parseIntArray(a.value("noteIds"), "noteIds", ids, idErr))
+                return McpToolResult::text(idErr, true);
+            if (!a.contains("gain") || !a.value("gain").isDouble())
+                return McpToolResult::text("missing or non-numeric param: gain", true);
+            const auto r = e->getProjectCommands().setNotesGain(
+                ids, static_cast<float>(a.value("gain").toDouble()));
+            if (!r.ok) return McpToolResult::text(QString::fromStdString(r.error), true);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(QJsonObject{{"applied", r.applied}, {"ok", true}})
+                    .toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"set_note_pan", "Set a note's per-note pan (-1.0 left to 1.0 right).",
@@ -438,7 +481,10 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
                   {"pan", QJsonObject{{"type","number"},{"minimum",-1.0},{"maximum",1.0}}}}, {"noteId","pan"}),
         "note",
         [e](const QJsonObject& a) -> McpToolResult {
-            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            int noteId = 0; QString idErr;
+            if (!HDAW::parseIntArg(a, "noteId", noteId, idErr))
+                return McpToolResult::text(idErr, true);
+            int dummy = 0; auto n = findNote(e, noteId, &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             n.setProperty(IDs::notePan, a.value("pan").toDouble(), &um);
@@ -491,6 +537,39 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
             auto& um = e->getProjectModel().getUndoManager();
             c.setProperty(IDs::seed, static_cast<int64_t>(a.value("seed").toDouble()), &um);
             return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"query_notes", "List MIDI notes that SOUND during a project-beat window (interval OVERLAP, not onset-in-range), across all tracks or one track. " +
+        mcp::stableRefRuleText("trackID", "trackIndex") +
+        " startBeat and endBeat are both required. Returns {count, unit:\"beats\", "
+        "rows:[{noteId, clipId, trackIndex, trackID, clipName, absBeat, endBeat, "
+        "localBeat, durationBeats, pitch, velocity, occurrenceIndex, truncated}]} — "
+        "absBeat/endBeat are the note's audible span in PROJECT (absolute) beats "
+        "clamped to its clip (a tail past the clip end is truncated=true), while "
+        "localBeat/durationBeats stay clip-relative. Note repeat/occurrence "
+        "operators are not expanded.",
+        objSchema({{"startBeat",  QJsonObject{{"type","number"}}},
+                  {"endBeat",    QJsonObject{{"type","number"}}},
+                  {"trackIndex", QJsonObject{{"type","integer"}}},
+                  {"trackID",    QJsonObject{{"type","integer"}}}}),
+        "note",
+        [e](const QJsonObject& a) -> McpToolResult {
+            double startBeat = 0.0, endBeat = 0.0; QString argErr;
+            if (!HDAW::readBeatWindowArgs(a, startBeat, endBeat, argErr))
+                return McpToolResult::text(argErr, true);
+            auto tl = e->getProjectModel().getTrackListTree();
+            int trackIndex = -1; std::string refErr;
+            if ((a.contains("trackIndex") || a.contains("trackID"))
+                && !trackIndexArg(a, tl, trackIndex, refErr,
+                                  HDAW::StableRefKeys{"trackIndex", "trackID"}))
+                return McpToolResult::text(QString::fromStdString(refErr), true);
+            bool ok = true; QString err;
+            const QJsonObject payload = HDAW::buildNoteQueryPayload(
+                tl, e->getReadModel().getTransport().bpm, startBeat, endBeat, trackIndex,
+                &ok, &err);
+            if (!ok) return McpToolResult::text(err, true);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(payload).toJson(QJsonDocument::Compact)));
         }});
 }
 

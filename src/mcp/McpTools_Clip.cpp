@@ -2,6 +2,9 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+// Slice S3: the SAME `edits` parser the project.setClipsEdit route calls, so
+// the batch rejects a typo'd key / empty array / unknown clipId identically.
+#include "common/BatchEditJson.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -194,6 +197,41 @@ void registerClipTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"set_clips_edit",
+        "Batch-edit MULTIPLE clips in ONE undo unit and one round trip. `edits` is an array of "
+        "per-clip PARTIAL edits {clipId, start?, duration?, gain?, fadeIn?, fadeOut?, name?, looping?}; "
+        "an unset field leaves that clip property untouched. start/duration are in beats, fadeIn/fadeOut "
+        "in seconds, gain a scalar. The WHOLE batch is refused — nothing written, no undo unit — when "
+        "`edits` is empty or names an unknown clipId.",
+        objSchema({{"edits", QJsonObject{
+                       {"type","array"},
+                       {"items", QJsonObject{
+                           {"type","object"},
+                           {"properties", QJsonObject{
+                               {"clipId",   QJsonObject{{"type","integer"}}},
+                               {"start",    QJsonObject{{"type","number"}}},
+                               {"duration", QJsonObject{{"type","number"}}},
+                               {"gain",     QJsonObject{{"type","number"}}},
+                               {"fadeIn",   QJsonObject{{"type","number"}}},
+                               {"fadeOut",  QJsonObject{{"type","number"}}},
+                               {"name",     QJsonObject{{"type","string"}}},
+                               {"looping",  QJsonObject{{"type","boolean"}}}}},
+                           {"additionalProperties", false},
+                           {"required", QJsonArray{"clipId"}}}}}}},
+                  {}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            std::vector<ProjectCommands::ClipEdit> edits;
+            QString parseError;
+            if (!HDAW::parseClipEdits(a.value("edits"), edits, parseError))
+                return McpToolResult::text(parseError, true);
+            const auto r = e->getProjectCommands().setClipsEdit(edits);
+            if (!r.ok) return McpToolResult::text(QString::fromStdString(r.error), true);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(QJsonObject{{"applied", r.applied}, {"ok", true}})
+                    .toJson(QJsonDocument::Compact)));
+        }});
+
     s.registerTool({"duplicate_clip", "Duplicate a clip (destructive: creates a new clip).",
         objSchema({{"clipId",   QJsonObject{{"type","integer"}}},
                   {"start",    QJsonObject{{"type","number"}}},
@@ -242,7 +280,7 @@ void registerClipTools(McpServer& s, AudioEngine* e)
             double durSec = static_cast<double>(c.getProperty(IDs::duration));
             double durBeats = HDAW::secondsToBeats(durSec, bpm);
             int origCount = nl.getNumChildren();
-            um.beginNewTransaction();
+            e->getProjectCommands().beginTransaction("Loop clip");
             for (int rep = 1; rep < reps; ++rep) {
                 double offset = rep * durBeats;
                 for (int k = 0; k < origCount; ++k) {

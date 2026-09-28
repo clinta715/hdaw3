@@ -1006,8 +1006,8 @@ TEST_F(McpCoverageTest, ArrangerRegionCrud) {
     // Add region
     auto addR = call("add_arranger_region", {{"name", "Intro"}, {"startTime", 0.0}, {"duration", 8.0}});
     EXPECT_FALSE(isError(addR)) << text(addR).toStdString();
-    QString regionId = text(addR); // "regionID=<id>"
-    regionId = regionId.mid(regionId.indexOf('=') + 1);
+    QString regionId = QJsonDocument::fromJson(text(addR).toUtf8()).object()
+                           .value("regionID").toString(); // {"regionID":"<id>","unit":...}
 
     // List regions
     auto listR = QJsonDocument::fromJson(
@@ -1084,8 +1084,8 @@ TEST_F(McpCoverageTest, ArrangerChainCrud) {
 TEST_F(McpCoverageTest, ArrangerChainEntries) {
     // Setup: region + chain
     auto regR = call("add_arranger_region", {{"name", "A"}, {"startTime", 0.0}, {"duration", 4.0}});
-    QString regionId = text(regR);
-    regionId = regionId.mid(regionId.indexOf('=') + 1);
+    QString regionId = QJsonDocument::fromJson(text(regR).toUtf8()).object()
+                           .value("regionID").toString();
     auto chainR = call("add_arranger_chain", {{"name", "C"}});
     QString chainId = text(chainR);
     chainId = chainId.mid(chainId.indexOf('=') + 1);
@@ -1096,8 +1096,8 @@ TEST_F(McpCoverageTest, ArrangerChainEntries) {
 
     // Add second entry
     auto regR2 = call("add_arranger_region", {{"name", "B"}, {"startTime", 4.0}, {"duration", 4.0}});
-    QString regionId2 = text(regR2);
-    regionId2 = regionId2.mid(regionId2.indexOf('=') + 1);
+    QString regionId2 = QJsonDocument::fromJson(text(regR2).toUtf8()).object()
+                            .value("regionID").toString();
     call("add_chain_entry", {{"chainID", chainId}, {"regionID", regionId2}});
 
     // Verify 2 entries
@@ -1133,8 +1133,8 @@ TEST_F(McpCoverageTest, FlattenArranger) {
     // Add region + chain + entry
     auto regR = call("add_arranger_region", {{"name", "A"}, {"startTime", 0.0}, {"duration", 4.0}});
     EXPECT_FALSE(isError(regR)) << text(regR).toStdString();
-    QString regionId = text(regR);
-    regionId = regionId.mid(regionId.indexOf('=') + 1);
+    QString regionId = QJsonDocument::fromJson(text(regR).toUtf8()).object()
+                           .value("regionID").toString();
     auto chainR = call("add_arranger_chain", {{"name", "C"}});
     EXPECT_FALSE(isError(chainR)) << text(chainR).toStdString();
     QString chainId = text(chainR);

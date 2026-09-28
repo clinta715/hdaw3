@@ -73,7 +73,7 @@ void AudioEngineCommands::setClipGainEnvelope(int clipId,
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
 
-    um.beginNewTransaction("setClipGainEnvelope");
+    transactionBoundary("setClipGainEnvelope");
     auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
     if (envelope.isValid())
         clip.removeChild(envelope, &um);

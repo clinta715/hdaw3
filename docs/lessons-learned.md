@@ -583,3 +583,77 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     paths now share `src/common/PatternPresetJson.h` (the RPC copy had also
     lost category/author/createdAt).
 
+35. **A Windows macro can collide with a JUCE enum name — include ORDER is part
+    of the contract.** `rpcndr.h` (pulled by Qt's Windows headers) defines
+    `small` as `char`, while `juce_PushNotifications.h` declares
+    `enum BadgeIconType { none, small, large }`. In a `src/common` translation
+    unit that included Qt FIRST and then a header dragging in engine/JUCE
+    headers, the JUCE declaration expanded to `enum BadgeIconType { none, char,
+    large }` and the build died — the error pointed at the JUCE header, not at
+    the Qt include that poisoned the macro. This is the same family as the
+    `slots`/`signals`/`emit`/`foreach` Qt-keyword mangles
+    (`docs/pitfalls-juce.md`) — a macro leaking into a third-party identifier.
+    **Fix pattern (the reference is `src/common/BatchEnd.{h,cpp}`):** keep the
+    shared header Qt-LIGHT and JUCE-FREE (it exposes only the composition entry
+    point + a Qt payload struct), and put the heavy JUCE/engine includes in the
+    `.cpp` FIRST. **Rule:** when a new `src/common` piece must host both Qt and
+    JUCE/engine types, split it: light header + heavy `.cpp`, includes ordered
+    JUCE/engine before Qt. See `docs/pitfalls-juce.md`.
+
+36. **JUCE undo boundaries are often deliberately UNPAIRED — batch atomicity
+    must be a FLAG plus a choke point, never a depth counter.**
+    `beginNewTransaction`/`endTransaction` are not always a matched pair:
+    `createBus`/`createSend` are written so the send JOINS the bus's unit, and
+    other commands open-and-close around a helper. A naive "depth++ on begin,
+    depth-- on end" batch would therefore never return to zero and would leak
+    (the batch never closes; every later write silently joins it). The safe
+    design: a boolean `batchActive_` + ONE boundary choke point,
+    `AudioEngineCommands::transactionBoundary`
+    (`src/engine/AudioEngineCommands_Undo.cpp`), which the command layer's own
+    begin/end pair AND every internal command boundary route through — while a
+    batch is open the boundary is a no-op, so all the batch's writes land in
+    one named undo unit. **Rules:** (a) never model batch state as a nesting
+    depth when the boundaries you are collapsing are not guaranteed
+    balanced — use a flag; (b) route EVERY undo boundary through the one choke
+    point (an audit of all `beginNewTransaction` call sites is required);
+    (c) keep the no-batch behaviour byte-identical
+    (`BatchEditRpcTest.NoBatchBehaviourIsUnchanged`), and prove the collapse
+    with an internally-transactional command
+    (`BatchEditRpcTest.BatchCollapsesInternallyTransactionalCommandsIntoOneUndo`).
+
+37. **A windowed render does not predict the full render — measure the window
+    OUT of a full render, then promote its stats before gating.** Plugin state
+    re-bakes at each window boundary, so a render of `[start,end)` can report
+    "0 clamps" for a file whose full render carries exact-FS frames
+    (`docs/handoffs/2026-09-28-v0.39.2-backlog-closeout.md` §3: 0 in-window vs
+    32 in the full render). A window-only verification would have reported a
+    false pass for the exact metric the loop exists to check. Two rules fall
+    out: (a) **render the WHOLE project** (`0 .. calculateProjectDuration`
+    through the shared export launcher, `src/common/RenderLaunch.h`) and
+    measure only the requested window; (b) **promote the window's own metrics
+    to the payload root** — `buildMixReportPayload` puts whole-file metrics at
+    the root, so gating a window requires
+    `buildWindowReportPayload` (`src/common/MixReportJson.cpp`), which runs the
+    SAME analyzer over the window and lifts `duration/peak/rms/bands/
+    kickProminence/ceilingHitPct/ceilingHitFrames` to the root. Verified live:
+    window beats 0→4 gates on the window's `ceilingHitPct` 72.75 while
+    `mix_report` on the same file reports 16.17.
+
+38. **The tool boundary has a silent-acceptance class — refuse unknown keys and
+    non-integral numbers with SHARED bytes.** Three sub-classes surfaced while
+    hardening the mechanization surface, all "accepted but wrong": (a)
+    `requireInt`/`optInt` TRUNCATED a non-integral id (1.5 → note 1), silently
+    aiming the write at the wrong entity; (b) `verify_window`'s expectation
+    object silently IGNORED an unknown key, so a typo'd gate never ran; (c) the
+    parity ledger ALIASED `begin_batch` to `project.beginTransaction`, an
+    overstatement that read as verified equivalence. **Fix pattern:** ONE shared
+    parser per request, called by BOTH surfaces, whose refusal text is the
+    validator's own bytes — `src/common/BatchEditJson.h` (integer-array ids),
+    `src/common/RenderToolArgs.h` (strict expectation keys, refused BEFORE any
+    render), and real RPC entry points (`ProjectCommands::beginBatch`/`endBatch`)
+    instead of an alias. **Rules:** (a) a request with multiple shapes/keys must
+    refuse the ones it does not understand, not ignore them; (b) an argument
+    that must be an integer is refused when non-integral, with no mutation and
+    no undo unit; (c) a ledger row may only claim `mapped` when both surfaces
+    call the SAME entry point — alias rows overstate equivalence.
+

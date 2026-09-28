@@ -549,3 +549,46 @@ definition, so it reads like a broken gtest rather than a name collision.
 **Fix:** rename the local (`fxSlots`). **Rule:** before building new code that includes
 QtCore, grep it for the four Qt keywords (`slots`, `signals`, `emit`, `foreach`) and
 rename any that are not actual Qt signal/slot machinery.
+
+## Windows `rpcndr.h` `small` collides with a JUCE enum — include ORDER breaks the build (2026-09-28)
+
+**Symptom:** a new `src/common` translation unit that includes Qt headers first and
+then a header dragging in engine/JUCE headers fails to build, with the error pointing
+at the JUCE header — never at the Qt include that poisoned the macro. Windows'
+`rpcndr.h` (transitively pulled by Qt's Windows headers) defines
+
+```cpp
+#define small char
+```
+
+while `juce_PushNotifications.h` declares
+
+```cpp
+enum class BadgeIconType { none, small, large };
+```
+
+so the declaration expands to `enum class BadgeIconType { none, char, large }` and the
+compiler rejects it. This is the `slots`/`signals` macro family (above), one layer
+deeper: the collidee is a JUCE *enum member*, and the poison arrives through Windows
+system headers rather than QtCore directly.
+
+It surfaced while adding the offset (`BatchEnd.{h,cpp}`) that hosts both a Qt payload
+struct and a call into the engine's render→verdict path.
+
+**Fix pattern — split the piece by include weight:**
+
+- the shared header is **Qt-light and JUCE-FREE** — it exposes only the composition
+  entry point and a plain Qt struct (no engine/JUCE includes);
+- the `.cpp` puts the **JUCE/engine includes FIRST**, before any Qt include, then the
+  implementation.
+
+`src/common/BatchEnd.h` (light) + `src/common/BatchEnd.cpp` (heavy, ordered) is the
+reference. Header-only shapers that never drag engine types stay single-file and are
+unaffected.
+
+**Rule:** when a new `src/common` piece must host BOTH Qt types and JUCE/engine types,
+do not put both include families in one header. Split it into a Qt-light header plus a
+JUCE-heavy `.cpp` whose includes are ordered JUCE/engine before Qt — and when a build
+error names a JUCE declaration that reads as syntactically absurd (an enum member
+becoming `char`), suspect a Windows/Qt macro on the include path before blaming the
+JUCE source. See lesson 35.

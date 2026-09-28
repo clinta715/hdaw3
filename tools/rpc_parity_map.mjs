@@ -130,6 +130,21 @@ const camel = s => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 const ALIASES = {
   rave_get_config: 'settings.getRaveConfig',
   rave_set_config: 'settings.setRaveConfig',
+  // S4 ledger fix (docs/plans/2026-09-28-agent-mechanization.md): begin_batch /
+  // end_batch used to ALIAS the raw project.beginTransaction / endTransaction
+  // pair, which overstated equivalence — the batch adds the batch flag (collapse
+  // semantics, ONE undo unit) and the MCP tool is stdio-gated. TRUE twins now
+  // exist (project.beginBatch / project.endBatch call the SAME
+  // ProjectCommands::beginBatch / endBatch entry points with the SAME refusal
+  // texts), so the rows are exact; the notes carry the ONE deliberate asymmetry.
+  begin_batch: ['project.beginBatch',
+    'exact twin: same ProjectCommands::beginBatch entry point + refusal texts. ONE deliberate '
+    + 'asymmetry: the MCP tool ADDITIONALLY refuses on a transport other than stdio (the batch '
+    + 'owns the process-wide undo transaction; batchStdioRequiredError), while the RPC route — '
+    + "the process's own UI client — does not."],
+  end_batch: ['project.endBatch',
+    'exact twin: same ProjectCommands::endBatch entry point + "no open batch" refusal. No '
+    + 'transport gate on either surface.'],
   list_matrix_presets: 'matrix.listPresets',
   apply_matrix_preset: 'matrix.applyPreset',
   analyze_tuning: 'tuning.analyze',
@@ -319,6 +334,7 @@ const MCP_ONLY = {
   transport: 'aggregate: dispatches transport.play/pause/stop by argument (no 1:1 route)',
   seek: 'aggregate: dispatches transport.seekToSeconds/seekToSample by unit',
   engine_info: 'MCP server introspection (engine version/binary), no engine route needed',
+  whoami: 'MCP server introspection: engine binary/version (superset of engine_info) plus the MCP transport it is serving on - the RPC surface cannot report its own transport, and the session project fields are covered by read.snapshot',
   engine_restart: 'MCP/engine lifecycle control for the test harness',
   snapshot_project: 'covered by read.snapshot (whole-project JSON)',
   project_info: 'covered by read.snapshot / project.* accessors',
@@ -333,6 +349,8 @@ const MCP_ONLY = {
     + '(the tool says so); the persistent twin is project.setMidiFxSlotParam',
   list_envelope_shapes: 'static vocabulary of the `shape` argument project.generateAutomationEnvelope / '
     + 'project.generateClipGainEnvelope accept (router_helpers::parseShape — the same 11 names); no route enumerates it',
+  tool_help: 'MCP tool-registry introspection: returns the tools/list entry for ONE tool — the RPC surface has '
+    + 'no tool registry to describe (the engine_info / whoami precedent)',
 };
 
 // ---- classify --------------------------------------------------------------

@@ -108,7 +108,11 @@ void registerAllTools(McpServer& s) {
     registerTuningTools(s, e);
     registerExportTool(s);
     registerCancelExportTool(s);
+    registerVerifyWindowTool(s);
+    registerRenderAndVerifyTool(s);
     registerEngineInfoTool(s);
+    registerWhoamiTool(s);
+    registerToolHelpTool(s);
     registerEngineRestartTool(s);
     registerRaveTools(s, e);
     registerDeviceTools(s, e);

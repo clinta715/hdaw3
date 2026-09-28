@@ -8,6 +8,12 @@
 #include "../engine/ProjectPool.h"
 #include "../engine/PluginManager.h"
 #include "../model/ProjectModel.h"
+#include "../common/ProjectCommands.h"
+#include "../common/RenderLaunch.h"
+#include "../common/VerifyWindowJson.h"
+#include "../common/RenderToolArgs.h"
+#include "../common/RenderAndVerify.h"
+#include "../common/MixVerdict.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -70,8 +76,6 @@ void registerExportTool(McpServer& s) {
             if (endTime <= 0.0)
                 endTime = HDAW::ExportManager::calculateProjectDuration(e->getProjectModel());
 
-            juce::File outFile(juce::String(path.toUtf8().constData()));
-            if (outFile.existsAsFile()) outFile.deleteFile();
             double duration = std::max(0.001, endTime - startTime);
 
             auto& em = e->getMainProcessor()->getExportManager();
@@ -86,69 +90,44 @@ void registerExportTool(McpServer& s) {
                 }
             }
 
-            juce::ValueTree projectCopy = e->getProjectModel().getTree().createCopy();
-
             // Optional track filter: render only the requested track indices.
-            // Applied to the offline copy (mute + zero volume on the rest, solo
-            // cleared) so a selected track always plays regardless of project
-            // solo state and excluded tracks never contribute.
-            const QJsonArray trackIds = a.value("trackIds").toArray();
-            if (!trackIds.isEmpty())
-            {
-                auto trackList = projectCopy.getChildWithName(IDs::TRACK_LIST);
-                if (trackList.isValid())
-                {
-                    for (int i = 0; i < trackList.getNumChildren(); ++i)
-                    {
-                        bool keep = false;
-                        for (const auto& v : trackIds)
-                            if (v.toInt(-1) == i) { keep = true; break; }
-                        auto tr = trackList.getChild(i);
-                        tr.setProperty(IDs::isSoloed, false, nullptr);
-                        tr.setProperty(IDs::isMuted, !keep, nullptr);
-                        if (!keep)
-                            tr.setProperty(IDs::volume, 0.0, nullptr);
-                    }
-                }
-            }
-
-            auto& formatManager = e->getProjectPool().getFormatManager();
-            auto* pluginManager = &e->getPluginManager();
+            // Applied to the offline copy (mute + zero volume on the rest,
+            // solo cleared) so a selected track always plays regardless of
+            // project solo state and excluded tracks never contribute.
+            std::vector<int> trackIds;
+            for (const auto& v : a.value("trackIds").toArray())
+                trackIds.push_back(v.toInt(-1));
 
             QPointer<McpServer> serverPtr(&s);
-            em.onProgress = [serverPtr](float prog) {
-                if (serverPtr.isNull()) return;
-                QJsonObject params{
-                    {"progress", static_cast<double>(prog)},
-                    {"message", QString("rendering... %1%").arg(static_cast<int>(prog * 100.0))}
-                };
-                McpNotification n{"notifications/progress", params};
-                QString line = serializeNotification(n);
-                QMetaObject::invokeMethod(serverPtr, "notifyFromBackground",
-                    Qt::QueuedConnection, Q_ARG(QString, line));
-            };
-
-            em.onComplete = [serverPtr, &em, path](bool success, const juce::String& message) {
-                if (!serverPtr.isNull()) {
-                    QJsonObject params{{"success", success},
-                                       {"message", QString::fromUtf8(message.toRawUTF8())},
-                                       {"outputPath", path}};
-                    McpNotification n{"notifications/exportComplete", params};
+            auto launch = HDAW::launchProjectRender(
+                *e, path, sampleRate, bitDepth, fmt, startTime, duration, trackIds,
+                [serverPtr](float prog) {
+                    if (serverPtr.isNull()) return;
+                    QJsonObject params{
+                        {"progress", static_cast<double>(prog)},
+                        {"message", QString("rendering... %1%").arg(static_cast<int>(prog * 100.0))}
+                    };
+                    McpNotification n{"notifications/progress", params};
+                    QString line = serializeNotification(n);
                     QMetaObject::invokeMethod(serverPtr, "notifyFromBackground",
-                        Qt::QueuedConnection, Q_ARG(QString, serializeNotification(n)));
-                }
-                em.onProgress = nullptr;
-                em.onComplete = nullptr;
-                if (!serverPtr.isNull())
-                    serverPtr->resetCancelFlag();
-            };
-
-            if (!em.startExport(projectCopy, formatManager, pluginManager, outFile,
-                                sampleRate, startTime, duration, fmt, bitDepth)) {
-                em.onProgress = nullptr;
-                em.onComplete = nullptr;
-                return McpToolResult::text("failed to start export", true);
-            }
+                        Qt::QueuedConnection, Q_ARG(QString, line));
+                },
+                [serverPtr, &em, path](bool success, const juce::String& message) {
+                    if (!serverPtr.isNull()) {
+                        QJsonObject params{{"success", success},
+                                           {"message", QString::fromUtf8(message.toRawUTF8())},
+                                           {"outputPath", path}};
+                        McpNotification n{"notifications/exportComplete", params};
+                        QMetaObject::invokeMethod(serverPtr, "notifyFromBackground",
+                            Qt::QueuedConnection, Q_ARG(QString, serializeNotification(n)));
+                    }
+                    em.onProgress = nullptr;
+                    em.onComplete = nullptr;
+                    if (!serverPtr.isNull())
+                        serverPtr->resetCancelFlag();
+                });
+            if (!launch.started)
+                return McpToolResult::text(launch.error, true);
 
             {
                 QJsonObject params{{"progress", 0.0},{"message","starting render"}};
@@ -235,6 +214,112 @@ void registerCancelExportTool(McpServer& s) {
                 return McpToolResult::text("no export in progress");
             em.cancel();
             return McpToolResult::text("cancel requested");
+        }});
+}
+
+// ── S4: verify_window / render_and_verify ───────────────────────────────────
+// Render→measure→compare. verify_window renders the WHOLE project through the
+// shared export launcher (common/RenderLaunch.h) and measures ONLY the requested
+// beat window — the WINDOW's metrics are the report's ROOT, so `targets` gates
+// the window, not the file. render_and_verify = full render + buildMixVerdict.
+//
+// Both WAIT for the render (their contract is measure-and-answer; one
+// verify_window costs ~one full export) and both delegate to a ProjectCommands
+// entry point, so the RPC twins are byte-identical by construction.
+void registerVerifyWindowTool(McpServer& s) {
+    auto* e = s.engine();
+    if (!e) return;
+
+    s.registerTool({"verify_window",
+        "Render → measure → compare in ONE call, for a BEAT window of the WHOLE project. "
+        "Renders the ENTIRE project through the export path (a window-ONLY render is not "
+        "predictive: it re-bakes plugin state per window and misses sum-peak clamps — a "
+        "windowed render measured 0 clamps on a file that carried 32 exact-FS frames), then "
+        "measures ONLY [startBeat, endBeat) and reports THE WINDOW's own metrics at the "
+        "report ROOT (duration/rms/peak/bands/kickProminence/ceilingHitPct/ceilingHitFrames) "
+        "… plus the B6 target gates over them. So a targets:{ceilingHitPctMax:0} check passes "
+        "when the clamps are OUTSIDE the window and fails when one is INSIDE it — while "
+        "mix_report over the whole file would fail either way. WAITS for the render "
+        "(bounded by timeoutMs, default 600000): one call ≈ one full export. Returns "
+        "{ok, wavPath, window:{startBeat,endBeat,startSec,endSec,durationSec}, report, "
+        "targetChecks, targetsOk}; the rendered WAV is KEPT for A/B and is the CALLER's to "
+        "delete (an omitted outputPath lands in the OS temp dir). An inverted/empty window "
+        "is refused. The expectation object is STRICT — an unknown key is refused "
+        "('unknown expectation key <key>') BEFORE any render; accepted keys are rmsMin "
+        "(LINEAR RMS floor, same units as the report's rms, at least), "
+        "masterRms (linear mono-downmix RMS, within 5%), ceilingHitPctMax (percent of frames "
+        "with any channel |sample| >= 0.999, at most), kickProminenceMin (0..1, at least), "
+        "targetDurationSeconds (seconds, within 2s). Optional `expect` is an accepted alias "
+        "of `targets`.",
+        objSchema({{"startBeat",  QJsonObject{{"type","number"}}},
+                   {"endBeat",    QJsonObject{{"type","number"}}},
+                   {"targets",    QJsonObject{{"type","object"},
+                        {"description","Expectation keys (unknown keys are REFUSED): rmsMin (LINEAR RMS floor, "
+                         "same units as the report's rms), masterRms (linear mono-downmix RMS), ceilingHitPctMax "
+                         "(percent of frames with any channel |sample| >= 0.999), kickProminenceMin (0..1), "
+                         "targetDurationSeconds (seconds)."}}},
+                   {"expect",     QJsonObject{{"type","object"},
+                        {"description","Alias of targets; same accepted keys, same strictness."}}},
+                   {"outputPath", QJsonObject{{"type","string"}}},
+                   {"timeoutMs",  QJsonObject{{"type","integer"},{"default",600000}}}},
+                 {"startBeat","endBeat"}),
+        "audio",
+        [e](const QJsonObject& a) -> McpToolResult {
+            HDAW::VerifyWindowArgs args;
+            QString argError;
+            if (!HDAW::parseVerifyWindowArgs(a, args, argError))
+                return McpToolResult::text(argError, true);
+            auto r = e->getProjectCommands().verifyWindow(args.startBeat, args.endBeat, args.targets,
+                                                          args.outputPath, args.timeoutMs);
+            if (!r.ok)
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(HDAW::buildVerifyWindowPayload(r)).toJson(QJsonDocument::Compact)));
+        }});
+}
+
+void registerRenderAndVerifyTool(McpServer& s) {
+    auto* e = s.engine();
+    if (!e) return;
+
+    s.registerTool({"render_and_verify",
+        "Full render + release verdict in ONE call: renders the WHOLE project through the "
+        "export path to outputPath (WAITING for completion) and returns the mix_verdict "
+        "release-readiness verdict over the produced file — {ok, gates{audible, clipping, "
+        "loudness, structure, modulation, introBlast, targets?...}, issues[], warnings[]} plus "
+        "the wavPath. The 're-render + re-verdict' loop as one tool, and the verdict IS a "
+        "mix_verdict: the SAME input resolution (fromPlan / dropBuildRatio / introSeconds / "
+        "targets) and the SAME composer, so `render_and_verify {outputPath}` equals "
+        "`mix_verdict {filePath: outputPath}` for the produced file BYTE FOR BYTE. fromPlan "
+        "(default FALSE, MIRRORING mix_verdict's default) derives the windows, the loudness "
+        "gate and the structure audit from the current song plan; set fromPlan=true to gate the "
+        "plan on BOTH surfaces, or leave it false for the whole-file verdict. With fromPlan:true "
+        "and NO song plan it falls back to the whole-file verdict (it has already rendered) "
+        "instead of refusing. dropBuildRatio (default 0.9) is the loudness "
+        "floor; introSeconds (default 2) runs the intro-blast gate; targets adds the same B6 "
+        "target gate mix_verdict accepts. An empty or unwritable outputPath is refused.",
+        objSchema({{"outputPath",     QJsonObject{{"type","string"}}},
+                   {"targets",        QJsonObject{{"type","object"}}},
+                   {"timeoutMs",      QJsonObject{{"type","integer"},{"default",600000}}},
+                   {"fromPlan",       QJsonObject{{"type","boolean"},{"default",false}}},
+                   {"dropBuildRatio", QJsonObject{{"type","number"},{"default",0.9}}},
+                   {"introSeconds",   QJsonObject{{"type","number"},{"default",2.0}}}},
+                 {"outputPath"}),
+        "export",
+        [e](const QJsonObject& a) -> McpToolResult {
+            HDAW::RenderAndVerifyArgs args;
+            QString argError;
+            if (!HDAW::parseRenderAndVerifyArgs(a, args, argError))
+                return McpToolResult::text(argError, true);
+            // ONE shared implementation for both surfaces
+            // (src/common/RenderAndVerify.h).
+            const auto r = HDAW::renderAndVerify(*e, args.outputPath, args.targets, args.timeoutMs,
+                                                 args.fromPlan, args.dropBuildRatio,
+                                                 args.introSeconds);
+            if (!r.ok)
+                return McpToolResult::text(r.error, true);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(r.payload).toJson(QJsonDocument::Compact)));
         }});
 }
 

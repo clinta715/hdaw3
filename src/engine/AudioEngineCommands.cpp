@@ -299,7 +299,7 @@ ProjectCommands::BusCreateResult AudioEngineCommands::createBus(const std::strin
     // One undo unit for this command: open the transaction so the bus is
     // distinguishable from whatever preceded it (createSend then appends to it).
     auto& um = model.getUndoManager();
-    um.beginNewTransaction(juce::String(busType == "fx" ? "Create FX bus" : "Create group bus"));
+    transactionBoundary(juce::String(busType == "fx" ? "Create FX bus" : "Create group bus"));
     busList.addChild(bus, busList.getNumChildren(), &um);
 
     // ONE rebuild for the structural change (lesson 6), through the pump-park-safe
@@ -345,7 +345,7 @@ bool AudioEngineCommands::removeBus(int busID, std::string& error)
 
     // One undo unit for this command, mirroring createBus: the cascade below
     // and the bus removal undo together.
-    um.beginNewTransaction("Remove bus");
+    transactionBoundary("Remove bus");
 
     // Cascade: a SEND whose sendTarget no longer resolves is a dead node
     // (RoutingManager::addSend bails out on an unknown target), so every send
@@ -441,7 +441,7 @@ ProjectCommands::BusRetargetResult AudioEngineCommands::setBusTarget(int busID, 
     // One undo unit for this command, mirroring createBus/removeBus. The BUS node
     // is the identity, so the write is a property on it (not a re-insertion):
     // position in BUS_LIST is irrelevant and nothing else in the tree changes.
-    um.beginNewTransaction("Set bus target");
+    transactionBoundary("Set bus target");
     bus.setProperty(IDs::busTarget, busTarget, &um);
 
     // ONE rebuild for the structural change (lesson 6), through the pump-park-safe
@@ -556,7 +556,7 @@ bool AudioEngineCommands::setBusFxParam(int busID, int paramIndex, float value,
     const float clamped = HDAW::clampBusFxParam(fxType, paramIndex, value);
 
     auto& um = model.getUndoManager();
-    um.beginNewTransaction("Set bus FX param");
+    transactionBoundary("Set bus FX param");
     busTree.setProperty("param_" + juce::String(paramIndex),
                         static_cast<double>(clamped), &um);
 
@@ -600,7 +600,7 @@ bool AudioEngineCommands::removeSend(int trackIndex, int sendIndex, std::string&
     const bool removedPidIsSendPid = removedPid <= 2999;
 
     auto& um = model.getUndoManager();
-    um.beginNewTransaction("Remove send");
+    transactionBoundary("Remove send");
     sendList.removeChild(sendIndex, &um);
 
     // Automation lanes durably encode the POSITIONAL sendIndex as paramID

@@ -47,6 +47,18 @@ public:
 
     MainAudioProcessor* getMainProcessor() const { return mainProcessor.get(); }
     ProjectModel& getProjectModel() { return projectModel; }
+    // Session project file path (see ProjectCommands::getProjectFilePath).
+    // Null-safe: "" before initialize() has created the command layer, so an
+    // introspection tool called during the deferred-init window cannot crash.
+    std::string getProjectFilePath() const
+    {
+        return commands ? commands->getProjectFilePath() : std::string();
+    }
+    // Edit-batch state (see ProjectCommands::beginBatch). Null-safe for the same
+    // reason: before initialize() has created the command layer there is no
+    // batch, so an introspection tool cannot crash asking.
+    bool batchActive() const { return commands && commands->batchActive(); }
+    std::string batchName() const { return commands ? commands->batchName() : std::string(); }
     SPSCBridge& getBridge() { return spscBridge; }
     HDAW::TransportManager& getTransportManager() { return transportManager; }
     HDAW::ProjectPool& getProjectPool() { return projectPool; }

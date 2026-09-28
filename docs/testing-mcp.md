@@ -171,6 +171,25 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   blaming a mix/arrangement change, re-render just the affected window.**
   Root cause unknown; suspects are the render-sequence bake race or an
   isolated-CLAP child dropout under load.
+- **`PsytranceComposition.PsyDubFiveMinutes` process death — PRE-EXISTING (2026-09-28).** Symptoms
+  observed on the session tree, two classes in the same test: an SEH access violation
+  (`0xC0000005`) minutes into the run with **no** gtest output and no crash artifact, or a plain
+  gtest failure `Osirus CC0+PC failed: track not found: 7` (the live-graph lookup in
+  `AudioEngineCommands_Fx.cpp`'s `sendFxMidi`) at 2.4 min. Either way a shard dies with no
+  completion summary (`INCOMPLETE SHARDS … ran 0 of N intended tests`). **Evidence it predates that
+  session's changes:** the same access violation reproduces on a pristine HEAD `f1551e4` build
+  (`git stash push --include-untracked`, `dsh-build-fast.bat ninja` reconfigure, rebuild —
+  `0xC0000005` ≈5.8 min in), and a clean build-state rebuild (`build/CMakeFiles`, `.ninja_deps`,
+  `.ninja_log` deleted, reconfigure, 627 targets) did not change the symptom. The neighbouring heavy
+  compositions (`FullProductionV4`, `DarkForestV5`) and `PluginIsolation.*` (51/51) pass.
+  **Root cause unknown** — a dump-backed stack (WER LocalDumps has no `hdaw_tests.exe` entry today;
+  `cdb.exe` and `procdump` are both installed) is the next step before touching the
+  isolated-CLAP / render-sequence path.
+- **Runner wart: a per-test exclusion does not survive a whole-suite unit (measured 2026-09-28).**
+  `run-tests-sharded.ps1` enumerates with `--gtest_list_tests --gtest_filter=<Filter>` (so
+  `*-Suite.Test` lowers the intended count) but then runs any suite with ≤ `-WholeSuiteThreshold`
+  tests as ONE unit whose filter is `Suite.*` — which re-selects the excluded test at run time.
+  To truly exclude one test from a small suite, pass `-WholeSuiteThreshold 0`, not a filter.
 - **Shard runner counts UNIQUE failures (fixed 2026-09-25).** gtest prints each failing test twice
   (timed `[  FAILED  ] Name (123 ms)` plus a bare `[  FAILED  ] Name` in the summary list) and the
   `[  FAILED  ] N test(s), listed below:` counter is not a test name; summing raw lines reported the
@@ -332,6 +351,188 @@ deleting it and relinking), plus LNK1168 on a locked `hdaw_tests.exe`. The
 orchestrator owns exactly ONE build + ONE focused test pass after all slices land,
 and the full suite once at finalize. Announce the rule in the slice brief, not
 mid-flight. (This is the slice-level version of the second-build collision above.)
+
+## Canonical agent workflow: one long-lived stdio session
+
+The MCP surface is meant to be driven by ONE long-lived stdio session, not a
+process per request:
+
+- **Engine:** `build\HDAW_headless.exe --mcp-stdio` (optionally
+  `--project <file.hdaw>` to boot straight into a saved project; `--project` is
+  honored only with `--mcp-stdio`). This process owns a dedicated engine with no
+  WebSocket frontend branch, so this one client is the only writer.
+- **Client:** `scripts/mcp_call.py tools/list | schemas [names] | desc [names] |
+  call <tool> '<json-args>' | run <steps.json>`.
+  - `call` is ONE tool call on a **fresh engine** (a new process per invocation)
+    — fine for probing, useless for a sequence that must share state (e.g. a
+    bus created by one call and routed from the next).
+  - `run <steps.json>` starts ONE engine and replays every
+    `{tool, args?, timeout?, stop_on_error?}` step in it — the whole file is a
+    single engine lifetime. This is how a multi-step edit is verified.
+  - `--engine-args "<extra>"` appends engine argv (e.g. `--project`).
+- **Discovery:** `tool_help {"name":"<tool>"}` returns that tool's `tools/list`
+  entry in one call — `{name, description, category, inputSchema (with the
+  `x-unit` annotations and the standard `examples` array)}` — instead of scanning
+  `tools/list`. The per-tool shape example lives in the schema's
+  `inputSchema.examples` (a standard JSON Schema annotation, an array of one
+  object; a zero-arg tool carries `[{}]`), NOT in an ad-hoc top-level `example`
+  key that a strict MCP client might strip.
+
+### Multi-edit atomicity: `begin_batch` / `end_batch`
+
+`begin_batch {"name":"…"}` opens ONE named undo unit; every ValueTree write until
+`end_batch {}` — **including commands that open their OWN internal undo
+transaction** — coalesces into it, so a single `undo` reverts the whole batch.
+That is the real guarantee (the command layer's one choke point,
+`AudioEngineCommands::transactionBoundary`), and it is measured by
+`BatchEditRpcTest.BatchCollapsesInternallyTransactionalCommandsIntoOneUndo`.
+
+The batch is **engine-global and one-at-a-time**:
+
+- only the **stdio** transport may open one — `begin_batch` is refused on any
+  other transport (a batch owns the process-wide undo transaction);
+- a second `begin_batch` while one is open is refused
+  (`a batch is already open (name "…") - call end_batch first`); `end_batch`
+  with none open answers `no open batch`;
+- every write from ANY surface while it is open joins the batch, so keep batches
+  short;
+- a command FAILURE does NOT close the batch — call `end_batch` on the failure
+  path too;
+- `whoami` reports `batchOpen` / `batchDepth` / `batchName`.
+
+**Optional verify hook (cost: one full render).** `end_batch {"verify":{"targets"?,"outputPath"?"}}`
+SEALS the batch FIRST and only then renders the whole project + composes the
+SAME release verdict `render_and_verify`/`mix_verdict` would (ONE shared body,
+`src/common/BatchEnd.h` + `src/common/RenderAndVerify.h`). A verification FAILURE
+never un-seals the batch: the payload stays `{ok:true, sealed:true}` and carries
+`verificationError`; on success it adds `verification:{wavPath, verdict}`. With no
+`verify` the payload is exactly `{ok:true, sealed:true}`. Argument errors are
+refused BEFORE the seal (the MCP validator pre-empts them).
+
+`project.beginTransaction` / `project.endTransaction` remain the RPC grouping
+path and share the same undo boundary; they are NOT batch-gated, so an RPC group
+opened while a batch is open joins it (engine-global state, documented).
+
+**True RPC twins (S4 ledger fix):** `project.beginBatch {"name"?}` /
+`project.endBatch {}` call the SAME `ProjectCommands::beginBatch` / `endBatch`
+entry points as the tools, with the SAME refusal texts — so the parity ledger
+rows are exact camelCase matches, not aliases of the raw
+begin/endTransaction pair. ONE deliberate asymmetry: the MCP tool ADDITIONALLY
+refuses on a transport other than `stdio` (the process-isolation guard above);
+the RPC route is the process's own UI client and is not transport-gated. Pinned
+by `BatchEditRpcTest.RpcBeginBatchHasNoTransportGateWhileTheToolHas` and
+`BatchEditRpcTest.BatchTwinRefusalsShareTheExactBytes`.
+
+## Render → measure → compare: `verify_window` / `render_and_verify`
+
+Both tools render the WHOLE project through the export path on a tree copy and
+**wait** for the render to finish (their contract is measure-and-answer; one
+`verify_window` costs about one full export). They share ONE launcher
+(`src/common/RenderLaunch.h` — the same tree-copy / `trackIds` filter /
+`ExportManager::startExport` code path `export_audio` and `export.audio` use),
+so the render inputs cannot drift between surfaces.
+
+- `verify_window {startBeat, endBeat, targets?|expect?, outputPath?, timeoutMs?}`
+  (RPC twin `composition.verifyWindow`) renders the whole project, then measures
+  **only** `[startBeat, endBeat)` (beats → seconds at the project BPM) and
+  reports **the WINDOW's own metrics at the payload root**
+  (`duration/peak/rms/bands/kickProminence/ceilingHitPct/ceilingHitFrames`), with
+  the B6 `targetChecks`/`targetsOk` rows gated on THOSE numbers. Payload:
+  `{ok, wavPath, window:{startBeat,endBeat,startSec,endSec,durationSec}, report,
+  targetChecks, targetsOk}`.
+  - **Why full render + window measurement, never a window-only render:** a
+    windowed render is not predictive — plugin state re-bakes per window, and
+    the v0.39.2 close-out measured **0 clamps** on a windowed render of a file
+    whose full render carried **32 exact-FS frames**
+    (`docs/handoffs/2026-09-28-v0.39.2-backlog-closeout.md` §3). A window-only
+    render would have reported a false pass.
+  - **Gating the window, not the file:** handing the full-render WAV plus one
+    window to `buildMixReportPayload` and then `applyTargetGates` would gate the
+    WHOLE SONG's ceiling/rms. `buildWindowReportPayload`
+    (`src/common/MixReportJson.cpp`) promotes the window's stats to the ROOT, so
+    `targets:{ceilingHitPctMax:0}` PASSES when the clamps sit outside the window
+    and FAILS when one is inside — while `mix_report` over the same file fails
+    either way. Measured live (beats 0→4 clamped clip vs 8→12 quiet window):
+    window `ceilingHitPct` 0 / `targetsOk` true vs whole-file 16.17 / false.
+  - The rendered WAV is **KEPT for A/B and is the CALLER's to delete** (an
+    omitted `outputPath` lands in the OS temp dir; a caller-supplied path is
+    reused, not deleted).
+  - An inverted/empty window is refused with one shared text
+    (`startBeat/endBeat invalid: need startBeat < endBeat`) on both surfaces; a
+    missing required argument fails with the MCP validator's exact bytes on both
+    surfaces (`src/common/RenderToolArgs.h` is the single arg parser).
+  - The expectation object is **STRICT**: an unknown key is refused with
+    `unknown expectation key <key>` (-32602) on both surfaces BEFORE any render.
+    Accepted keys and units: `rmsMin` (LINEAR RMS floor — the SAME units as the
+    report's root `rms` and as `masterRms` — at least), `masterRms` (linear
+    mono-downmix, within 5%), `ceilingHitPctMax` (percent of frames with any
+    channel |sample| ≥ 0.999, at most), `kickProminenceMin` (0..1, at least),
+    `targetDurationSeconds` (seconds, within 2s). A positive `rmsMin` fails a
+    silent window's rms 0; `rmsMin: 0.0` passes it. The permissive
+    `applyTargetGates` used by `mix_report`/`mix_verdict` (brief-supplied targets)
+    is unchanged.
+- `render_and_verify {outputPath, targets?, timeoutMs?, fromPlan?, dropBuildRatio?,
+  introSeconds?}` (RPC twin `export.renderAndVerify`) = full render + the SAME
+  verdict composition `mix_verdict` performs: the inputs (windows, structure
+  audit, loudness map, modulation coverage, intro window, targets) resolve
+  through ONE shared helper (`src/common/MixVerdictInputs.h`), so the produced
+  `verdict` is BYTE-IDENTICAL to `mix_verdict {filePath: <produced>, fromPlan,
+  ...}`. `fromPlan` defaults FALSE, MIRRORING the `mix_verdict` tool/route
+  default, so the NO-ARGS calls agree even on a project WITH a song plan; pass
+  `fromPlan:true` to BOTH to gate the plan. With `fromPlan:true` on a plan-less
+  project it falls back to the whole-file verdict (it has already rendered)
+  instead of refusing. ONE
+  implementation (`src/common/RenderAndVerify.h`) serves both surfaces, so the
+  payload and the refusals (`outputPath required`, render failures) are
+  identical.
+
+## Time windows: ask in beats or seconds
+
+Tools that take a time window accept it in EITHER unit (S6 of
+`docs/plans/2026-09-28-agent-mechanization.md` §4), so a caller never does the
+×60/bpm arithmetic by hand:
+
+- a window may use its BOTH explicit spellings — the musical `*Beat` one
+  (`startBeat`/`endBeat`, `lengthBeat`, `durationBeat`, `timeBeat`, `newStartBeat`,
+  `positionBeat`, `loopStartBeat`, …) and the wall-clock `*Sec` one — or the
+  tool's own bare key (`start`/`end`/`length`/`time`/`beat`) read per an optional
+  `unit: "beats" | "seconds"` (the documented default is unchanged). Every
+  accepted spelling is DECLARED in `tools/list`, so the MCP validator accepts it;
+- seconds are converted at the project BPM — EXCEPT `mix_report` / `mix_verdict`
+  / `mix_diff`, which describe a rendered file and therefore convert with their
+  own `bpm` argument when present (> 0), falling back to the project BPM.
+  **Two spellings of the same endpoint that disagree are refused**
+  (`conflicting window units: startSec and start disagree`, −32602 on the RPC
+  route, the same text as the tool error) rather than silently picked; agreeing
+  spellings are accepted;
+- the response **echoes the unit actually used**: a JSON payload gains
+  `"unit": "beats"|"seconds"`; `export_audio` (whose reply is a status line)
+  appends `… unit=beats`. The four windowed tools whose reply used to be a bare
+  id / status line now answer a JSON object carrying the value AND the unit:
+  `add_arranger_region` → `{"regionID": <id>, "unit": "beats"|"seconds"}` and
+  `set_arranger_region_bounds` / `transport` / `seek` → `{"ok": true, "unit":
+  "beats"|"seconds"}` (a `transport` call with NO loop argument reports no window
+  and stays the bare `{"ok": true}`). Each tool's bare key defaults to SECONDS,
+  so a bare call echoes `"seconds"` and the `*Beat` spelling echoes `"beats"`;
+- `export_audio` keeps bare `start`/`end` in SECONDS (its historical meaning) and
+  adds `startBeat`/`endBeat` + `unit:"beats"` for the beat-space workflow;
+  `query_notes`/`query_clips`/`verify_window`/`verify_part` and the clip/note/
+  composition verbs speak BEATS with an added `*Sec` twin.
+
+MCP and RPC run the SAME resolver at their dispatch choke points
+(`src/common/WindowUnitArgs.h`; MCP runs it BEFORE schema validation, so an
+alias spelling also satisfies a schema that still requires the canonical key,
+and the validator's own refusal text is untouched; RPC runs it in
+`frontend::dispatch` before the namespace routers), with a spec per SURFACE:
+where a route names its window differently from the tool
+(`project.addMidiClip` `start`/`duration`, `project.moveClip` `newStart`,
+`project.importAudioFile` `start`, `project.addNote`
+`startBeat`/`durationBeats`, `project.setNoteStart`/`setNoteDuration`,
+`project.setClipStart`/`setClipDuration`/`setClipFadeIn`/`setClipFadeOut`, the
+composition generators `startBeat`/`lengthBeats`/`durationBeats`) the route gets
+its own spec keyed on its OWN argument names — so the capability is on both
+surfaces. Routes with no time window (`read.getNotes`, `project.duplicateClip`)
+have none. Pinned by `WindowUnitParityTest.*` / `WindowUnitResolver.*`.
 
 ## Frontend Tests (v0.12.0+) — DEPRECATED (2026-09-23)
 

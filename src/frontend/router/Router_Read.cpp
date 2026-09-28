@@ -9,6 +9,8 @@
 #include "../../common/MasterFxAccess.h"
 #include "../../common/ClipTakesJson.h"
 #include "../../common/SamplerStateJson.h"
+// Slice S2: the SAME beat-window builders the query_notes/query_clips tools call.
+#include "../../common/ProjectQuery.h"
 #include "../../model/ProjectModel.h"   // IDs:: namespace (MASTER_FX)
 
 #include <QJsonArray>
@@ -152,6 +154,39 @@ DispatchResult dispatchRead(ReadModel& r, const juce::ValueTree& trackList,
         // .array(), not .object() (an object() wrap of an array document
         // silently yields {}).
         return { false, QJsonDocument::fromJson(text.toUtf8()).array() };
+    }
+
+    // --- Beat-window archaeology (S2 of docs/plans/2026-09-28-agent-mechanization.md) ---
+    // Both routes are thin hand-offs to the ONE shared builders the MCP twins
+    // (query_notes / query_clips) run: common/ProjectQuery.h. Argument names are
+    // the tool property names, and the missing-argument / invalid-window texts
+    // are built in that ONE place, so the two surfaces fail byte-for-byte alike.
+    if (m == "queryNotes") {
+        double startBeat = 0.0, endBeat = 0.0; QString argErr;
+        if (!HDAW::readBeatWindowArgs(o, startBeat, endBeat, argErr))
+            return makeError(-32602, argErr);
+        int trackIndex = -1;
+        if (o.contains("trackIndex") || o.contains("trackID")) {
+            DispatchResult refErr;
+            if (!trackIndexArg(o, trackList, trackIndex, &refErr,
+                               HDAW::StableRefKeys{"trackIndex", "trackID"}))
+                return refErr;
+        }
+        bool ok = true; QString err;
+        const QJsonObject payload = HDAW::buildNoteQueryPayload(
+            trackList, r.getTransport().bpm, startBeat, endBeat, trackIndex, &ok, &err);
+        if (!ok) return makeError(-32602, err);
+        return { false, payload };
+    }
+    if (m == "queryClips") {
+        double startBeat = 0.0, endBeat = 0.0; QString argErr;
+        if (!HDAW::readBeatWindowArgs(o, startBeat, endBeat, argErr))
+            return makeError(-32602, argErr);
+        bool ok = true; QString err;
+        const QJsonObject payload = HDAW::buildClipQueryPayload(
+            trackList, r.getTransport().bpm, startBeat, endBeat, &ok, &err);
+        if (!ok) return makeError(-32602, err);
+        return { false, payload };
     }
 
     // --- Buses (docs/plans/2026-09-22-bus-fx-params.md, slice C) ---

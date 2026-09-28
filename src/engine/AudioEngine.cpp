@@ -430,6 +430,7 @@ bool AudioEngine::startMcpHttp(const QString& host, quint16 port, QString* error
     if (!mcpHttpServer)
     {
         mcpHttpServer = std::make_unique<mcp::McpServer>();
+        mcpHttpServer->setTransportName("http");
         mcpHttpServer->setEngine(this);
         mcp::registerAllTools(*mcpHttpServer);
     }

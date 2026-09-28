@@ -5,6 +5,10 @@
 
 #include "../../engine/AudioEngine.h"
 #include "../../engine/ExportManager.h"
+#include "../../common/RenderLaunch.h"
+#include "../../common/RenderToolArgs.h"
+#include "../../common/RenderAndVerify.h"
+#include "../../common/MixVerdict.h"
 #include "../../model/ProjectModel.h"
 
 #include <QCoreApplication>
@@ -15,7 +19,9 @@
 #include <QString>
 
 #include <algorithm>
+#include <functional>
 #include <string>
+#include <vector>
 
 using namespace frontend::router_helpers;
 
@@ -62,7 +68,9 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
         else if (formatStr == "flac") fmt = HDAW::ExportManager::FLAC;
 
         double sampleRate = optDouble(o, "sampleRate", 48000.0, nullptr);
-        int    bitDepth   = optInt(o, "bitDepth", 24, nullptr);
+        DispatchResult intErr;
+        int    bitDepth;
+        if (!optInt(o, "bitDepth", bitDepth, 24, &intErr)) return intErr;
         double startTime  = optDouble(o, "start", 0.0, nullptr);
         double endTime    = optDouble(o, "end", -1.0, nullptr);
         if (endTime <= 0.0)
@@ -91,43 +99,21 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
             }
         }
 
-        juce::File outFile(juce::String(path.toUtf8().constData()));
-        if (outFile.existsAsFile()) outFile.deleteFile();
-
-        juce::ValueTree projectCopy = engine.getProjectModel().getTree().createCopy();
-
         // Optional track filter (mirrors the MCP export_audio tool): render
-        // only the requested track indices. Applied to the offline copy only
-        // (mute + zero volume on the rest, solo cleared) so the live project
-        // and routing graph are untouched.
-        const QJsonArray trackIds = o.value("trackIds").toArray();
-        if (!trackIds.isEmpty())
-        {
-            auto trackList = projectCopy.getChildWithName(IDs::TRACK_LIST);
-            if (trackList.isValid())
-            {
-                for (int i = 0; i < trackList.getNumChildren(); ++i)
-                {
-                    bool keep = false;
-                    for (const auto& v : trackIds)
-                        if (v.toInt(-1) == i) { keep = true; break; }
-                    auto tr = trackList.getChild(i);
-                    tr.setProperty(IDs::isSoloed, false, nullptr);
-                    tr.setProperty(IDs::isMuted, !keep, nullptr);
-                    if (!keep)
-                        tr.setProperty(IDs::volume, 0.0, nullptr);
-                }
-            }
-        }
-
-        auto& formatManager = engine.getProjectPool().getFormatManager();
-        auto* pluginManager = &engine.getPluginManager();
+        // only the requested track indices. Applied to the offline copy by the
+        // shared launcher (HDAW::applyTrackFilterToRenderCopy) — mute + zero
+        // volume on the rest, solo cleared — so the live project and routing
+        // graph are untouched.
+        std::vector<int> trackIds;
+        for (const auto& v : o.value("trackIds").toArray())
+            trackIds.push_back(v.toInt(-1));
 
         // Progress callback runs on the export worker thread; hop to the main
         // thread before broadcasting so we never touch clients_ off-thread.
+        std::function<void(float)> onProgress;
         if (server != nullptr) {
             FrontendServer* serverPtr = server;
-            em.onProgress = [serverPtr, &em](float prog) {
+            onProgress = [serverPtr](float prog) {
                 QJsonObject payload{
                     { "progress", static_cast<double>(prog) },
                     { "message", QString("rendering... %1%").arg(static_cast<int>(prog * 100.0)) },
@@ -147,18 +133,21 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
         QEventLoop loop;
         bool success = false;
         QString message;
-        em.onComplete = [&](bool ok, const juce::String& msg) {
+        auto onComplete = [&](bool ok, const juce::String& msg) {
             success = ok;
             message = QString::fromUtf8(msg.toRawUTF8());
             QMetaObject::invokeMethod(&loop, &QEventLoop::quit, Qt::QueuedConnection);
         };
 
-        if (!em.startExport(projectCopy, formatManager, pluginManager, outFile,
-                            sampleRate, startTime, duration, fmt, bitDepth)) {
-            em.onProgress = nullptr;
-            em.onComplete = nullptr;
-            return makeError(-32603, "failed to start export");
-        }
+        // The render LAUNCH — tree copy (lesson 27), `trackIds` filter, and
+        // ExportManager::startExport — is the ONE shared helper the MCP
+        // export_audio tool and the waiting verify_window / render_and_verify
+        // paths also use (common/RenderLaunch.h), so the surfaces cannot drift.
+        auto launch = HDAW::launchProjectRender(engine, path, sampleRate, bitDepth, fmt,
+                                               startTime, duration, trackIds,
+                                               std::move(onProgress), onComplete);
+        if (!launch.started)
+            return makeError(-32603, launch.error);
 
         if (server != nullptr) {
             server->broadcastNotificationFromAnyThread(notify::ExportProgress,
@@ -197,6 +186,32 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
             { "outputPath", path },
             { "message", message },
         } };
+    }
+
+    if (m == "renderAndVerify") {
+        // MCP twin of render_and_verify (McpExportTool.cpp): render the WHOLE
+        // project through the SAME shared launcher (common/RenderLaunch.h),
+        // WAIT for it, then build the release verdict with the existing
+        // buildMixVerdict (src/common/MixVerdict.h). Payload {wavPath, verdict};
+        // refusals are byte-identical to the tool's because both surfaces run
+        // the same launcher and the same verdict composer.
+        // The SAME argument parser the tool runs (common/RenderToolArgs.h), so
+        // a missing/ill-typed outputPath fails with the MCP validator's exact
+        // bytes instead of a hand-rolled message.
+        HDAW::RenderAndVerifyArgs parsed;
+        QString argError;
+        if (!HDAW::parseRenderAndVerifyArgs(o, parsed, argError))
+            return makeError(-32602, argError);
+        // ONE shared implementation for both surfaces (common/RenderAndVerify.h):
+        // full render through the shared launcher, then the existing verdict. The
+        // verdict inputs resolve through the SAME helper mix_verdict uses, so the
+        // verdict equals mix_verdict's for the produced file.
+        const auto r = HDAW::renderAndVerify(engine, parsed.outputPath, parsed.targets,
+                                             parsed.timeoutMs, parsed.fromPlan,
+                                             parsed.dropBuildRatio, parsed.introSeconds);
+        if (!r.ok)
+            return makeError(r.errorCode, r.error);
+        return { false, r.payload };
     }
 
     if (m == "isExporting") {

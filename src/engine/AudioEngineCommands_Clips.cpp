@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <limits>
+#include <unordered_map>
 
 // ─── ProjectCommands — Clip operations ────────────────────────────
 
@@ -346,6 +347,60 @@ void AudioEngineCommands::setClipName(int clipId, const std::string& name)
     auto clip = findClipById(clipId, trackIdx);
     if (clip.isValid())
         clip.setProperty(IDs::name, juce::String(name), &um);
+}
+
+// Batch partial edit: validate EVERY clipId (ONE walk building an id -> clip
+// map — not the O(n)-per-id findClipById in a loop) BEFORE any write, so an
+// unknown id leaves the project untouched and opens no transaction. On success:
+// ONE transaction, only the SET optionals written per clip (an unset field is
+// left alone), ONE undo unit. start/duration are beats at this boundary.
+ProjectCommands::BatchResult AudioEngineCommands::setClipsEdit(const std::vector<ClipEdit>& edits)
+{
+    BatchResult result;
+    if (edits.empty())
+    {
+        result.error = "edits must not be empty";
+        return result;
+    }
+
+    std::unordered_map<int, juce::ValueTree> byId;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            byId[static_cast<int>(clip.getProperty(IDs::clipID, 0))] = clip;
+        }
+    }
+
+    for (const auto& e : edits)
+        if (byId.find(e.clipId) == byId.end())
+        {
+            result.error = "unknown clipId " + std::to_string(e.clipId);
+            return result;
+        }
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    const double bpm = engine_.getTransportManager().getBPM();
+    beginTransaction("Set clips edit");
+    for (const auto& e : edits)
+    {
+        auto clip = byId[e.clipId];
+        if (e.start.has_value())    clip.setProperty(IDs::startTime, HDAW::beatsToSeconds(*e.start, bpm), &um);
+        if (e.duration.has_value()) clip.setProperty(IDs::duration, HDAW::beatsToSeconds(*e.duration, bpm), &um);
+        if (e.gain.has_value())     clip.setProperty(IDs::gain, *e.gain, &um);
+        if (e.fadeIn.has_value())   clip.setProperty(IDs::fadeIn, *e.fadeIn, &um);
+        if (e.fadeOut.has_value())  clip.setProperty(IDs::fadeOut, *e.fadeOut, &um);
+        if (e.name.has_value())     clip.setProperty(IDs::name, juce::String(*e.name), &um);
+        if (e.looping.has_value())  clip.setProperty(IDs::looping, *e.looping, &um);
+    }
+    endTransaction();
+
+    result.ok = true;
+    result.applied = static_cast<int>(edits.size());
+    return result;
 }
 
 int AudioEngineCommands::duplicateClip(int clipId)

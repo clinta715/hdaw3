@@ -136,8 +136,11 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
         double durMax = optDouble(o, "durationMax", -1.0, nullptr);
         double bpmMin = optDouble(o, "bpmMin", -1.0, nullptr);
         double bpmMax = optDouble(o, "bpmMax", -1.0, nullptr);
-        int offset = optInt(o, "offset", 0, nullptr);
-        int limit  = optInt(o, "limit", 50, nullptr);
+        DispatchResult intErr;
+        int offset;
+        int limit;
+        if (!optInt(o, "offset", offset, 0, &intErr)) return intErr;
+        if (!optInt(o, "limit", limit, 50, &intErr)) return intErr;
 
         auto results = lib.search(juce::String(q), juce::String(tFlt), juce::String(libFlt),
                                   durMin, durMax, bpmMin, bpmMax, juce::String(keyFlt), offset, limit);
@@ -237,7 +240,9 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
             for (const auto& v : arr)
                 libraryIds.add(juce::String(v.toString().toStdString()));
         }
-        const int k = optInt(o, "k", 0, nullptr);
+        DispatchResult intErr;
+        int k;
+        if (!optInt(o, "k", k, 0, &intErr)) return intErr;
         const std::string method = optString(o, "method", "hybrid");
         const std::string saveAs = optString(o, "saveAs", {});
         const std::string saveClusterId = optString(o, "clusterId", {});
@@ -291,7 +296,9 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
         }
         const std::string filePath = optString(o, "filePath", {});
         const std::string query = optString(o, "query", {});
-        const int limit = optInt(o, "limit", 10, nullptr);
+        DispatchResult intErr;
+        int limit;
+        if (!optInt(o, "limit", limit, 10, &intErr)) return intErr;
         const std::string method = optString(o, "method", "hybrid");
         juce::String error;
         auto r = lib.relatedSamples(libraryIds, juce::String(filePath), juce::String(query),

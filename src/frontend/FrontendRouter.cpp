@@ -3,6 +3,7 @@
 
 #include "../common/FxPluginIdCheck.h"
 #include "../common/FmSynthStateJson.h"
+#include "../common/WindowUnitArgs.h"
 #include "../engine/AudioEngine.h"
 
 #include <QJsonArray>
@@ -38,8 +39,45 @@ namespace frontend {
 
 // ---- Public entry point ----------------------------------------------------
 
+// The namespace dispatch (renamed so the public `dispatch` can wrap it with the
+// S6 unit-explicit window normalization + response echo).
+static DispatchResult dispatchInner(AudioEngine& engine, const QString& method,
+                                    const QJsonValue& params, FrontendServer* server);
+
 DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonValue& params,
                         FrontendServer* server) {
+    // S6 (docs/plans/2026-09-28-agent-mechanization.md §4): unit-explicit time
+    // windows. The ONE shared resolver (common/WindowUnitArgs.h) runs here,
+    // before the namespace routers read their arguments — the SAME function the
+    // MCP tools/call dispatch runs, so a conversion and a refusal carry
+    // byte-identical text on both surfaces BY CONSTRUCTION.
+    const QString tool = HDAW::windowToolForRpcMethod(method);
+    QString unitUsed, windowErr;
+    QJsonValue paramsIn = params;
+    if (!tool.isEmpty() && paramsIn.isObject())
+    {
+        QJsonObject o = paramsIn.toObject();
+        if (!HDAW::normalizeWindowArgsForTool(tool, o, engine.getTransportManager().getBPM(),
+                                              unitUsed, windowErr, /*rpc=*/true))
+            return makeError(-32602, windowErr);
+        paramsIn = o;
+    }
+
+    DispatchResult r = dispatchInner(engine, method, paramsIn, server);
+
+    // The response echoes the unit actually used.
+    if (!r.isError && !unitUsed.isEmpty() && HDAW::toolEchoesUnit(tool, /*rpc=*/true)
+        && r.payload.isObject())
+    {
+        QJsonObject o = r.payload.toObject();
+        o.insert(QStringLiteral("unit"), unitUsed);
+        r.payload = o;
+    }
+    return r;
+}
+
+static DispatchResult dispatchInner(AudioEngine& engine, const QString& method,
+                                    const QJsonValue& params, FrontendServer* server) {
     const int dot = method.indexOf('.');
     if (dot < 0) return makeError(-32601, "method must be 'namespace.method': " + method);
     const QString ns = method.left(dot);
@@ -51,7 +89,9 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
             std::string filePath;
             if (!requireString(o, "filePath", filePath, nullptr))
                 return makeError(-32602, "filePath required");
-            int trackIndex = optInt(o, "trackIndex", -1, nullptr);
+            int trackIndex;
+            DispatchResult intErr;
+            if (!optInt(o, "trackIndex", trackIndex, -1, &intErr)) return intErr;
             auto clipIds = engine.getProjectCommands().importMidiFile(filePath, trackIndex);
             QJsonArray arr;
             for (int id : clipIds) arr.append(id);
@@ -76,6 +116,9 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
         //                    (src/common/AddTrackWithFx.h), pluginId gate included
         if (m == "removeTrack")    return dispatchRemoveTrack(engine, params);
         if (m == "addTrackWithFx") return dispatchAddTrackWithFx(engine, params);
+        // endBatch's optional verify hook renders + composes the release verdict,
+        // so it needs engine context too (common/BatchEnd.h).
+        if (m == "endBatch")       return dispatchEndBatch(engine, params);
         return dispatchProject(engine.getProjectCommands(),
                                engine.getProjectModel().getTrackListTree(), m, params);
     }
@@ -90,7 +133,9 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
             int clipId = 0;
             if (!requireInt(o, "clipId", clipId, nullptr))
                 return makeError(-32602, "clipId required");
-            int numBins = optInt(o, "numBins", 1000, nullptr);
+            int numBins;
+            DispatchResult intErr;
+            if (!optInt(o, "numBins", numBins, 1000, &intErr)) return intErr;
 
             auto peaks = engine.getWaveformPeaks(clipId, numBins);
             if (!peaks.ok)

@@ -148,6 +148,103 @@ MixReportPayloadResult buildMixReportPayload(const QString& filePath,
     return out;
 }
 
+MixReportPayloadResult buildWindowReportPayload(const QString& filePath,
+                                                double startSec, double endSec,
+                                                double bpm)
+{
+    MixReportPayloadResult out;
+
+    const juce::File file(filePath.toStdString());
+    if (!file.existsAsFile())
+    {
+        out.error = "file not found: " + filePath;
+        return out;
+    }
+    if (bpm < 0.0)
+    {
+        out.error = "bpm must be >= 0";
+        return out;
+    }
+    if (!(endSec > startSec))
+    {
+        out.error = "window has end <= start";
+        return out;
+    }
+
+    // The window is the ONLY analyzer window: the section row carries the
+    // window's rms/peak/bands/kick/clamp stats (MixReport.h SectionReport).
+    std::vector<SectionWindow> windows{ SectionWindow{ juce::String("window"), startSec, endSec } };
+
+    MixReport rep;
+    juce::String err;
+    if (!MixReportAnalyzer::analyze(file, windows, bpm, rep, err))
+    {
+        out.error = jstr(err);
+        return out;
+    }
+
+    // The SAME file-visibility guard buildMixReportPayload runs: a just-finished
+    // export's writer may still hold the file with unflushed data.
+    if (rep.peak <= 0.0f && rep.duration > 0.5)
+    {
+        juce::Thread::sleep(3000);
+        MixReport retry;
+        if (MixReportAnalyzer::analyze(file, windows, bpm, retry, err) && retry.peak > 0.0f)
+            rep = retry;
+    }
+
+    if (rep.sections.empty())
+    {
+        out.error = "window measurement missing";
+        return out;
+    }
+
+    // PROMOTE the window's stats to the ROOT: applyTargetGates reads the root,
+    // so this is what makes the gates gate the WINDOW (see the header note).
+    const SectionReport& w = rep.sections.front();
+    const double windowSeconds = w.end - w.start;
+    const bool windowSilent = (w.peak <= 0.0 && windowSeconds > 0.5);
+    if (windowSilent)
+        rep.measurementSuspicious = true;
+
+    QJsonObject root{
+        { "duration", windowSeconds },
+        { "sampleRate", rep.sampleRate },
+        { "peak", w.peak },
+        { "rms", w.rms },
+        { "bands", QJsonObject{
+            { "sub", w.bandEnergy[0] },
+            { "bass", w.bandEnergy[1] },
+            { "body", w.bandEnergy[2] },
+            { "high", w.bandEnergy[3] } } },
+        { "kickProminence", w.kickProminence },
+        { "clipping", w.peak >= 0.999 },
+        { "ceilingHitPct", w.ceilingHitPct },
+        { "ceilingHitFrames", static_cast<double>(w.ceilingHitFrames) },
+        { "measurementSuspicious", rep.measurementSuspicious } };
+    if (rep.hasPumpDepth)
+        root["pumpDepth"] = rep.pumpDepth;
+
+    root["sections"] = QJsonArray{ QJsonObject{
+        { "name", jstr(w.name) },
+        { "start", w.start },
+        { "end", w.end },
+        { "rms", w.rms },
+        { "peak", w.peak },
+        { "boundaryPeak", w.boundaryPeak },
+        { "ceilingHitPct", w.ceilingHitPct },
+        { "ceilingHitFrames", static_cast<double>(w.ceilingHitFrames) },
+        { "kickProminence", w.kickProminence },
+        { "bandEnergy", QJsonObject{
+            { "sub", w.bandEnergy[0] },
+            { "bass", w.bandEnergy[1] },
+            { "body", w.bandEnergy[2] },
+            { "high", w.bandEnergy[3] } } } } };
+
+    out.payload = root;
+    return out;
+}
+
 void applyTargetGates(QJsonObject& root, const QJsonObject& targets)
 {
     if (targets.isEmpty()) return;
@@ -185,6 +282,14 @@ void applyTargetGates(QJsonObject& root, const QJsonObject& targets)
         const double t = targets.value("targetDurationSeconds").toDouble();
         const bool pass = t > 0.0 && std::fabs(duration - t) <= 2.0;
         add("targetDurationSeconds", t, duration, pass, "within 2s");
+    }
+    if (targets.contains("rmsMin"))
+    {
+        // A FLOOR on the root RMS (linear amplitude, the SAME units the payload's
+        // `rms` field carries and the same convention `masterRms` uses). Silent
+        // render: rms 0 fails any positive floor.
+        const double t = targets.value("rmsMin").toDouble();
+        add("rmsMin", t, rms, rms >= t, "at least");
     }
     root["targetChecks"] = rows;
     root["targetsOk"] = allPass;

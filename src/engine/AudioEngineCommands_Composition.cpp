@@ -17,6 +17,8 @@
 #include "MixReport.h"
 #include "../common/ParamVerity.h"
 #include "../common/ToneVerity.h"
+#include "../common/MixReportJson.h"
+#include "../common/RenderLaunch.h"
 #include <QJsonDocument>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
@@ -1570,6 +1572,97 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
     return result;
 }
 
+// ── verify_window (S4) ────────────────────────────────────────────────
+// Render→measure→compare for a BEAT window of the WHOLE project, in ONE call.
+// The render is launched through the SHARED export launcher
+// (common/RenderLaunch.h — the same tree-copy/startExport path export_audio
+// uses) over the whole project, because a window-ONLY render is not
+// predictive: plugin state re-bakes per window and the v0.39.2 close-out
+// measured 0 clamps on a windowed render of a file that carried 32 exact-FS
+// frames (docs/handoffs/2026-09-28-v0.39.2-backlog-closeout.md §3). Only the
+// requested window is MEASURED, and its metrics are promoted to the report
+// root (buildWindowReportPayload) so the target gates gate the WINDOW.
+// Read-only: no tree writes, no undo, no rebuild.
+ProjectCommands::VerifyWindowResult AudioEngineCommands::verifyWindow(double startBeat,
+                                                                     double endBeat,
+                                                                     const QJsonObject& targets,
+                                                                     const std::string& outputPath,
+                                                                     uint32_t timeoutMs)
+{
+    VerifyWindowResult result;
+
+    // Validate at the command boundary (Gate 9). Inverted/empty window = ONE
+    // shared refusal text, so the tool and the route fail byte-identically.
+    if (!(endBeat > startBeat))
+    {
+        result.error = HDAW::kVerifyWindowBadWindowError;
+        return result;
+    }
+
+    const double bpm = engine_.getTransportManager().getBPM();
+    if (!(bpm > 0.0))
+    {
+        result.error = "project BPM not set";
+        return result;
+    }
+    if (timeoutMs == 0)
+        timeoutMs = 600000;   // the documented default
+
+    // Beats -> seconds at the project BPM (lesson 1); the tree speaks seconds.
+    result.startBeat = startBeat;
+    result.endBeat = endBeat;
+    result.startSec = HDAW::beatsToSeconds(startBeat, bpm);
+    result.endSec = HDAW::beatsToSeconds(endBeat, bpm);
+
+    // Caller-supplied path (kept for A/B), or a process-unique temp file. The
+    // WAV is KEPT either way and is the CALLER's to clean up.
+    QString outPath = QString::fromStdString(outputPath);
+    if (outPath.isEmpty())
+    {
+        const juce::File temp =
+            juce::File::getSpecialLocation(juce::File::tempDirectory)
+                .getChildFile("hdaw_verify_window_" + processUniqueRenderTag() + "_"
+                              + juce::String(s_renderCounter.fetch_add(1)) + ".wav");
+        temp.deleteFile();
+        outPath = QString::fromUtf8(temp.getFullPathName().toRawUTF8());
+    }
+    result.wavPath = outPath.toStdString();
+
+    // WHOLE project, through the SAME launcher export_audio uses, on a tree
+    // copy (lesson 27), waited for (this tool's contract is measure-and-answer).
+    const double projectSeconds =
+        HDAW::ExportManager::calculateProjectDuration(engine_.getProjectModel());
+    auto rendered = HDAW::renderProjectAndWait(engine_, outPath, 48000.0, 24,
+                                               HDAW::ExportManager::WAV, 0.0, projectSeconds,
+                                               {}, timeoutMs);
+    if (!rendered.ok)
+    {
+        result.error = rendered.error.toStdString();
+        return result;
+    }
+
+    auto built = HDAW::buildWindowReportPayload(outPath, result.startSec, result.endSec, bpm);
+    if (!built.error.isEmpty())
+    {
+        result.error = built.error.toStdString();
+        return result;
+    }
+    if (built.allWindowsDropped)
+    {
+        result.error = "window falls outside the rendered file";
+        return result;
+    }
+
+    result.report = built.payload;
+    result.durationSec = built.payload.value("duration").toDouble();
+    if (!targets.isEmpty())
+        HDAW::applyTargetGates(result.report, targets);
+    result.targetChecks = result.report.value("targetChecks").toArray();
+    result.targetsOk = result.report.value("targetsOk").toBool(true);
+    result.ok = true;
+    return result;
+}
+
 // ── ParamVerity (2026-09-22, docs/plans/2026-09-22-param-verity-pipeline.md) ──
 // Per-(slot, param) audibility sweep. Renders the SAME tree-copy window N times
 // at the param's current value (baseline spread = the harness's own variance,
@@ -2209,7 +2302,7 @@ AudioEngineCommands::generateArrangementCorpus(const HDAW::CorpusParams& params)
     result.notesTotal = score.notesTotal;
     result.skippedRoles = score.skipped;
     auto& um = model.getUndoManager();
-    um.beginNewTransaction(); // one undo unit; per-note writes below are not undo-tracked
+    transactionBoundary({}); // one undo unit; per-note writes below are not undo-tracked
     constexpr int kMaxNotesPerClip = 8192;
     for (const auto& clip : score.clips)
     {

@@ -106,7 +106,7 @@ void AudioEngineCommands::sliceClipsAtPlayhead(const std::vector<int>& clipIds)
     auto& um = engine_.getProjectModel().getUndoManager();
     double playhead = engine_.getTransportManager().getCurrentPositionSeconds();
 
-    um.beginNewTransaction();
+    transactionBoundary({});
     for (int clipId : clipIds)
     {
         int trackIdx = -1;
@@ -130,7 +130,7 @@ void AudioEngineCommands::sliceClipsAtTransients(const std::vector<int>& clipIds
 {
     auto& um = engine_.getProjectModel().getUndoManager();
 
-    um.beginNewTransaction();
+    transactionBoundary({});
     for (int clipId : clipIds)
     {
         int trackIdx = -1;

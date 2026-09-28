@@ -1,0 +1,183 @@
+# Handoff — agent mechanization shipped (S1–S7 + follow-ups)
+
+**Date:** 2026-09-28 · **Continues:**
+[`2026-09-28-v0.39.2-backlog-closeout.md`](2026-09-28-v0.39.2-backlog-closeout.md)
+(whose §5 OPEN item 1 was the mechanization proposal; this session implements it)
+· **Plan:**
+[`docs/plans/2026-09-28-agent-mechanization.md`](../plans/2026-09-28-agent-mechanization.md)
+— marked IMPLEMENTED by this close-out.
+**Scope:** every slice of the mechanization plan + the review-driven follow-ups
+(S1, S1b, S2, S3, S4, S5, S6, S7 and S2b/S3b/S3d/S4b/S6-followups/S7b) landed
+end-to-end: ten new MCP tools with parity twins, a beat-window archaeology
+shaper, edit batches as one undo unit, unit-tagged time windows on both
+surfaces, render→measure→compare tools, and the `whoami`/`--project` lifecycle
+bootstrap.
+
+## 1. State
+
+- **Parity ledger:** 317 tools / 419 RPC methods, **mapped 303 / mcp-only 14 /
+  unresolved 0** (`node tools/rpc_parity_map.mjs`). The prior close-out's
+  `307 / 411 / 295 / 12 / 0` line is superseded.
+- **Composition:** no engine/DSP path was restructured; every change is a new
+  `src/common/` shaper plus an MCP tool and/or RPC route calling it. `mix_report`
+  / `mix_verdict` / `mix_diff` bytes are unchanged by S4 (it *composes* their
+  inputs, it does not rewrite their payload).
+- **Validation:** the authoritative full sharded run was executed by the
+  orchestrator; its result is the ONE `Full sharded run (final tree):` line in
+  §5. Per-slice focused gates are named in §3.
+
+## 2. Shipped — tool + route inventory
+
+**New MCP tools (10):** `query_notes`, `query_clips`, `set_notes_gain`,
+`set_clips_edit`, `tool_help`, `whoami`, `verify_window`, `render_and_verify`,
+`begin_batch`, `end_batch`.
+
+**New RPC routes (8):** `read.queryNotes`, `read.queryClips`,
+`project.setNotesGain`, `project.setClipsEdit`, `project.beginBatch`,
+`project.endBatch`, `composition.verifyWindow`, `export.renderAndVerify`.
+
+Ledger classification: `tool_help` and `whoami` are deliberate **MCP_ONLY**
+rows (the RPC surface has no tool registry, and cannot report its own
+transport) — the `engine_info` precedent. The other eight are exact mapped
+twins. `begin_batch`/`end_batch` were *un-aliased* this session: they used to
+map to the raw `project.beginTransaction`/`endTransaction`, which overstated
+equivalence; they now call the same `ProjectCommands::beginBatch`/`endBatch`
+entry points the routes do (§3 S7).
+
+## 3. Per-slice summary
+
+**S1 / S1a — central unit annotation.** `src/common/ToolUnits.h` (header-only)
+classifies the unit of every numeric MCP schema property with no per-tool edits:
+an explicit override table, name/token suffix rules, and a scalar
+(dimensionless) classification, each carrying its live instance list. Injected
+once by `McpServer::registerTool`. Gated by `tests/unit/mcp/tool_registry_test.cpp`
+GATES A–E: coverage (`?unclassified` never survives), examples-per-tool,
+no-clobber, registry-count, and GATE E's hand-audited `kExpectedUnits` ledger
+that re-derives every unit-bearing field from the live `tools/list`.
+
+**S1b — `tool_help {name}`.** `registerToolHelpTool`
+(`src/mcp/McpTools_Engine.cpp`) returns the exact `tools/list` entry — both read
+the SAME stored `McpToolDef` and the same `toolunits::buildToolExample`, so the
+payload cannot drift (`ToolRegistry.ToolHelpReturnsTheExactToolsListEntry`).
+MCP_ONLY, like `engine_info`; unknown name refused in-band with one shared text.
+
+**S2 — beat-window archaeology.** `src/common/ProjectQuery.{h,cpp}` is the ONE
+implementation behind `query_notes`/`query_clips` and their twins
+`read.queryNotes`/`read.queryClips` (`Router_Read.cpp` shares
+`HDAW::readBeatWindowArgs`). The window is an INTERVAL OVERLAP in PROJECT
+(absolute) beats, with the returned span clamped to its clip and a `truncated`
+flag when the clip cut the tail. Follow-up S2b hardened the same shaper.
+
+**S3 — batch mutations.** `ProjectCommands::setNotesGain` /
+`setClipsEdit` are the single entry points (`AudioEngineCommands_Midi.cpp`,
+`AudioEngineCommands_Clips.cpp`); the shared strict parser is
+`src/common/BatchEditJson.h`, so the MCP tools and the
+`project.setNotesGain`/`project.setClipsEdit` routes emit the same error bytes
+by construction. Validate-then-apply: an empty array or any unknown id refuses
+the whole batch with nothing written and no undo unit. (`edits` items are
+`additionalProperties:false`, so a typo'd key is rejected, not dropped.)
+`BatchEditRpcTest.*` covers payload parity, one-undo-unit, partial-edit, and the
+non-integral-id refusals.
+
+**S4 — render→measure→compare.** `verify_window` (+ `composition.verifyWindow`)
+renders the WHOLE project through the shared launcher
+(`src/common/RenderLaunch.h`) and measures only the requested window
+(`src/common/VerifyWindowJson.h`), with `src/common/MixReportJson.cpp`
+`buildWindowReportPayload` promoting the WINDOW's stats to the payload root so
+`targets` gates the window, not the file. `render_and_verify`
+(+ `export.renderAndVerify`) uses `src/common/RenderAndVerify.h` and the same
+`src/common/MixVerdictInputs.h` the `mix_verdict` tool uses, so their verdict is
+byte-identical. `verify_window`'s expectation keys are strict
+(`src/common/RenderToolArgs.h`). Pinned by `VerifyWindowParity.*` /
+`RenderAndVerifyParity.*` (`tests/unit/engine/verify_window_test.cpp`).
+
+**S5 — lifecycle bootstrap.** `whoami` (`registerWhoamiTool`,
+`src/mcp/McpTools_Engine.cpp`) shares `buildEngineInfoPayload` with
+`engine_info` so the two cannot drift
+(`EngineTools.WhoamiMatchesEngineInfoForSameArgs`), and adds transport +
+session project path/name/counts. `HDAW_headless --mcp-stdio --project <file>`
+(`src/common/HeadlessArgs.{h,cpp}`, `src/main_headless.cpp`) loads the project
+after engine init + plugin scan; a malformed `--project` is a hard exit, never a
+silent empty project. `scripts/mcp_call.py` gained `--engine-args` to prove the
+bootstrap end-to-end.
+
+**S6 — unit-tagged time windows.** `src/common/WindowUnitArgs.h` is the ONE
+resolver, run at BOTH dispatch choke points (`McpServer::handleToolsCall` before
+schema validation, and `FrontendRouter::dispatch`): the musical spelling, the
+`*Sec` twin, and the tool's bare key read per an optional `unit`; disagreeing
+spellings are refused; the resolved value is written back into the key the
+handler already reads. The same spec table DECLARES every accepted spelling into
+the stored schema, so validator and resolver cannot drift. Route-specific specs
+cover the routes that rename their keys. Pinned by `WindowUnitParityTest.*` /
+`WindowUnitResolver.*`. **S6c closed the unit-echo gap:** the last four windowed
+tools (`add_arranger_region` / `set_arranger_region_bounds` / `transport` /
+`seek`) set `echoUnit=false` in S6 because their payload was a bare id / status
+line; S6c CUT THOSE PAYLOADS OVER to a JSON object carrying the value AND the
+unit (`{"regionID":<id>,"unit":<u>}` / `{"ok":true,"unit":<u>}`) and flipped all
+four to `echoUnit=true`, so NONE is unresolved.
+
+**S7 — workflow transactions.** `begin_batch`/`end_batch`
+(`src/mcp/McpTools_Transport.cpp`) delegate to `ProjectCommands::beginBatch` /
+`endBatch`; the shared `src/common/BatchEnd.{h,cpp}` parses → SEALS → optionally
+verifies, so the tool and the `project.beginBatch`/`project.endBatch` routes
+cannot drift. The atomicity guarantee is the single choke point
+`AudioEngineCommands::transactionBoundary`
+(`src/engine/AudioEngineCommands_Undo.cpp`): while a batch is open every command
+undo boundary is suppressed, so the whole batch is one undo unit
+(`BatchEditRpcTest.BatchCollapsesInternallyTransactionalCommandsIntoOneUndo`).
+State is a FLAG, never a counter; one batch at a time; the MCP tool is
+stdio-gated (the route is not — the one recorded asymmetry). `end_batch`'s
+optional `verify` hook seals first and never un-seals on a verification failure.
+
+## 4. New traps this session
+
+1. **Windows `rpcndr.h` defines `small` as `char`**, while
+   `juce_PushNotifications.h` declares `enum BadgeIconType { none, small, large }`
+   — a `src/common` header that pulls engine/JUCE headers AFTER Qt headers breaks
+   the build. Fix pattern: Qt-light header + a `.cpp` with JUCE/engine includes
+   first (`src/common/BatchEnd.{h,cpp}` is the reference).
+2. **JUCE's `beginNewTransaction` is often deliberately UNPAIRED** (`createBus`
+   /`createSend` join) so a depth counter leaks — the batch flag + one boundary
+   choke point is the safe design.
+3. **Windowed renders do not predict full-render sums** (plugin state re-bakes
+   per window) — windowed verification must measure OUT of a full render.
+4. **`buildMixReportPayload` puts whole-file metrics at the ROOT**, so gating a
+   window requires promoting the window's stats
+   (`buildWindowReportPayload`), not reusing root fields.
+5. **Accepted-argument silent classes fixed:** `requireInt`/`optInt`
+   truncation, unknown expectation keys (`verify_window`), and ledger aliases
+   that overstate equivalence (`begin_batch` was aliased to
+   `project.beginTransaction`).
+6. **Each `scripts/mcp_call.py call` invocation is a FRESH engine** (stateless)
+   — use `run <steps.json>` for a multi-step proof.
+
+## 5. OPEN
+
+1. **Route-keyed window specs.** Any RPC route that renames its window keys is
+   covered by the resolver's per-surface spec (plan §4 lists the route-only
+   bulk/composite methods that keep their existing spelling and get no spec).
+2. **Pre-existing surface divergences noted but NOT fixed:**
+   `add_track` returns `{trackId,routed,trackID}` while RPC
+   `project.addTrack` returns a bare index; `get_waveform_peaks` returns 200
+   peak values regardless of an integral `numBins`.
+
+Full sharded run (final tree): shard 0 **957/957 passed** (960 intended, 3 skipped),
+serial **323/323 passed**, shard 1 **562 tests passed** before the test process died inside
+`PsytranceComposition.PsyDubFiveMinutes` (no gtest completion summary, so the runner credits
+that shard 0 of 844) — **1814 passed, 0 unique failures, 1 incomplete shard**.
+That test's instability is **PRE-EXISTING, not this session's**: the same access violation
+reproduces on a pristine HEAD `f1551e4` build (stashed the whole working tree, reconfigured,
+rebuilt — `0xC0000005` after 5.8 min), it survives a clean build-state rebuild (627 targets), and
+its neighbours are green (`PsytranceComposition.FullProductionV4`, `.DarkForestV5`,
+`PluginIsolation.*` 51/51). **Root cause unknown** — a dump-backed stack is the next step.
+Catalogued in `docs/testing-mcp.md`; the 2026-09-26 complete run remains the authoritative baseline.
+
+## 6. Docs touched
+
+- `docs/handoffs/2026-09-28-agent-mechanization-shipped.md` (this file) +
+  `docs/handoffs/INDEX.md`.
+- `docs/lessons-learned.md` (lessons 35–38).
+- `AGENTS.md` (parity ledger, toolkit bullets, pitfalls pointer, index rows).
+- `docs/pitfalls-juce.md` (the `small` include-order trap).
+- `docs/plans/2026-09-28-agent-mechanization.md` (status → IMPLEMENTED, counts
+  reconciled).

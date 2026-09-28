@@ -32,16 +32,13 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
         "project",
         [e](const QJsonObject& a) {
             auto path = a.value("filePath").toString();
-            // Render-domain exclusion (handoff B1/F1): a save reads the live
-            // processors; cancel + join any orphaned offline render first so it
-            // cannot race the save (ProjectSerializer reads getTrack()).
-            if (auto* proc = e->getMainProcessor())
-                if (proc->getExportManager().isExporting())
-                    proc->getExportManager().cancelAndJoin();
-            juce::File f(juce::String(path.toUtf8().constData()));
-            bool ok = HDAW::ProjectSerializer::save(e->getProjectModel(), f, e->getMainProcessor());
-            if (ok)
-                HDAW::backupProject(f);
+            // Route through the command layer (same as the RPC project.saveProject):
+            // it cancels + joins any live render, saves, backs up with the
+            // configured backup count, and records the session project path that
+            // `whoami` reports. A direct ProjectSerializer::save skipped all of
+            // that (the MCP tool silently diverged from the RPC path).
+            const bool ok = e->getProjectCommands().saveProject(
+                juce::String(path.toUtf8().constData()).toStdString());
             return McpToolResult::text(ok ? "saved" : "save failed", !ok);
         }});
 
@@ -63,7 +60,11 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
         objSchema({}),
         "project",
         [e](const QJsonObject&) {
-            HDAW::ProjectSerializer::createNew(e->getProjectModel());
+            // Command layer (same as the RPC project.newProject): applies the
+            // settings defaults, rebuilds the routing graph, and clears the
+            // recorded session project path so `whoami` never reports a stale
+            // file for an unsaved project.
+            e->getProjectCommands().newProject();
             return McpToolResult::text("ok");
         }});
 

@@ -74,6 +74,16 @@ struct SectionReport {
                                      // "drop entry" / section-start transient
                                      // probe (fix 2026-09-16)
     double bandEnergy[kMixNumBands] = {};  // see MixReportAnalyzer docs
+    // Per-WINDOW copies of the whole-file FS-clamp / kick probes (above):
+    // verify_window measures the window through the shared analyzer and then
+    // promotes THESE to the payload root, so the window's own ceiling and kick
+    // numbers are what the target gates read (a window-only render is not
+    // predictive — docs/handoffs/2026-09-28-v0.39.2-backlog-closeout.md §3).
+    // Not emitted by buildMixReportPayload's section rows (mix_report's bytes
+    // are unchanged).
+    double ceilingHitPct = 0.0;
+    long ceilingHitFrames = 0;
+    double kickProminence = 0.0;
 };
 
 struct MixReport {
@@ -406,10 +416,19 @@ inline bool MixReportAnalyzer::analyze(const juce::File& wav,
         {
             sr.rms = std::sqrt(rr.stats.sumSq / static_cast<double>(rr.stats.count));
             sr.peak = rr.stats.peak;
+            // Per-channel FS clamp count for THIS window — the mono-downmix
+            // peak above is blind to one-sided clamps (MixReport docs).
+            sr.ceilingHitFrames = rr.stats.ceilingFrames;
+            sr.ceilingHitPct = 100.0 * static_cast<double>(rr.stats.ceilingFrames)
+                               / static_cast<double>(rr.stats.count);
         }
         for (int b = 0; b < kMixNumBands; ++b)
             sr.bandEnergy[b] = rr.spectral.windows > 0
                 ? rr.spectral.band[b] / static_cast<double>(rr.spectral.windows) : 0.0;
+        {
+            const double kickDenom = rr.spectral.kick + rr.spectral.kickMid;
+            sr.kickProminence = kickDenom > 0.0 ? rr.spectral.kick / kickDenom : 0.0;
+        }
 
         // Pump depth from this section's per-beat RMS arc.
         if (beatLenSamples > 0.0 && static_cast<int>(rr.beatRms.size()) >= kMinPumpBeats)

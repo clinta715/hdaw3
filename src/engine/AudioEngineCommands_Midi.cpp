@@ -2,6 +2,8 @@
 #include "AudioEngine.h"
 #include "../model/ProjectModel.h"
 
+#include <unordered_map>
+
 // ─── ProjectCommands — MIDI note operations ───────────────────────
 
 int AudioEngineCommands::addNote(int clipId, int pitch, int velocity,
@@ -181,6 +183,53 @@ void AudioEngineCommands::setNotesExpression(int noteId, float gain, float pan, 
     note.setProperty(IDs::notePitch, static_cast<double>(pitchOffset), &um);
     note.setProperty(IDs::noteTimbre, static_cast<double>(timbre), &um);
     note.setProperty(IDs::notePressure, static_cast<double>(pressure), &um);
+}
+
+// Batch gain: validate EVERY id (ONE walk building an id -> note map — not the
+// O(n)-per-id findNoteById in a loop) BEFORE any write, so an unknown id leaves
+// the project untouched and opens no transaction. On success: ONE transaction,
+// one setProperty per note, ONE undo unit.
+ProjectCommands::BatchResult AudioEngineCommands::setNotesGain(const std::vector<int>& noteIds, float gain)
+{
+    BatchResult result;
+    if (noteIds.empty())
+    {
+        result.error = "noteIds must not be empty";
+        return result;
+    }
+
+    std::unordered_map<int, juce::ValueTree> byId;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto noteList = clipList.getChild(c).getChildWithName(IDs::MIDI_NOTE_LIST);
+            for (int n = 0; n < noteList.getNumChildren(); ++n)
+            {
+                auto note = noteList.getChild(n);
+                byId[static_cast<int>(note.getProperty(IDs::noteID, 0))] = note;
+            }
+        }
+    }
+
+    for (int id : noteIds)
+        if (byId.find(id) == byId.end())
+        {
+            result.error = "unknown noteId " + std::to_string(id);
+            return result;
+        }
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    beginTransaction("Set notes gain");
+    for (int id : noteIds)
+        byId[id].setProperty(IDs::noteGain, static_cast<double>(gain), &um);
+    endTransaction();
+
+    result.ok = true;
+    result.applied = static_cast<int>(noteIds.size());
+    return result;
 }
 
 void AudioEngineCommands::setClipSeed(int clipId, uint64_t seed)

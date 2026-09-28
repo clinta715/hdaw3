@@ -7,6 +7,10 @@
 #include "RouterHelpers.h"
 
 #include "../../common/ProjectCommands.h"
+#include "../../common/BatchEnd.h"
+// S3 batch-edit verbs: the SAME `edits` parser the MCP tools call, so the twin
+// failures (empty batch, unknown id, typo'd key) are byte-identical.
+#include "../../common/BatchEditJson.h"
 // Shared bodies for the automation/master-FX routes below — the SAME entry
 // points the MCP tools call (automation_preset / apply_movement_plan /
 // set_master_fx_param / set_master_fx_bypassed), so both surfaces cannot drift:
@@ -59,9 +63,13 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     // --- Tracks ---
     if (m == "addTrack") {
         std::string name; if (!requireString(o, "name", name, nullptr)) name = "Track";
-        int color = optInt(o, "color", -1, nullptr);
-        int parentBus = optInt(o, "parentBus", -1, nullptr);
-        int trackType = optInt(o, "trackType", 0, nullptr);
+        DispatchResult intErr;
+        int color;
+        int parentBus;
+        int trackType;
+        if (!optInt(o, "color", color, -1, &intErr)) return intErr;
+        if (!optInt(o, "parentBus", parentBus, -1, &intErr)) return intErr;
+        if (!optInt(o, "trackType", trackType, 0, &intErr)) return intErr;
         return { false, c.addTrack(name, color, parentBus, trackType) };
     }
     // removeTrack lives in dispatchRemoveTrack (below): its dryRun/force guard
@@ -169,7 +177,9 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         if (!requireString(o, "busType", busType, nullptr)) return makeError(-32602, "busType required");
         const std::string name = optString(o, "name", "");
         const std::string fxType = optString(o, "fxType", "");
-        const int busTarget = optInt<int>(o, "busTarget", 0, nullptr);
+        DispatchResult intErr;
+        int busTarget;
+        if (!optInt<int>(o, "busTarget", busTarget, 0, &intErr)) return intErr;
         auto r = c.createBus(busType, name, fxType, busTarget);
         if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
         return { false, QJsonObject{{ "ok", true }, { "busID", r.busID }} };
@@ -395,6 +405,15 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     if (m == "setClipOffset")   { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "offset", v, nullptr)) return makeError(-32602, "clipId and offset required"); c.setClipOffset(i, v); return { false, QJsonValue::Null }; }
     if (m == "setClipLooping")  { int i; bool b;   if (!requireInt(o, "clipId", i, nullptr) || !requireBool(o, "looping", b, nullptr)) return makeError(-32602, "clipId and looping required"); c.setClipLooping(i, b); return { false, QJsonValue::Null }; }
     if (m == "setClipMuted")    { int i; bool b;   if (!requireInt(o, "clipId", i, nullptr) || !requireBool(o, "muted", b, nullptr)) return makeError(-32602, "clipId and muted required"); c.setClipMuted(i, b); return { false, QJsonValue::Null }; }
+    if (m == "setClipsEdit") {
+        std::vector<ProjectCommands::ClipEdit> edits;
+        QString parseError;
+        if (!HDAW::parseClipEdits(o.value("edits"), edits, parseError))
+            return makeError(-32602, parseError);
+        const auto r = c.setClipsEdit(edits);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        return { false, QJsonObject{{"applied", r.applied}, {"ok", true}} };
+    }
 
     // --- Timestretch ---
     if (m == "setClipSourceBpm")    { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "bpm", v, nullptr)) return makeError(-32602, "clipId and bpm required"); c.setClipSourceBpm(i, v); return { false, QJsonValue::Null }; }
@@ -444,8 +463,38 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     if (m == "setNoteRepeatCurve") { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "repeatCurve", v, nullptr)) return makeError(-32602, "noteId and repeatCurve required"); c.setNoteRepeatCurve(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
     if (m == "setNoteOccurrence")  { int i, v; if (!requireInt(o, "noteId", i, nullptr) || !requireInt(o, "occurrence", v, nullptr)) return makeError(-32602, "noteId and occurrence required"); c.setNoteOccurrence(i, v); return { false, QJsonValue::Null }; }
     if (m == "setNoteRecurrence")  { int i, v; if (!requireInt(o, "noteId", i, nullptr) || !requireInt(o, "recurrence", v, nullptr)) return makeError(-32602, "noteId and recurrence required"); c.setNoteRecurrence(i, v); return { false, QJsonValue::Null }; }
-    if (m == "setNoteGain")       { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "gain", v, nullptr)) return makeError(-32602, "noteId and gain required"); c.setNoteGain(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
-    if (m == "setNotePan")        { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "pan", v, nullptr)) return makeError(-32602, "noteId and pan required"); c.setNotePan(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNoteGain") {
+        // A non-integral `noteId` is refused with the MCP validator's own text
+        // (BatchEditJson.h's shared parser) instead of being truncated to note
+        // N — and, the argument names being the contract, a missing/non-numeric
+        // one keeps the router's established wording.
+        int i; QString idErr;
+        if (!HDAW::parseIntArg(o, "noteId", i, idErr)) return makeError(-32602, idErr);
+        double v; DispatchResult gainErr;
+        if (!requireDouble(o, "gain", v, &gainErr)) return gainErr;
+        c.setNoteGain(i, static_cast<float>(v)); return { false, QJsonValue::Null };
+    }
+    if (m == "setNotesGain") {
+        // The SAME strict integer-array parser the MCP tool calls
+        // (common/BatchEditJson.h), so a non-integral id is refused with the
+        // validator's exact bytes instead of being truncated to note N.
+        std::vector<int> ids; QString idErr;
+        if (!HDAW::parseIntArray(o.value("noteIds"), "noteIds", ids, idErr))
+            return makeError(-32602, idErr);
+        DispatchResult gainErr;
+        float gain = 0.0f;
+        if (!requireFloat(o, "gain", gain, &gainErr)) return gainErr;
+        const auto r = c.setNotesGain(ids, gain);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        return { false, QJsonObject{{"applied", r.applied}, {"ok", true}} };
+    }
+    if (m == "setNotePan")        {
+        int i; QString idErr;
+        if (!HDAW::parseIntArg(o, "noteId", i, idErr)) return makeError(-32602, idErr);
+        double v; DispatchResult panErr;
+        if (!requireDouble(o, "pan", v, &panErr)) return panErr;
+        c.setNotePan(i, static_cast<float>(v)); return { false, QJsonValue::Null };
+    }
     if (m == "setNotePitchOffset"){ int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "pitchOffset", v, nullptr)) return makeError(-32602, "noteId and pitchOffset required"); c.setNotePitchOffset(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
     if (m == "setNoteTimbre")     { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "timbre", v, nullptr)) return makeError(-32602, "noteId and timbre required"); c.setNoteTimbre(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
     if (m == "setNotePressure")   { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "pressure", v, nullptr)) return makeError(-32602, "noteId and pressure required"); c.setNotePressure(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
@@ -710,7 +759,7 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     // (common/StableRefResolve.h), spelling-preserving keys. Routes with no MCP
     // twin (removeAutomationPoint / setAutomationPointValue / setAutomationMode)
     // stay positional — the read.getTrack precedent for route-only methods.
-    if (m == "addAutomationLane")       { int i; std::string lane; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "laneName", lane, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and laneName required"); int paramID = optInt(o, "paramID", 0, nullptr); bool replace = optBool(o, "replace", false, nullptr); if (!c.addAutomationLane(i, lane, paramID, replace)) return makeError(-32602, "lane name or paramID already exists"); return { false, QJsonValue::Null }; }
+    if (m == "addAutomationLane")       { int i; std::string lane; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "laneName", lane, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and laneName required"); int paramID; if (!optInt(o, "paramID", paramID, 0, &err)) return err; bool replace = optBool(o, "replace", false, nullptr); if (!c.addAutomationLane(i, lane, paramID, replace)) return makeError(-32602, "lane name or paramID already exists"); return { false, QJsonValue::Null }; }
     if (m == "removeAutomationLane")    { int i; std::string lane; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "laneName", lane, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and laneName required"); c.removeAutomationLane(i, lane); return { false, QJsonValue::Null }; }
     if (m == "addAutomationPoint")      { int i; std::string lane; double t; float v; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireFloat(o, "value", v, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, lane, time, value required"); c.addAutomationPoint(i, lane, t, v); return { false, QJsonValue::Null }; }
     if (m == "removeAutomationPoint")   { int i; std::string lane; double t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "lane", lane, nullptr) || !requireDouble(o, "time", t, nullptr)) return makeError(-32602, "trackIndex, lane, time required"); c.removeAutomationPoint(i, lane, t); return { false, QJsonValue::Null }; }
@@ -798,7 +847,7 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     if (m == "setTimeSignature")    { int n, d; if (!requireInt(o, "numerator", n, nullptr) || !requireInt(o, "denominator", d, nullptr)) return makeError(-32602, "numerator and denominator required"); c.setTimeSignature(n, d); return { false, QJsonValue::Null }; }
 
     // --- Markers ---
-    if (m == "addMarker")      { std::string name; double t; if (!requireString(o, "name", name, nullptr) || !requireDouble(o, "time", t, nullptr)) return makeError(-32602, "name and time required"); int color = optInt<int>(o, "color", 0xFF59e0c4, nullptr); return { false, c.addMarker(name, t, color) }; }
+    if (m == "addMarker")      { std::string name; double t; if (!requireString(o, "name", name, nullptr) || !requireDouble(o, "time", t, nullptr)) return makeError(-32602, "name and time required"); DispatchResult intErr; int color; if (!optInt<int>(o, "color", color, 0xFF59e0c4, &intErr)) return intErr; return { false, c.addMarker(name, t, color) }; }
     if (m == "removeMarker")   { int i; if (!requireInt(o, "index", i, nullptr)) return makeError(-32602, "index required"); c.removeMarker(i); return { false, QJsonValue::Null }; }
     if (m == "setMarkerName")  { int i; std::string s; if (!requireInt(o, "index", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "index and name required"); c.setMarkerName(i, s); return { false, QJsonValue::Null }; }
     if (m == "setMarkerTime")  { int i; double t; if (!requireInt(o, "index", i, nullptr) || !requireDouble(o, "time", t, nullptr)) return makeError(-32602, "index and time required"); c.setMarkerTime(i, t); return { false, QJsonValue::Null }; }
@@ -809,8 +858,14 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         std::string name; double start, dur;
         if (!requireString(o, "name", name, nullptr) || !requireDouble(o, "startTime", start, nullptr) || !requireDouble(o, "duration", dur, nullptr))
             return makeError(-32602, "name, startTime, duration required");
-        int color = optInt<int>(o, "color", 0xFFd97706, nullptr);
-        return { false, QString::fromStdString(c.addArrangerRegion(name, start, dur, color)) };
+        DispatchResult intErr;
+        int color;
+        if (!optInt<int>(o, "color", color, 0xFFd97706, &intErr)) return intErr;
+        // S6c payload: the id under a named key (was the bare id string), so the
+        // resolver's `unit` echo has a JSON object to land on — byte-identical
+        // to the MCP add_arranger_region payload (WindowUnitParityTest twins it).
+        const std::string id = c.addArrangerRegion(name, start, dur, color);
+        return { false, QJsonObject{{"regionID", QString::fromStdString(id)}} };
     }
     if (m == "removeArrangerRegion") {
         std::string rid;
@@ -831,7 +886,10 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         if (!requireString(o, "regionID", rid, nullptr) || !requireDouble(o, "startTime", start, nullptr) || !requireDouble(o, "duration", dur, nullptr))
             return makeError(-32602, "regionID, startTime, duration required");
         c.setArrangerRegionBounds(rid, start, dur);
-        return { false, QJsonValue::Null };
+        // S6c payload: a status OBJECT (was Null), so the resolver's `unit` echo
+        // has a JSON object to land on — byte-identical to the MCP
+        // set_arranger_region_bounds payload (WindowUnitParityTest twins it).
+        return { false, QJsonObject{{"ok", true}} };
     }
     if (m == "setArrangerRegionColor") {
         std::string rid; int color;
@@ -873,7 +931,9 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         std::string cid, rid;
         if (!requireString(o, "chainID", cid, nullptr) || !requireString(o, "regionID", rid, nullptr))
             return makeError(-32602, "chainID and regionID required");
-        int repeat = optInt<int>(o, "repeatCount", 1, nullptr);
+        DispatchResult intErr;
+        int repeat;
+        if (!optInt<int>(o, "repeatCount", repeat, 1, &intErr)) return intErr;
         return { false, c.addChainEntry(cid, rid, repeat) };
     }
     if (m == "removeChainEntry") {
@@ -953,11 +1013,12 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         params.startValue = optDouble(o, "startValue", 0.0, nullptr);
         params.endValue = optDouble(o, "endValue", 1.0, nullptr);
         params.cycles = optDouble(o, "cycles", 1.0, nullptr);
-        params.steps = optInt(o, "steps", 8, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "steps", params.steps, 8, &intErr)) return intErr;
         params.phase = optDouble(o, "phase", 0.0, nullptr);
         params.densityPerSec = optDouble(o, "density", 8.0, nullptr);
         params.smooth = optDouble(o, "smooth", 0.0, nullptr);
-        params.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt<uint64_t>(o, "seed", params.seed, 0, &intErr)) return intErr;
 
         c.generateAutomationEnvelope(trackIndex, lane, params);
         return { false, QJsonObject{} };
@@ -980,11 +1041,12 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         params.startValue = optDouble(o, "startValue", 0.0, nullptr);
         params.endValue = optDouble(o, "endValue", 2.0, nullptr);
         params.cycles = optDouble(o, "cycles", 1.0, nullptr);
-        params.steps = optInt(o, "steps", 8, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "steps", params.steps, 8, &intErr)) return intErr;
         params.phase = optDouble(o, "phase", 0.0, nullptr);
         params.densityPerSec = optDouble(o, "density", 8.0, nullptr);
         params.smooth = optDouble(o, "smooth", 0.0, nullptr);
-        params.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt<uint64_t>(o, "seed", params.seed, 0, &intErr)) return intErr;
 
         c.generateClipGainEnvelope(clipId, params);
         return { false, QJsonObject{} };
@@ -1009,11 +1071,12 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         params.startValue = optDouble(o, "startValue", 0.0, nullptr);
         params.endValue = optDouble(o, "endValue", 127.0, nullptr);
         params.cycles = optDouble(o, "cycles", 1.0, nullptr);
-        params.steps = optInt(o, "steps", 8, nullptr);
+        DispatchResult intErr;
+        if (!optInt(o, "steps", params.steps, 8, &intErr)) return intErr;
         params.phase = optDouble(o, "phase", 0.0, nullptr);
         params.densityPerSec = optDouble(o, "density", 8.0, nullptr);
         params.smooth = optDouble(o, "smooth", 0.0, nullptr);
-        params.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (!optInt<uint64_t>(o, "seed", params.seed, 0, &intErr)) return intErr;
 
         c.generateClipCcLane(clipId, controllerNumber, params);
         return { false, QJsonObject{} };
@@ -1073,6 +1136,30 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     }
     if (m == "beginTransaction") { std::string name = optString(o, "name", "edit"); c.beginTransaction(name); return { false, QJsonValue::Null }; }
     if (m == "endTransaction")   { c.endTransaction(); return { false, QJsonValue::Null }; }
+
+    // ── Edit batch (S4 ledger fix): project.beginBatch / project.endBatch ──
+    // TRUE twins of the begin_batch / end_batch MCP tools: the SAME
+    // ProjectCommands::beginBatch / endBatch entry points and the SAME refusal
+    // texts (batchAlreadyOpenError / kNoOpenBatchError), which is what the
+    // BatchEditRpcTest twins assert. Unlike the raw begin/endTransaction pair
+    // above these track the batch flag, so every command's own undo boundary is
+    // suppressed and the whole batch coalesces into ONE undo unit.
+    //
+    // ONE DELIBERATE ASYMMETRY (documented, asserted by test): the MCP tool
+    // additionally refuses on a transport other than stdio
+    // (batchStdioRequiredError) — the batch owns the PROCESS-WIDE undo
+    // transaction, so a shared server's other clients could silently join it.
+    // This route is the process's own UI client (the same client that asks for
+    // the batch), so it does not need that process-isolation guard.
+    if (m == "beginBatch") {
+        const QString name = o.value("name").toString(QStringLiteral("edit"));
+        if (!c.beginBatch(name.toStdString()))
+            return makeError(-32602,
+                             QString::fromStdString(HDAW::batchAlreadyOpenError(c.batchName())));
+        return { false, QJsonValue::Null };
+    }
+    // endBatch lives in dispatchEndBatch (FrontendRouter): its optional verify
+    // hook needs engine context for the shared render→verdict path.
 
     // --- Project lifecycle ---
     if (m == "newProject")  { c.newProject(); return { false, QJsonValue::Null }; }
@@ -1217,6 +1304,18 @@ DispatchResult dispatchRemoveTrack(AudioEngine& engine, const QJsonValue& params
                                  { "shifted", shifted } } };
 }
 
+// project.endBatch {verify?: {targets?, outputPath?}} — the RPC twin of the
+// end_batch tool, running the SAME shared body (common/BatchEnd.h): parse → seal
+// (seal FIRST) → optional render+verdict. Byte-identical payload and refusals;
+// a verification failure keeps the sealed payload and reports `verificationError`.
+DispatchResult dispatchEndBatch(AudioEngine& engine, const QJsonValue& params)
+{
+    const auto r = HDAW::endBatchAndVerify(engine, paramsObject(params));
+    if (!r.ok)
+        return makeError(r.errorCode, r.error);
+    return { false, r.payload };
+}
+
 // project.addTrackWithFx {name, fxType?, pluginId?, color?, parentBus?} — the
 // RPC twin MCP add_track_with_fx never had (rpc_parity_map.inc: "unresolved").
 // Argument names are the tool's property names, and the payload IS the tool's
@@ -1228,12 +1327,17 @@ DispatchResult dispatchAddTrackWithFx(AudioEngine& engine, const QJsonValue& par
     const auto o = paramsObject(params);
     std::string name;
     if (!requireString(o, "name", name, nullptr)) return makeError(-32602, "name required");
+    DispatchResult intErr;
+    int color;
+    int parentBus;
+    if (!optInt<int>(o, "color", color, -1, &intErr)) return intErr;
+    if (!optInt<int>(o, "parentBus", parentBus, 0, &intErr)) return intErr;
     const auto r = HDAW::addTrackWithFx(engine.getProjectModel(),
                                         name,
                                         optString(o, "fxType", ""),
                                         optString(o, "pluginId", ""),
-                                        optInt<int>(o, "color", -1, nullptr),
-                                        optInt<int>(o, "parentBus", 0, nullptr));
+                                        color,
+                                        parentBus);
     if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
     return { false, QJsonDocument::fromJson(QString::fromStdString(
                  HDAW::shapeAddTrackWithFxJson(r)).toUtf8()).object() };

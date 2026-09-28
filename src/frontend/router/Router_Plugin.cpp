@@ -114,7 +114,8 @@ DispatchResult dispatchPlugin(PluginService& s, AudioEngine& engine, const QStri
             return makeError(-32602, "slotIndex required");
         if (!requireString(o, "filePath", filePath, nullptr))
             return makeError(-32602, "filePath required");
-        const int program = optInt(o, "program", -1, nullptr);
+        int program;
+        if (!optInt(o, "program", program, -1, &err)) return err;
         if (o.contains("program") && program < 0)
             return makeError(-32602, "program must be 0..127");
         const bool capture = optBool(o, "captureToTree", true, nullptr);

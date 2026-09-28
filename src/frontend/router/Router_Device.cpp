@@ -73,7 +73,9 @@ DispatchResult dispatchDevice(AudioEngine& engine, const QString& m, const QJson
     const QString fIntent   = QString::fromStdString(optString(o, "intent", ""));
     const QString fStage    = QString::fromStdString(optString(o, "stage", ""));
     const QString fTier     = QString::fromStdString(optString(o, "tier", ""));
-    int limit = optInt(o, "limit", 100, nullptr);
+    DispatchResult intErr;
+    int limit;
+    if (!optInt(o, "limit", limit, 100, &intErr)) return intErr;
     if (limit <= 0) limit = 100;
     if (limit > 1000) limit = 1000;
 

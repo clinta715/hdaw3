@@ -26,6 +26,7 @@
 #include <QJsonObject>
 
 #include "../common/StableRefResolve.h"
+#include "../common/JsonInteger.h"
 
 #include <string>
 
@@ -41,11 +42,21 @@ inline HDAW::StableRefResult refArgs(const QJsonObject& a, HDAW::StableRefKeys k
     if (a.contains(keys.index)) {
         if (!a.value(keys.index).isDouble())
             return HDAW::stableRefError(std::string("missing or non-numeric param: ") + keys.index);
+        // Defence in depth: the tool schema types these as integers, so
+        // validateSchema pre-empts a non-integral value with the SAME text — but
+        // a tool registered without its schema must not truncate here either
+        // (the router half refuses identically).
+        if (!HDAW::isJsonInteger(a.value(keys.index)))
+            return HDAW::stableRefError(std::string("invalid params: ") + keys.index
+                                        + ": expected integer");
         index = static_cast<int>(a.value(keys.index).toDouble());
     }
     if (a.contains(keys.stable)) {
         if (!a.value(keys.stable).isDouble())
             return HDAW::stableRefError(std::string("missing or non-numeric param: ") + keys.stable);
+        if (!HDAW::isJsonInteger(a.value(keys.stable)))
+            return HDAW::stableRefError(std::string("invalid params: ") + keys.stable
+                                        + ": expected integer");
         stableID = static_cast<int>(a.value(keys.stable).toDouble());
     }
     return {};

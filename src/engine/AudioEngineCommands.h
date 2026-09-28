@@ -102,6 +102,11 @@ public:
     void removeClips(const std::vector<int>& clipIds) override;
     std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names, const std::vector<std::string>& sourceFiles = {}) override;
 
+    // ProjectCommands — batch edits (S3): one undo unit + one round trip for N
+    // edits, validate-then-apply (nothing written and no undo unit on refusal).
+    BatchResult setNotesGain(const std::vector<int>& noteIds, float gain) override;
+    BatchResult setClipsEdit(const std::vector<ClipEdit>& edits) override;
+
     // ProjectCommands — generative arrangement
     ArrangementResult generateArrangement(const HDAW::ArrangementParams& params) override;
 
@@ -144,6 +149,16 @@ public:
     VerifyPartResult verifyPart(int trackIndex, double windowSeconds,
                                 double startBeat = 0.0, double endBeat = 0.0,
                                 bool soloOnly = false) override;
+
+    // verify_window (S4): full-project render through the shared export
+    // launcher (common/RenderLaunch.h) + a bounded wait, then measure ONLY the
+    // requested window and gate the WINDOW's own metrics. Read-only with
+    // respect to the live project; the rendered WAV stays on disk for the
+    // caller (see ProjectCommands::verifyWindow).
+    VerifyWindowResult verifyWindow(double startBeat, double endBeat,
+                                    const QJsonObject& targets,
+                                    const std::string& outputPath,
+                                    uint32_t timeoutMs = 600000) override;
 
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;
@@ -453,6 +468,12 @@ public:
     void beginTransaction(const std::string& name) override;
     void endTransaction() override;
 
+    // ProjectCommands — Edit batch (S7)
+    bool beginBatch(const std::string& name) override;
+    bool endBatch() override;
+    bool batchActive() const override { return batchActive_; }
+    std::string batchName() const override { return batchName_.toStdString(); }
+
     // ProjectCommands — Markers
     int addMarker(const std::string& name, double time, int color) override;
     void removeMarker(int index) override;
@@ -486,6 +507,8 @@ public:
     void newProject() override;
     bool saveProject(const std::string& filePath) override;
     bool loadProject(const std::string& filePath) override;
+    // Path of the project loaded/saved this session (see ProjectCommands.h).
+    std::string getProjectFilePath() const override { return projectFilePath_; }
 
     // ProjectCommands — Scale
     void setScaleRoot(int root) override;
@@ -528,6 +551,20 @@ public:
                                const std::string& propertyID, float value);
 
 private:
+    // ── Edit batch (S7) ────────────────────────────────────────────────────
+    // The ONE choke point every undo boundary in this class must go through.
+    // While a batch is open it does NOTHING, so a command's own boundary (its
+    // begin/endTransaction pair, or an internal raw boundary) collapses into the
+    // batch's single named undo unit instead of splitting it. With no batch open
+    // it is exactly the old raw `um.beginNewTransaction(name)`.
+    void transactionBoundary(const juce::String& name);
+
+    // True between beginBatch and endBatch. A FLAG, never a counter: an
+    // unpaired-by-design boundary (createBus, whose group createSend joins) can
+    // never leak it, so a batch always closes.
+    bool batchActive_ = false;
+    juce::String batchName_;
+
     // True while autoGainTracks drives autoGainToTarget: suppresses each per-track undo
     // transaction so the whole batch coalesces into ONE undo unit (JUCE ends the current
     // transaction when a new one begins, so a batch cannot nest them).
@@ -587,6 +624,10 @@ private:
     // CC bulk writer helper
     void setClipCcPoints(int clipId, int controllerNumber,
                          const std::vector<std::pair<double, double>>& points);
+
+    // Path of the project loaded/saved this session (message thread only).
+    // Set on a successful saveProject/loadProject, cleared by newProject().
+    std::string projectFilePath_;
 
     AudioEngine& engine_;
 };

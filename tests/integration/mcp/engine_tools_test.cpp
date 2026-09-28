@@ -14,12 +14,15 @@
 #include <gtest/gtest.h>
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
+#include "common/ProjectCommands.h"
 #include "engine/AudioEngine.h"
 #include "engine/ExportManager.h"
 #include "engine/PluginManager.h"
 #include "engine/ProjectPool.h"
 #include "model/ProjectModel.h"
 
+#include <juce_core/juce_core.h>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QFile>
 #include <QJsonArray>
@@ -205,4 +208,119 @@ TEST (EngineTools, EngineRestartRefusesWhileExporting)
         QJsonObject { { "name", "engine_info" }, { "arguments", QJsonObject {} } });
     ASSERT_FALSE (isError (info));
     EXPECT_FALSE (resultObj (info).value("exporting").toBool (true));
+}
+
+// ---------------------------------------------------------------------------
+// whoami (slice S5): the engine_info report PLUS the session context. The
+// no-drift test is the slice's contract -- both tools share
+// buildEngineInfoPayload, so whoami MUST carry every engine_info key with an
+// equal value for the same args.
+// ---------------------------------------------------------------------------
+namespace
+{
+QJsonObject callTool (mcp::McpServer& s, int id, const QString& tool, const QJsonObject& args)
+{
+    auto r = s.handleRequestOnTestThread (id, "tools/call",
+        QJsonObject { { "name", tool }, { "arguments", args } });
+    return resultObj (r);
+}
+} // namespace
+
+TEST (EngineTools, WhoamiMatchesEngineInfoForSameArgs)
+{
+    AudioEngine engine;
+    mcp::McpServer s;
+    s.setEngine (&engine);
+    mcp::registerAllTools (s);
+
+    // Bare args AND the buildBinaryPath branch (which adds buildMtime/buildSize/
+    // stale) must both be faithfully superset.
+    const QJsonObject withBuild { { "buildBinaryPath",
+        QCoreApplication::applicationFilePath() } };
+    for (const QJsonObject& args : { QJsonObject {}, withBuild })
+    {
+        const QJsonObject info = callTool (s, 1, "engine_info", args);
+        const QJsonObject me   = callTool (s, 2, "whoami", args);
+
+        ASSERT_FALSE (info.isEmpty()) << "engine_info returned no payload";
+        for (auto it = info.begin(); it != info.end(); ++it)
+        {
+            EXPECT_TRUE (me.contains (it.key()))
+                << "whoami is missing engine_info key: " << it.key().toStdString();
+            EXPECT_EQ (me.value (it.key()), it.value())
+                << "whoami disagrees with engine_info on: " << it.key().toStdString();
+        }
+        // The session-context keys are the whoami-only additions.
+        EXPECT_TRUE (me.contains ("transport"));
+        EXPECT_TRUE (me.contains ("projectPath"));
+        EXPECT_TRUE (me.contains ("projectName"));
+        EXPECT_TRUE (me.contains ("trackCount"));
+        EXPECT_TRUE (me.contains ("clipCount"));
+    }
+}
+
+TEST (EngineTools, WhoamiReportsTransportAndLoadedProject)
+{
+    AudioEngine engine;
+    engine.initialize();
+    mcp::McpServer s;
+    s.setEngine (&engine);
+    s.setTransportName ("stdio");
+    mcp::registerAllTools (s);
+
+    // A fresh engine has no session project file.
+    auto bare = callTool (s, 1, "whoami", QJsonObject {});
+    EXPECT_EQ (bare.value ("transport").toString(), QString ("stdio"));
+    EXPECT_EQ (bare.value ("projectPath").toString(), QString (""));
+
+    // Build a 1-track / 1-clip project and save it through the command layer --
+    // the path must be recorded on a successful save.
+    ProjectCommands& cmds = engine.getProjectCommands();
+    cmds.addTrack ("T", -1, -1, 0);
+    cmds.addMidiClip (0, 0.0, 4.0, "C");
+
+    const juce::File file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+        .getNonexistentChildFile ("hdaw_whoami_test", ".hdaw", false);
+    const std::string path = file.getFullPathName().toStdString();
+    ASSERT_TRUE (cmds.saveProject (path));
+    EXPECT_EQ (cmds.getProjectFilePath(), path);
+
+    auto afterSave = callTool (s, 2, "whoami", QJsonObject {});
+    EXPECT_EQ (afterSave.value ("projectPath").toString(), QString::fromStdString (path));
+    EXPECT_EQ (afterSave.value ("trackCount").toInt(), 1);
+    EXPECT_EQ (afterSave.value ("clipCount").toInt(), 1);
+    EXPECT_EQ (afterSave.value ("projectName").toString(),
+               QString::fromUtf8 (engine.getProjectModel().getTree()
+                                      .getProperty (IDs::name).toString().toRawUTF8()));
+
+    // newProject clears the recorded path...
+    cmds.newProject();
+    EXPECT_TRUE (cmds.getProjectFilePath().empty());
+    auto afterNew = callTool (s, 3, "whoami", QJsonObject {});
+    EXPECT_EQ (afterNew.value ("projectPath").toString(), QString (""));
+
+    // ...and a load records the loaded file again.
+    ASSERT_TRUE (cmds.loadProject (path));
+    EXPECT_EQ (cmds.getProjectFilePath(), path);
+    auto afterLoad = callTool (s, 4, "whoami", QJsonObject {});
+    EXPECT_EQ (afterLoad.value ("projectPath").toString(), QString::fromStdString (path));
+    EXPECT_EQ (afterLoad.value ("trackCount").toInt(), 1);
+
+    // S7 edit-batch visibility: closed by default ...
+    EXPECT_FALSE (afterLoad.value ("batchOpen").toBool (true));
+    EXPECT_EQ (afterLoad.value ("batchDepth").toInt (-1), 0);
+    EXPECT_EQ (afterLoad.value ("batchName").toString(), QString (""));
+
+    // ... and reported while a batch is open (engine-global state).
+    ASSERT_TRUE (cmds.beginBatch ("session"));
+    auto opened = callTool (s, 5, "whoami", QJsonObject {});
+    EXPECT_TRUE (opened.value ("batchOpen").toBool (false));
+    EXPECT_EQ (opened.value ("batchDepth").toInt (-1), 1);
+    EXPECT_EQ (opened.value ("batchName").toString(), QString ("session"));
+    ASSERT_TRUE (cmds.endBatch ());
+    auto closed = callTool (s, 6, "whoami", QJsonObject {});
+    EXPECT_FALSE (closed.value ("batchOpen").toBool (true));
+    EXPECT_EQ (closed.value ("batchName").toString(), QString (""));
+
+    file.deleteFile();
 }

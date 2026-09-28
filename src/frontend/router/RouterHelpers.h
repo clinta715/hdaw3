@@ -7,6 +7,7 @@
 #include "../FrontendRpc.h"
 #include "../../engine/EnvelopeGenerator.h"
 #include "../../common/StableRefResolve.h"
+#include "../../common/JsonInteger.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -15,6 +16,7 @@
 
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace frontend::router_helpers {
@@ -25,7 +27,23 @@ bool requireInt(const QJsonObject& o, const char* key, T& out, DispatchResult* e
         if (err) *err = makeError(-32602, QString("missing or non-numeric param: ") + key);
         return false;
     }
-    out = static_cast<T>(o.value(key).toDouble());
+    const double d = o.value(key).toDouble();
+    // A non-integral JSON number must NOT be silently truncated into an id:
+    // mcp::validateSchema refuses it for an `{"type":"integer"}` argument with
+    // this exact text (McpSchema.cpp's typeMatches), so the RPC surface refuses
+    // it too — same bytes when the caller passes `err`, and (with `err` null) it
+    // still returns false, so the route refuses instead of mutating id N. The
+    // is_integral guard keeps the helper's fractional instantiations intact.
+    // The predicate is the ONE shared one (common/JsonInteger.h), same test the
+    // stable-ref readers below and the MCP validator use.
+    if constexpr (std::is_integral<T>::value) {
+        if (!HDAW::isJsonInteger(o.value(key))) {
+            if (err) *err = makeError(-32602,
+                QString("invalid params: ") + key + QString(": expected integer"));
+            return false;
+        }
+    }
+    out = static_cast<T>(d);
     return true;
 }
 
@@ -63,14 +81,35 @@ inline bool requireString(const QJsonObject& o, const char* key, std::string& ou
     return true;
 }
 
+// Optional integer argument. `out` is ALWAYS written (the fallback when the key
+// is absent), and the call returns false with *err set when the key is PRESENT
+// but wrong: a non-number yields "non-numeric param: <key>", a non-integral
+// number yields the MCP validator's "invalid params: <key>: expected integer".
+// An ABSENT key keeps the tolerant optional behaviour (fallback, no error) —
+// pass a real `err` and check the return, or a present-and-wrong value silently
+// becomes the fallback (the bug this signature closes).
 template <typename T>
-T optInt(const QJsonObject& o, const char* key, T fallback, DispatchResult* err) {
-    if (!o.contains(key)) return fallback;
+bool optInt(const QJsonObject& o, const char* key, T& out, T fallback, DispatchResult* err) {
+    out = fallback;
+    if (!o.contains(key)) return true;
     if (!o.value(key).isDouble()) {
         if (err) *err = makeError(-32602, QString("non-numeric param: ") + key);
-        return fallback;
+        return false;
     }
-    return static_cast<T>(o.value(key).toDouble());
+    // Same integrality refusal as requireInt: a non-integral JSON number must
+    // not be silently truncated into an integer argument. Every instantiation of
+    // this helper is genuinely integer-typed (int / uint64_t); the predicate is
+    // the shared one so the refusal text mirrors the MCP validator's
+    // `{"type":"integer"}` answer.
+    if constexpr (std::is_integral<T>::value) {
+        if (!HDAW::isJsonInteger(o.value(key))) {
+            if (err) *err = makeError(-32602,
+                QString("invalid params: ") + key + QString(": expected integer"));
+            return false;
+        }
+    }
+    out = static_cast<T>(o.value(key).toDouble());
+    return true;
 }
 
 inline double optDouble(const QJsonObject& o, const char* key, double fallback, DispatchResult* err) {
@@ -128,14 +167,23 @@ inline HDAW::StableRefResult refArgs(const QJsonObject& o, HDAW::StableRefKeys k
     stableID = 0;
     if (o.contains(keys.index)) {
         // requireInt's exact wording: the positional half of this check predates
-        // B2 and its message is part of the surface.
+        // B2 and its message is part of the surface. A numeric-but-NON-INTEGRAL
+        // value is refused with the MCP validator's text (the shared
+        // isJsonInteger predicate) instead of being truncated onto index N —
+        // the same wrong-track hazard requireInt closes, one layer up.
         if (!o.value(keys.index).isDouble())
             return HDAW::stableRefError(std::string("missing or non-numeric param: ") + keys.index);
+        if (!HDAW::isJsonInteger(o.value(keys.index)))
+            return HDAW::stableRefError(std::string("invalid params: ") + keys.index
+                                        + ": expected integer");
         index = static_cast<int>(o.value(keys.index).toDouble());
     }
     if (o.contains(keys.stable)) {
         if (!o.value(keys.stable).isDouble())
             return HDAW::stableRefError(std::string("missing or non-numeric param: ") + keys.stable);
+        if (!HDAW::isJsonInteger(o.value(keys.stable)))
+            return HDAW::stableRefError(std::string("invalid params: ") + keys.stable
+                                        + ": expected integer");
         stableID = static_cast<int>(o.value(keys.stable).toDouble());
     }
     return {};

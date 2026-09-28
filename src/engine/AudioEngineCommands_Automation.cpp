@@ -316,7 +316,7 @@ std::string AudioEngineCommands::applyAutomationPreset(
     }
 
     auto& um = engine_.getProjectModel().getUndoManager();
-    um.beginNewTransaction("apply automation preset");
+    transactionBoundary("apply automation preset");
 
     const int added = writePresetWindowsToLane(trackIndex, autoLane, windows,
                                                clearWindowBeforeApply, seed);

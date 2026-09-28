@@ -44,20 +44,38 @@ MixReportPayloadResult buildMixReportPayload(const QString& filePath,
                                              std::vector<SectionWindow> windows,
                                              double bpm);
 
+// verify_window's measurement (S4): analyze [startSec, endSec) of `filePath`
+// through the SAME analyzer and return a payload whose ROOT metrics — duration,
+// peak, rms, bands, kickProminence, ceilingHitPct, ceilingHitFrames,
+// measurementSuspicious — ARE THE WINDOW'S, while `sections` carries the one
+// window row. That is what makes the payload gateable by applyTargetGates:
+// the gate reads the ROOT, so gating this payload gates the WINDOW, not the
+// whole file (which is the trap of handing the full-render WAV plus one window
+// to buildMixReportPayload). `duration` is the analyzed (clamped) window span in
+// seconds. Nothing here changes buildMixReportPayload's whole-file or
+// per-section bytes.
+MixReportPayloadResult buildWindowReportPayload(const QString& filePath,
+                                                double startSec, double endSec,
+                                                double bpm);
+
 // The drop-vs-build loudness gate: a build louder than its payoff is a FAIL. Pure shaping of
 // an already-built payload (reads `sections` + the plan's name->kind map), so it is shared
 // rather than re-implemented per surface.
 void applyDropVsBuildGate(QJsonObject& root, const QJsonObject& planKinds, double ratio);
 
 // B6: per-target PASS/FAIL rows from the brief's `targets` object (masterRms,
-// ceilingHitPctMax, kickProminenceMin, targetDurationSeconds), appended to the
-// report payload as `targetChecks` + `targetsOk`. Shared by mix_report and the
-// mix_verdict composer so both surfaces gate identically. Conventions (pinned
-// 2026-09-27): masterRms compares the MONO-DOWNMIX rms within ±5% of the
-// target (the 2026-09-26 vector-bloom reconciliation precedent: −4.75% mono
-// passed by hand); ceilingHitPctMax is a hard ceiling; kickProminenceMin a
-// floor; targetDurationSeconds allows ±2 s (render tail). Absent keys are
-// skipped; an empty `targets` is a no-op.
+// ceilingHitPctMax, kickProminenceMin, targetDurationSeconds, rmsMin),
+// appended to the report payload as `targetChecks` + `targetsOk`. Shared by
+// mix_report and the mix_verdict composer so both surfaces gate identically.
+// Conventions (pinned 2026-09-27): masterRms compares the MONO-DOWNMIX rms
+// within ±5% of the target (the 2026-09-26 vector-bloom reconciliation
+// precedent: −4.75% mono passed by hand); ceilingHitPctMax is a hard ceiling;
+// kickProminenceMin and rmsMin (LINEAR RMS floor, the payload's `rms` units —
+// a silent window reports rms 0 and fails any positive floor) are floors;
+// targetDurationSeconds allows ±2 s (render tail). Absent keys are skipped; an
+// empty `targets` is a no-op. NOTE: this applier stays PERMISSIVE about keys it
+// does not know (the brief's targets feed it) — verify_window's own strict
+// accepted-key contract lives in common/RenderToolArgs.h.
 void applyTargetGates(QJsonObject& root, const QJsonObject& targets);
 
 } // namespace HDAW

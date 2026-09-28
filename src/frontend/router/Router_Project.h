@@ -22,6 +22,9 @@ DispatchResult dispatchProject(ProjectCommands& cmds, const juce::ValueTree& tra
 // dispatchProject (see the definitions in Router_Project.cpp).
 DispatchResult dispatchRemoveTrack(AudioEngine& engine, const QJsonValue& params);
 DispatchResult dispatchAddTrackWithFx(AudioEngine& engine, const QJsonValue& params);
+// project.endBatch also needs engine context: its optional verify hook runs the
+// shared render→verdict path (common/BatchEnd.h).
+DispatchResult dispatchEndBatch(AudioEngine& engine, const QJsonValue& params);
 DispatchResult dispatchSettings(AudioEngine& engine, const QString& subMethod,
                                const QJsonValue& params);
 }
