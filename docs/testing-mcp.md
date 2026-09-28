@@ -171,20 +171,37 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   blaming a mix/arrangement change, re-render just the affected window.**
   Root cause unknown; suspects are the render-sequence bake race or an
   isolated-CLAP child dropout under load.
-- **`PsytranceComposition.PsyDubFiveMinutes` process death — PRE-EXISTING (2026-09-28).** Symptoms
-  observed on the session tree, two classes in the same test: an SEH access violation
-  (`0xC0000005`) minutes into the run with **no** gtest output and no crash artifact, or a plain
-  gtest failure `Osirus CC0+PC failed: track not found: 7` (the live-graph lookup in
-  `AudioEngineCommands_Fx.cpp`'s `sendFxMidi`) at 2.4 min. Either way a shard dies with no
-  completion summary (`INCOMPLETE SHARDS … ran 0 of N intended tests`). **Evidence it predates that
-  session's changes:** the same access violation reproduces on a pristine HEAD `f1551e4` build
-  (`git stash push --include-untracked`, `dsh-build-fast.bat ninja` reconfigure, rebuild —
-  `0xC0000005` ≈5.8 min in), and a clean build-state rebuild (`build/CMakeFiles`, `.ninja_deps`,
-  `.ninja_log` deleted, reconfigure, 627 targets) did not change the symptom. The neighbouring heavy
-  compositions (`FullProductionV4`, `DarkForestV5`) and `PluginIsolation.*` (51/51) pass.
-  **Root cause unknown** — a dump-backed stack (WER LocalDumps has no `hdaw_tests.exe` entry today;
-  `cdb.exe` and `procdump` are both installed) is the next step before touching the
-  isolated-CLAP / render-sequence path.
+- **`PsytranceComposition.PsyDubFiveMinutes` process death — ROOT-CAUSED AND FIXED (2026-09-28).**
+  Pre-fix symptoms: an SEH access violation (`0xC0000005`) minutes into the run with **no** gtest
+  output and no crash artifact, and a test shard dying with no completion summary. One run also
+  showed the plain gtest failure `Osirus CC0+PC failed: track not found: 7` — that one is
+  **NOT established to share this root cause** (it was seen once; it may be a separate issue), so the
+  fix is justified by the CDB frame plus the deterministic destruction tests, not by correlating it. **Root cause (captured with CDB,
+  second-chance AV):** `hdaw_tests!proxy::PluginProxySlot::getStateInformation+0x9c` re-read
+  `this->slotId` (`mov r15,rcx` at entry saves `this`; `mov edx,[r15+1A0h]` faults) — the
+  `PluginProxySlot` had been DESTROYED while its own background work was still running.
+  `startStateRetryWorker` launches a `std::jthread` capturing `[this]` that sleeps up to ~31 s and
+  then calls `publishStateToRing` / `sendStateInternal` / `verifyStateApplied` →
+  `getStateInformation` (3 × multi-second bounded pipe attempts), and `~PluginProxySlot` neither
+  stopped nor joined it: the dtor BODY killed the child, released resources and dropped the shm
+  handle while `std::jthread`'s implicit join only runs during MEMBER destruction (after the body),
+  with members declared after the thread (`crashed`, `childAlive`, …) destroyed before it. A
+  `detach()`ed `editorWatcherThread` captured `this` the same way. It reproduced on a pristine HEAD
+  `f1551e4` build, so it predates the 2026-09-28 mechanization work. **Fix
+  (`src/proxy/PluginProxySlot.{h,cpp}`):** the dtor now stops the JUCE timer, raises `stopping_`,
+  requests stop and JOINS `stateRetryThread`, then raises `editorWatchStop_` and JOINS the editor
+  watcher (the `detach()` branch is gone) — all BEFORE any child/resource teardown; the worker takes
+  its `std::stop_token` as a lambda PARAMETER, and the retry worker's send/publish/verify paths
+  early-out on `stopping_`/`crashed`/`!childAlive` — deliberately NOT `getStateInformation` itself,
+  because crash-recovery state capture on a dead child must still work — so the join is bounded by
+  ONE in-flight bounded op (~100 ms in the normal case, ≤ one 3 s bounded pipe op worst case). **Evidence:** `PluginIsolation.DestroyWhileStateRetryWorkerRuns` (5 cycles) +
+  `DestroyWhileEditorWatcherRuns` (measured destruction time inside each assertion); `PluginIsolation.*`
+  53/53; canary 5/5 green before the hardening pass and the hardened build passes the canonical
+  shards complete — **2130/2130 executed, 2091 passed, 0 failures**. **UNVERIFIED FOLLOW-UPS (code-read
+  concerns only, no runtime evidence yet — do NOT treat as established hazards):** `getPipe`/`getShm`
+  return RAW pointers into `ChildInfo` that a kill may free mid-use (the pipe path additionally raises
+  a `stop()`-vs-in-flight-I/O question), and external callers (save / export threads) may read a slot's
+  state while a graph rebuild destroys it. Both need the same lifetime discipline if they are real.
 - **Runner wart: a per-test exclusion does not survive a whole-suite unit (measured 2026-09-28).**
   `run-tests-sharded.ps1` enumerates with `--gtest_list_tests --gtest_filter=<Filter>` (so
   `*-Suite.Test` lowers the intended count) but then runs any suite with ≤ `-WholeSuiteThreshold`

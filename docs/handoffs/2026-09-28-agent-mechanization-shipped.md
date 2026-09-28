@@ -161,23 +161,59 @@ optional `verify` hook seals first and never un-seals on a verification failure.
    `project.addTrack` returns a bare index; `get_waveform_peaks` returns 200
    peak values regardless of an integral `numBins`.
 
-Full sharded run (final tree): shard 0 **957/957 passed** (960 intended, 3 skipped),
-serial **323/323 passed**, shard 1 **562 tests passed** before the test process died inside
-`PsytranceComposition.PsyDubFiveMinutes` (no gtest completion summary, so the runner credits
-that shard 0 of 844) — **1814 passed, 0 unique failures, 1 incomplete shard**.
-That test's instability is **PRE-EXISTING, not this session's**: the same access violation
-reproduces on a pristine HEAD `f1551e4` build (stashed the whole working tree, reconfigured,
-rebuilt — `0xC0000005` after 5.8 min), it survives a clean build-state rebuild (627 targets), and
-its neighbours are green (`PsytranceComposition.FullProductionV4`, `.DarkForestV5`,
-`PluginIsolation.*` 51/51). **Root cause unknown** — a dump-backed stack is the next step.
-Catalogued in `docs/testing-mcp.md`; the 2026-09-26 complete run remains the authoritative baseline.
+Full sharded run (final tree): **2130/2130 executed — 2091 passed, 39 skipped, 0 failures**, every
+shard `ran == intended` (960/960, 845/845, 325/325), 24 min wall — re-run after the engine fix in §7.
+Earlier the same run was INCOMPLETE (1814 passed, one dead shard):
+`PsytranceComposition.PsyDubFiveMinutes` intermittently died. That turned out to be a pre-existing
+`PluginProxySlot` worker-lifetime use-after-free (reproduced on a pristine HEAD `f1551e4` build,
+root-caused with CDB, fixed in §7); the test now passes inside shard 1. Baseline moved in
+[`AGENTS.md`](../../AGENTS.md) (2130 tests, 0 failures); see also `docs/testing-mcp.md`.
 
 ## 6. Docs touched
 
 - `docs/handoffs/2026-09-28-agent-mechanization-shipped.md` (this file) +
   `docs/handoffs/INDEX.md`.
-- `docs/lessons-learned.md` (lessons 35–38).
-- `AGENTS.md` (parity ledger, toolkit bullets, pitfalls pointer, index rows).
+- `docs/lessons-learned.md` (lessons 35–39).
+- `AGENTS.md` (parity ledger, toolkit bullets, pitfalls pointer, index rows, testing baseline).
 - `docs/pitfalls-juce.md` (the `small` include-order trap).
 - `docs/plans/2026-09-28-agent-mechanization.md` (status → IMPLEMENTED, counts
   reconciled).
+- `docs/testing-mcp.md` (the plugin-proxy UAF entry + the runner-exclusion wart).
+
+## 7. Post-close-out engine fix — `PluginProxySlot` worker-lifetime UAF
+
+While chasing the pre-existing `PsytranceComposition.PsyDubFiveMinutes` instability (the sharded
+runner died inside it; the test touches no mechanization surface), a CDB second-chance access
+violation was captured:
+
+    hdaw_tests!proxy::PluginProxySlot::getStateInformation+0x9c   mov edx,dword ptr [r15+1A0h]
+
+`uf`/`ln` show `mov r15, rcx` at entry (saving `this`) and the faulting read is `this->slotId` — the
+slot object had already been FREED while its own background work was still running.
+
+Mechanism: `startStateRetryWorker` launches a `std::jthread` capturing `[this]` that sleeps up to
+~31 s and then calls `publishStateToRing` / `sendStateInternal` / `verifyStateApplied` →
+`getStateInformation` (3 × multi-second bounded pipe attempts). `~PluginProxySlot` neither stopped
+nor joined it: the destructor BODY killed the child, released resources and dropped the shm handle
+while `std::jthread`'s implicit join only runs during MEMBER destruction (after that body), with
+members declared after the thread (`crashed`, `childAlive`, …) destroyed before it. A `detach()`ed
+`editorWatcherThread` captured `this` the same way. Reproduced on a pristine HEAD `f1551e4` build →
+pre-existing, not caused by the mechanization work.
+
+Fix (`src/proxy/PluginProxySlot.{h,cpp}`): the dtor now `stopTimer()`s, raises `stopping_`,
+`request_stop()`s and JOINS the retry worker, then raises `editorWatchStop_` and JOINS the editor
+watcher (no `detach()` remains in `src/proxy`) — all BEFORE any child/resource teardown. The worker
+takes its `std::stop_token` as a lambda PARAMETER; the send/publish/verify paths early-out on
+`stopping_`/`crashed`/`!childAlive` (deliberately NOT `getStateInformation` itself, so crash-recovery
+capture on a dead child still works), bounding the join to one in-flight bounded op (~100 ms normal).
+Flags are declared before the threads and the threads last, so reverse destruction kills the threads
+first and the flags they read last.
+
+Evidence: `PluginIsolation.DestroyWhileStateRetryWorkerRuns` (5 cycles, ~640 ms/cycle) and
+`DestroyWhileEditorWatcherRuns` (1.04 s), both with the measured destruction time inside the
+assertion; `PluginIsolation.*` 53/53; `CrashRecovery.*` + `ProxyNamespace*.*` 16/16; canary 5/5 green;
+canonical shards complete on the final build (2130/2130, 0 failures). Lesson 39 records the rule.
+
+Not fixed (unverified code-read concerns only, no runtime evidence): `getPipe`/`getShm` hand out raw
+`ChildInfo` pointers that a kill may free mid-use, and external callers (save/export threads) may read
+a slot's state while a rebuild destroys it.

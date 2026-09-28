@@ -18,7 +18,7 @@ SPA or Electron shell. Feature history: `README.md`; per-version changes: git lo
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 38 lessons, full narratives** (one-line index below) |
+| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 39 lessons, full narratives** (one-line index below) |
 | [`docs/architecture.md`](docs/architecture.md) | Build details, key classes, GUI-engine decoupling, beats-vs-seconds |
 | [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread rules, hardening, plugin isolation, latency/quality |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | JUCE pitfalls (scan blacklisting, setProperty no-op, FX clamping, the `small`/`rpcndr.h` include-order macro collision, lesson 35) |
@@ -146,6 +146,7 @@ downloaded), wired into the DSH profile's `cordis.patch.yml`, and checked with
 36. **JUCE undo boundaries are often deliberately UNPAIRED** — batch atomicity is a FLAG + one choke point (`AudioEngineCommands::transactionBoundary`), never a depth counter.
 37. **A windowed render does not predict the full render** — measure the window OUT of a full render and promote its stats before gating (`buildWindowReportPayload`).
 38. **The tool boundary has a silent-acceptance class** — refuse unknown keys and non-integral numbers with shared bytes (`requireInt` truncation, unknown expectation keys, over-stated ledger aliases).
+39. **A `this`-capturing worker must be stopped and JOINED before the destructor tears anything down** — `std::jthread` joins only during MEMBER destruction (after a dtor body that already freed resources); never `detach()`; make the worker's I/O stop-aware so the join stays bounded (`PluginProxySlot`).
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 
@@ -344,19 +345,17 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
 
 - **C++ engine (gtest):** `build/hdaw_tests.exe` (`build-fast.bat test`; `all` also
   builds `hdaw_plugin_host.exe` for the isolation suites). Filter:
-  `--gtest_filter=Suite.*`. **Authoritative baseline (last COMPLETE run) 2026-09-26: 287 suites /
-  2027 tests (0 DISABLED):** `powershell -NoProfile -File run-tests-sharded.ps1 -Shards 2` —
-  2027/2027 executed, **1988 passed, 39 skipped, 0 failures**, 27.1 min wall (every shard
-  `ran == intended`: 850/850, 855/855, 322/322). **Caveat — 2026-09-28 run INCOMPLETE (2128 tests /
-  296 suites):** shard 0 **957/957** and the serial bucket **323/323** complete, shard 1 passes
-  **562** tests and then the process dies inside `PsytranceComposition.PsyDubFiveMinutes`
-  (**1814 passed, 0 unique failures, 1 incomplete shard**). The same access violation reproduces on
-  a pristine HEAD `f1551e4` build (stashed working tree, reconfigured, rebuilt), so the crash
-  **predates** the 2026-09-28 work; its neighbours (`FullProductionV4`, `DarkForestV5`,
-  `PluginIsolation.*` 51/51) are green. **Pre-existing instability of that one test — root cause
-  unknown** (catalogued in [`docs/testing-mcp.md`](docs/testing-mcp.md)). It is a caveat,
-  NOT a baseline. Note `-ExecutionPolicy Bypass` is needed when invoking the runner from a script
-  host (the `.ps1` is unsigned). Fast tier: `run_fast_tests.bat`
+  `--gtest_filter=Suite.*`. **Authoritative baseline 2026-09-28: 2130 tests —
+  2091 passed, 39 skipped, 0 failures.** Canonical full run:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File run-tests-sharded.ps1 -Shards 2` (`Bypass`
+  is required — the `.ps1` is unsigned), 24 min wall, every shard `ran == intended`:
+  960/960, 845/845, 325/325. The earlier 2026-09-28 runs were INCOMPLETE (1814 passed, one dead
+  shard) because `PsytranceComposition.PsyDubFiveMinutes` intermittently died: that was a
+  **pre-existing `PluginProxySlot` worker-lifetime UAF**, root-caused with CDB (the AV re-reads
+  `this->slotId` after the slot was freed) and FIXED — see lesson 39 and the entry in
+  [`docs/testing-mcp.md`](docs/testing-mcp.md). Superseded baseline: 2026-09-26, 287 suites /
+  2027 tests, 1988 passed / 39 skipped / 0 failures, 27.1 min (shards 850/850, 855/855, 322/322).
+  Fast tier: `run_fast_tests.bat`
   — the old ~3.3 min figure for it is stale (the tier is ~1900 tests at
   ~0.5-0.9 s each); use the shard runner for full-suite numbers. Every run is
   sandbox-safe because the test harness self-isolates: `tests/test_main.cpp`

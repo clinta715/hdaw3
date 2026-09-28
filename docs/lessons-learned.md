@@ -657,3 +657,33 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     no undo unit; (c) a ledger row may only claim `mapped` when both surfaces
     call the SAME entry point — alias rows overstate equivalence.
 
+39. **A `this`-capturing worker must be stopped and JOINED before the destructor
+    tears anything down.** Symptom: an intermittent `0xC0000005` minutes into a
+    long plugin-heavy test (`PsytranceComposition.PsyDubFiveMinutes`), sometimes
+    with no gtest output at all, and a dead test shard. CDB pinned it to
+    `proxy::PluginProxySlot::getStateInformation+0x9c` re-reading `this->slotId`
+    (`mov r15,rcx` at entry saves `this`; `mov edx,[r15+1A0h]` faults) — the slot
+    object had already been freed. Root cause: `startStateRetryWorker` launches a
+    `std::jthread` capturing `[this]` that sleeps up to ~31 s and then calls
+    `publishStateToRing` / `sendStateInternal` / `verifyStateApplied` →
+    `getStateInformation` (3 × multi-second bounded pipe attempts), while
+    `~PluginProxySlot` neither stopped nor joined it: the destructor BODY killed
+    the child, released resources and dropped the shm handle, and
+    `std::jthread`'s implicit join only runs during MEMBER destruction — after
+    that body — with members declared after the thread (`crashed`, `childAlive`,
+    …) destroyed before it. A `detach()`ed editor watcher captured `this` the
+    same way. **Rules:** (a) the destructor stops the JUCE timer, sets a
+    `stopping_` flag, `request_stop()`s and JOINS every `this`-capturing worker
+    FIRST — before any child/resource teardown; (b) NEVER `detach()` a
+    `this`-capturing thread — join it (a plain `std::thread` terminates the
+    process if it is still joinable at member destruction); (c) take the stop
+    token as a lambda PARAMETER, never re-read the member `jthread` from inside
+    its own thread; (d) make the worker's I/O stop-aware so the join is bounded
+    by ONE in-flight bounded operation (~100 ms in the normal case) rather than
+    the whole retry budget; (e) declare the flags BEFORE the threads and the
+    threads LAST, so reverse destruction kills the threads first and the flags
+    they read last. Pinned deterministically by
+    `PluginIsolation.DestroyWhileStateRetryWorkerRuns` /
+    `DestroyWhileEditorWatcherRuns` (`tests/integration/proxy/`), because the
+    wild failure is intermittent.
+

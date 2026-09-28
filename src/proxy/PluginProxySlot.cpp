@@ -44,18 +44,40 @@ PluginProxySlot::PluginProxySlot(ProxyProcessManager& mgr, uint32_t id,
 }
 
 PluginProxySlot::~PluginProxySlot() {
-    // Runs on the message thread after the current audio callback completes
-    // (graph rebuild serialized via graphLock). Full cleanup is safe here.
-    processManager.removeSlotCrashCallback(slotId);
+    // Destruction usually runs on the message thread (after the current audio
+    // callback completes; graph rebuild serialized via graphLock), but the
+    // EXPORT path tears its render graph down on the EXPORT thread — which is
+    // why "prepare off message thread" warnings exist. A message-thread timer
+    // callback could therefore fire while this dtor is blocked in the joins,
+    // so stop the JUCE timer FIRST. Then stop and JOIN every `this`-capturing
+    // async worker BEFORE any other teardown. The background state-retry worker
+    // and the editor watcher both run `this`-capturing code (getStateInformation
+    // / bounded pipe reads), and previously raced member destruction: std::jthread
+    // only joins during MEMBER destruction, i.e. after this body had already
+    // killed the child, released resources and dropped the shm handle. Measured
+    // symptom (CDB second-chance AV): PluginProxySlot::getStateInformation+0x9c
+    // re-reading this->slotId inside the retry loop after `this` was freed.
+    // Join them here, while the object is still whole, then tear the child and
+    // resources down, and notify the registry LAST (so a respawn scheduled for
+    // a destroyed proxy can never dereference it).
+    stopTimer();
+    stopping_.store(true, std::memory_order_relaxed);
+    if (stateRetryThread.joinable()) {
+        stateRetryThread.request_stop();
+        stateRetryThread.join();
+    }
+    editorWatchStop_.store(true, std::memory_order_relaxed);
     if (editorWatcherThread.joinable())
-        editorWatcherThread.detach();
+        editorWatcherThread.join();
+
+    processManager.removeSlotCrashCallback(slotId);
     processManager.killPluginHost(slotId, KillMode::KillGraceful);
     releaseResources();
     shmHandle.reset();
     // Notify the registry LAST, after all shm/process resources are released,
     // so the caller (PluginManager) can safely erase this slot and cancel any
-    // pending respawn â€” a respawn that would otherwise dereference `this`
-    // after destruction completes.
+    // pending respawn that would otherwise dereference `this` after destruction
+    // completes.
     if (slotDestroyedFn) slotDestroyedFn(slotId);
 }
 
@@ -773,6 +795,10 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
     // is gone, retrying cannot help.
     constexpr int kStateAttempts = 3;
     for (int attempt = 1; attempt <= kStateAttempts; ++attempt) {
+        // Teardown guard: a destroy() that is joining the retry worker must not
+        // wait for this loop's full 3x multi-second budget. Bail at every
+        // attempt boundary and between each bounded pipe op.
+        if (stopping_.load(std::memory_order_relaxed)) return;
         if (attempt > 1)
             HDAW_LOG("FxStateRead", "GET_STATE retry attempt=" + juce::String(attempt)
                 + "/" + juce::String(kStateAttempts) + " slot=" + juce::String((int) slotId));
@@ -786,6 +812,7 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
             }
             return;
         }
+        if (stopping_.load(std::memory_order_relaxed)) return;
 
         ProxyResponse resp{};
         if (!pipe->receiveRespBounded(resp, kStateTimeoutMs))
@@ -829,6 +856,7 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
 
         bool complete = true;
         while (accum.getSize() < total) {
+            if (stopping_.load(std::memory_order_relaxed)) return;
             ProxyResponse chunk{};
             if (!pipe->receiveRespBounded(chunk, kStateTimeoutMs)
                 || chunk.type != MessageType::STATE_CHUNK)
@@ -875,7 +903,9 @@ void PluginProxySlot::setStateInformation(const void* data, int sizeInBytes) {
     }
 
     if (!sendStateInternal(bytes, total)) return;
-    if (verifyStateApplied(total)) {
+    // No worker token on the synchronous path; pass a default token (its
+    // stop_requested() is always false) — stopping_ still guards teardown.
+    if (verifyStateApplied(total, std::stop_token{})) {
         HDAW_LOG("FxStateSend", "SET_STATE verified (child reports " + juce::String((juce::int64) total) + "B)");
         return;
     }
@@ -966,6 +996,11 @@ void PluginProxySlot::migrateToNewSlot(uint32_t newSlotId, std::shared_ptr<ShmRe
 }
 
 bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
+    // Defence in depth: a dead/stopping child can never accept state, so fail
+    // fast instead of burning the bounded chunk-send timeouts.
+    if (crashed.load(std::memory_order_relaxed) || !childAlive.load(std::memory_order_relaxed))
+        return false;
+    if (stopping_.load(std::memory_order_relaxed)) return false;
     auto* pipe = processManager.getPipe(slotId);
     if (!pipe || !data || total == 0) return false;
     static constexpr DWORD kStateTimeoutMs = 3000;
@@ -978,6 +1013,7 @@ bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
     if (!pipe->sendMsgBounded(msg, kStateTimeoutMs)) return false;
     size_t offset = first;
     while (offset < total) {
+        if (stopping_.load(std::memory_order_relaxed)) return false;
         ProxyMessage chunk{};
         chunk.type = MessageType::STATE_CHUNK;
         chunk.slotId = slotId;
@@ -997,6 +1033,10 @@ bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
 // message thread, as soon as the record is complete. Returns false when the
 // ring is unavailable or has no room (caller falls back to the pipe).
 bool PluginProxySlot::publishStateToRing(const void* data, size_t total) {
+    // Defence in depth: no point publishing into a dead/stopping slot's ring.
+    if (crashed.load(std::memory_order_relaxed) || !childAlive.load(std::memory_order_relaxed))
+        return false;
+    if (stopping_.load(std::memory_order_relaxed)) return false;
     auto shm = shmHandle;
     if (!shm || !shm->getHeader() || !data || total == 0) return false;
     auto* hdr = shm->getHeader();
@@ -1022,24 +1062,38 @@ bool PluginProxySlot::publishStateToRing(const void* data, size_t total) {
     return true;
 }
 
-bool PluginProxySlot::verifyStateApplied(size_t total) {
+bool PluginProxySlot::verifyStateApplied(size_t total, const std::stop_token& st) {
+    // Bail before the (up to 3x multi-second) GET loop when either the worker's
+    // own stop token is signalled or the slot is being destroyed. During a
+    // destructor join this keeps the join latency to at most one in-flight
+    // bounded pipe op instead of the whole retry budget.
+    if (st.stop_requested() || stopping_.load(std::memory_order_relaxed)) return false;
+    if (crashed.load(std::memory_order_relaxed) || !childAlive.load(std::memory_order_relaxed))
+        return false;
     juce::MemoryBlock verify;
     getStateInformation(verify);
+    if (st.stop_requested() || stopping_.load(std::memory_order_relaxed)) return false;
     return verify.getSize() >= total / 2;
 }
 
 void PluginProxySlot::startStateRetryWorker(std::vector<uint8_t> state, size_t total) {
     if (stateRetryRunning.exchange(true)) return;
     if (stateRetryThread.joinable()) { stateRetryThread.request_stop(); stateRetryThread.join(); }
-    stateRetryThread = std::jthread([this, state = std::move(state), total]() {
+    // The stop token is taken as a PARAMETER: the worker must never re-read the
+    // member `stateRetryThread` from inside its own lambda (that read raced the
+    // member's destruction — part of the measured UAF).
+    stateRetryThread = std::jthread([this, state = std::move(state), total](std::stop_token st) {
+        auto stopRequested = [&] {
+            return st.stop_requested() || stopping_.load(std::memory_order_relaxed);
+        };
         const int delaysMs[] = { 1000, 2000, 4000, 8000, 16000 };
         for (int attempt = 0; attempt < 5; ++attempt) {
-            for (int ms = 0; ms < delaysMs[attempt] && !stateRetryThread.get_stop_token().stop_requested(); ms += 100)
+            for (int ms = 0; ms < delaysMs[attempt] && !stopRequested(); ms += 100)
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            if (stateRetryThread.get_stop_token().stop_requested()) break;
+            if (stopRequested()) break;
             if (!publishStateToRing(state.data(), state.size())
                 && !sendStateInternal(state.data(), state.size())) break;
-            if (verifyStateApplied(state.size())) {
+            if (verifyStateApplied(state.size(), st)) {
                 HDAW_LOG("FxStateSend", "SET_STATE verified on background retry "
                     + juce::String(attempt + 1) + " (child reports "
                     + juce::String((juce::int64) total) + "B)");
@@ -1077,7 +1131,11 @@ void PluginProxySlot::waitForEditorClosed() {
     auto* pipe = processManager.getPipe(slotId);
     if (!pipe) return;
     proxy::ProxyResponse resp{};
-    while (childAlive.load(std::memory_order_relaxed)) {
+    // Loop until either the child dies or the dtor signals shutdown; the
+    // bounded 500 ms receive keeps every iteration short so the destructor's
+    // join returns promptly (never detached, never left running past `this`).
+    while (!editorWatchStop_.load(std::memory_order_relaxed)
+           && childAlive.load(std::memory_order_relaxed)) {
         if (pipe->receiveRespBounded(resp, 500)) {
             if (resp.type == proxy::MessageType::EDITOR_CLOSED) {
                 if (editorClosedCb) editorClosedCb();
@@ -1089,6 +1147,7 @@ void PluginProxySlot::waitForEditorClosed() {
 
 void PluginProxySlot::startEditorWatcher() {
     if (editorWatcherThread.joinable()) return;
+    editorWatchStop_.store(false, std::memory_order_relaxed);
     editorWatcherThread = std::thread([this]{ waitForEditorClosed(); });
 }
 

@@ -182,10 +182,11 @@ public:
     // for slow-booting children that silently reject an early SET_STATE.
     bool sendStateInternal(const void* data, size_t total);
     bool publishStateToRing(const void* data, size_t total);
-    bool verifyStateApplied(size_t total);
+    // `st` is the retry worker's own stop token (passed in, never re-read from
+    // the member jthread): lets an in-flight verify bail out promptly during
+    // teardown instead of running the full 3x multi-second GET loop.
+    bool verifyStateApplied(size_t total, const std::stop_token& st);
     void startStateRetryWorker(std::vector<uint8_t> state, size_t total);
-    std::jthread stateRetryThread;
-    std::atomic<bool> stateRetryRunning { false };
 
     // Destruction notifier — fired at the END of ~PluginProxySlot (after all
     // shm/process cleanup). The PluginManager uses it to erase this slot from
@@ -241,7 +242,6 @@ private:
     void timerCallback() override;
 
     EditorClosedCallback editorClosedCb;
-    std::thread editorWatcherThread;
 
     CrashNotifyFn crashRecoveryNotifier;
     RespawnRequestFn respawnRequestFn;
@@ -277,6 +277,26 @@ private:
     NotifyEntry notifyQueue_[kNotifyQueueCap];
     std::atomic<uint32_t> notifyQWrite{0};
     std::atomic<uint32_t> notifyQRead{0};
+
+    // ---- Async-work threads and their stop flags --------------------------
+    // Declared LAST so they are destroyed FIRST (members destruct in reverse
+    // declaration order). This block's order is deliberate, read bottom-to-top
+    // as destruction order:
+    //   stateRetryThread      destroyed first — a std::jthread self-joins in
+    //                         its dtor, so it can never be left joinable.
+    //   editorWatcherThread   destroyed next — a plain std::thread, so it MUST
+    //                         be joined explicitly (a joinable one would
+    //                         std::terminate); the dtor join above is mandatory.
+    //   editorWatchStop_      destroyed after both threads — the flags the
+    //   stopping_             workers READ are torn down only once no worker
+    //   stateRetryRunning     can still be running (they outlive the threads).
+    // The explicit joins in ~PluginProxySlot remain the authoritative shutdown
+    // point; this declaration order is belt-and-braces for that.
+    std::atomic<bool> stateRetryRunning { false };
+    std::atomic<bool> stopping_ { false };
+    std::atomic<bool> editorWatchStop_ { false };
+    std::thread editorWatcherThread;
+    std::jthread stateRetryThread;
 };
 
 } // namespace proxy

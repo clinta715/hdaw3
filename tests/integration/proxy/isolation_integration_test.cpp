@@ -11,6 +11,7 @@
 #include <cstring>
 #include <thread>
 #include <atomic>
+#include <optional>
 
 using namespace proxy;
 
@@ -1909,6 +1910,103 @@ TEST(PluginIsolation, GetStateRetriesWhileChildBusyInSetStateMarshal) {
         << "first attempt must have hit the busy child (>= 3 s marshal wait)";
 
     mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// ========================================================================
+// Deterministic teardown-vs-async-work regressions.
+//
+// Root-cause evidence: a CDB second-chance access violation inside
+// hdaw_tests!proxy::PluginProxySlot::getStateInformation+0x9c
+// ("mov edx, dword ptr [r15+1A0h]" — a re-read of this->slotId where
+// r15 == this). The slot's background state-retry worker (std::jthread) and
+// its editor watcher (std::thread) both capture `this` and previously
+// outlived the destructor body: the jthread only joins during MEMBER
+// destruction (after the dtor had already killed the child / released shm)
+// and the watcher was detached outright. ~PluginProxySlot now stops and
+// joins both before any other teardown.
+// ========================================================================
+
+// Destroying a slot while its background state-retry worker is armed mid-
+// backoff must (a) return promptly — the dtor joins the worker before any
+// member is torn down — and (b) never leave a `this`-capturing thread running
+// past the object (which was the measured UAF). A SET on a __slowstateset__
+// child takes the shm ring path in setStateInformation, which arms the worker
+// synchronously, so the worker is guaranteed to exist by the time we destroy.
+TEST(PluginIsolation, DestroyWhileStateRetryWorkerRuns) {
+    ProxyProcessManager mgr;
+
+    constexpr size_t kStateSize = 60; // inline small-SET payload
+    juce::MemoryBlock blob(kStateSize);
+    auto* blobBytes = static_cast<uint8_t*>(blob.getData());
+    for (size_t i = 0; i < kStateSize; ++i)
+        blobBytes[i] = static_cast<uint8_t>(0x5A ^ i);
+
+    for (int iter = 0; iter < 5; ++iter) {
+        const uint32_t slotId = 9145u + static_cast<uint32_t>(iter);
+        ASSERT_TRUE(mgr.spawnPluginHost("__slowstateset__", slotId));
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        ASSERT_TRUE(mgr.isAlive(slotId));
+
+        std::optional<PluginProxySlot> slot;
+        slot.emplace(mgr, slotId, "SlowStateSet");
+
+        // Arm the background retry worker (ring publish path), then let it
+        // enter its first backoff before we destroy mid-retry.
+        slot->setStateInformation(blob.getData(), static_cast<int>(blob.getSize()));
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+        const auto t0 = std::chrono::steady_clock::now();
+        slot.reset(); // <- the destructor under test
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+
+        EXPECT_LT(elapsedMs, 2000)
+            << "slot destruction took " << elapsedMs
+            << " ms while the state-retry worker was running — the dtor is not "
+               "joining its async worker before teardown (cdb AV regression: "
+               "getStateInformation re-reading this->slotId after free)";
+
+        // The destructor kills the child; let the process exit be observed.
+        for (int w = 0; w < 60 && mgr.isChildAlive(slotId); ++w)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        EXPECT_FALSE(mgr.isChildAlive(slotId))
+            << "iter " << iter << ": child survived slot destruction";
+    }
+}
+
+// Destroying a slot while the editor watcher thread is parked in its bounded
+// 500 ms pipe read must join it (never detach it) — the watcher captured
+// `this` and, pre-fix, kept calling getPipe/receiveRespBounded after the slot
+// had been freed. Bounded destruction proves the join happened.
+TEST(PluginIsolation, DestroyWhileEditorWatcherRuns) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9160;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    std::optional<PluginProxySlot> slot;
+    slot.emplace(mgr, slotId, "StateEcho");
+
+    // Start the watcher (its loop is now parked in receiveRespBounded 500 ms).
+    slot->startEditorWatcher();
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    const auto t0 = std::chrono::steady_clock::now();
+    slot.reset(); // <- the destructor under test
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    EXPECT_LT(elapsedMs, 1500)
+        << "slot destruction took " << elapsedMs
+        << " ms with the editor watcher running — the watcher must be JOINED, "
+           "never detached (cdb AV regression class: a `this`-capturing thread "
+           "outliving the slot)";
+
+    for (int w = 0; w < 60 && mgr.isChildAlive(slotId); ++w)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_FALSE(mgr.isChildAlive(slotId));
 }
 
 // ========================================================================
