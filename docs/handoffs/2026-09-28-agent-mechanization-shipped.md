@@ -161,13 +161,13 @@ optional `verify` hook seals first and never un-seals on a verification failure.
    `project.addTrack` returns a bare index; `get_waveform_peaks` returns 200
    peak values regardless of an integral `numBins`.
 
-Full sharded run (final tree): **2130/2130 executed — 2091 passed, 39 skipped, 0 failures**, every
-shard `ran == intended` (960/960, 845/845, 325/325), 24 min wall — re-run after the engine fix in §7.
+Full sharded run (final tree): **2135/2135 executed — 2096 passed, 0 failures**, every
+shard `ran == intended` (960/960, 845/845, 330/330), 24 min wall — re-run after the engine fixes in §7–§8.
 Earlier the same run was INCOMPLETE (1814 passed, one dead shard):
 `PsytranceComposition.PsyDubFiveMinutes` intermittently died. That turned out to be a pre-existing
 `PluginProxySlot` worker-lifetime use-after-free (reproduced on a pristine HEAD `f1551e4` build,
 root-caused with CDB, fixed in §7); the test now passes inside shard 1. Baseline moved in
-[`AGENTS.md`](../../AGENTS.md) (2130 tests, 0 failures); see also `docs/testing-mcp.md`.
+[`AGENTS.md`](../../AGENTS.md) (2135 tests, 0 failures); see also `docs/testing-mcp.md`.
 
 ## 6. Docs touched
 
@@ -216,4 +216,50 @@ canonical shards complete on the final build (2130/2130, 0 failures). Lesson 39 
 
 Not fixed (unverified code-read concerns only, no runtime evidence): `getPipe`/`getShm` hand out raw
 `ChildInfo` pointers that a kill may free mid-use, and external callers (save/export threads) may read
-a slot's state while a rebuild destroys it.
+a slot's state while a rebuild destroys it. **§8 is the follow-up: the lease/first of these was then
+confirmed reachable and fixed (`aa5e05d`); the remaining open races are listed there.**
+
+## 8. Second engine fix — proxy pipe/shm leases + single-closer handle discipline (`aa5e05d`)
+
+Continuation of the investigation in §7 (the user asked to pursue the two "unverified follow-ups").
+Both were confirmed by code read, then fixed:
+
+1. **Raw-pointer leases.** `ChildInfo::pipe`/`shm` were `unique_ptr` and `getPipe`/`getShm` returned
+   RAW pointers used after the map mutex dropped; `killPluginHost` erases the entry (KillHard inside
+   the lock; KillGraceful after `TerminateProcess` + a 1 s wait), freeing the object. The reachable
+   cross-thread pair is the slot's OWN background workers — the state-retry worker
+   (`sendStateInternal`/`verifyStateApplied` → `getStateInformation`) and the editor watcher
+   (`waitForEditorClosed`) — against a kill on the domain's owning thread
+   (`respawnIsolatedSlot` under `graphLock`, `spawnPluginHost`'s defensive pre-kill, `~ProxyProcessManager`).
+2. **`stop()` vs in-flight I/O.** `PipeServer::stop()` closed the handle with no synchronization while
+   bounded `overlappedRead/Write` re-read the member handle after multi-second waits (`CancelIo(hPipe)`,
+   `GetOverlappedResult(hPipe,…)`), on plain non-atomic members.
+
+Fix: `shared_ptr<PipeServer>`/`<ShmRegion>` owned by `ChildInfo` and RETURNED as leases (held for the
+whole exchange); `hPipe` atomic and loaded ONCE per operation; `stop()` raises `stopped_` and calls
+`CancelIoEx` ONLY — it must not clear the handle (the destructor's exchange would then see INVALID and
+LEAK it) nor close it (double-close against in-flight I/O); `~PipeServer` is the sole closer
+(Cancel → Disconnect → Close) and runs at the last lease release. `spawnPluginHost` already retries a
+held name with a bumped slot id (8 attempts). The audio path is unchanged (non-owning `shmHandle`,
+Gate 3) with an owning `shmLease_` held by the slot.
+
+Evidence: `PluginIsolation.PipeLeaseSurvivesKill`, `StopRacesInFlightBoundedRead` (a kill lands while a
+`__slowstate__` read is in flight), `EditorWatcherVsKill`, `ShmLeaseSurvivesKill`,
+`PipeHandleNotLeakedAcrossKillCycles` (20 spawn→lease→kill→release cycles with `GetProcessHandleCount`),
+`ProxyNamespace.SpawnBumpsSlotWhenShmNameHeld`; the isolation/crash-recovery/namespace set is
+**74/74**; PsyDub canary single run **PASS (15.3 min)**; canonical shards complete on this build —
+**2135/2135 executed, 2096 passed, 0 failures**. Lesson 40 + the invariant section in
+`docs/realtime-safety.md`.
+
+**Still OPEN (documented in `docs/realtime-safety.md`, NOT resolved by this patch):**
+1. **No per-slot exchange serialization** — leases keep the objects alive but nothing prevents two
+   callers interleaving a request/response pair on the same pipe (`A-send, B-send, A-receive`).
+2. **`checkAllChildren()` reads `perSlotCrashCallbacks` outside the mutex** (the
+   `for (auto id : crashedSlots)` lookup runs after the scoped lock) while
+   `setSlotCrashCallback`/`removeSlotCrashCallback` mutate the map under the mutex — and
+   `removeSlotCrashCallback` is called from `~PluginProxySlot` on the message thread, so the health
+   monitor can look up an entry while the message thread erases it (iterator invalidation → UAF).
+   Code-evident, no runtime evidence yet.
+3. **External state-reader affinity is UNVERIFIED** — save/export-prepass reads and slot destruction
+   currently share the message thread for a live domain and the offline export domain starts no timer,
+   which makes an overlap unlikely, but nothing enforces it.

@@ -346,8 +346,8 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
 
 - **C++ engine (gtest):** `build/hdaw_tests.exe` (`build-fast.bat test`; `all` also
   builds `hdaw_plugin_host.exe` for the isolation suites). Filter:
-  `--gtest_filter=Suite.*`. **Authoritative baseline 2026-09-28: 2130 tests —
-  2091 passed, 39 skipped, 0 failures.** Canonical full run:
+  `--gtest_filter=Suite.*`. **Authoritative baseline 2026-09-28: 2135 tests —
+  2096 passed, 0 failures.** Canonical full run:
   `powershell -NoProfile -ExecutionPolicy Bypass -File run-tests-sharded.ps1 -Shards 2` (`Bypass`
   is required — the `.ps1` is unsigned), 24 min wall, every shard `ran == intended`:
   960/960, 845/845, 325/325. The earlier 2026-09-28 runs were INCOMPLETE (1814 passed, one dead
