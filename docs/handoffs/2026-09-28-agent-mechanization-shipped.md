@@ -161,7 +161,7 @@ optional `verify` hook seals first and never un-seals on a verification failure.
    `project.addTrack` returns a bare index; `get_waveform_peaks` returns 200
    peak values regardless of an integral `numBins`.
 
-Full sharded run (final tree): **2135/2135 executed — 2096 passed, 0 failures**, every
+Full sharded run (final tree): **2135/2135 executed — 2096 passed, 39 skipped, 0 failures**, every
 shard `ran == intended` (960/960, 845/845, 330/330), 24 min wall — re-run after the engine fixes in §7–§8.
 Earlier the same run was INCOMPLETE (1814 passed, one dead shard):
 `PsytranceComposition.PsyDubFiveMinutes` intermittently died. That turned out to be a pre-existing
@@ -222,7 +222,9 @@ confirmed reachable and fixed (`aa5e05d`); the remaining open races are listed t
 ## 8. Second engine fix — proxy pipe/shm leases + single-closer handle discipline (`aa5e05d`)
 
 Continuation of the investigation in §7 (the user asked to pursue the two "unverified follow-ups").
-Both were confirmed by code read, then fixed:
+The raw-lease and stop-vs-I/O halves of follow-up #1 were confirmed by code read and are FIXED here;
+follow-up #2 (external state readers vs slot destruction) remains OPEN — see the list at the end of
+this section.
 
 1. **Raw-pointer leases.** `ChildInfo::pipe`/`shm` were `unique_ptr` and `getPipe`/`getShm` returned
    RAW pointers used after the map mutex dropped; `killPluginHost` erases the entry (KillHard inside
