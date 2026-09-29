@@ -942,8 +942,12 @@ int PluginHost::run()
 
     proxy::ProxyResponse readyResp{};
     readyResp.type = proxy::MessageType::READY;
-    readyResp.result = 1;
-    if (!pipe.sendResp(readyResp)) return 1;
+    // READY.result carries the framing version: the parent's version guard
+    // refuses to drive a child that reports a different one (a stale
+    // hdaw_plugin_host.exe must never see the correlation-id framing).
+    readyResp.result = proxy::kProtocolVersion;
+    // Unsolicited (the parent sends no request for READY): correlation id 0.
+    if (!sendResponse(readyResp, proxy::kUnsolicitedRequestId)) return 1;
 
     if (!loadPlugin()) return 1;
 
@@ -1057,6 +1061,16 @@ bool PluginHost::runLifecycleOnMessageThread(const std::function<void()>& fn, in
     }
     if (state->ep) std::rethrow_exception(state->ep);
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// sendResponse — the correlation-id echo. See the header for the contract.
+// ---------------------------------------------------------------------------
+bool PluginHost::sendResponse(const proxy::ProxyResponse& resp, uint32_t requestId)
+{
+    proxy::ProxyResponse out = resp;
+    out.requestId = requestId;
+    return pipe.sendResp(out);
 }
 
 // ---------------------------------------------------------------------------
@@ -1235,7 +1249,7 @@ void PluginHost::controlLoop()
                 proxy::ProxyResponse r{};
                 r.type = proxy::MessageType::PREPARE_RESULT;
                 r.result = pluginFailed.load() ? 0 : 1;
-                pipe.sendResp(r);
+                sendResponse(r, msg.requestId);
                 break;
             }
 
@@ -1272,7 +1286,7 @@ void PluginHost::controlLoop()
                     proxy::ProxyResponse resp{};
                     resp.type = proxy::MessageType::SET_STATE;
                     resp.result = result;
-                    pipe.sendResp(resp);
+                    sendResponse(resp, msg.requestId);
                 } else {
                     pendingStateTotal = total;
                     pendingState.assign(msg.data, msg.data + sizeof(msg.data));
@@ -1319,7 +1333,7 @@ void PluginHost::controlLoop()
                     proxy::ProxyResponse resp{};
                     resp.type = proxy::MessageType::SET_STATE;
                     resp.result = result;
-                    pipe.sendResp(resp);
+                    sendResponse(resp, msg.requestId);
                 }
                 break;
             }
@@ -1355,7 +1369,7 @@ void PluginHost::controlLoop()
                         // that the parent cannot distinguish from a genuinely
                         // empty plugin state.
                         resp.result = 0;
-                        pipe.sendResp(resp);
+                        sendResponse(resp, msg.requestId);
                         break;
                     }
                     resp.result = 1;
@@ -1363,7 +1377,7 @@ void PluginHost::controlLoop()
                     const size_t first = std::min(total, sizeof(resp.data));
                     if (first > 0)
                         std::memcpy(resp.data, block->getData(), first);
-                    pipe.sendResp(resp);
+                    sendResponse(resp, msg.requestId);
                     size_t offset = first;
                     while (offset < total) {
                         proxy::ProxyResponse chunk{};
@@ -1373,12 +1387,12 @@ void PluginHost::controlLoop()
                         std::memcpy(chunk.data,
                                     static_cast<const uint8_t*>(block->getData()) + offset,
                                     chunk.dataSize);
-                        pipe.sendResp(chunk);
+                        sendResponse(chunk, msg.requestId);
                         offset += chunk.dataSize;
                     }
                 } else {
                     resp.result = 0;
-                    pipe.sendResp(resp);
+                    sendResponse(resp, msg.requestId);
                 }
                 break;
             }
@@ -1401,7 +1415,7 @@ void PluginHost::controlLoop()
                 } else {
                     resp.result = 0;
                 }
-                pipe.sendResp(resp);
+                sendResponse(resp, msg.requestId);
                 break;
             }
 
@@ -1423,7 +1437,7 @@ void PluginHost::controlLoop()
                 } else {
                     resp.result = 0;
                 }
-                pipe.sendResp(resp);
+                sendResponse(resp, msg.requestId);
                 break;
             }
 
@@ -1438,7 +1452,7 @@ void PluginHost::controlLoop()
                 } else {
                     resp.result = 0;
                 }
-                pipe.sendResp(resp);
+                sendResponse(resp, msg.requestId);
                 break;
             }
 
@@ -1504,7 +1518,7 @@ void PluginHost::controlLoop()
                         uint32_t firstChunk = std::min(nameLen, room);
                         std::memcpy(resp.data + offset, nameUtf8, firstChunk);
                         offset += firstChunk;
-                        pipe.sendResp(resp);
+                        sendResponse(resp, msg.requestId);
                         // Send any remaining name bytes as STATE_CHUNK responses.
                         if (firstChunk < nameLen) {
                             uint32_t pos = firstChunk;
@@ -1515,7 +1529,7 @@ void PluginHost::controlLoop()
                                 uint32_t take = std::min(rem, static_cast<uint32_t>(sizeof(chunk.data)));
                                 std::memcpy(chunk.data, nameUtf8 + pos, take);
                                 chunk.dataSize = take;
-                                pipe.sendResp(chunk);
+                                sendResponse(chunk, msg.requestId);
                                 pos += take;
                                 rem -= take;
                             }
@@ -1524,7 +1538,7 @@ void PluginHost::controlLoop()
                     }
                 }
                 resp.result = 0;
-                pipe.sendResp(resp);
+                sendResponse(resp, msg.requestId);
                 break;
             }
 
@@ -1542,7 +1556,7 @@ void PluginHost::controlLoop()
                 } else {
                     resp.result = 0;
                 }
-                pipe.sendResp(resp);
+                sendResponse(resp, msg.requestId);
                 break;
             }
 
@@ -1559,7 +1573,7 @@ void PluginHost::controlLoop()
                     resp.result = 1;
                     uint32_t first = std::min(len, static_cast<uint32_t>(sizeof(resp.data)));
                     std::memcpy(resp.data, utf8, first);
-                    pipe.sendResp(resp);
+                    sendResponse(resp, msg.requestId);
                     if (len > first) {
                         uint32_t offset = first;
                         while (offset < len) {
@@ -1568,14 +1582,14 @@ void PluginHost::controlLoop()
                             uint32_t take = std::min(len - offset, static_cast<uint32_t>(sizeof(chunk.data)));
                             std::memcpy(chunk.data, utf8 + offset, take);
                             chunk.dataSize = take;
-                            pipe.sendResp(chunk);
+                            sendResponse(chunk, msg.requestId);
                             offset += take;
                         }
                     }
                     break;
                 }
                 resp.result = 0;
-                pipe.sendResp(resp);
+                sendResponse(resp, msg.requestId);
                 break;
             }
 
@@ -1608,7 +1622,7 @@ void PluginHost::controlLoop()
                 } else {
                     resp.result = 0;
                 }
-                pipe.sendResp(resp);
+                sendResponse(resp, msg.requestId);
                 break;
             }
 
@@ -1623,7 +1637,7 @@ void PluginHost::controlLoop()
                 } else {
                     resp.result = 0;
                 }
-                pipe.sendResp(resp);
+                sendResponse(resp, msg.requestId);
                 break;
             }
 
@@ -1633,7 +1647,7 @@ void PluginHost::controlLoop()
                 proxy::ProxyResponse r{};
                 r.type = proxy::MessageType::SHOW_EDITOR;
                 r.result = 1;
-                pipe.sendResp(r);
+                sendResponse(r, msg.requestId);
                 break;
             }
 
@@ -1644,7 +1658,7 @@ void PluginHost::controlLoop()
                 proxy::ProxyResponse r{};
                 r.type = proxy::MessageType::CLOSE_EDITOR;
                 r.result = 1;
-                pipe.sendResp(r);
+                sendResponse(r, msg.requestId);
                 break;
             }
 
@@ -1655,7 +1669,7 @@ void PluginHost::controlLoop()
                 proxy::ProxyResponse r{};
                 r.type = proxy::MessageType::HEARTBEAT;
                 r.result = 1;
-                pipe.sendResp(r);
+                sendResponse(r, msg.requestId);
                 break;
             }
 
@@ -2364,10 +2378,13 @@ void PluginHost::onEditorWindowClosed(bool wasParentInitiated)
     }
 
     if (!wasParentInitiated) {
-        // User clicked the close button — notify the parent process
+        // User clicked the close button — notify the parent process.
+        // UNSOLICITED by design (no request is behind it): correlation id 0,
+        // which the parent routes to the editor-closed handler instead of
+        // consuming it as an exchange's reply.
         proxy::ProxyResponse r{};
         r.type = proxy::MessageType::EDITOR_CLOSED;
         r.result = 1;
-        pipe.sendResp(r);
+        sendResponse(r, proxy::kUnsolicitedRequestId);
     }
 }

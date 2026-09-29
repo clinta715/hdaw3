@@ -179,6 +179,35 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         PipeServer::Exchange readyEx(*pipeServer);
         ready = readyEx.receiveReplyReady(readyResp, MessageType::READY);
     }
+    // LEGACY-LAYOUT GUARD (Gate 4/15): a child built against the pre-
+    // correlation-id framing answers READY in the OLD layout, which v2 decodes
+    // as requestId=1 / result=0 / dataSize=0 — an id no handshake owns. The
+    // pipe flags exactly that reply (sawLegacyProtocolReady) instead of
+    // discarding it, so we fail IMMEDIATELY with the real diagnosis instead of
+    // waiting out the READY budget and reporting a bare timeout.
+    if (ready && pipeServer->sawLegacyProtocolReady()) {
+        HDAW_LOG("proxy", std::string(proxy::kLegacyV1Diagnosis) + " (slot "
+            + std::to_string(slotId) + ")");
+        TerminateProcess(pi.hProcess, 0);
+        CloseHandle(pi.hProcess);
+        pipeServer->stop();
+        return false;
+    }
+    // VERSION GUARD (Gate 4/15): a child that speaks THIS framing but reports a
+    // different version in READY.result must never be driven (it would
+    // mis-parse the fields it disagrees about). This is the future-version
+    // case only — a genuine v1 binary is caught above, where its READY is not
+    // even decodable.
+    if (ready && !proxy::protocolVersionAccepted(readyResp.result)) {
+        HDAW_LOG("proxy", "spawnPluginHost: PROTOCOL VERSION MISMATCH for slot "
+            + std::to_string(slotId) + " — child reported " + std::to_string(readyResp.result)
+            + ", this engine requires " + std::to_string(proxy::kProtocolVersion)
+            + "; refusing to drive a child with a different framing version");
+        TerminateProcess(pi.hProcess, 0);
+        CloseHandle(pi.hProcess);
+        pipeServer->stop();
+        return false;
+    }
     if (!ready) {
         HDAW_LOG("proxy", "spawnPluginHost: READY timeout or pipe error for slot " + std::to_string(slotId));
         TerminateProcess(pi.hProcess, 0);

@@ -14,6 +14,7 @@ TEST(Pipe, ServerClientRoundTrip) {
 
         ProxyMessage msg{};
         msg.type = MessageType::READY;
+        msg.requestId = 11;
         msg.slotId = 42;
         ASSERT_TRUE(client.send(msg));
 
@@ -27,9 +28,11 @@ TEST(Pipe, ServerClientRoundTrip) {
     ASSERT_TRUE(server.receive(received));
     EXPECT_EQ(received.type, MessageType::READY);
     EXPECT_EQ(received.slotId, 42u);
+    EXPECT_EQ(received.requestId, 11u);
 
     ProxyResponse resp{};
     resp.type = MessageType::READY;
+    resp.requestId = 11;
     resp.result = 1;
     ASSERT_TRUE(server.send(resp));
 
@@ -48,7 +51,9 @@ TEST(Pipe, SendReceiveLargePayload) {
         ProxyMessage msg{};
         msg.type = MessageType::SET_STATE;
         msg.dataSize = 1024;
-        for (int i = 0; i < 244; ++i)
+        // kMaxPayload (240) is the fixed payload capacity — a 244 here would
+        // overrun the message into adjacent memory.
+        for (uint32_t i = 0; i < kMaxPayload; ++i)
             msg.data[i] = static_cast<uint8_t>(i & 0xFF);
         ASSERT_TRUE(client.send(msg));
     });

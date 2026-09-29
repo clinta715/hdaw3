@@ -59,19 +59,96 @@ enum class MessageType : uint32_t {
     GET_CURRENT_PROGRAM_RESULT,
 };
 
+// Control-pipe framing version, reported by the child in its READY response
+// (ProxyResponse::result) and checked by the parent at spawn (Gate 4/15: a
+// stale child exe must be DETECTED, not mis-parsed). v2 is the
+// correlation-id framing below; v1 is the pre-correlation-id framing that had
+// no requestId field.
+//
+// SCOPE — what this gate can and cannot catch. It is a version check on a
+// reply the v2 parent already understood, so it catches a child built against
+// THIS framing that advertises a DIFFERENT version (e.g. a future v3 child
+// driven by an older v2 engine). It can NOT catch a genuine v1 binary: v1's
+// READY is a different layout, so the v2 parent reads garbage out of it — see
+// isLegacyV1ReadyReply() below, which is what detects that case.
+//
+// Keep in sync with ProxyCommon.h on BOTH processes: this is a two-process
+// protocol change, so HDAW_headless.exe AND hdaw_plugin_host.exe must be
+// rebuilt together.
+inline constexpr uint32_t kProtocolVersion = 2;
+
+// Payload capacity of one fixed 256-byte control message. The struct layout is
+// size-fixed (a 256-byte message on a message-mode pipe); ALL payload math
+// derives from this constant / sizeof(member.data), never a literal.
+inline constexpr uint32_t kMaxPayload = 240;
+
+// requestId sentinel meaning "no request / unsolicited": the child's
+// EDITOR_CLOSED notification is emitted with no request behind it, and the
+// parent's READY await sends nothing. A correlation id is otherwise always
+// >= 1 (see PipeServer's monotonic allocator).
+inline constexpr uint32_t kUnsolicitedRequestId = 0;
+
+// Correlation id. Every request carries a non-zero id allocated by
+// PipeServer; the child echoes it into EVERY response (single replies AND each
+// multi-chunk continuation of that request), so the parent can tell a stale
+// reply (an id it is no longer waiting for) from a fresh one. This supersedes
+// the old expected-type-only heuristic, which could not distinguish a late
+// reply of the SAME type.
 struct alignas(256) ProxyMessage {
     MessageType type;
+    uint32_t requestId;
     uint32_t slotId;
     uint32_t dataSize;
-    uint8_t  data[244];
+    uint8_t  data[kMaxPayload];
 };
 
 struct alignas(256) ProxyResponse {
     MessageType type;
+    uint32_t requestId;
     uint32_t result;
     uint32_t dataSize;
-    uint8_t  data[244];
+    uint8_t  data[kMaxPayload];
 };
+
+// The framing is a fixed 256-byte message (4 x uint32 header + 240 payload).
+// A drift here silently changes the pipe's message size on one side only.
+static_assert(sizeof(ProxyMessage) == 256, "ProxyMessage must stay 256 bytes");
+static_assert(sizeof(ProxyResponse) == 256, "ProxyResponse must stay 256 bytes");
+
+// READY handshake version gate for a child that SPEAKS the current framing but
+// reports a different version. Used by ProxyProcessManager::spawnPluginHost.
+inline bool protocolVersionAccepted(uint32_t childReportedVersion) {
+    return childReportedVersion == kProtocolVersion;
+}
+
+// ---------------------------------------------------------------------------
+// LEGACY (v1) LAYOUT DETECTION at the READY handshake.
+//
+// v1's ProxyResponse was {type, result, dataSize, data[244]} — no requestId.
+// A v1 child answers READY with result=1, dataSize=0, so the v2 parent decodes
+// that same 256-byte frame as:
+//
+//   v1 bytes:  [type=READY][result=1][dataSize=0][data=0...]
+//   v2 decode:  type=READY   requestId=1  result=0    dataSize=0
+//
+// i.e. a non-zero requestId that no requestless handshake owns, which
+// correlation-id matching would DISCARD — leaving the spawn to fail by TIMEOUT
+// with no hint of the real cause. isLegacyV1ReadyReply() names that exact
+// signature so the handshake can report the mismatch immediately.
+//
+// A v2 child can never match: its READY is UNSOLICITED (requestId ==
+// kUnsolicitedRequestId) and reports kProtocolVersion in `result`.
+inline bool isLegacyV1ReadyReply(const ProxyResponse& r) {
+    return r.type == MessageType::READY
+        && r.requestId == 1u      // v1 `result` (the v1 child always sent 1)
+        && r.result == 0u         // v1 `dataSize`
+        && r.dataSize == 0u;      // v1 `data[0..3]` (the v1 struct is zero-init)
+}
+
+// The parent-side diagnosis for a detected v1 child. Verbatim: the operator
+// needs the exact stale-binary check ("did I rebuild BOTH processes?").
+inline constexpr const char* kLegacyV1Diagnosis =
+    "PROTOCOL VERSION MISMATCH: stale v1 hdaw_plugin_host.exe (rebuild with dsh-build-fast.bat all)";
 
 struct ShmHeader {
     uint32_t magic;

@@ -468,20 +468,36 @@ sampler, subtractive) ARE deterministic.
   from `getPipe` first, then the Exchange; never call back into `ProxyProcessManager` while holding
   it; `stop()` takes neither lock (it signals + `CancelIoEx`s, which is what unblocks a waiting
   exchange).
-- **OPEN — NOT resolved by these patches:**
-  1. **Stale replies after a timeout (UNRESOLVED, needs a design decision).** A bounded receive that
-     times out deliberately leaves its reply queued, and the protocol has NO correlation id and NO
-     end-of-response marker (256-byte structs; `GET_STATE` = header + N chunks declared in the
-     header). After a timeout the queued-message count is unbounded and a same-type late reply is
-     indistinguishable from a fresh one. Current mitigation is best-effort only: an unsolicited
-     `EDITOR_CLOSED` is routed to its callback, a timeout sets `desynced_`, unexpected types are
-     logged and discarded while desynced. Real fixes: (i) a protocol correlation id echoed by the
-     child (`data[244]`→`[240]`, every message path + chunk math) or (ii) timeout⇒desync⇒restart the
-     connection before the next exchange.
-  2. **External state-reader affinity is UNVERIFIED.** Save / export-prepass state reads and slot
-     destruction currently share the message thread for a live domain (and the offline export domain
-     starts no timer), which makes an overlap unlikely — but nothing enforces it, and the call chains
-     (autosave, export-chain pre-pass, offline render-graph teardown) have not been traced.
+- **STATUS of the three previously-open items (all re-checked 2026-09-28):**
+  1. **Stale replies after a timeout — FIXED (protocol correlation id, 2026-09-28).** Both structs
+     now carry a `requestId` (allocated PER REQUEST in `Exchange::sendRequest`, stamped into every
+     chunk via `sendContinuation`, echoed by the child through one `sendResponse` helper across all
+     24 response sites); `receiveReply` accepts only its own id (or an allowed `STATE_CHUNK`
+     continuation), routes `requestId == 0` + `EDITOR_CLOSED` to the editor callback as the one
+     unsolicited message, and CORRECTLY discards anything else — the old expected-type-only heuristic
+     is superseded. `kProtocolVersion = 2` is advertised in READY and refused on mismatch, and a
+     genuine v1 child (old READY layout) is detected by signature and fails immediately with a named
+     "PROTOCOL VERSION MISMATCH" diagnosis instead of a bare READY timeout. Payloads shrank to
+     `data[240]` with `static_assert(sizeof(...) == 256)`.
+  2. **JUCE message-pump ownership — FIXED (2026-09-28).** The pump now pins the JUCE GUI
+     initialisation for its own lifetime (`MessagePumpThread.cpp`, deliberately leaked): the last
+     `ScopedJuceInitialiser_GUI` teardown would otherwise delete the `MessageManager` and stop JUCE's
+     `TimerThread`, after which every `juce::Timer` in the process dies silently (the measured cause
+     of the `StagedParams*` filter-configuration failures — lesson 42).
+  2. **External state-reader affinity — TRACED (2026-09-28), invariant still unwritten.** Every
+     `getStateInformation`/`setStateInformation` caller outside the proxy was enumerated:
+     `ProjectSerializer::save` (:73), the snapshot A/B routers (`Router_Audio.cpp` :368/:396/:403/:416,
+     `McpTools_Settings.cpp` :408/:445/:452/:463), the FX pre-pass/capture sites
+     (`AudioEngineCommands_Fx.cpp` :500 — the `Timer::callAfterDelay` deferred capture on the message
+     thread — :566, :1293), the audition pre-pass (`AudioEngineCommands_Composition.cpp` :690),
+     `Track.cpp` :112/:224 and `TrackFXSlot.h` :516 (graph-rebuild paths), `PresetApply.h` :640 and
+     `PluginManager.cpp` :1175 (respawn restore). All of them run on the MESSAGE thread for a live
+     domain, and slot destruction for that domain also runs on the message thread (graph rebuild /
+     `~PluginProxySlot`), so they cannot overlap; the offline export domain runs
+     `PluginManager(offline=true)` (no timer, no respawn) and its slots are touched only by the export
+     thread, whose render path applies param overrides to a tree COPY rather than calling
+     `getStateInformation`. Caveat: this is a code-read of the call chains, not an instrumented trace,
+     and nothing enforces the affinity — if a future call site crosses threads, revisit this first.
   3. **`checkAllChildren()` callback-map race — FIXED** (`invokeCrashCallbacks` snapshots the
      `std::function`s under the manager mutex and invokes them outside it; contract documented in
      `ProxyProcessManager.h`; pinned by `CrashCallbackSweepSnapshotsUnderTheLockAndInvokesOutside`).

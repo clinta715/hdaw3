@@ -80,6 +80,24 @@ void MessagePumpThread::pumpLoop()
     // in the queue this thread drains.
     juce::MessageManager::getInstance();
 
+    // OWNERSHIP PIN (see the header): installed HERE, on the pump thread and
+    // immediately after the MessageManager exists. From now on the JUCE
+    // ScopedJuceInitialiser_GUI reference count can never reach zero, so
+    // shutdownJuce_GUI() - which would delete this MessageManager and stop
+    // JUCE's TimerThread - can never be triggered by another component's
+    // initialiser scope.
+    //
+    // DELIBERATELY LEAKED (never deleted): the pump owns JUCE messaging for the
+    // PROCESS lifetime, so there is no moment at which tearing JUCE down is
+    // correct. Deleting the pin from ~MessagePumpThread would run
+    // shutdownJuce_GUI() (delete the MessageManager + DeletedAtShutdown::
+    // deleteAll()) DURING static destruction, where its order against the other
+    // statics is unspecified - measured as a post-test STATUS_HEAP_CORRUPTION
+    // at process exit in single-test runs. One intentionally-leaked object is
+    // that cost, and it matches the process-lifetime contract this class is
+    // documented to provide.
+    juceInitPin = new juce::ScopedJuceInitialiser_GUI();
+
     {
         std::lock_guard<std::mutex> lk(mtx);
         acquired = true;

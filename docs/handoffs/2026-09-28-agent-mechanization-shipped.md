@@ -161,13 +161,13 @@ optional `verify` hook seals first and never un-seals on a verification failure.
    `project.addTrack` returns a bare index; `get_waveform_peaks` returns 200
    peak values regardless of an integral `numBins`.
 
-Full sharded run (final tree): **2140/2140 executed — 2101 passed, 39 skipped, 0 failures**, every
-shard `ran == intended` (960/960, 845/845, 335/335), 19 min wall — re-run after the engine fixes in §7–§9.
+Full sharded run (final tree): **2146/2146 executed — 2107 passed, 39 skipped, 0 failures**, every
+shard `ran == intended` (848/848, 959/959, 339/339), 20 min wall — re-run after the engine fixes in §7–§10.
 Earlier the same run was INCOMPLETE (1814 passed, one dead shard):
 `PsytranceComposition.PsyDubFiveMinutes` intermittently died. That turned out to be a pre-existing
 `PluginProxySlot` worker-lifetime use-after-free (reproduced on a pristine HEAD `f1551e4` build,
 root-caused with CDB, fixed in §7); the test now passes inside shard 1. Baseline moved in
-[`AGENTS.md`](../../AGENTS.md) (2140 tests, 0 failures); see also `docs/testing-mcp.md`.
+[`AGENTS.md`](../../AGENTS.md) (2146 tests, 0 failures); see also `docs/testing-mcp.md`.
 
 ## 6. Docs touched
 
@@ -296,13 +296,18 @@ itself introduced:
    must not be held during the call). Contract documented in `ProxyProcessManager.h`: a callback
    removed concurrently with a sweep may still fire once (snapshot semantics).
 
-Evidence: `PluginIsolation.*` **79/79** (74 + `ConcurrentExchangesDoNotMisattribute`,
+Evidence: `PluginIsolation.*` **79/79** (74 existing + FOUR new here:
+`PollProgramCountDoesNotWaitForTheExchangeLock` — the non-blocking timer poll that pins "a slow state
+exchange must not stall the message-thread poll", `ConcurrentExchangesDoNotMisattribute`,
 `UnsolicitedEditorClosedIsRoutedNotConsumed`, `DesyncedPipeDiscardsUnexpectedReply`),
 `FxMidiInjection/InternalFx/Clap` 35 passed (env skips expected), `CrashRecovery.*` +
 `ProxyNamespace*.*` 16/16 plus `CrashCallbackSweepSnapshotsUnderTheLockAndInvokesOutside`; PsyDub
 canary PASS (616.9 s); canonical shards complete — **2140/2140 executed, 2101 passed, 0 failures**
 (960/845/335). Gate 3 checked: the guard/mutex is never touched by `processBlock`/
-`flushStagedParams` (they read only the non-owning `shmHandle`).
+`flushStagedParams` (they read only the non-owning `shmHandle`). Lock order + reentrancy are
+documented in `ProxyPipe.h` (`Exchange` is non-recursive; `verifyStateApplied` calls the guarded
+`getStateInformation` sequentially), and a source-wide grep confirms no production pipe I/O runs
+outside an `Exchange`.
 
 **STILL OPEN — stale replies after a timeout (needs a protocol decision, NOT fixed).** A bounded
 receive that times out deliberately leaves its reply queued, and `ProxyMessage`/`ProxyResponse` are
@@ -322,3 +327,47 @@ cancelled verification run — it produced two `RenderSequenceRelease.*` failure
 `PsytranceComposition.NewPacksLongRenderWithFxAutomation`. Both failing tests pass solo, and the
 clean re-run above is green; treat a red result while any orphan test/plugin process is alive as
 contaminated (kill leftovers first).
+
+## 10. Fourth and fifth engine fixes — protocol correlation id + JUCE pump ownership pin
+
+**(1) Protocol correlation id (two-process ABI change).** §9's stale-reply item is now CLOSED:
+`ProxyMessage`/`ProxyResponse` carry a `requestId` (payload `data[244]`→`[240]`, both structs kept at
+256 bytes with `static_assert`), allocated PER REQUEST in `Exchange::sendRequest` and reused for that
+request's chunks via `sendContinuation`; the child echoes it through ONE `sendResponse` helper (all 24
+response sites enumerated); `receiveReplyImpl` delivers only its own id (or an allowed `STATE_CHUNK`
+continuation), routes `requestId == 0` + `EDITOR_CLOSED` to the editor callback, and correctly
+discards anything else — the expected-type-only heuristic is superseded. `kProtocolVersion = 2` is
+advertised in READY and refused on mismatch, and a genuine v1 child (old READY layout) is detected by
+signature (`sawLegacyProtocolReady` / `kLegacyV1Diagnosis`) so the spawn fails IMMEDIATELY with a named
+diagnosis rather than a bare READY timeout — a `--protocol` CLI flag would NOT have worked, because the
+old child ignores unknown arguments. The payload shrink also exposed a real OOB
+(`tests/unit/proxy/pipe_test.cpp` looped 244 over a 240-byte array), now fixed.
+Tests: `PluginIsolation.LateSameTypeReplyIsDiscarded` (one guard, sequential requests: a timed-out
+request's late reply is discarded while the same-type successor gets its own),
+`SlowChildLateReplyIsDiscardedById` (process-level `__slowstate__`), the legacy-READY pipe fixture +
+its negative control, and `ProxyProtocol.VersionGateRejectsStaleChild`.
+
+**(2) JUCE message-pump ownership pin (pre-existing pathology, found while verifying (1)).**
+`PluginIsolation.StagedParamsReachChildWithoutProcessBlock` and
+`…BakeIntoChildStateWithoutParentProcessBlock` failed deterministically in wider filter
+configurations ("the message-thread timer flush did not run") but passed solo (5/5) and in the
+isolation-family-only filter. Instrumented root cause: JUCE's `ScopedJuceInitialiser_GUI` is
+refcounted, and the LAST teardown of the suites' initialiser scopes runs `shutdownJuce_GUI()`
+(`DeletedAtShutdown::deleteAll()` + `MessageManager::deleteInstance()`), which stops JUCE's
+`TimerThread`; the next `MessageManager::getInstance()` was then created on the TEST thread, so
+`MessagePumpThread`'s dispatch loop no longer saw JUCE messages (`isThisTheMessageThread() == 0`,
+no `timerCallback` ticks for the rest of the 112 s run) and every `juce::Timer` in the process —
+including `PluginProxySlot::flushStagedParams`, the sole writer of the shm paramSet ring — died
+silently. Fix (`src/common/MessagePumpThread.cpp`): the pump constructs its own
+`ScopedJuceInitialiser_GUI` on the PUMP thread right after `MessageManager::getInstance()` and
+**deliberately leaks it** (the pump owns JUCE messaging for the process lifetime; deleting it from
+`~MessagePumpThread` ran `shutdownJuce_GUI()` during static destruction, measured as a post-test
+`STATUS_HEAP_CORRUPTION`). Pinned by
+`MessagePumpThread.JuceInitialiserScopeDoesNotTearDownThePumpQueue`.
+
+Gates on the final tree: `dsh-build-fast.bat all` rc 0 (all three binaries rebuilt — the protocol
+change needs the child too); the previously failing configurations now pass
+(`isol+plugin-half`, the full combined filter, the pair alone, `isol` alone); PluginIsolation +
+CrashRecovery + ProxyNamespace green; unit proxy + pump green; PsyDub canary 619 s PASS; canonical
+shards complete — **2146/2146 executed, 2107 passed, 39 skipped, 0 failures** (848/959/339). Lessons
+42–43 added; `docs/realtime-safety.md` now records all three former OPEN items as fixed/traced.

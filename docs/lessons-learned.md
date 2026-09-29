@@ -724,4 +724,49 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     correlation id echoed by the child (shrinks `data[244]`→`[240]`, touches every message path and
     the chunk math) or (ii) make a timeout fatal/desyncing and restart the connection before the
     next exchange. Choose one deliberately; do not ship a drain window as "fixed".
+    **(LANDED the same day: option (i)** — `requestId` in both structs (`data[244]`→`[240]`, plus
+    `static_assert(sizeof(...)==256)`), allocated PER REQUEST in `Exchange::sendRequest`, stamped
+    into every chunk by `sendContinuation`, echoed by the child through ONE `sendResponse` helper
+    (all 24 sites), matched by id in `receiveReplyImpl` (id 0 = unsolicited, routed only for
+    `EDITOR_CLOSED`), with `kProtocolVersion = 2` advertised in READY plus a legacy-v1 READY
+    signature guard so a stale child fails IMMEDIATELY with a named diagnosis instead of a bare
+    READY timeout. The expected-type heuristic is superseded: a mismatched id is now a CORRECT
+    discard. The shrink found and fixed a real OOB (`pipe_test.cpp` looping 244 over a 240-byte
+    array). Pinned by `LateSameTypeReplyIsDiscarded`, `SlowChildLateReplyIsDiscardedById`,
+    `ProxyProtocol.VersionGateRejectsStaleChild` and the pipe's legacy-READY fixture.)
 
+42. **Two-process protocol: a version guard must be able to DECODE the reply it guards** (diagnosed
+    2026-09-29). The READY handshake version check (`READY.result` vs `kProtocolVersion`) only works
+    on a reply the CURRENT framing can parse. A genuine stale child is built against the OLD framing,
+    so its READY arrives in the old layout (`{type, result=1, dataSize=0, data[244]}`) and the new
+    parent decodes it as `{requestId=1, result=0, dataSize=0}` — an id no requestless await owns, so
+    correlation-id matching DISCARDS it and the spawn dies by BARE TIMEOUT with no hint of the cause.
+    Fix: recognise that exact misparse (`isLegacyV1ReadyReply`) in the requestless READY await, flag
+    the pipe, and have `spawnPluginHost` fail IMMEDIATELY (`PROTOCOL VERSION MISMATCH: stale v1
+    hdaw_plugin_host.exe (rebuild with dsh-build-fast.bat all)`, terminate + close + return false).
+    Pinned by an in-process pipe fixture that writes the RAW v1 bytes (`LegacyV1ReadyIsReportedNotTimedOut`)
+    plus its negative control (`CurrentV2ReadyIsNotFlaggedAsLegacy`), and verified end-to-end by
+    swapping a stub v1 child in as `hdaw_plugin_host.exe` (spawn fails in ~25 ms instead of the 8 s
+    READY budget). A `--protocol` negotiation flag is NOT a fix: the old child IGNORES unknown
+    arguments and answers READY anyway — never claim a guard the stale binary would ignore.
+
+43. **`ScopedJuceInitialiser_GUI` is a process-wide KILL SWITCH — the message pump must PIN it**
+    (diagnosed 2026-09-29). JUCE's `ScopedJuceInitialiser_GUI` calls `shutdownJuce_GUI()` when its
+    LAST instance dies, which runs `DeletedAtShutdown::deleteAll()` (deleting the `ShutdownDetector`,
+    which STOPS JUCE's TimerThread) and `MessageManager::deleteInstance()`. The next
+    `MessageManager::getInstance()` then re-creates the manager on WHICHEVER thread asks first, and
+    the `InternalMessageQueue` (hidden window + queue) is rebound to that thread: the HDAW
+    `MessagePumpThread`'s `GetMessage` loop can never see another JUCE message, so EVERY `juce::Timer`
+    and `AsyncUpdater` in the process stops firing PERMANENTLY. Symptom seen: two
+    `PluginIsolation.StagedParams*` tests failing ("paramSet ring was never written") in combined
+    gtest filters only — because several test files hold their own `ScopedJuceInitialiser_GUI`, and
+    the pump lost the re-creation race after one of their scopes. `MessagePumpThread` now constructs
+    and DELIBERATELY LEAKS a `ScopedJuceInitialiser_GUI` on the pump thread (right after
+    `MessageManager::getInstance()`), so the initialisation reference count can never reach zero;
+    deleting that pin at static-destruction time instead produced `STATUS_HEAP_CORRUPTION`
+    (0xC0000374) at process exit in single-test runs. Pinned by
+    `MessagePumpThread.JuceInitialiserScopeDoesNotTearDownThePumpQueue` (fails without the pin:
+    `getInstanceWithoutCreating()` becomes NULL and a probe timer never ticks). Diagnostic recipe
+    that found it: a `HDAW_TRACE_PARAM`-style env-gated trace of the pump loop (heartbeat +
+    `MessageManager::isThisTheMessageThread()`) and of the JUCE timer lifecycle — the pump reported
+    `isMsgThread=0` and never ticked again for the rest of the run.

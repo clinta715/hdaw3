@@ -77,15 +77,16 @@ public:
     // debug-only owner-thread tripwire (`lockOwner_`) asserts that, so a future
     // nested transaction fails loudly instead of silently deadlocking.
     //
-    // DESYNC (best effort — NOT a correctness guarantee): a bounded-receive
-    // TIMEOUT does not tear the connection down, so the child's late reply
-    // stays queued in the message-mode pipe. `desynced_` records that. While
-    // it is set, a reply whose type is not the exchange's expectation is
-    // logged and discarded instead of being handed to a caller that never
-    // asked for it. This cannot be complete: the 256-byte protocol structs in
-    // ProxyCommon.h carry no request/correlation id and the protocol has no
-    // end-of-response marker, so a stale reply of the EXPECTED type is
-    // indistinguishable from a fresh one.
+    // DESYNC (observability only — NOT a correctness mechanism): a bounded
+    // receive that times out does not tear the connection down, so the child's
+    // late reply stays queued in the message-mode pipe. `desynced_` records
+    // that and the counter below proves a stale reply was seen. Correctness no
+    // longer depends on it: every request carries a correlation id
+    // (ProxyMessage::requestId) and every reply echoes it, so an exchange
+    // delivers only a reply bearing ITS current request's id and DISCARDS
+    // anything else (a late reply from an earlier request cannot be mistaken
+    // for a fresh one, even of the SAME type — the old expected-type-only
+    // heuristic is superseded).
     class Exchange;
 
     // ---------------------------------------------------------------------
@@ -120,12 +121,28 @@ public:
     // caller's reply. Set by PluginProxySlot once the slot has an
     // editor-closed callback; the handler must not call back into the pipe.
     void setEditorClosedHandler(std::function<void()> cb);
-    // Best-effort stale-reply state (see the DESYNC note above).
+    // Observability only (see the DESYNC note above): correctness is id-based.
     bool isDesynced() const { return desynced_.load(std::memory_order_relaxed); }
     uint64_t staleRepliesDiscarded() const { return staleDiscards_.load(std::memory_order_relaxed); }
     uint64_t desyncEvents() const { return desyncEvents_.load(std::memory_order_relaxed); }
 
+    // TRUE once a reply proved the child speaks the pre-correlation-id (v1)
+    // framing: only the requestless READY handshake can prove it (a v1 child
+    // answers READY in the old layout, which v2 decodes as requestId=1 /
+    // result=0 / dataSize=0 — see isLegacyV1ReadyReply in ProxyCommon.h).
+    // The handshake returns that reply instead of discarding it, and
+    // spawnPluginHost turns this flag into an immediate, non-timeout spawn
+    // failure with kLegacyV1Diagnosis.
+    bool sawLegacyProtocolReady() const { return legacyProtocolReady_.load(std::memory_order_relaxed); }
+
 private:
+    // Monotonic correlation-id allocator: returns 1, 2, 3, … (never 0 —
+    // kUnsolicitedRequestId is reserved for requestless notifications such as
+    // EDITOR_CLOSED). Called by Exchange::sendRequest, once per REQUEST (not
+    // once per guard): a guard spanning many sequential requests (e.g.
+    // fetchParamMetadata) must be able to tell a late reply from an earlier
+    // request apart from the current one. Wraps at 2^32 skipping 0.
+    uint32_t allocateRequestId();
     // Bounded READY wait. Heavy plugins (e.g. Vital) can take several seconds
     // to initialise, so the default is generous.
     static constexpr DWORD kReadyTimeoutMs = 8000;
@@ -166,7 +183,8 @@ private:
     // --- desync bookkeeping (all callers hold `exchangeMutex_`) ----------
     void noteDesync(const char* why);
     void noteInSync();
-    void noteUnexpectedReply(MessageType got, MessageType expected, bool discarded);
+    void noteUnexpectedReply(MessageType got, MessageType expected,
+                             uint32_t gotId, uint32_t myId);
     void routeUnsolicitedEditorClosed();
 
     std::string name;
@@ -192,6 +210,14 @@ private:
     // loud assertion at the offending call site.
     std::atomic<std::thread::id> lockOwner_{};
 #endif
+
+    // Monotonic correlation-id source (see allocateRequestId). Only Exchange
+    // touches it, and only while holding the exchange lock.
+    std::atomic<uint32_t> requestIdCounter_{ 0 };
+
+    // Set by the READY handshake when a reply matched the LEGACY v1 signature
+    // (see sawLegacyProtocolReady). Only ever true on a spawn-handshake pipe.
+    std::atomic<bool> legacyProtocolReady_{ false };
 
     // Desync hint + its observability counters (see the DESYNC note above).
     std::atomic<bool> desynced_{ false };
@@ -231,25 +257,46 @@ public:
 
     bool acquired() const noexcept { return acquired_; }
 
+    // The correlation id of this guard's CURRENT request: valid after a
+    // successful sendRequest/sendRequestUnbounded (and reused by every
+    // sendContinuation); kUnsolicitedRequestId before any request is sent.
+    // Exposed for observability/tests — production matching uses it internally.
+    uint32_t currentRequestId() const noexcept { return currentRequestId_; }
+
     // Request half. Every request of the transaction goes through here — a
-    // chunked SET_STATE sends N requests before its single reply.
+    // chunked SET_STATE sends N requests before its single reply. Each call
+    // allocates a FRESH correlation id (from PipeServer's monotonic allocator),
+    // stamps it into the message and records it as this guard's CURRENT
+    // request id; receiveReply then accepts only replies bearing that id.
+    // Allocating per request (not per guard) is what lets a guard that spans
+    // many sequential requests — fetchParamMetadata, the GET_STATE retry loop —
+    // discard a late reply from an EARLIER request of the same guard.
     bool sendRequest(const ProxyMessage& msg, DWORD timeoutMs);
     bool sendRequestUnbounded(const ProxyMessage& msg);
 
+    // Continuation half of a multi-message request: sends with the SAME id as
+    // the current request (the child echoes it on the reply), so a chunked
+    // SET_STATE's first message and its STATE_CHUNKs share one correlation id.
+    // Requires a prior sendRequest on this guard (logs + returns false
+    // otherwise — a continuation with no request is a programming error).
+    bool sendContinuation(const ProxyMessage& msg, DWORD timeoutMs);
+
     // Reply half, bounded. Loops over the raw reads so that replies which are
     // NOT this exchange's answer never reach the caller:
-    //   * `expected`            → returned to the caller (and clears desync)
-    //   * STATE_CHUNK           → returned: the child's continuation marker for
-    //                             a chunked reply; the caller's own length
-    //                             checks decide how many it consumes
-    //   * EDITOR_CLOSED         → UNSOLICITED: routed to the editor-closed
-    //                             handler and skipped (never handed to a
-    //                             caller that never asked for it); waiting
-    //                             continues inside the same budget
-    //   * anything else         → logged; discarded while the pipe is
-    //                             `desynced_` (best effort), otherwise
-    //                             returned so the caller's own type check
-    //                             still reports the protocol error
+    //   * requestId == this guard's current request id AND
+    //     (type == `expected` or STATE_CHUNK continuation) → returned to the
+    //     caller (and clears the desync hint)
+    //   * requestId == kUnsolicitedRequestId AND type == `expected`, on a guard
+    //     that has sent NO request → returned: the requestless await (the spawn
+    //     READY handshake, whose reply carries id 0 by design)
+    //   * requestId == kUnsolicitedRequestId AND type == EDITOR_CLOSED
+    //     → UNSOLICITED: routed to the editor-closed handler and skipped
+    //     (never handed to a caller that never asked for it); waiting
+    //     continues inside the same budget
+    //   * anything else (wrong id, or an unexpected type for our id)
+    //     → counted + logged as STALE/UNEXPECTED and DISCARDED; waiting
+    //     continues inside the same budget. This discard is now CORRECT (not
+    //     best-effort): the id proves the reply is not ours.
     // timeoutIsDesync=false is for await loops whose timeout is a NORMAL idle
     // condition (the editor watcher polls a 500 ms budget forever); such a
     // timeout must not mark the pipe desynced.
@@ -270,6 +317,14 @@ private:
 
     PipeServer& srv_;
     bool acquired_ = false;
+    // Correlation id of this guard's CURRENT request (set by sendRequest /
+    // sendRequestUnbounded, reused by sendContinuation). Replies are matched
+    // against it. haveRequest_ is false until the first request is sent — the
+    // editor-closed watcher never sends one (it waits for an unsolicited
+    // EDITOR_CLOSED), so a receive with no request is only legal for that
+    // unsolicited type (and the READY spawn await); see receiveReplyImpl.
+    uint32_t currentRequestId_ = kUnsolicitedRequestId;
+    bool haveRequest_ = false;
 };
 
 class PipeClient {

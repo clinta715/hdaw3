@@ -1068,7 +1068,7 @@ bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
         const size_t take = std::min(total - offset, kStateChunkSize);
         chunk.dataSize = static_cast<uint32_t>(take);
         std::memcpy(chunk.data, static_cast<const uint8_t*>(data) + offset, take);
-        if (!ex.sendRequest(chunk, kStateTimeoutMs)) return false;
+        if (!ex.sendContinuation(chunk, kStateTimeoutMs)) return false;
         offset += take;
     }
     ProxyResponse resp{};

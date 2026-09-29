@@ -217,13 +217,28 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   and `checkAllChildren()` snapshots its callback map under the mutex before invoking (the
   iterator-invalidation race is FIXED). Tests: `ConcurrentExchangesDoNotMisattribute`,
   `UnsolicitedEditorClosedIsRoutedNotConsumed`, `DesyncedPipeDiscardsUnexpectedReply`,
-  `CrashCallbackSweepSnapshotsUnderTheLockAndInvokesOutside`. Final canonical run on this build:
-  **2140/2140 executed, 2101 passed, 39 skipped, 0 failures**. **STILL OPEN, needs a design
-  decision:** stale replies after a timeout — the protocol has no correlation id and no
-  end-of-response marker, so a same-type late reply cannot be distinguished; the current
-  desync-flag/type-matching is best-effort. Real fixes: a protocol correlation id (both structs
-  shrink `data[244]`→`[240]`, child echoes it) or timeout⇒desync⇒restart. Also still UNVERIFIED:
-  external state-reader affinity (see [`docs/realtime-safety.md`](realtime-safety.md)).
+  `CrashCallbackSweepSnapshotsUnderTheLockAndInvokesOutside`. Final canonical run on the finished
+  build: **2146/2146 executed, 2107 passed, 39 skipped, 0 failures** (848/959/339).
+  **RESOLVED (final patch):** the stale-reply gap is CLOSED by a protocol correlation id —
+  `requestId` in BOTH structs (`data[244]`→`[240]` + `static_assert(sizeof(...)==256)`), allocated PER
+  REQUEST (`Exchange::sendRequest` / `sendContinuation`), echoed by the child through ONE
+  `sendResponse` helper (all 24 response sites), matched by id in `receiveReplyImpl` (id 0 =
+  unsolicited, routed only for `EDITOR_CLOSED`), with `kProtocolVersion = 2` advertised in READY and a
+  legacy-v1 READY **signature** guard so a genuinely stale child fails immediately with a named
+  `PROTOCOL VERSION MISMATCH` instead of a bare timeout (a `--protocol` flag would NOT have worked —
+  the old child ignores unknown arguments). Tests: `LateSameTypeReplyIsDiscarded`,
+  `SlowChildLateReplyIsDiscardedById`, the legacy-READY pipe fixture + negative control,
+  `ProxyProtocol.VersionGateRejectsStaleChild`. The external state-reader affinity was also TRACED by
+  code read (all such callers are message-thread for a live domain; the offline export domain never
+  calls it) — see [`docs/realtime-safety.md`](realtime-safety.md).
+  **Separate pathology found while verifying it** (not caused by the protocol change):
+  `PluginIsolation.StagedParams*` failed deterministically in wider filter configurations with
+  *"the message-thread timer flush did not run"* — JUCE's `ScopedJuceInitialiser_GUI` is refcounted
+  and the LAST teardown deletes the `MessageManager` + stops JUCE's `TimerThread`, after which the
+  next `getInstance()` was created on the TEST thread and `MessagePumpThread` stopped dispatching, so
+  every `juce::Timer` in the process died silently. Fixed by pinning the GUI init on the pump thread
+  (deliberately leaked) — `src/common/MessagePumpThread.cpp`, pinned by
+  `MessagePumpThread.JuceInitialiserScopeDoesNotTearDownThePumpQueue` (lesson 43).
 - **Runner wart: a per-test exclusion does not survive a whole-suite unit (measured 2026-09-28).**
   `run-tests-sharded.ps1` enumerates with `--gtest_list_tests --gtest_filter=<Filter>` (so
   `*-Suite.Test` lowers the intended count) but then runs any suite with ≤ `-WholeSuiteThreshold`

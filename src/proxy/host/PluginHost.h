@@ -83,6 +83,16 @@ private:
     // on timeout.
     bool runLifecycleOnMessageThread(const std::function<void()>& fn, int timeoutMs);
 
+    // Correlation-id echo: stamps `requestId` into `resp` and sends it. EVERY
+    // child response — single replies AND every multi-chunk continuation —
+    // goes through here, so the echo cannot be forgotten at a site. The parent
+    // matches replies by this id (ProxyCommon.h). `requestId` is the request
+    // message's id, or proxy::kUnsolicitedRequestId for a requestless
+    // notification (EDITOR_CLOSED / the READY handshake).
+    // Note: taken by const ref and copied internally — MSVC rejects passing an
+    // alignas(256) type by value (C2719).
+    bool sendResponse(const proxy::ProxyResponse& resp, uint32_t requestId);
+
     void openEditorOnGUIThread();
     void closeEditorOnGUIThread();
     void destroyEditorWindow();

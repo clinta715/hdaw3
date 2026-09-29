@@ -1697,7 +1697,7 @@ TEST(PluginIsolation, HardKillFiresCrashCallback) {
 #endif
 
 // ========================================================================
-// Chunked state transfer (state > 244-byte message payload)
+// Chunked state transfer (state > the fixed 240-byte message payload)
 // ========================================================================
 
 TEST(PluginIsolation, LargeStateRoundTripThroughProxy) {
@@ -1802,8 +1802,10 @@ TEST(PluginIsolation, SlowStateTimeoutSignalsFailure) {
 
 // Parent-side retry, wrong-response variant: a response with the wrong type
 // (here a GET_PARAM_RESULT/failure injected ahead of the real answer) must
-// be rejected and retried over, and the round trip must still complete with
-// the child's real state.
+// not be delivered to the GET_STATE handshake, and the round trip must still
+// complete with the child's real state. The injected reply carries the id of
+// the raw GET_PARAM (0), so the correlation-id match discards it — it cannot
+// be mistaken for the GET_STATE response even though it arrives first.
 TEST(PluginIsolation, GetStateRetriesAfterWrongTypeResponse) {
     ProxyProcessManager mgr;
     const uint32_t slotId = 9143;
@@ -2040,7 +2042,7 @@ TEST(PluginIsolation, MidiRoundTripThroughProxy) {
 
     PluginProxySlot slot(mgr, slotId, "MidiEcho");
 
-    // Patterned SysEx >244 bytes (proves the SysEx lane, not the inline path).
+    // Patterned SysEx >240 bytes (proves the SysEx lane, not the inline path).
     constexpr int kSysexLen = 2000;
     std::vector<uint8_t> sysexBytes(kSysexLen);
     sysexBytes[0] = 0xF0;
@@ -2813,6 +2815,16 @@ std::string uniqueExchangeTestPipeName(const char* tag) {
         + std::to_string(static_cast<unsigned>(::GetCurrentProcessId())) + "_"
         + std::to_string(counter.fetch_add(1));
 }
+
+// The server connects LAZILY on its first read (overlappedConnect), so a
+// sendRequest before any read would fail the connected check. Prime the
+// connection with a short requestless receive: nothing is queued yet, so it
+// just connects and times out. (Production does the same via the READY await.)
+void primePipeConnection(PipeServer& srv) {
+    PipeServer::Exchange ex(srv);
+    ProxyResponse p{};
+    ex.receiveReply(p, MessageType::READY, 100);
+}
 } // namespace
 
 // Two threads issue DISTINGUISHABLE request→response transactions on the SAME
@@ -2898,6 +2910,8 @@ TEST(PluginIsolation, ConcurrentExchangesDoNotMisattribute) {
 // An UNSOLICITED EDITOR_CLOSED that lands while another exchange owns the pipe
 // must reach the editor-closed callback, NOT the in-flight exchange as its
 // reply. In-process pipe pair (no child process) so the ordering is exact.
+// The exchange's own reply carries the correlation id it stamped into its
+// request: only a reply bearing THAT id is its own.
 TEST(PluginIsolation, UnsolicitedEditorClosedIsRoutedNotConsumed) {
     const std::string pipeName = uniqueExchangeTestPipeName("editorclosed");
     PipeServer srv(pipeName);
@@ -2912,15 +2926,23 @@ TEST(PluginIsolation, UnsolicitedEditorClosedIsRoutedNotConsumed) {
         PipeClient cli(pipeName);
         if (!cli.connect()) return;
         clientUp.store(true);
-        // 1) the unsolicited editor-close notification, 2) the real reply for
-        // the exchange the parent is running.
+
+        // The parent's GET_PROGRAM_COUNT carries the correlation id we must
+        // echo back on its reply. Read the request to learn it.
+        ProxyMessage req{};
+        if (!cli.receiveMsg(req)) return;
+
+        // 1) the unsolicited editor-close notification (id 0 by design),
+        // 2) the real reply for the exchange the parent is running.
         ProxyResponse closed{};
         closed.type = MessageType::EDITOR_CLOSED;
+        closed.requestId = kUnsolicitedRequestId;
         closed.result = 1;
         cli.sendResp(closed);
 
         ProxyResponse ok{};
         ok.type = MessageType::GET_PROGRAM_COUNT_RESULT;
+        ok.requestId = req.requestId;
         ok.result = 1;
         const uint32_t count = 3;
         ok.dataSize = sizeof(count);
@@ -2931,7 +2953,13 @@ TEST(PluginIsolation, UnsolicitedEditorClosedIsRoutedNotConsumed) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     ASSERT_TRUE(clientUp.load()) << "in-process PipeClient failed to connect";
 
+    primePipeConnection(srv);
+
     PipeServer::Exchange ex(srv);
+    ProxyMessage req{};
+    req.type = MessageType::GET_PROGRAM_COUNT;
+    ASSERT_TRUE(ex.sendRequest(req, 5000));
+    const uint32_t sentId = ex.currentRequestId();
     ProxyResponse resp{};
     ASSERT_TRUE(ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, 5000))
         << "the exchange must still receive its OWN reply behind the "
@@ -2941,6 +2969,9 @@ TEST(PluginIsolation, UnsolicitedEditorClosedIsRoutedNotConsumed) {
         << "an unsolicited EDITOR_CLOSED must be routed to the editor-closed "
            "callback exactly once";
     EXPECT_EQ(resp.type, MessageType::GET_PROGRAM_COUNT_RESULT);
+    EXPECT_NE(sentId, 0u) << "a request must carry a non-zero correlation id";
+    EXPECT_EQ(resp.requestId, sentId)
+        << "the delivered reply must carry the request's correlation id";
     uint32_t got = 0;
     std::memcpy(&got, resp.data, sizeof(got));
     EXPECT_EQ(got, 3u);
@@ -2952,14 +2983,13 @@ TEST(PluginIsolation, UnsolicitedEditorClosedIsRoutedNotConsumed) {
     client.join();
 }
 
-// Observable half of the late-reply analysis (the un-observable half is
-// documented on PipeServer as an OPEN item: the 256-byte protocol structs
-// carry no correlation id and there is no end-of-response marker, so a stale
-// reply of the EXPECTED type cannot be told from a fresh one).
+// THE DEFECT (lesson 41, now closed): a bounded receive that times out leaves
+// its reply queued, and the protocol carries a correlation id so a late reply
+// of the SAME type as the next request is still provably NOT that request's.
 //
-// What IS provable: a bounded receive that times out records the desync, and
-// the next exchange discards a reply whose type it does not expect (best
-// effort) and still returns its OWN reply.
+// Two SEQUENTIAL exchanges on one pipe: exchange 1 times out, its late reply
+// lands, exchange 2 (a SAME-TYPE request) must discard it (wrong id) and
+// deliver its own.
 TEST(PluginIsolation, DesyncedPipeDiscardsUnexpectedReply) {
     const std::string pipeName = uniqueExchangeTestPipeName("desync");
     PipeServer srv(pipeName);
@@ -2968,21 +2998,40 @@ TEST(PluginIsolation, DesyncedPipeDiscardsUnexpectedReply) {
 
     std::atomic<bool> clientUp{false};
     std::atomic<bool> staleWritten{false};
+    // Set after the connection-priming receive (which itself records a desync
+    // timeout) so the client waits for the NEXT desync — exchange 1's timeout.
+    std::atomic<uint64_t> desyncBaseline{0};
     std::thread client([&] {
         PipeClient cli(pipeName);
         if (!cli.connect()) return;
         clientUp.store(true);
-        // Wait until the parent's first exchange has timed out: the stale reply
-        // then provably lands INSIDE the late-reply window that timeout opens.
-        for (int i = 0; i < 2000 && !srv.isDesynced(); ++i)
+
+        // Request #1 (the one that will time out) — learn its id.
+        ProxyMessage m1{};
+        if (!cli.receiveMsg(m1)) return;
+        for (int i = 0; i < 2000
+             && srv.desyncEvents() <= desyncBaseline.load(); ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
+
+        // The late reply for request #1: SAME type as the next exchange expects,
+        // but carrying request #1's (stale) id — indistinguishable from fresh
+        // WITHOUT the correlation id.
         ProxyResponse stale{};
-        stale.type = MessageType::GET_PARAM_INFO_RESULT;   // NOT what is expected next
+        stale.type = MessageType::GET_PROGRAM_COUNT_RESULT;
+        stale.requestId = m1.requestId;
         stale.result = 1;
+        const uint32_t staleCount = 111;
+        stale.dataSize = sizeof(staleCount);
+        std::memcpy(stale.data, &staleCount, sizeof(staleCount));
         if (cli.sendResp(stale))
             staleWritten.store(true);
+
+        // Request #2 — echo ITS id on the reply.
+        ProxyMessage m2{};
+        if (!cli.receiveMsg(m2)) return;
         ProxyResponse ok{};
         ok.type = MessageType::GET_PROGRAM_COUNT_RESULT;
+        ok.requestId = m2.requestId;
         ok.result = 1;
         const uint32_t count = 7;
         ok.dataSize = sizeof(count);
@@ -2993,10 +3042,16 @@ TEST(PluginIsolation, DesyncedPipeDiscardsUnexpectedReply) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     ASSERT_TRUE(clientUp.load()) << "in-process PipeClient failed to connect";
 
+    primePipeConnection(srv);
+    desyncBaseline.store(srv.desyncEvents());
+
     // Exchange 1: nothing is queued for this expectation, so the bounded
     // receive times out and the pipe records the desync.
     {
         PipeServer::Exchange ex(srv);
+        ProxyMessage req{};
+        req.type = MessageType::GET_PROGRAM_COUNT;
+        ASSERT_TRUE(ex.sendRequest(req, 5000));
         ProxyResponse resp{};
         EXPECT_FALSE(ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, 200))
             << "the first exchange must time out (no reply is queued yet)";
@@ -3008,22 +3063,325 @@ TEST(PluginIsolation, DesyncedPipeDiscardsUnexpectedReply) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     ASSERT_TRUE(staleWritten.load());
 
-    // Exchange 2: reads the STALE reply first (type != expectation), discards
-    // it, then returns its own.
+    // Exchange 2: a SAME-TYPE request. It reads the stale reply first (its id
+    // is not this exchange's), discards it, then returns its own.
     {
         PipeServer::Exchange ex(srv);
+        ProxyMessage req{};
+        req.type = MessageType::GET_PROGRAM_COUNT;
+        ASSERT_TRUE(ex.sendRequest(req, 5000));
+        const uint32_t sentId = ex.currentRequestId();
         ProxyResponse resp{};
         ASSERT_TRUE(ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, 5000))
-            << "the desynced exchange must skip the stale reply and still get its own";
+            << "the exchange must skip the stale SAME-TYPE reply and still get its own";
         EXPECT_EQ(resp.type, MessageType::GET_PROGRAM_COUNT_RESULT);
+        EXPECT_EQ(resp.requestId, sentId)
+            << "the delivered reply must carry THIS request's id, not the stale one";
         uint32_t got = 0;
         std::memcpy(&got, resp.data, sizeof(got));
-        EXPECT_EQ(got, 7u);
+        EXPECT_EQ(got, 7u) << "the STALE count must never be delivered";
     }
     EXPECT_EQ(srv.staleRepliesDiscarded(), 1u)
-        << "the stale reply must be logged/counted as discarded";
+        << "the stale SAME-TYPE reply must be logged/counted as discarded";
     EXPECT_FALSE(srv.isDesynced()) << "a completed exchange clears the desync hint";
 
     client.join();
 }
 
+// The steering upgrade of the above: SEVERAL sequential requests inside ONE
+// Exchange guard (exactly how fetchParamMetadata / the GET_STATE retry loop
+// issue theirs). Request #1 times out, so its late reply carries a stale id
+// even though it is the SAME type as request #2 — the guard must deliver
+// request #2's own reply only, and count the stale one. A DIFFERENT-type
+// request (#3) in the same guard proves matching is by id, not by type.
+TEST(PluginIsolation, LateSameTypeReplyIsDiscarded) {
+    const std::string pipeName = uniqueExchangeTestPipeName("lateSameType");
+    PipeServer srv(pipeName);
+    DWORD err = 0;
+    ASSERT_TRUE(srv.start(&err));
+
+    std::atomic<bool> clientUp{false};
+    std::thread client([&] {
+        PipeClient cli(pipeName);
+        if (!cli.connect()) return;
+        clientUp.store(true);
+
+        ProxyMessage m1{}, m2{};
+        if (!cli.receiveMsg(m1)) return;   // request #1 (will time out)
+        if (!cli.receiveMsg(m2)) return;   // request #2 (same type)
+
+        // The stale reply for request #1 (SAME type as #2, stale id)…
+        ProxyResponse stale{};
+        stale.type = MessageType::GET_PROGRAM_COUNT_RESULT;
+        stale.requestId = m1.requestId;
+        stale.result = 1;
+        const uint32_t staleCount = 111;
+        stale.dataSize = sizeof(staleCount);
+        std::memcpy(stale.data, &staleCount, sizeof(staleCount));
+        cli.sendResp(stale);
+
+        // …followed by request #2's own reply.
+        ProxyResponse ok{};
+        ok.type = MessageType::GET_PROGRAM_COUNT_RESULT;
+        ok.requestId = m2.requestId;
+        ok.result = 1;
+        const uint32_t count = 222;
+        ok.dataSize = sizeof(count);
+        std::memcpy(ok.data, &count, sizeof(count));
+        cli.sendResp(ok);
+
+        // Request #3: a DIFFERENT type in the same guard.
+        ProxyMessage m3{};
+        if (!cli.receiveMsg(m3)) return;
+        ProxyResponse cur{};
+        cur.type = MessageType::GET_CURRENT_PROGRAM_RESULT;
+        cur.requestId = m3.requestId;
+        cur.result = 1;
+        const uint32_t prog = 5;
+        cur.dataSize = sizeof(prog);
+        std::memcpy(cur.data, &prog, sizeof(prog));
+        cli.sendResp(cur);
+    });
+    for (int i = 0; i < 1000 && !clientUp.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    ASSERT_TRUE(clientUp.load()) << "in-process PipeClient failed to connect";
+
+    primePipeConnection(srv);
+
+    PipeServer::Exchange ex(srv);
+
+    // Request #1: times out (the client is waiting for request #2 first).
+    ProxyMessage req{};
+    req.type = MessageType::GET_PROGRAM_COUNT;
+    ASSERT_TRUE(ex.sendRequest(req, 5000));
+    const uint32_t id1 = ex.currentRequestId();
+    ProxyResponse r1{};
+    EXPECT_FALSE(ex.receiveReply(r1, MessageType::GET_PROGRAM_COUNT_RESULT, 150))
+        << "request #1 must time out inside the guard";
+
+    // Request #2: SAME type, SAME guard, fresh id. The stale #1 reply arrives
+    // first and must be discarded; #2 gets its own reply.
+    ProxyMessage req2{};
+    req2.type = MessageType::GET_PROGRAM_COUNT;
+    ASSERT_TRUE(ex.sendRequest(req2, 5000));
+    const uint32_t id2 = ex.currentRequestId();
+    ASSERT_NE(id2, id1) << "each request must allocate a fresh id";
+    ProxyResponse r2{};
+    ASSERT_TRUE(ex.receiveReply(r2, MessageType::GET_PROGRAM_COUNT_RESULT, 5000))
+        << "request #2 must receive its own reply despite the stale SAME-TYPE one";
+    EXPECT_EQ(r2.requestId, id2) << "the reply must carry request #2's id, not #1's";
+    uint32_t gotCount = 0;
+    std::memcpy(&gotCount, r2.data, sizeof(gotCount));
+    EXPECT_EQ(gotCount, 222u);
+    EXPECT_EQ(srv.staleRepliesDiscarded(), 1u)
+        << "the stale same-type reply (id #1) must be counted as discarded";
+
+    // Request #3: DIFFERENT type, same guard — id matching is type-independent.
+    ProxyMessage req3{};
+    req3.type = MessageType::GET_CURRENT_PROGRAM;
+    ASSERT_TRUE(ex.sendRequest(req3, 5000));
+    const uint32_t id3 = ex.currentRequestId();
+    ProxyResponse r3{};
+    ASSERT_TRUE(ex.receiveReply(r3, MessageType::GET_CURRENT_PROGRAM_RESULT, 5000));
+    EXPECT_EQ(r3.type, MessageType::GET_CURRENT_PROGRAM_RESULT);
+    EXPECT_EQ(r3.requestId, id3);
+    uint32_t gotProg = 0;
+    std::memcpy(&gotProg, r3.data, sizeof(gotProg));
+    EXPECT_EQ(gotProg, 5u);
+    EXPECT_EQ(srv.staleRepliesDiscarded(), 1u)
+        << "no further stale replies — request #3's reply was correctly matched";
+    EXPECT_FALSE(srv.isDesynced());
+
+    client.join();
+}
+
+// Process-level companion to LateSameTypeReplyIsDiscarded: a REAL child holds a
+// reply past the parent's budget. __slowstate__ blocks getStateInformation past
+// the child's 3 s marshal timeout, so the parent's bounded receive times out
+// and the reply lands late, carrying the timed-out request's id.
+TEST(PluginIsolation, SlowChildLateReplyIsDiscardedById) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9180;
+    ASSERT_TRUE(mgr.spawnPluginHost("__slowstate__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    auto pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+
+    // Request #1: GET_STATE. The child cannot answer within the short budget,
+    // so its reply is left queued (id #1).
+    const uint64_t staleBefore = pipe->staleRepliesDiscarded();
+    {
+        PipeServer::Exchange ex(*pipe);
+        ProxyMessage msg{};
+        msg.type = MessageType::GET_STATE;
+        msg.slotId = slotId;
+        ASSERT_TRUE(ex.sendRequest(msg, 3000));
+        ProxyResponse resp{};
+        EXPECT_FALSE(ex.receiveReply(resp, MessageType::GET_STATE_RESULT, 400))
+            << "the child must not answer within the parent's short budget";
+    }
+
+    // Request #2: a DIFFERENT type. The child's late GET_STATE_RESULT (id #1)
+    // arrives while we wait; it must be discarded by id, and the
+    // GET_PROGRAM_COUNT_RESULT (id #2) delivered.
+    {
+        PipeServer::Exchange ex(*pipe);
+        ProxyMessage msg{};
+        msg.type = MessageType::GET_PROGRAM_COUNT;
+        msg.slotId = slotId;
+        ASSERT_TRUE(ex.sendRequest(msg, 10000));
+        const uint32_t sentId = ex.currentRequestId();
+        ProxyResponse resp{};
+        ASSERT_TRUE(ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, 10000))
+            << "the exchange must discard the late id-#1 reply and get its own";
+        EXPECT_EQ(resp.type, MessageType::GET_PROGRAM_COUNT_RESULT);
+        EXPECT_EQ(resp.requestId, sentId);
+        EXPECT_EQ(resp.result, 1u);
+    }
+    EXPECT_GT(pipe->staleRepliesDiscarded(), staleBefore)
+        << "the late reply bearing request #1's id must be counted as discarded";
+
+    // Request #3: SAME type as request #1 (GET_STATE). It must receive ITS OWN
+    // reply (result=0 — __slowstate__'s marshal times out) rather than any
+    // leftover late reply.
+    {
+        PipeServer::Exchange ex(*pipe);
+        ProxyMessage msg{};
+        msg.type = MessageType::GET_STATE;
+        msg.slotId = slotId;
+        ASSERT_TRUE(ex.sendRequest(msg, 10000));
+        const uint32_t sentId = ex.currentRequestId();
+        ProxyResponse resp{};
+        ASSERT_TRUE(ex.receiveReply(resp, MessageType::GET_STATE_RESULT, 10000))
+            << "the same-type retry must receive its own id-#3 reply";
+        EXPECT_EQ(resp.type, MessageType::GET_STATE_RESULT);
+        EXPECT_EQ(resp.requestId, sentId);
+    }
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+
+
+// ========================================================================
+// LEGACY (v1) LAYOUT DETECTION at the READY handshake (Gate 4/15)
+//
+// A child built BEFORE the correlation-id framing does not know about
+// requestId, so it answers READY with the OLD 256-byte layout
+// {type, result=1, dataSize=0, data[244]}. A v2 parent decodes that frame as
+// {type=READY, requestId=1, result=0, dataSize=0} — a requestId no requestless
+// handshake owns. Correlation-id matching would DISCARD it, and the spawn
+// would then die by BARE TIMEOUT (the exact failure mode that makes a stale
+// hdaw_plugin_host.exe so confusing). The handshake must instead recognise the
+// v1 signature and report the mismatch IMMEDIATELY.
+//
+// The fixture writes those RAW v1 bytes on an in-process pipe, so the check is
+// on the parent's framing decode, not on any child binary.
+// ========================================================================
+namespace {
+// The v1 (pre-correlation-id) ProxyResponse layout, byte for byte:
+//   [0..3] type   [4..7] result   [8..11] dataSize   [12..255] data
+void writeRawV1Ready(PipeClient& cli, int32_t type, int32_t result, int32_t dataSize) {
+    alignas(256) uint8_t v1Raw[256] = {};
+    std::memcpy(v1Raw + 0, &type, sizeof(type));
+    std::memcpy(v1Raw + 4, &result, sizeof(result));
+    std::memcpy(v1Raw + 8, &dataSize, sizeof(dataSize));
+    ProxyResponse frame{};   // same fixed 256-byte message-mode frame
+    static_assert(sizeof(frame) == 256, "the pipe frame is fixed at 256 bytes");
+    std::memcpy(&frame, v1Raw, sizeof(frame));
+    cli.sendResp(frame);
+}
+} // namespace
+
+TEST(PluginIsolation, LegacyV1ReadyIsReportedNotTimedOut) {
+    const std::string pipeName = uniqueExchangeTestPipeName("legacyv1");
+    PipeServer srv(pipeName);
+    DWORD err = 0;
+    ASSERT_TRUE(srv.start(&err));
+
+    std::atomic<bool> clientUp{false};
+    std::atomic<bool> goWrite{false};
+    std::thread client([&] {
+        PipeClient cli(pipeName);
+        if (!cli.connect()) return;
+        clientUp.store(true);
+        // Hold the frame until the server has connected (primePipeConnection),
+        // so this test exercises the READY DECODE, not the connect path.
+        for (int i = 0; i < 2000 && !goWrite.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        // The v1 child's READY: result=1 (its version), dataSize=0.
+        writeRawV1Ready(cli, static_cast<int32_t>(MessageType::READY), 1, 0);
+    });
+    for (int i = 0; i < 1000 && !clientUp.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    ASSERT_TRUE(clientUp.load()) << "in-process PipeClient failed to connect";
+
+    primePipeConnection(srv);
+    goWrite.store(true);
+
+    const auto t0 = std::chrono::steady_clock::now();
+    PipeServer::Exchange ex(srv);
+    ProxyResponse resp{};
+    const bool got = ex.receiveReplyReady(resp, MessageType::READY);
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    EXPECT_TRUE(got)
+        << "the handshake must RETURN the legacy reply for diagnosis instead of "
+           "discarding it and timing out";
+    EXPECT_TRUE(srv.sawLegacyProtocolReady())
+        << "the v1 READY must be reported as a protocol mismatch";
+    EXPECT_EQ(resp.type, MessageType::READY);
+    EXPECT_LT(elapsedMs, 2000)
+        << "detection must be immediate, not a budget expiry (elapsed "
+        << elapsedMs << " ms)";
+    EXPECT_NE(std::string(proxy::kLegacyV1Diagnosis).find("stale v1 hdaw_plugin_host.exe"),
+              std::string::npos)
+        << "the operator-facing diagnosis must name the stale binary";
+
+    client.join();
+}
+
+// Negative control: a CURRENT (v2) child's READY — unsolicited id 0, reporting
+// kProtocolVersion — must be delivered as before and must NOT be flagged as a
+// legacy binary. The frame is written in the v2 layout, so only the signature
+// distinguishes the two cases.
+TEST(PluginIsolation, CurrentV2ReadyIsNotFlaggedAsLegacy) {
+    const std::string pipeName = uniqueExchangeTestPipeName("readyv2");
+    PipeServer srv(pipeName);
+    DWORD err = 0;
+    ASSERT_TRUE(srv.start(&err));
+
+    std::atomic<bool> clientUp{false};
+    std::atomic<bool> goWrite{false};
+    std::thread client([&] {
+        PipeClient cli(pipeName);
+        if (!cli.connect()) return;
+        clientUp.store(true);
+        for (int i = 0; i < 2000 && !goWrite.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        ProxyResponse ready{};
+        ready.type = MessageType::READY;
+        ready.requestId = kUnsolicitedRequestId;
+        ready.result = proxy::kProtocolVersion;
+        cli.sendResp(ready);
+    });
+    for (int i = 0; i < 1000 && !clientUp.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    ASSERT_TRUE(clientUp.load()) << "in-process PipeClient failed to connect";
+
+    primePipeConnection(srv);
+    goWrite.store(true);
+
+    PipeServer::Exchange ex(srv);
+    ProxyResponse resp{};
+    EXPECT_TRUE(ex.receiveReplyReady(resp, MessageType::READY));
+    EXPECT_FALSE(srv.sawLegacyProtocolReady())
+        << "a current-framing READY must never be reported as a stale v1 child";
+    EXPECT_EQ(resp.requestId, kUnsolicitedRequestId);
+    EXPECT_TRUE(proxy::protocolVersionAccepted(resp.result))
+        << "the v2 handshake must accept the child's advertised version";
+
+    client.join();
+}

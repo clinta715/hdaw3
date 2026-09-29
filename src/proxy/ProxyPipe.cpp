@@ -340,8 +340,7 @@ void PipeServer::noteDesync(const char* why) {
     if (!desynced_.exchange(true, std::memory_order_relaxed)) {
         HDAW_LOG("proxy", "pipe desynced: " + std::string(why) + " (pipe=" + name
             + ") — a late reply may still be queued; the next exchange discards "
-              "reply types it does not expect (best effort: the protocol has no "
-              "correlation id)");
+              "any reply whose correlation id is not its current request's");
     }
 }
 
@@ -349,13 +348,26 @@ void PipeServer::noteInSync() {
     desynced_.store(false, std::memory_order_relaxed);
 }
 
-void PipeServer::noteUnexpectedReply(MessageType got, MessageType expected, bool discarded) {
-    if (discarded)
-        staleDiscards_.fetch_add(1, std::memory_order_relaxed);
+void PipeServer::noteUnexpectedReply(MessageType got, MessageType expected,
+                                     uint32_t gotId, uint32_t myId) {
+    // Always a DISCARD now: the id proves the reply is not this exchange's
+    // answer (a late reply from an earlier request, or a protocol error). The
+    // counter is the observable proof tests assert on.
+    staleDiscards_.fetch_add(1, std::memory_order_relaxed);
     HDAW_LOG("proxy", std::string("STALE/UNEXPECTED reply type=") + replyTypeName(got)
-        + " expected=" + replyTypeName(expected)
-        + (discarded ? " — discarded" : " — returned to caller (pipe believed in sync)")
-        + " (pipe=" + name + ")");
+        + " requestId=" + std::to_string(gotId)
+        + " (mine=" + std::to_string(myId) + ", expected=" + replyTypeName(expected) + ")"
+        + " — discarded" + " (pipe=" + name + ")");
+}
+
+uint32_t PipeServer::allocateRequestId() {
+    // fetch_add yields the previous value; +1 makes the first id 1 (0 is
+    // reserved). On wrap the atomic returns 0xFFFFFFFF -> +1 == 0, which is
+    // reserved, so skip it and take the next.
+    uint32_t id = requestIdCounter_.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (id == kUnsolicitedRequestId)
+        id = requestIdCounter_.fetch_add(1, std::memory_order_relaxed) + 1;
+    return id;
 }
 
 void PipeServer::routeUnsolicitedEditorClosed() {
@@ -445,12 +457,34 @@ PipeServer::Exchange::~Exchange() {
 
 bool PipeServer::Exchange::sendRequest(const ProxyMessage& msg, DWORD timeoutMs) {
     if (!acquired_) return false;
-    return srv_.sendMsgBoundedRaw(msg, timeoutMs);
+    ProxyMessage stamped = msg;
+    stamped.requestId = srv_.allocateRequestId();
+    if (!srv_.sendMsgBoundedRaw(stamped, timeoutMs)) return false;
+    currentRequestId_ = stamped.requestId;
+    haveRequest_ = true;
+    return true;
 }
 
 bool PipeServer::Exchange::sendRequestUnbounded(const ProxyMessage& msg) {
     if (!acquired_) return false;
-    return srv_.sendMsgRaw(msg);
+    ProxyMessage stamped = msg;
+    stamped.requestId = srv_.allocateRequestId();
+    if (!srv_.sendMsgRaw(stamped)) return false;
+    currentRequestId_ = stamped.requestId;
+    haveRequest_ = true;
+    return true;
+}
+
+bool PipeServer::Exchange::sendContinuation(const ProxyMessage& msg, DWORD timeoutMs) {
+    if (!acquired_) return false;
+    if (!haveRequest_) {
+        HDAW_LOG("proxy", "sendContinuation with no current request — programming "
+                          "error (a continuation must share its request's id)");
+        return false;
+    }
+    ProxyMessage stamped = msg;
+    stamped.requestId = currentRequestId_;
+    return srv_.sendMsgBoundedRaw(stamped, timeoutMs);
 }
 
 bool PipeServer::Exchange::receiveReply(ProxyResponse& out, MessageType expected,
@@ -465,6 +499,17 @@ bool PipeServer::Exchange::receiveReplyReady(ProxyResponse& out, MessageType exp
 bool PipeServer::Exchange::receiveReplyImpl(ProxyResponse& out, MessageType expected,
                                            DWORD timeoutMs, bool readyBudget, bool timeoutIsDesync) {
     if (!acquired_) return false;
+#ifndef NDEBUG
+    // Programming-error tripwire: an exchange that expects a SOLICITED reply
+    // must have sent its request first. The two legal requestless awaits are
+    // the spawn READY handshake and the editor watcher's EDITOR_CLOSED wait.
+    if (!haveRequest_ && expected != MessageType::EDITOR_CLOSED
+        && expected != MessageType::READY) {
+        HDAW_LOG("proxy", std::string("receiveReply(") + replyTypeName(expected)
+            + ") with no request sent on this exchange — programming error (pipe="
+            + srv_.name + ")");
+    }
+#endif
     for (;;) {
         ProxyResponse r{};
         const bool ok = readyBudget ? srv_.receiveRespRaw(r)
@@ -477,7 +522,48 @@ bool PipeServer::Exchange::receiveReplyImpl(ProxyResponse& out, MessageType expe
             return false;
         }
 
-        if (r.type == expected) {
+        // UNSOLICITED (id 0 by design): the child's editor window closed on
+        // its own. No request produces this type; routing it to the handler
+        // and continuing keeps it from being handed to a caller that never
+        // asked for it.
+        if (r.requestId == kUnsolicitedRequestId
+            && r.type == MessageType::EDITOR_CLOSED) {
+            srv_.routeUnsolicitedEditorClosed();
+            continue;
+        }
+
+        // LEGACY v1 CHILD (Gate 4/15): a child built before the correlation-id
+        // framing answers READY in the OLD {type, result, dataSize, data}
+        // layout, so its reply is NOT id 0 — the id match below would DISCARD
+        // it and the spawn would die by TIMEOUT, hiding the real cause. Only a
+        // requestless await may take this path (a solicited exchange must
+        // still prove the reply is its own by id), and the caller
+        // (ProxyProcessManager::spawnPluginHost) turns the flag into an
+        // immediate, explicit spawn failure.
+        if (!haveRequest_ && isLegacyV1ReadyReply(r)) {
+            srv_.legacyProtocolReady_.store(true, std::memory_order_relaxed);
+            out = r;
+            return true;
+        }
+
+        // OUR reply: the id matches this guard's CURRENT request AND the type
+        // is either the expected one or a STATE_CHUNK continuation (the child
+        // continues a chunked reply with the same id; the caller's own length
+        // checks decide how many it consumes).
+        //
+        // The first clause covers the REQUESTLESS AWAITS (the spawn READY
+        // handshake): the parent sends nothing, so the child's reply carries
+        // kUnsolicitedRequestId and there is no id to match. Only legal while
+        // no request has been sent on this exchange — once one has, a reply
+        // must carry ITS id (the generic id-0 rule cannot shadow it).
+        if (!haveRequest_ && r.requestId == kUnsolicitedRequestId && r.type == expected) {
+            srv_.noteInSync();
+            out = r;
+            return true;
+        }
+
+        if (haveRequest_ && r.requestId == currentRequestId_
+            && (r.type == expected || r.type == MessageType::STATE_CHUNK)) {
             // We just read the reply we asked for: the stream is provably in
             // sync at this point, so the desync hint can be cleared.
             srv_.noteInSync();
@@ -485,41 +571,16 @@ bool PipeServer::Exchange::receiveReplyImpl(ProxyResponse& out, MessageType expe
             return true;
         }
 
-        if (r.type == MessageType::STATE_CHUNK) {
-            // Continuation of a chunked reply: the child answers a chunked GET
-            // with a header plus N of these, and the caller's own length
-            // checks decide how many it consumes. Never a stray type.
-            out = r;
-            return true;
-        }
-
-        if (r.type == MessageType::EDITOR_CLOSED) {
-            // UNSOLICITED: the child's editor window closed on its own. No
-            // request produces this type, so handing it to the caller would
-            // give the caller an "answer" it never asked for AND swallow a real
-            // editor-close notification. Route it to the handler and keep
-            // waiting inside the same budget.
-            srv_.routeUnsolicitedEditorClosed();
-            continue;
-        }
-
-        // A reply for some OTHER transaction: a late reply from an exchange
-        // that already timed out, or a genuine protocol error. Message-mode
+        // A reply for some OTHER request (a late reply from an exchange that
+        // already timed out, or an unexpected type for our id). Message-mode
         // named pipes deliver whole messages (PIPE_TYPE_MESSAGE |
         // PIPE_READMODE_MESSAGE), so dropping one cannot corrupt the framing of
-        // the ones still queued behind it — which is what makes discarding
-        // safe. Discard it only while the pipe is known desynced (best effort:
-        // with no correlation id, a stale reply of the EXPECTED type remains
-        // indistinguishable); otherwise return it so the caller's own type
-        // check keeps reporting the error.
-        if (srv_.desynced_.load(std::memory_order_relaxed)) {
-            srv_.noteUnexpectedReply(r.type, expected, /*discarded=*/true);
-            continue;
-        }
-        srv_.noteUnexpectedReply(r.type, expected, /*discarded=*/false);
-        srv_.noteDesync("unexpected reply type inside an in-sync exchange");
-        out = r;
-        return true;
+        // the ones still queued behind it. Discarding is now CORRECT, not
+        // best-effort: the correlation id proves this reply is not ours, and
+        // it stays discarded for every future exchange too (its id can never
+        // match again).
+        srv_.noteUnexpectedReply(r.type, expected, r.requestId, currentRequestId_);
+        continue;
     }
 }
 
