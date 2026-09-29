@@ -18,8 +18,14 @@ struct ChildInfo {
     HANDLE processHandle = INVALID_HANDLE_VALUE;
     std::string pipeName;
     std::string shmName;
-    std::unique_ptr<PipeServer> pipe;
-    std::unique_ptr<ShmRegion> shm;
+    // LEASE-BASED OWNERSHIP. The map holds the owning reference; getPipe()/
+    // getShm() hand out a shared_ptr COPY taken under the mutex, so a caller
+    // can hold the object alive across a whole exchange even if a concurrent
+    // killPluginHost() erases the map entry. The object (and its OS handle) is
+    // destroyed at the LAST lease release — killPluginHost only signals +
+    // cancels (PipeServer::stop) and drops the map's own reference.
+    std::shared_ptr<PipeServer> pipe;
+    std::shared_ptr<ShmRegion> shm;
     std::atomic<bool> alive{false};
     uint64_t lastBlocksSnapshot{0};
     uint64_t lastSnapshotMs{0};
@@ -78,10 +84,27 @@ public:
     bool isAlive(uint32_t slotId);
     bool isChildAlive(uint32_t slotId) const;
 
+    // RAW pointer into the child map — NOT a lease. It is valid only while no
+    // concurrent killPluginHost()/erase for this slot can run; once the mutex
+    // is released the entry (and the ChildInfo, and its process handle) may be
+    // freed by another thread. Production code must use the lock-scoped helper
+    // terminateChild() or the leases (getPipe/getShm); this accessor remains
+    // for tests that need the raw process handle to simulate an external kill
+    // while holding the manager exclusively.
     const ChildInfo* getChildInfo(uint32_t slotId) const;
 
-    PipeServer* getPipe(uint32_t slotId);
-    ShmRegion* getShm(uint32_t slotId);
+    // Terminates the child process for `slotId` under the manager's own lock
+    // (the out-of-band "external kill" seam) — no handle is handed out and
+    // nothing can race the close. The map entry intentionally stays: the
+    // health sweep observes the exit and flags the crash, exactly as before.
+    // Returns false when the slot is unknown or has no process handle.
+    bool terminateChild(uint32_t slotId, uint32_t exitCode = 0);
+
+    // Lease copy taken under the mutex; null when the slot is unknown. Hold the
+    // returned lease for the WHOLE exchange (a kill on another thread must not
+    // free the pipe/shm under the caller).
+    std::shared_ptr<PipeServer> getPipe(uint32_t slotId);
+    std::shared_ptr<ShmRegion> getShm(uint32_t slotId);
 
     bool sendHeartbeat(uint32_t slotId);
     bool checkHealth(uint32_t slotId, uint32_t staleThresholdMs = 2000);

@@ -1,6 +1,7 @@
 #pragma once
 #include "ProxyCommon.h"
 #include <windows.h>
+#include <atomic>
 #include <string>
 
 namespace proxy {
@@ -14,6 +15,18 @@ public:
     PipeServer& operator=(const PipeServer&) = delete;
 
     bool start(DWORD* errorOut = nullptr);
+    // CONTRACT (lease-based lifetime):
+    //  * OBJECT memory lifetime = the shared_ptr<PipeServer> LEASE held by the
+    //    caller for the whole exchange (ProxyProcessManager::getPipe returns
+    //    one). The manager map entry is NOT a lifetime guarantee — any
+    //    killPluginHost erases it.
+    //  * HANDLE lifetime = until ~PipeServer, the SINGLE closer. Because the
+    //    dtor runs at the last lease release, no operation can be in flight
+    //    against a closed handle by construction.
+    //  * stop() only signals + cancels: it sets stopped_ (every subsequent I/O
+    //    call bails immediately) and CancelIoEx's any in-flight overlapped I/O
+    //    so an in-progress read/write returns false promptly. It NEVER writes
+    //    hPipe and NEVER calls CloseHandle.
     void stop();
     bool receive(ProxyMessage& msg);
     bool send(const ProxyResponse& resp);
@@ -21,7 +34,11 @@ public:
     bool sendMsgBounded(const ProxyMessage& msg, DWORD timeoutMs);
     bool receiveResp(ProxyResponse& resp);
     bool receiveRespBounded(ProxyResponse& resp, DWORD timeoutMs);
-    bool isConnected() const { return connected; }
+    // Advisory only: a bounded-receive TIMEOUT deliberately does not clear it
+    // (the connection is healthy; a late response is still consumable), so
+    // false positives are possible. The authoritative error signal is the
+    // return value of the I/O call itself.
+    bool isConnected() const { return connected.load(std::memory_order_relaxed); }
 
 private:
     // Bounded READY wait. Heavy plugins (e.g. Vital) can take several seconds
@@ -44,9 +61,17 @@ private:
     bool overlappedWrite(const void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesWritten);
 
     std::string name;
-    HANDLE hPipe = INVALID_HANDLE_VALUE;
-    bool running = false;
-    bool connected = false;
+    // Each I/O helper loads this ONCE into a local at entry and never re-reads
+    // the member mid-operation: stop() may run concurrently on another thread
+    // (cancel-only, so the loaded handle stays valid for the whole operation).
+    // The HANDLE is written only by start() and ~PipeServer (the single closer).
+    std::atomic<HANDLE> hPipe{ INVALID_HANDLE_VALUE };
+    // Set by stop(): every new I/O call bails immediately. Distinct from
+    // `connected`, which is a transport state that a bounded-receive timeout
+    // deliberately does NOT clear.
+    std::atomic<bool> stopped_{ false };
+    std::atomic<bool> running{ false };
+    std::atomic<bool> connected{ false };
 };
 
 class PipeClient {

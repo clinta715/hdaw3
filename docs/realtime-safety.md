@@ -442,6 +442,41 @@ sampler, subtractive) ARE deterministic.
   deterministic — A/B comparisons on tracks without isolated plugins are
   sample-exact.
 
+### Proxy handle lifetime, exchanges and thread affinity (2026-09-28)
+
+- **Leases cover OBJECT memory — not the exchange protocol.** `getPipe`/`getShm` return
+  `std::shared_ptr` leases; hold one for the whole exchange so a `killPluginHost` erase cannot free
+  the object under you. A lease does NOT serialize anything: two threads can interleave
+  `A-send, B-send, A-receive` on the same pipe (no per-slot exchange mutex — OPEN, below).
+- **One closer.** `hPipe` is atomic and loaded ONCE per operation; `stop()` raises `stopped_` and
+  calls `CancelIoEx` only; `~PipeServer` (Cancel → Disconnect → Close) is the sole closer and runs at
+  the last lease release, so nothing can be in flight against a closed handle. A `stop()` that
+  cleared the handle would LEAK it; one that closed it would double-close / race the I/O.
+- **Background users are why the lease exists.** The slot's state-retry worker and editor watcher run
+  on their OWN threads and use the pipe while the slot is alive, whereas kills run on the domain's
+  owning thread (`PluginManager::respawnIsolatedSlot` under `graphLock`, `spawnPluginHost`'s defensive
+  pre-kill, `~PluginProxySlot` after it joins its workers, `~ProxyProcessManager`). Those background
+  users hold leases, which is what makes the cross-thread pair safe.
+- **The audio path stays non-owning.** `processBlock`/`flushStagedParams` read the no-op-deleter
+  `shmHandle` (no real `shared_ptr` copy/final release → Gate 3); the slot holds an owning
+  `shmLease_`. Handle swaps the audio thread can observe still require `graphLock` (lessons 12/14).
+- **OPEN — NOT resolved by this patch:**
+  1. **No per-slot exchange serialization.** Nothing prevents two callers interleaving a
+     request/response pair on the same pipe; leases only keep the objects alive.
+  2. **`checkAllChildren()` reads `perSlotCrashCallbacks` unlocked.** The `for (auto id : crashedSlots)`
+     lookup in `ProxyProcessManager.cpp` runs AFTER the scoped lock has closed, while
+     `setSlotCrashCallback`/`removeSlotCrashCallback` mutate that map under the mutex — and
+     `removeSlotCrashCallback` is called from `~PluginProxySlot` on the message thread, so the health
+     monitor can look an entry up while the message thread erases it (iterator invalidation → UAF).
+     Code-evident; no runtime evidence yet.
+  3. **External state-reader affinity is UNVERIFIED.** Save / export-prepass state reads and slot
+     destruction currently share the message thread for a live domain (and the offline export domain
+     starts no timer), which makes an overlap unlikely — but nothing enforces it.
+- **Tests that pin the fixed parts:** `PluginIsolation.PipeLeaseSurvivesKill`,
+  `StopRacesInFlightBoundedRead` (`__slowstate__` + a kill landing mid-read), `EditorWatcherVsKill`,
+  `ShmLeaseSurvivesKill`, `PipeHandleNotLeakedAcrossKillCycles` (`GetProcessHandleCount` over 20
+  spawn→kill cycles), `DestroyWhileStateRetryWorkerRuns`, `DestroyWhileEditorWatcherRuns`.
+
 **Spec / plan:**
 - `docs/archive/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`
 - `docs/archive/superpowers/specs/2026-08-03-plugin-isolation-fixes-design.md`

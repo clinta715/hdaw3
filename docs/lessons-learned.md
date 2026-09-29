@@ -687,3 +687,21 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     `DestroyWhileEditorWatcherRuns` (`tests/integration/proxy/`), because the
     wild failure is intermittent.
 
+40. **Shared ownership guarantees the OBJECT, never the HANDLE — give a resource exactly
+    one closer, and cancel instead of closing against in-flight I/O.** The proxy pipe had
+    two independent hazards behind one symptom class: `getPipe` handed out a RAW
+    `PipeServer*` owned by an erasable `ChildInfo` (so a kill could free it under the
+    slot's own retry worker / editor watcher — fixed with `shared_ptr` leases), and
+    `PipeServer::stop()` closed the handle with no synchronization while bounded
+    `overlappedRead/Write` re-read the member handle after multi-second waits (fixed by:
+    `hPipe` atomic and loaded ONCE into a local per operation, `stop()` = `stopped_` flag +
+    `CancelIoEx` only, and `~PipeServer` as the sole closer — which now runs at the LAST
+    lease release, so by construction nothing is in flight against a closed handle).
+    **Rules:** (a) a lease is required for the whole exchange, but it does not keep a
+    handle valid — only the single closer's lifetime does; (b) `stop()` must NOT clear or
+    close the handle (clearing it leaks: the destructor's exchange then sees INVALID;
+    closing it double-closes / races the I/O); (c) make shared flags atomic and gate every
+    I/O entry on the stop flag; (d) prove it with a deterministic concurrent test
+    (`StopRacesInFlightBoundedRead` via `__slowstate__`) and a handle-count leak gate
+    (`GetProcessHandleCount` over N spawn→kill cycles) — a leak shows as a steady climb.
+

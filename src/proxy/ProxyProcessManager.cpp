@@ -46,8 +46,8 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     // the slot id and retry with a fresh name, up to a bounded number of
     // attempts. Without this, any held name would fail the whole spawn even
     // though a later slot id is free.
-    std::unique_ptr<PipeServer> pipeServer;
-    std::unique_ptr<ShmRegion> shmRegion;
+    std::shared_ptr<PipeServer> pipeServer;
+    std::shared_ptr<ShmRegion> shmRegion;
     std::string pipeName;
     std::string shmNameStr;
 
@@ -67,7 +67,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         pipeName = makePipeName(slotId);
         shmNameStr = makeShmName(slotId);
 
-        pipeServer = std::make_unique<PipeServer>(pipeName);
+        pipeServer = std::make_shared<PipeServer>(pipeName);
         DWORD pipeErr = 0;
         if (!pipeServer->start(&pipeErr)) {
             HDAW_LOG("proxy", "spawnPluginHost: PipeServer::start() FAILED for " + pipeName + " error=" + std::to_string(static_cast<int>(pipeErr)));
@@ -76,7 +76,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
             continue;
         }
 
-        shmRegion = std::make_unique<ShmRegion>();
+        shmRegion = std::make_shared<ShmRegion>();
         // Size the mapping for the worst-case config (see kMaxShm* in
         // ProxyCommon.h) — the child grows hdr->capacity at PREPARE for
         // multi-channel plugins / large device block sizes, and both sides
@@ -202,16 +202,18 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
 
 bool ProxyProcessManager::killPluginHost(uint32_t slotId, KillMode mode) {
     HANDLE handle = INVALID_HANDLE_VALUE;
-    PipeServer* pipe = nullptr;
     {
         std::lock_guard<std::mutex> lock(mutex);
         auto it = children.find(slotId);
         if (it == children.end()) return false;
         auto& info = it->second;
         handle = info.processHandle;
-        pipe = info.pipe.get();
         info.alive.store(false);
         if (mode == KillMode::KillHard) {
+            // stop() signals + cancels in-flight I/O on the pipe; the erase
+            // drops only the MAP's lease — any lease a slot worker still holds
+            // keeps the PipeServer (and its handle) alive until that worker
+            // finishes, and ~PipeServer closes it then.
             if (info.pipe) info.pipe->stop();
             children.erase(it);
         }
@@ -269,20 +271,30 @@ const ChildInfo* ProxyProcessManager::getChildInfo(uint32_t slotId) const {
     return it != children.end() ? &it->second : nullptr;
 }
 
-PipeServer* ProxyProcessManager::getPipe(uint32_t slotId) {
+bool ProxyProcessManager::terminateChild(uint32_t slotId, uint32_t exitCode) {
     std::lock_guard<std::mutex> lock(mutex);
     auto it = children.find(slotId);
-    return it != children.end() ? it->second.pipe.get() : nullptr;
+    if (it == children.end()) return false;
+    if (it->second.processHandle == INVALID_HANDLE_VALUE) return false;
+    return TerminateProcess(it->second.processHandle, exitCode) != 0;
 }
 
-ShmRegion* ProxyProcessManager::getShm(uint32_t slotId) {
+std::shared_ptr<PipeServer> ProxyProcessManager::getPipe(uint32_t slotId) {
     std::lock_guard<std::mutex> lock(mutex);
     auto it = children.find(slotId);
-    return it != children.end() ? it->second.shm.get() : nullptr;
+    return it != children.end() ? it->second.pipe : nullptr;
+}
+
+std::shared_ptr<ShmRegion> ProxyProcessManager::getShm(uint32_t slotId) {
+    std::lock_guard<std::mutex> lock(mutex);
+    auto it = children.find(slotId);
+    return it != children.end() ? it->second.shm : nullptr;
 }
 
 bool ProxyProcessManager::sendHeartbeat(uint32_t slotId) {
-    auto* pipe = getPipe(slotId);
+    // Lease held for the WHOLE exchange: a concurrent kill only signals +
+    // cancels this pipe; it cannot free it under us.
+    auto pipe = getPipe(slotId);
     if (!pipe) return false;
 
     ProxyMessage msg{};

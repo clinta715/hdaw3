@@ -221,7 +221,15 @@ private:
     // runs processBlock (reset from prepareToPlay before streaming starts).
     int consecutiveSpinTimeouts = 0;
     std::atomic<bool> slotFailed{false};
+    // NON-OWNING audio-side handle (no-op deleter): processBlock/flushStagedParams
+    // read this lock-free — never re-own it, never take a lock for it.
     std::shared_ptr<ShmRegion> shmHandle;
+    // OWNING lease of the same region (shared_ptr copy from the manager,
+    // refreshed by migrateToNewSlot). This is what guarantees the region lives
+    // as long as the slot: the manager map entry CAN be erased by any kill
+    // (both KillModes erase), so the map is NOT a lifetime guarantee — this
+    // lease is. Released with the slot, after all teardown.
+    std::shared_ptr<ShmRegion> shmLease_;
 
     double currentSampleRate = 44100.0;
     int currentBlockSize = 512;

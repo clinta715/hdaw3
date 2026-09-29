@@ -197,11 +197,24 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   ONE in-flight bounded op (~100 ms in the normal case, ≤ one 3 s bounded pipe op worst case). **Evidence:** `PluginIsolation.DestroyWhileStateRetryWorkerRuns` (5 cycles) +
   `DestroyWhileEditorWatcherRuns` (measured destruction time inside each assertion); `PluginIsolation.*`
   53/53; canary 5/5 green before the hardening pass and the hardened build passes the canonical
-  shards complete — **2130/2130 executed, 2091 passed, 0 failures**. **UNVERIFIED FOLLOW-UPS (code-read
-  concerns only, no runtime evidence yet — do NOT treat as established hazards):** `getPipe`/`getShm`
-  return RAW pointers into `ChildInfo` that a kill may free mid-use (the pipe path additionally raises
-  a `stop()`-vs-in-flight-I/O question), and external callers (save / export threads) may read a slot's
-  state while a graph rebuild destroys it. Both need the same lifetime discipline if they are real.
+  shards complete — **2130/2130 executed, 2091 passed, 0 failures**.
+  **FOLLOW-UP RESOLVED (same session, 2026-09-28):** the raw-pointer hazard above is now FIXED —
+  `ChildInfo` owns `std::shared_ptr<PipeServer>`/`<ShmRegion>` and `getPipe`/`getShm` hand out
+  LEASES, so a kill's `children.erase` can no longer free an object another thread is using
+  (the slot's retry worker and editor watcher are the reachable cross-thread users). `PipeServer::stop()`
+  now only signals (`stopped_`) and `CancelIoEx`es; `~PipeServer` is the SOLE closer (single-closer
+  rule — a `stop()` that mirrored `hPipe` away would leak the handle, and one that closed it would
+  double-close), and every I/O path checks `stopped_` first and then uses ONE stable local handle,
+  never re-reading the member after a bounded wait. Tests: `PluginIsolation.PipeLeaseSurvivesKill`,
+  `StopRacesInFlightBoundedRead` (a kill lands while a `__slowstate__` read is in flight),
+  `EditorWatcherVsKill`, `ShmLeaseSurvivesKill`, and `PipeHandleNotLeakedAcrossKillCycles`
+  (20 spawn→lease→kill→release cycles with `GetProcessHandleCount`, growth ≤ 6). The AUDIO path stays
+  non-owning (`shmHandle`, no-op deleter, Gate 3) while the slot holds an owning `shmLease_`. This
+  patch is **lifetime/handle hardening, NOT full resolution**: the response protocol still has no
+  per-slot exchange serialization, and `checkAllChildren()` reads `perSlotCrashCallbacks` outside the
+  mutex while `~PluginProxySlot` can erase an entry — both listed as OPEN in
+  [`docs/realtime-safety.md`](realtime-safety.md), where the external-state-reader affinity is also
+  marked UNVERIFIED rather than guaranteed.
 - **Runner wart: a per-test exclusion does not survive a whole-suite unit (measured 2026-09-28).**
   `run-tests-sharded.ps1` enumerates with `--gtest_list_tests --gtest_filter=<Filter>` (so
   `*-Suite.Test` lowers the intended count) but then runs any suite with ≤ `-WholeSuiteThreshold`

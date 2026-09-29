@@ -50,7 +50,7 @@ void ProxyEditor::resized() {
 }
 
 void ProxyEditor::onOpenEditorClicked() {
-    auto* pipe = slot.getProcessManager().getPipe(slot.getSlotId());
+    auto pipe = slot.getProcessManager().getPipe(slot.getSlotId());
     if (!pipe) {
         openEditorButton.setEnabled(false);
         return;

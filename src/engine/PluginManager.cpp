@@ -1136,27 +1136,31 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
     proxyProcessMgr->setSlotCrashCallback(newSlotId,
         [proxy](uint32_t) { proxy->onChildCrashed(); });
 
-    auto* rawShm = proxyProcessMgr->getShm(newSlotId);
-    if (!rawShm) {
+    // Lease copy: the manager map entry can be erased by any concurrent kill,
+    // but this shared_ptr keeps the region alive until migrateToNewSlot hands
+    // it to the slot as its owning lease.
+    auto newShm = proxyProcessMgr->getShm(newSlotId);
+    if (!newShm) {
         // Don't leak the just-spawned child on shm-attach failure.
         proxyProcessMgr->killPluginHost(newSlotId, proxy::KillMode::KillHard);
         return false;
     }
 
-    auto newShm = std::shared_ptr<proxy::ShmRegion>(rawShm, [](proxy::ShmRegion*){});
-
-    // 2. Under graphLock: kill the old host (which FREES the old ShmRegion via
-    //    the child-map erase) and migrate (swap shmHandle to the new region)
-    //    as one atomic step invisible to the audio thread. The audio callback
-    //    does tryEnter(graphLock) in MainAudioProcessor::processBlock; on
-    //    failure it skips graph processing (returns silence), so it can never
-    //    read the freed old shmHandle in the window between kill and migrate.
-    //    This is the core fix: previously the lock was taken only around
-    //    migrateToNewSlot, leaving the kill (the actual free) racing the audio
-    //    thread's shmHandle dereference -> use-after-free. KillHard is an
-    //    immediate TerminateProcess; in the crash-recovery path the child is
-    //    already dead so the internal wait returns instantly, keeping this
-    //    critical section sub-millisecond (no allocation / IPC under the lock).
+    // 2. Under graphLock: kill the old host and migrate (swap the slot's OWNING
+    //    shm lease + the audio-side handle to the new region) as one atomic
+    //    step invisible to the audio thread. The old region is freed when
+    //    migrateToNewSlot drops the slot's old lease — NOT by the kill (the
+    //    map erase only drops the manager's own reference; the slot lease is
+    //    what kept it alive). The audio callback does tryEnter(graphLock) in
+    //    MainAudioProcessor::processBlock; on failure it skips graph processing
+    //    (returns silence), so it can never read the freed old shmHandle in the
+    //    window between kill and migrate. This is the core fix: previously the
+    //    lock was taken only around migrateToNewSlot, leaving the kill (the
+    //    actual free) racing the audio thread's shmHandle dereference ->
+    //    use-after-free. KillHard is an immediate TerminateProcess; in the
+    //    crash-recovery path the child is already dead so the internal wait
+    //    returns instantly, keeping this critical section sub-millisecond (no
+    //    allocation / IPC under the lock).
     if (graphLockPtr) graphLockPtr->enter();
     proxyProcessMgr->killPluginHost(oldSlotId, proxy::KillMode::KillHard);
     proxy->migrateToNewSlot(newSlotId, newShm);
@@ -1200,9 +1204,10 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
 void PluginManager::killProxyForTesting(uint32_t slotId)
 {
 #if HDAW_PLUGIN_ISOLATION
-    auto* info = proxyProcessMgr->getChildInfo(slotId);
-    if (info && info->processHandle != INVALID_HANDLE_VALUE)
-        TerminateProcess(info->processHandle, 0);
+    // Manager-side helper: TerminateProcess runs under the manager's own lock,
+    // so no raw process handle escapes the map (a getChildInfo() pointer could
+    // be freed by a concurrent kill).
+    proxyProcessMgr->terminateChild(slotId);
 #endif
 }
 

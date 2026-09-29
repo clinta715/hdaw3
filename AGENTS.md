@@ -18,7 +18,7 @@ SPA or Electron shell. Feature history: `README.md`; per-version changes: git lo
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 39 lessons, full narratives** (one-line index below) |
+| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 40 lessons, full narratives** (one-line index below) |
 | [`docs/architecture.md`](docs/architecture.md) | Build details, key classes, GUI-engine decoupling, beats-vs-seconds |
 | [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread rules, hardening, plugin isolation, latency/quality |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | JUCE pitfalls (scan blacklisting, setProperty no-op, FX clamping, the `small`/`rpcndr.h` include-order macro collision, lesson 35) |
@@ -147,6 +147,7 @@ downloaded), wired into the DSH profile's `cordis.patch.yml`, and checked with
 37. **A windowed render does not predict the full render** — measure the window OUT of a full render and promote its stats before gating (`buildWindowReportPayload`).
 38. **The tool boundary has a silent-acceptance class** — refuse unknown keys and non-integral numbers with shared bytes (`requireInt` truncation, unknown expectation keys, over-stated ledger aliases).
 39. **A `this`-capturing worker must be stopped and JOINED before the destructor tears anything down** — `std::jthread` joins only during MEMBER destruction (after a dtor body that already freed resources); never `detach()`; make the worker's I/O stop-aware so the join stays bounded (`PluginProxySlot`).
+40. **Shared ownership guarantees the OBJECT, not the HANDLE** — lease the pipe/shm object for the exchange (`shared_ptr` from `getPipe`/`getShm`), give the handle exactly ONE closer (`~PipeServer`), and make `stop()` signal + `CancelIoEx` rather than close (a cleared handle leaks; a closed one double-closes against in-flight I/O).
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 

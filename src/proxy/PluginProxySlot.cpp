@@ -35,9 +35,12 @@ PluginProxySlot::PluginProxySlot(ProxyProcessManager& mgr, uint32_t id,
       pluginPathForRecovery(pluginPath),
       stateFilePrefix(juce::String(mgr.getNamePrefix()))
 {
-    auto* raw = processManager.getShm(slotId);
-    if (raw)
-        shmHandle = std::shared_ptr<ShmRegion>(raw, [](ShmRegion*){});
+    // Take the region as an OWNING lease; the audio-side handle stays a
+    // non-owning view of the same object (see shmHandle/shmLease_ in the
+    // header) so the audio path is untouched.
+    shmLease_ = processManager.getShm(slotId);
+    if (shmLease_)
+        shmHandle = std::shared_ptr<ShmRegion>(shmLease_.get(), [](ShmRegion*){});
     childAlive.store(processManager.isChildAlive(slotId), std::memory_order_relaxed);
     fetchParamMetadata();
     startTimer(100);
@@ -85,7 +88,7 @@ void PluginProxySlot::prepareToPlay(double sampleRate, int samplesPerBlock) {
     currentSampleRate = sampleRate;
     currentBlockSize = samplesPerBlock;
 
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe) return;
 
     // The child wrote the hosted plugin's channel layout into the shm header
@@ -191,7 +194,7 @@ std::vector<std::pair<int, float>> PluginProxySlot::getHostWrittenParams() const
 // plugin to be loaded. Any failure (null pipe, timeout, OOB) early-returns
 // leaving 0 params â€” never hangs.
 void PluginProxySlot::fetchParamMetadata() {
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     PARAM_TRACE("P2 begin pipe=%d", pipe != nullptr ? 1 : 0);
     if (!pipe) {
         PARAM_TRACE("P2 fail pipe-null");
@@ -334,7 +337,7 @@ void PluginProxySlot::fetchParamMetadata() {
 
 int PluginProxySlot::getCurrentProgram() {
     if (crashed.load()) return 0;
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe) return 0;
     ProxyMessage msg{};
     msg.type = MessageType::GET_CURRENT_PROGRAM;
@@ -352,7 +355,7 @@ int PluginProxySlot::getCurrentProgram() {
 
 void PluginProxySlot::setCurrentProgram(int index) {
     if (crashed.load()) return;
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe) return;
     ProxyMessage msg{};
     msg.type = MessageType::SET_PROGRAM;
@@ -368,7 +371,7 @@ void PluginProxySlot::setCurrentProgram(int index) {
 
 const juce::String PluginProxySlot::getProgramName(int index) {
     if (crashed.load()) return {};
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe) return {};
     ProxyMessage msg{};
     msg.type = MessageType::GET_PROGRAM_NAME;
@@ -501,9 +504,11 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    // Use cached pointer instead of getShm() (which takes a mutex â€” forbidden
-    // on the audio thread). The pointer is valid for the proxy's lifetime:
-    // killPluginHost(fullCleanup=false) keeps the ShmRegion alive in the map.
+    // Use the cached NON-OWNING handle instead of getShm() (which takes a
+    // mutex — forbidden on the audio thread). The region's lifetime is
+    // guaranteed by this slot's OWNING lease (shmLease_), NOT by the manager
+    // map entry: any killPluginHost erases the entry (both KillModes), so the
+    // map alone would not keep it alive.
     auto shm = shmHandle;
     if (!shm || !shm->getHeader()) {
         buffer.clear();
@@ -780,7 +785,7 @@ void PluginProxySlot::reset() {
 }
 
 void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe) return;
 
     ProxyMessage msg{};
@@ -881,7 +886,7 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
 }
 
 void PluginProxySlot::setStateInformation(const void* data, int sizeInBytes) {
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe || !data || sizeInBytes <= 0) return;
 
     static constexpr DWORD kStateTimeoutMs = 3000;
@@ -989,7 +994,10 @@ bool PluginProxySlot::restartAfterCrash() {
 void PluginProxySlot::migrateToNewSlot(uint32_t newSlotId, std::shared_ptr<ShmRegion> newShm) {
     slotId = newSlotId;
     // The param set/notify rings live inside the shm region body, so they are
-    // carried automatically by the shmHandle swap below â€” no extra wiring.
+    // carried automatically by the shmHandle swap below — no extra wiring.
+    // The OWNING lease must follow the swap: dropping the old region here (and
+    // only here) is what frees it, which the caller serialises under graphLock.
+    shmLease_ = newShm;
     shmHandle = std::move(newShm);
     crashed.store(false);
     childAlive.store(true);
@@ -1001,7 +1009,7 @@ bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
     if (crashed.load(std::memory_order_relaxed) || !childAlive.load(std::memory_order_relaxed))
         return false;
     if (stopping_.load(std::memory_order_relaxed)) return false;
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe || !data || total == 0) return false;
     static constexpr DWORD kStateTimeoutMs = 3000;
     ProxyMessage msg{};
@@ -1128,7 +1136,11 @@ bool PluginProxySlot::restoreStateFromTemp() {
 }
 
 void PluginProxySlot::waitForEditorClosed() {
-    auto* pipe = processManager.getPipe(slotId);
+    // Lease held for the WHOLE loop: the watcher must keep the PipeServer alive
+    // for the lifetime of its reads (the manager map entry can be erased by any
+    // kill). This mirrors the pre-existing behaviour of capturing one pointer
+    // at entry — a respawn does NOT re-point this watcher.
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe) return;
     proxy::ProxyResponse resp{};
     // Loop until either the child dies or the dtor signals shutdown; the
@@ -1141,6 +1153,14 @@ void PluginProxySlot::waitForEditorClosed() {
                 if (editorClosedCb) editorClosedCb();
                 return;
             }
+        }
+        else if (!pipe->isConnected()) {
+            // The pipe was STOPPED (kill/dtor): every call now returns false
+            // immediately, so the 500 ms bound no longer paces this loop —
+            // back off explicitly to avoid a busy spin until the slot is torn
+            // down. A plain bounded-receive TIMEOUT deliberately keeps
+            // connected=true, so the healthy 500 ms cadence is unchanged.
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
 }
@@ -1164,7 +1184,7 @@ void PluginProxySlot::pollProgramCount() {
         return;
     ++programPollAttempts_;
 
-    auto* pipe = processManager.getPipe(slotId);
+    auto pipe = processManager.getPipe(slotId);
     if (!pipe) return;
     ProxyMessage msg{};
     msg.type = MessageType::GET_PROGRAM_COUNT;

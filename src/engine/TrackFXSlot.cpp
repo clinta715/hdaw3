@@ -41,7 +41,7 @@ void HDAW::TrackFXSlot::showEditor()
         auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());
         if (!proxySlot)
             return;
-        auto* pipe = proxySlot->getProcessManager().getPipe(proxySlot->getSlotId());
+        auto pipe = proxySlot->getProcessManager().getPipe(proxySlot->getSlotId());
         if (!pipe)
             return;
 
@@ -81,7 +81,7 @@ void HDAW::TrackFXSlot::closeEditor()
         auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());
         if (proxySlot)
         {
-            auto* pipe = proxySlot->getProcessManager().getPipe(proxySlot->getSlotId());
+            auto pipe = proxySlot->getProcessManager().getPipe(proxySlot->getSlotId());
             if (pipe)
             {
                 proxy::ProxyMessage msg{};

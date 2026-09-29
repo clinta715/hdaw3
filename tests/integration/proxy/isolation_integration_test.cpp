@@ -106,7 +106,7 @@ TEST(PluginIsolation, SpawnWithBadPluginStaysAlive) {
 
     // The proxy must remain communicable: the control loop still answers
     // PREPARE and the fallback processor makes the audio loop go live.
-    auto* pipe = mgr.getPipe(9001);
+    auto pipe = mgr.getPipe(9001);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -318,7 +318,7 @@ TEST(PluginIsolation, AudioRoundTripWithPassthrough) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(9014)) << "Child should still be alive";
 
-    auto* pipe = mgr.getPipe(9014);
+    auto pipe = mgr.getPipe(9014);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -335,7 +335,7 @@ TEST(PluginIsolation, AudioRoundTripWithPassthrough) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    auto* shm = mgr.getShm(9014);
+    auto shm = mgr.getShm(9014);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -384,7 +384,7 @@ TEST(PluginIsolation, ResizesScratchBuffersToPreparedBlockSize) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(slot));
 
-    auto* pipe = mgr.getPipe(slot);
+    auto pipe = mgr.getPipe(slot);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -401,7 +401,7 @@ TEST(PluginIsolation, ResizesScratchBuffersToPreparedBlockSize) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    auto* shm = mgr.getShm(slot);
+    auto shm = mgr.getShm(slot);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -512,7 +512,7 @@ TEST(PluginIsolation, CrashDetectionViaSelfExit) {
     ASSERT_TRUE(mgr.isAlive(9030));
 
     // PREPARE starts the audio loop.
-    auto* pipe = mgr.getPipe(9030);
+    auto pipe = mgr.getPipe(9030);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -527,7 +527,7 @@ TEST(PluginIsolation, CrashDetectionViaSelfExit) {
     pipe->receiveResp(prepareResp);
 
     // Write audio so the child processes a block and self-exits (_Exit(3)).
-    auto* shm = mgr.getShm(9030);
+    auto shm = mgr.getShm(9030);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -628,7 +628,7 @@ struct ProbePayload {
 
 // Pushes one block through the slot and decodes the transport-probe payload
 // the child echoes in channel 0 of its output.
-bool pushBlockAndReadProbe(PluginProxySlot& slot, ShmRegion* shm,
+bool pushBlockAndReadProbe(PluginProxySlot& slot, const std::shared_ptr<ShmRegion>& shm,
                            ProbePayload& out) {
     juce::AudioBuffer<float> buffer(2, 512);
     buffer.clear();
@@ -666,7 +666,7 @@ TEST(PluginIsolation, TransportClockHandoff) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     ASSERT_TRUE(mgr.isAlive(9061)) << "child should be alive after spawn";
 
-    auto* shm = mgr.getShm(9061);
+    auto shm = mgr.getShm(9061);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -725,7 +725,7 @@ TEST(PluginIsolation, MidiInjectionProxyRoundTrip) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     ASSERT_TRUE(mgr.isAlive(9461)) << "child should be alive after spawn";
 
-    auto* shm = mgr.getShm(9461);
+    auto shm = mgr.getShm(9461);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -825,7 +825,7 @@ TEST(PluginIsolation, MultiPortWidthHandoff) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     ASSERT_TRUE(mgr.isAlive(9160)) << "child should be alive after spawn";
 
-    auto* shm = mgr.getShm(9160);
+    auto shm = mgr.getShm(9160);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -904,7 +904,7 @@ TEST(PluginIsolation, SlowChildNeverStale) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     ASSERT_TRUE(mgr.isAlive(slot)) << "child should be alive after spawn";
 
-    auto* shm = mgr.getShm(slot);
+    auto shm = mgr.getShm(slot);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -978,7 +978,7 @@ TEST(PluginIsolation, LiveDropDrainsStaleOutput) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     ASSERT_TRUE(mgr.isAlive(slot)) << "child should be alive after spawn";
 
-    auto* shm = mgr.getShm(slot);
+    auto shm = mgr.getShm(slot);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -1051,7 +1051,7 @@ TEST(PluginIsolation, ControlThreadPluginExceptionContained) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     ASSERT_TRUE(mgr.isAlive(9070)) << "child should be alive after spawn";
 
-    auto* shm = mgr.getShm(9070);
+    auto shm = mgr.getShm(9070);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -1102,7 +1102,7 @@ TEST(PluginIsolation, DLLLoadAndAudioRoundTrip) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     ASSERT_TRUE(mgr.isAlive(9050)) << "Child should be alive after loading DLL";
 
-    auto* pipe = mgr.getPipe(9050);
+    auto pipe = mgr.getPipe(9050);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -1119,7 +1119,7 @@ TEST(PluginIsolation, DLLLoadAndAudioRoundTrip) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    auto* shm = mgr.getShm(9050);
+    auto shm = mgr.getShm(9050);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -1174,7 +1174,7 @@ TEST(PluginIsolation, DLLParameterEnumeration) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     ASSERT_TRUE(mgr.isAlive(9051));
 
-    auto* pipe = mgr.getPipe(9051);
+    auto pipe = mgr.getPipe(9051);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage msg{};
@@ -1209,7 +1209,7 @@ TEST(PluginIsolation, DLLStateSaveRestore) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     ASSERT_TRUE(mgr.isAlive(9052));
 
-    auto* pipe = mgr.getPipe(9052);
+    auto pipe = mgr.getPipe(9052);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage getMsg{};
@@ -1280,7 +1280,7 @@ TEST(PluginIsolation, CrashIsolationDuringProcessBlock) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(9053));
 
-    auto* pipe = mgr.getPipe(9053);
+    auto pipe = mgr.getPipe(9053);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -1296,7 +1296,7 @@ TEST(PluginIsolation, CrashIsolationDuringProcessBlock) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    auto* shm = mgr.getShm(9053);
+    auto shm = mgr.getShm(9053);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -1336,7 +1336,7 @@ TEST(PluginIsolation, DLLGracefulShutdown) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     ASSERT_TRUE(mgr.isAlive(9054));
 
-    auto* pipe = mgr.getPipe(9054);
+    auto pipe = mgr.getPipe(9054);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage shutdownMsg{};
@@ -1575,7 +1575,7 @@ TEST(PluginIsolation, HealthMonitorDetectsDeadChild) {
     ASSERT_TRUE(mgr.isAlive(9100));
 
     // Send PREPARE so the child starts its audio loop
-    auto* pipe = mgr.getPipe(9100);
+    auto pipe = mgr.getPipe(9100);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -1592,7 +1592,7 @@ TEST(PluginIsolation, HealthMonitorDetectsDeadChild) {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     // Write audio to shared memory to trigger processBlock, which calls _Exit(3)
-    auto* shm = mgr.getShm(9100);
+    auto shm = mgr.getShm(9100);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -1838,7 +1838,7 @@ TEST(PluginIsolation, GetStateRetriesAfterWrongTypeResponse) {
     // Inject exactly one stale response into the pipe: a bare GET_PARAM is
     // answered by the child with GET_PARAM_RESULT/result=0 — well-formed,
     // but the wrong type and result for a GET_STATE handshake.
-    auto* pipe = mgr.getPipe(slotId);
+    auto pipe = mgr.getPipe(slotId);
     ASSERT_NE(pipe, nullptr);
     ProxyMessage seed{};
     seed.type = MessageType::GET_PARAM;
@@ -1885,7 +1885,7 @@ TEST(PluginIsolation, GetStateRetriesWhileChildBusyInSetStateMarshal) {
     // this store and the SET marshal times out at 3 s (the control thread
     // relays a result=0). Sent raw (not via the slot) so the parent's
     // background retry worker stays out of the picture.
-    auto* pipe = mgr.getPipe(slotId);
+    auto pipe = mgr.getPipe(slotId);
     ASSERT_NE(pipe, nullptr);
     ProxyMessage hold{};
     hold.type = MessageType::SET_STATE;
@@ -2021,7 +2021,7 @@ TEST(PluginIsolation, MidiRoundTripThroughProxy) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(slotId));
 
-    auto* pipe = mgr.getPipe(slotId);
+    auto pipe = mgr.getPipe(slotId);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -2123,7 +2123,7 @@ TEST(PluginIsolation, ParamBridgeThroughProxy) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(slotId));
 
-    auto* pipe = mgr.getPipe(slotId);
+    auto pipe = mgr.getPipe(slotId);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -2214,7 +2214,7 @@ TEST(PluginIsolation, StagedParamsReachChildWithoutProcessBlock) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(slotId));
 
-    auto* pipe = mgr.getPipe(slotId);
+    auto pipe = mgr.getPipe(slotId);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -2305,7 +2305,7 @@ TEST(PluginIsolation, StagedParamsBakeIntoChildStateWithoutParentProcessBlock) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(slotId));
 
-    auto* pipe = mgr.getPipe(slotId);
+    auto pipe = mgr.getPipe(slotId);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -2383,7 +2383,7 @@ TEST(PluginIsolation, ProgramBridgeThroughProxy) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(slotId));
 
-    auto* pipe = mgr.getPipe(slotId);
+    auto pipe = mgr.getPipe(slotId);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -2433,7 +2433,7 @@ TEST(PluginIsolation, VirusWarmupWritesNoHangDump) {
     // internal passthrough processor, and the name-based family gate still runs
     // the intentional warmup pump.
     ASSERT_TRUE(mgr.spawnPluginHost("C:\\fake\\Osirus.vst3", slot));
-    auto* pipe = mgr.getPipe(slot);
+    auto pipe = mgr.getPipe(slot);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -2488,7 +2488,7 @@ TEST(PluginIsolation, RealHangWritesHangDump) {
     ProxyProcessManager mgr;
     const uint32_t slot = 9481;
     ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", slot));
-    auto* pipe = mgr.getPipe(slot);
+    auto pipe = mgr.getPipe(slot);
     ASSERT_NE(pipe, nullptr);
 
     ProxyMessage prepareMsg{};
@@ -2502,7 +2502,7 @@ TEST(PluginIsolation, RealHangWritesHangDump) {
     ASSERT_TRUE(pipe->receiveResp(resp));
     EXPECT_EQ(resp.result, 1u);
 
-    auto* shm = mgr.getShm(slot);
+    auto shm = mgr.getShm(slot);
     ASSERT_NE(shm, nullptr);
     auto* hdr = shm->getHeader();
     ASSERT_NE(hdr, nullptr);
@@ -2539,4 +2539,206 @@ TEST(PluginIsolation, RealHangWritesHangDump) {
     restoreChildEnv("TEMP", oldTemp);
     restoreChildEnv("TMP",  oldTmp);
     scratch.deleteRecursively();
+}
+
+// ========================================================================
+// Pipe/shm LEASE lifetime (root-cause fix for the raw-pointer lifetime
+// hazards). getPipe/getShm hand out a shared_ptr lease taken under the
+// manager mutex; a concurrent killPluginHost now only signals + cancels the
+// pipe and drops the MAP's reference, so the object (and its OS handle) stays
+// valid for the whole exchange and is closed by ~PipeServer at the last lease
+// release. Before the fix the map owned the object and killPluginHost/erase
+// freed it under a caller that still held the raw pointer.
+// ========================================================================
+
+// A lease taken before a kill must stay usable afterwards — and the killed
+// slot must disappear from the map. The bounded op on the dead lease must
+// FAIL cleanly (no crash, no unbounded wait).
+TEST(PluginIsolation, PipeLeaseSurvivesKill) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9501;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    auto lease = mgr.getPipe(slotId);
+    ASSERT_NE(lease, nullptr);
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+
+    // The lease still owns a live PipeServer: a bounded op on it must return
+    // cleanly (false) instead of touching a freed object.
+    ProxyResponse resp{};
+    const auto t0 = std::chrono::steady_clock::now();
+    const bool ok = lease->receiveRespBounded(resp, 500);
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    EXPECT_FALSE(ok) << "a bounded op on a lease whose child was killed must fail";
+    EXPECT_LT(elapsedMs, 3000) << "the bounded op must stay bounded after the kill";
+
+    EXPECT_FALSE(mgr.getPipe(slotId)) << "the killed slot must leave the map";
+    EXPECT_FALSE(mgr.getShm(slotId));
+}
+
+// The actual hazard: killPluginHost landing while a bounded read is IN FLIGHT
+// on a slot worker. stop() must cancel (not close) the handle, so the reader
+// returns false promptly and the process never touches a closed handle.
+// __slowstate__ parks the child inside GET_STATE for >3 s, so the read cannot
+// complete on its own before the kill lands.
+TEST(PluginIsolation, StopRacesInFlightBoundedRead) {
+    ProxyProcessManager mgr;
+
+    for (int iter = 0; iter < 5; ++iter) {
+        const uint32_t slotId = 9510u + static_cast<uint32_t>(iter);
+        ASSERT_TRUE(mgr.spawnPluginHost("__slowstate__", slotId));
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        ASSERT_TRUE(mgr.isAlive(slotId));
+
+        auto lease = mgr.getPipe(slotId);
+        ASSERT_NE(lease, nullptr);
+
+        std::atomic<bool> done{false};
+        std::atomic<bool> readOk{false};
+        std::thread reader([&] {
+            ProxyMessage msg{};
+            msg.type = MessageType::GET_STATE;
+            msg.slotId = slotId;
+            if (lease->sendMsgBounded(msg, 3000)) {
+                ProxyResponse resp{};
+                readOk.store(lease->receiveRespBounded(resp, 5000));
+            }
+            done.store(true);
+        });
+
+        // Let the read actually enter ReadFile; the child cannot answer.
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        ASSERT_FALSE(done.load())
+            << "iter " << iter << ": the read must still be in flight when the kill lands";
+
+        const auto t0 = std::chrono::steady_clock::now();
+        mgr.killPluginHost(slotId, KillMode::KillHard);
+        reader.join();
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+
+        EXPECT_TRUE(done.load());
+        EXPECT_FALSE(readOk.load())
+            << "iter " << iter << ": the cancelled in-flight read must fail cleanly";
+        EXPECT_LT(elapsedMs, 3000)
+            << "iter " << iter << ": kill must unblock the in-flight read promptly";
+        EXPECT_FALSE(mgr.getPipe(slotId))
+            << "iter " << iter << ": killed slot must leave the map";
+    }
+}
+
+// The slot's editor watcher (a `this`-capturing thread parked in a bounded
+// pipe read) against a kill from another thread: the watcher must observe the
+// cancelled pipe, keep looping, and be joined by the destructor — bounded, no
+// crash, no read against a closed handle.
+TEST(PluginIsolation, EditorWatcherVsKill) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9520;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    std::optional<PluginProxySlot> slot;
+    slot.emplace(mgr, slotId, "StateEcho");
+
+    slot->startEditorWatcher();
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    // Kill the child out from under the watcher's in-flight 500 ms read.
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    const auto t0 = std::chrono::steady_clock::now();
+    slot.reset(); // <- the destructor under test (joins the watcher)
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    EXPECT_LT(elapsedMs, 1500)
+        << "destruction with the watcher running against a killed child took "
+        << elapsedMs << " ms — the watcher must be joined, never detached";
+}
+
+// The shm region must be kept alive by the SLOT'S lease, not by the manager
+// map: a kill erases the entry, and the region must still be readable.
+TEST(PluginIsolation, ShmLeaseSurvivesKill) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9530;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    auto shmLease = mgr.getShm(slotId);
+    ASSERT_NE(shmLease, nullptr);
+    auto* hdr = shmLease->getHeader();
+    ASSERT_NE(hdr, nullptr);
+    // Parent-written field: proves the mapping is live and unmodified.
+    EXPECT_EQ(hdr->capacity, 1024u);
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+
+    EXPECT_NE(shmLease->getHeader(), nullptr)
+        << "the lease must keep the ShmRegion alive after the map entry is erased";
+    EXPECT_EQ(shmLease->getHeader()->capacity, 1024u)
+        << "the leased region must still be readable after the kill";
+    EXPECT_FALSE(mgr.getShm(slotId)) << "the killed slot must leave the map";
+}
+
+// LEAK GATE — the single-closer rule. stop() must NOT close the handle (a
+// stop() that mirrored the handle away from the dtor would leak it; a stop()
+// that closed it would double-close), and ~PipeServer must close it exactly
+// once, at the last lease release. Cycles: spawn -> take BOTH leases ->
+// KillHard -> drop the leases (PipeServer + ShmRegion destroyed) and measure
+// the process handle count. A leaked handle shows as a steady climb (~1/cycle).
+TEST(PluginIsolation, PipeHandleNotLeakedAcrossKillCycles) {
+    ProxyProcessManager mgr;
+    constexpr int kCycles = 20;
+    std::vector<DWORD> counts;
+
+    DWORD n0 = 0;
+    ASSERT_TRUE(GetProcessHandleCount(GetCurrentProcess(), &n0));
+    counts.push_back(n0);
+
+    for (int i = 0; i < kCycles; ++i) {
+        const uint32_t slotId = 9560u + static_cast<uint32_t>(i);
+        ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+
+        auto pipeLease = mgr.getPipe(slotId);
+        auto shmLease = mgr.getShm(slotId);
+        ASSERT_NE(pipeLease, nullptr);
+        ASSERT_NE(shmLease, nullptr);
+
+        mgr.killPluginHost(slotId, KillMode::KillHard);
+        EXPECT_FALSE(mgr.getPipe(slotId)) << "iter " << i << ": slot must leave the map";
+
+        // Destroy the leased objects -> ~PipeServer closes the pipe handle,
+        // ~ShmRegion unmaps + closes the mapping handle.
+        pipeLease.reset();
+        shmLease.reset();
+
+        DWORD n = 0;
+        ASSERT_TRUE(GetProcessHandleCount(GetCurrentProcess(), &n));
+        counts.push_back(n);
+    }
+
+    std::string trace;
+    for (size_t i = 0; i < counts.size(); ++i) {
+        trace += std::to_string(counts[i]);
+        if (i + 1 < counts.size()) trace += ",";
+    }
+    std::fprintf(stderr, "MARK handlecount baseline=%lu final=%lu series=%s\n",
+                 static_cast<unsigned long>(counts.front()),
+                 static_cast<unsigned long>(counts.back()), trace.c_str());
+
+    const long growth = static_cast<long>(counts.back()) - static_cast<long>(counts.front());
+    EXPECT_LE(growth, 6)
+        << "process handle count grew by " << growth << " over " << kCycles
+        << " kill cycles (series " << trace << ") — a leaked pipe/shm HANDLE "
+           "would grow ~1 per cycle (the single-closer rule is broken)";
 }
