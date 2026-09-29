@@ -161,13 +161,13 @@ optional `verify` hook seals first and never un-seals on a verification failure.
    `project.addTrack` returns a bare index; `get_waveform_peaks` returns 200
    peak values regardless of an integral `numBins`.
 
-Full sharded run (final tree): **2135/2135 executed — 2096 passed, 39 skipped, 0 failures**, every
-shard `ran == intended` (960/960, 845/845, 330/330), 24 min wall — re-run after the engine fixes in §7–§8.
+Full sharded run (final tree): **2140/2140 executed — 2101 passed, 39 skipped, 0 failures**, every
+shard `ran == intended` (960/960, 845/845, 335/335), 19 min wall — re-run after the engine fixes in §7–§9.
 Earlier the same run was INCOMPLETE (1814 passed, one dead shard):
 `PsytranceComposition.PsyDubFiveMinutes` intermittently died. That turned out to be a pre-existing
 `PluginProxySlot` worker-lifetime use-after-free (reproduced on a pristine HEAD `f1551e4` build,
 root-caused with CDB, fixed in §7); the test now passes inside shard 1. Baseline moved in
-[`AGENTS.md`](../../AGENTS.md) (2135 tests, 0 failures); see also `docs/testing-mcp.md`.
+[`AGENTS.md`](../../AGENTS.md) (2140 tests, 0 failures); see also `docs/testing-mcp.md`.
 
 ## 6. Docs touched
 
@@ -265,4 +265,60 @@ Evidence: `PluginIsolation.PipeLeaseSurvivesKill`, `StopRacesInFlightBoundedRead
    Code-evident, no runtime evidence yet.
 3. **External state-reader affinity is UNVERIFIED** — save/export-prepass reads and slot destruction
    currently share the message thread for a live domain and the offline export domain starts no timer,
-   which makes an overlap unlikely, but nothing enforces it.
+   which makes an overlap unlikely, but nothing enforces it. **→ FIXED in §9 (items 1 and 2);
+   item 3 remains open.**
+
+## 9. Third engine fix — pipe exchange serialization + callback-map snapshot
+
+Items 1 and 2 of §8's OPEN list, both confirmed by code read, plus the message-pump hazard the fix
+itself introduced:
+
+1. **Exchange serialization.** `PipeServer` had no exchange-level lock, so concurrent users of one
+   slot's pipe (the 100 ms message-thread `pollProgramCount`, UI editor calls, the background
+   state-retry worker, the editor watcher) could interleave `A-send, B-send, A-receive` and consume
+   each other's replies. Added `PipeServer::Exchange` (RAII): ONE guard spanning a full
+   request→response transaction including `STATE_CHUNK` continuations; blocking acquisition for
+   worker/command paths, `std::try_to_lock` + skip for the periodic `pollProgramCount` (a blocking
+   acquisition there would stall the JUCE message pump while a state exchange holds the lock across
+   seconds of retries) and `try_lock`-per-iteration for the editor watcher's unrequested-await loop;
+   one-way `sendHeartbeat` under the same lock; connection/`connected` transitions owned by the
+   guarded path. Documented LOCK ORDER: LEASE first, then the Exchange; never call back into
+   `ProxyProcessManager` while holding it; `stop()` takes neither lock (it signals + `CancelIoEx`s,
+   which is what unblocks a waiting exchange). Reentrancy: non-recursive mutex,
+   `verifyStateApplied` calls the already-guarded `getStateInformation` sequentially (plus an
+   NDEBUG-only lock-owner tripwire). Every production pipe I/O now runs inside an Exchange — the
+   src-wide grep for raw `->send*/receive*` returns no matches.
+2. **Callback-map snapshot.** `checkAllChildren()` looked up and invoked `perSlotCrashCallbacks`
+   AFTER releasing `mutex`, while `set`/`removeSlotCrashCallback` mutate the map under it (and
+   `removeSlotCrashCallback` runs from `~PluginProxySlot` on the message thread) → iterator
+   invalidation. Now `invokeCrashCallbacks(ids)` snapshots the `std::function`s under the lock and
+   invokes them OUTSIDE it (callbacks re-enter `PluginManager`/`CrashRecoveryManager`, so the lock
+   must not be held during the call). Contract documented in `ProxyProcessManager.h`: a callback
+   removed concurrently with a sweep may still fire once (snapshot semantics).
+
+Evidence: `PluginIsolation.*` **79/79** (74 + `ConcurrentExchangesDoNotMisattribute`,
+`UnsolicitedEditorClosedIsRoutedNotConsumed`, `DesyncedPipeDiscardsUnexpectedReply`),
+`FxMidiInjection/InternalFx/Clap` 35 passed (env skips expected), `CrashRecovery.*` +
+`ProxyNamespace*.*` 16/16 plus `CrashCallbackSweepSnapshotsUnderTheLockAndInvokesOutside`; PsyDub
+canary PASS (616.9 s); canonical shards complete — **2140/2140 executed, 2101 passed, 0 failures**
+(960/845/335). Gate 3 checked: the guard/mutex is never touched by `processBlock`/
+`flushStagedParams` (they read only the non-owning `shmHandle`).
+
+**STILL OPEN — stale replies after a timeout (needs a protocol decision, NOT fixed).** A bounded
+receive that times out deliberately leaves its reply queued, and `ProxyMessage`/`ProxyResponse` are
+exactly 256 bytes with no correlation id and no end-of-response marker (a `GET_STATE` answer is a
+header plus N chunks declared in the header). After a timeout the queued-message count is therefore
+unbounded and a same-type late reply cannot be distinguished from a fresh one. What the code does
+today is best-effort: an unsolicited `EDITOR_CLOSED` is routed to its callback, a timeout sets an
+internal `desynced_`, and unexpected reply types are logged/discarded while desynced —
+`DesyncedPipeDiscardsUnexpectedReply` pins that behaviour, and it is explicitly NOT a correctness
+guarantee. Real options: (i) add a correlation id echoed by the child (`data[244]`→`[240]` in both
+structs, touching every message path and the chunk math) or (ii) make a timeout fatal/desyncing and
+restart the connection before another exchange. §8's item 3 (external state-reader affinity) also
+remains UNVERIFIED.
+
+**Run note:** one canonical attempt was invalidated by an orphaned `hdaw_tests.exe` left by a
+cancelled verification run — it produced two `RenderSequenceRelease.*` failures and a shard death at
+`PsytranceComposition.NewPacksLongRenderWithFxAutomation`. Both failing tests pass solo, and the
+clean re-run above is green; treat a red result while any orphan test/plugin process is alive as
+contaminated (kill leftovers first).

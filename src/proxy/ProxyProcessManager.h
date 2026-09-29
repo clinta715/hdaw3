@@ -11,6 +11,7 @@
 #include <functional>
 #include <thread>
 #include <atomic>
+#include <vector>
 
 namespace proxy {
 
@@ -112,6 +113,32 @@ public:
     void setSlotCrashCallback(uint32_t slotId, CrashCallback cb);
     void removeSlotCrashCallback(uint32_t slotId);
     void checkAllChildren(uint32_t staleThresholdMs = 2000);
+
+    // Invoke the per-slot crash callbacks for `ids`, OUTSIDE the manager
+    // mutex. `perSlotCrashCallbacks` is mutated under `mutex` by
+    // setSlotCrashCallback/removeSlotCrashCallback, and the latter runs from
+    // ~PluginProxySlot on the message thread while the health-monitor thread
+    // sweeps the map — so the sweep must NOT hold iterators/references into it
+    // while invoking (the callbacks re-enter PluginManager /
+    // CrashRecoveryManager, so the lock must not be held during the call
+    // either).
+    //
+    // CONTRACT (snapshot semantics): the callback set is snapshotted under the
+    // lock (each std::function is COPIED) and then invoked after the lock is
+    // released. A callback removed concurrently with a sweep may therefore
+    // still be invoked ONCE — that is intended: the map itself is never read
+    // while another thread mutates it, so the sweep can neither crash nor
+    // observe a half-erased entry. For the same reason a callback registered
+    // after the snapshot is not invoked by that sweep; the next sweep sees it.
+    void invokeCrashCallbacks(const std::vector<uint32_t>& ids);
+
+    // TEST-ONLY seam, read on the LIVE invoke path: called exactly once by
+    // invokeCrashCallbacks AFTER the callback snapshot has been taken under the
+    // lock and BEFORE any callback is invoked. It lets a test deterministically
+    // erase a callback in the snapshot→invoke window (the window the snapshot
+    // exists to make safe) instead of trying to hit a probabilistic race.
+    // Production never sets it.
+    std::function<void()> crashCallbackSnapshotHookForTest;
 
     void startHealthMonitor(uint32_t intervalMs = 2000);
     void stopHealthMonitor();

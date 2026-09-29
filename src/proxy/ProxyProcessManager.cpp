@@ -166,9 +166,20 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     HDAW_LOG("proxy", "spawnPluginHost: child spawned, waiting for READY");
 
     // Wait for READY outside the lock (with timeout)
-    // Child sends READY as a ProxyResponse
+    // Child sends READY as a ProxyResponse. This is an unsolicited await (the
+    // parent sends nothing), so the guard's expectation is the READY type
+    // itself; nothing else can be in flight on this pipe yet (it is not
+    // published to the manager map until below), but running it through the
+    // same guard keeps every pipe read on one path. The guard is SCOPED so the
+    // exchange lock is released before the ChildInfo is published under the
+    // manager's own mutex (lock order: never hold both).
     ProxyResponse readyResp{};
-    if (!pipeServer->receiveResp(readyResp)) {
+    bool ready = false;
+    {
+        PipeServer::Exchange readyEx(*pipeServer);
+        ready = readyEx.receiveReplyReady(readyResp, MessageType::READY);
+    }
+    if (!ready) {
         HDAW_LOG("proxy", "spawnPluginHost: READY timeout or pipe error for slot " + std::to_string(slotId));
         TerminateProcess(pi.hProcess, 0);
         CloseHandle(pi.hProcess);
@@ -292,18 +303,28 @@ std::shared_ptr<ShmRegion> ProxyProcessManager::getShm(uint32_t slotId) {
 }
 
 bool ProxyProcessManager::sendHeartbeat(uint32_t slotId) {
+    // Matches the legacy receiveResp() budget this call used to inherit
+    // (PipeServer::kReadyTimeoutMs on both the connect and the read).
+    static constexpr DWORD kHeartbeatTimeoutMs = 8000;
+
     // Lease held for the WHOLE exchange: a concurrent kill only signals +
     // cancels this pipe; it cannot free it under us.
     auto pipe = getPipe(slotId);
     if (!pipe) return false;
 
+    // ONE-WAY operation under the same exchange lock as every request→response
+    // transaction: the heartbeat carries no expectation of its own, but the
+    // child still answers it, so the ack is consumed inside the same guard
+    // (otherwise the next transaction would read the HEARTBEAT ack as a stale
+    // reply). No other pipe op can interleave between the send and the read.
+    PipeServer::Exchange ex(*pipe);
     ProxyMessage msg{};
     msg.type = MessageType::HEARTBEAT;
     msg.slotId = slotId;
-    if (!pipe->sendMsg(msg)) return false;
+    if (!ex.sendRequest(msg, kHeartbeatTimeoutMs)) return false;
 
     ProxyResponse resp{};
-    return pipe->receiveResp(resp);
+    return ex.receiveReply(resp, MessageType::HEARTBEAT, kHeartbeatTimeoutMs);
 }
 
 bool ProxyProcessManager::checkHealth(uint32_t slotId, uint32_t /*staleThresholdMs*/) {
@@ -390,11 +411,38 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
         }
     }
 
-    for (auto id : crashedSlots) {
-        auto it = perSlotCrashCallbacks.find(id);
-        if (it != perSlotCrashCallbacks.end())
-            it->second(id);
+    invokeCrashCallbacks(crashedSlots);
+}
+
+void ProxyProcessManager::invokeCrashCallbacks(const std::vector<uint32_t>& ids) {
+    if (ids.empty()) return;
+
+    // SNAPSHOT under the lock, INVOKE outside it. Copying the std::functions
+    // (rather than the map's nodes) is what makes this safe against a
+    // concurrent removeSlotCrashCallback from ~PluginProxySlot: the map is
+    // never touched again after this block, so no iterator, reference or
+    // erased node can be read during the invocation below. Each callback
+    // re-enters PluginManager/CrashRecoveryManager, which is exactly why the
+    // lock must be released first.
+    std::vector<std::pair<uint32_t, CrashCallback>> snapshot;
+    snapshot.reserve(ids.size());
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto id : ids) {
+            auto it = perSlotCrashCallbacks.find(id);
+            if (it != perSlotCrashCallbacks.end())
+                snapshot.emplace_back(id, it->second);
+        }
     }
+
+    // Test-only seam (the only live-path read of it): runs in the
+    // snapshot→invoke window so a test can deterministically remove a callback
+    // that was already snapshotted. Null in production.
+    if (crashCallbackSnapshotHookForTest)
+        crashCallbackSnapshotHookForTest();
+
+    for (auto& entry : snapshot)
+        entry.second(entry.first);
 }
 
 std::string ProxyProcessManager::getHostExePath() {

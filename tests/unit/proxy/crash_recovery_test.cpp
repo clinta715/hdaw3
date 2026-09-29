@@ -298,6 +298,83 @@ TEST(ProxyHealth, IdleChildNotKilledByStallDetector) {
     ppm.killPluginHost(slotId, proxy::KillMode::KillHard);
 }
 
+// DEFECT B — the crash-callback sweep used to iterate `perSlotCrashCallbacks`
+// OUTSIDE the manager mutex while setSlotCrashCallback/
+// removeSlotCrashCallback mutated that same map UNDER it (removeSlotCrashCallback
+// runs from ~PluginProxySlot on the message thread while the health-monitor
+// thread sweeps) -> iterator/reference invalidation on a mutating map.
+//
+// The fix snapshots the std::functions under the lock and invokes them after
+// releasing it. This test is DETERMINISTIC (no probabilistic stress loop): the
+// test-only `crashCallbackSnapshotHookForTest` seam runs exactly in the
+// snapshot->invoke window, so it can erase the already-snapshotted callback and
+// register a new one there. The assertions are the CONTRACT, not a race repro:
+//   1. a callback removed during the sweep still fires exactly ONCE (snapshot
+//      semantics — intended: the map is never read while another thread mutates
+//      it),
+//   2. a callback registered during the sweep is NOT invoked by that sweep (the
+//      next one sees it),
+//   3. the manager mutex is NOT held while a callback runs (the callback
+//      re-enters PluginManager/CrashRecoveryManager; try_lock inside the
+//      callback proves it without any risk of hanging the suite).
+TEST(CrashRecovery, CrashCallbackSweepSnapshotsUnderTheLockAndInvokesOutside) {
+    proxy::ProxyProcessManager ppm;
+    const uint32_t slotId = 7791;
+    const uint32_t lateSlotId = 7792;
+    ASSERT_TRUE(ppm.spawnPluginHost("__passthrough__", slotId));
+
+    std::atomic<int> earlyCalls{0};
+    std::atomic<int> lateCalls{0};
+    std::atomic<bool> invoked{false};
+    std::atomic<bool> invokedOutsideManagerLock{false};
+
+    ppm.setSlotCrashCallback(slotId, [&](uint32_t) {
+        earlyCalls.fetch_add(1);
+        invoked.store(true);
+        // The manager mutex MUST be free while a crash callback runs: the
+        // callback re-enters PluginManager/CrashRecoveryManager, and the
+        // health-monitor thread mutates the callback map under that mutex.
+        // try_lock cannot deadlock — it just reports.
+        if (ppm.mutex.try_lock()) {
+            invokedOutsideManagerLock.store(true);
+            ppm.mutex.unlock();
+        }
+    });
+
+    bool hookRan = false;
+    ppm.crashCallbackSnapshotHookForTest = [&] {
+        // Runs AFTER the snapshot, BEFORE any invoke, with the manager mutex
+        // released (the two map operations below must not deadlock).
+        ppm.removeSlotCrashCallback(slotId);
+        ppm.setSlotCrashCallback(lateSlotId, [&](uint32_t) { lateCalls.fetch_add(1); });
+        hookRan = true;
+    };
+
+    ppm.invokeCrashCallbacks({ slotId, lateSlotId });
+
+    EXPECT_TRUE(hookRan) << "the snapshot->invoke seam must actually run";
+    EXPECT_TRUE(invoked.load()) << "the snapshotted callback must be invoked";
+    EXPECT_TRUE(invokedOutsideManagerLock.load())
+        << "a crash callback ran while the manager mutex was held — the sweep "
+           "must invoke OUTSIDE the lock (the callback re-enters the manager)";
+    EXPECT_EQ(earlyCalls.load(), 1)
+        << "snapshot semantics: a callback removed during the sweep still fires "
+           "exactly once (the map is never touched while it mutates)";
+    EXPECT_EQ(lateCalls.load(), 0)
+        << "a callback registered after the snapshot must not be invoked by that "
+           "sweep — it is picked up by the next one";
+
+    // The next sweep sees the newly registered callback (the snapshot was not
+    // a one-off).
+    ppm.invokeCrashCallbacks({ slotId, lateSlotId });
+    EXPECT_EQ(lateCalls.load(), 1);
+    EXPECT_EQ(earlyCalls.load(), 1) << "the removed callback must stay removed";
+
+    ppm.crashCallbackSnapshotHookForTest = nullptr;
+    ppm.killPluginHost(slotId, proxy::KillMode::KillHard);
+    ppm.killPluginHost(lateSlotId, proxy::KillMode::KillHard);
+}
+
 // T5 (Fix E1): a dead child is flagged exactly once — subsequent health
 // sweeps over the same ChildInfo must not re-fire the crash callback.
 TEST(CrashRecovery, CrashCallbackFiresOncePerDeath) {

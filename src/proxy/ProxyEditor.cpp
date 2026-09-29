@@ -61,13 +61,16 @@ void ProxyEditor::onOpenEditorClicked() {
     msg.slotId = slot.getSlotId();
 
     static constexpr DWORD kShowEditorTimeoutMs = 2000;
-    if (!pipe->sendMsgBounded(msg, kShowEditorTimeoutMs)) {
+    // ONE exchange: the SHOW_EDITOR request and its reply stay atomic against
+    // the background state-retry worker / editor watcher on the same pipe.
+    PipeServer::Exchange ex(*pipe);
+    if (!ex.sendRequest(msg, kShowEditorTimeoutMs)) {
         openEditorButton.setEnabled(false);
         return;
     }
 
     proxy::ProxyResponse resp{};
-    if (!pipe->receiveRespBounded(resp, kShowEditorTimeoutMs)) {
+    if (!ex.receiveReply(resp, proxy::MessageType::SHOW_EDITOR, kShowEditorTimeoutMs)) {
         openEditorButton.setEnabled(false);
         return;
     }

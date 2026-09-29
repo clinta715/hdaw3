@@ -460,22 +460,37 @@ sampler, subtractive) ARE deterministic.
 - **The audio path stays non-owning.** `processBlock`/`flushStagedParams` read the no-op-deleter
   `shmHandle` (no real `shared_ptr` copy/final release → Gate 3); the slot holds an owning
   `shmLease_`. Handle swaps the audio thread can observe still require `graphLock` (lessons 12/14).
-- **OPEN — NOT resolved by this patch:**
-  1. **No per-slot exchange serialization.** Nothing prevents two callers interleaving a
-     request/response pair on the same pipe; leases only keep the objects alive.
-  2. **`checkAllChildren()` reads `perSlotCrashCallbacks` unlocked.** The `for (auto id : crashedSlots)`
-     lookup in `ProxyProcessManager.cpp` runs AFTER the scoped lock has closed, while
-     `setSlotCrashCallback`/`removeSlotCrashCallback` mutate that map under the mutex — and
-     `removeSlotCrashCallback` is called from `~PluginProxySlot` on the message thread, so the health
-     monitor can look an entry up while the message thread erases it (iterator invalidation → UAF).
-     Code-evident; no runtime evidence yet.
-  3. **External state-reader affinity is UNVERIFIED.** Save / export-prepass state reads and slot
+- **Exchanges are serialized, not correlated.** `PipeServer::Exchange` (RAII) spans ONE full
+  request→response transaction — every send plus all replies, `STATE_CHUNK` continuations included;
+  `waitForEditorClosed` uses `try_lock` per iteration (never holds the lock while awaiting an
+  unsolicited message) and `pollProgramCount` skips its 100 ms tick when the lock is busy (a
+  blocking acquisition there would stall the message pump). LOCK ORDER: take the `shared_ptr` LEASE
+  from `getPipe` first, then the Exchange; never call back into `ProxyProcessManager` while holding
+  it; `stop()` takes neither lock (it signals + `CancelIoEx`s, which is what unblocks a waiting
+  exchange).
+- **OPEN — NOT resolved by these patches:**
+  1. **Stale replies after a timeout (UNRESOLVED, needs a design decision).** A bounded receive that
+     times out deliberately leaves its reply queued, and the protocol has NO correlation id and NO
+     end-of-response marker (256-byte structs; `GET_STATE` = header + N chunks declared in the
+     header). After a timeout the queued-message count is unbounded and a same-type late reply is
+     indistinguishable from a fresh one. Current mitigation is best-effort only: an unsolicited
+     `EDITOR_CLOSED` is routed to its callback, a timeout sets `desynced_`, unexpected types are
+     logged and discarded while desynced. Real fixes: (i) a protocol correlation id echoed by the
+     child (`data[244]`→`[240]`, every message path + chunk math) or (ii) timeout⇒desync⇒restart the
+     connection before the next exchange.
+  2. **External state-reader affinity is UNVERIFIED.** Save / export-prepass state reads and slot
      destruction currently share the message thread for a live domain (and the offline export domain
-     starts no timer), which makes an overlap unlikely — but nothing enforces it.
+     starts no timer), which makes an overlap unlikely — but nothing enforces it, and the call chains
+     (autosave, export-chain pre-pass, offline render-graph teardown) have not been traced.
+  3. **`checkAllChildren()` callback-map race — FIXED** (`invokeCrashCallbacks` snapshots the
+     `std::function`s under the manager mutex and invokes them outside it; contract documented in
+     `ProxyProcessManager.h`; pinned by `CrashCallbackSweepSnapshotsUnderTheLockAndInvokesOutside`).
 - **Tests that pin the fixed parts:** `PluginIsolation.PipeLeaseSurvivesKill`,
   `StopRacesInFlightBoundedRead` (`__slowstate__` + a kill landing mid-read), `EditorWatcherVsKill`,
   `ShmLeaseSurvivesKill`, `PipeHandleNotLeakedAcrossKillCycles` (`GetProcessHandleCount` over 20
-  spawn→kill cycles), `DestroyWhileStateRetryWorkerRuns`, `DestroyWhileEditorWatcherRuns`.
+  spawn→kill cycles), `DestroyWhileStateRetryWorkerRuns`, `DestroyWhileEditorWatcherRuns`,
+  `ConcurrentExchangesDoNotMisattribute`, `UnsolicitedEditorClosedIsRoutedNotConsumed`,
+  `DesyncedPipeDiscardsUnexpectedReply`.
 
 **Spec / plan:**
 - `docs/archive/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`

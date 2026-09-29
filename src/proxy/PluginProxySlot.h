@@ -198,8 +198,21 @@ public:
     void setSlotDestroyedFn(SlotDestroyedFn fn) { slotDestroyedFn = std::move(fn); }
 
     using EditorClosedCallback = std::function<void()>;
-    void setEditorClosedCallback(EditorClosedCallback cb) { editorClosedCb = std::move(cb); }
+    void setEditorClosedCallback(EditorClosedCallback cb) {
+        editorClosedCb = std::move(cb);
+        registerEditorClosedRouting();
+    }
     void startEditorWatcher();
+
+    // OPPORTUNISTIC refresh of the child's program count (CLAP preset
+    // databases build asynchronously in the child — a u-he crawl is ~10 s, far
+    // beyond the bounded pipe exchanges — so the construction-time
+    // GET_PROGRAM_COUNT returns the 1-program default). Called every 100 ms
+    // from the message-thread timer at a ~1 s cadence, bounded to 45 attempts.
+    // ACQUIRES THE EXCHANGE LOCK WITH try_lock AND SKIPS WHEN BUSY — it must
+    // NEVER block (it runs on the JUCE message thread). Public so that
+    // promptness contract is directly testable.
+    void pollProgramCount();
 
 private:
     ProxyProcessManager& processManager;
@@ -238,10 +251,6 @@ private:
     int reportedNumOutputs = 0;
 
     void fetchParamMetadata();
-    // CLAP preset databases build asynchronously in the child (the crawl can
-    // take ~10s, far beyond the 3s bounded pipe exchanges); refresh the
-    // program count until the child reports more than the default program.
-    void pollProgramCount();
     // Flush parent-local staged params into the shm paramSet ring. Runs on
     // the 100ms message-thread timer — the SOLE writer of the paramSet ring
     // (the old audio-thread flush inside processBlock was removed because the
@@ -254,6 +263,13 @@ private:
     CrashNotifyFn crashRecoveryNotifier;
     RespawnRequestFn respawnRequestFn;
     SlotDestroyedFn slotDestroyedFn;
+
+    // Point the current pipe's unsolicited-EDITOR_CLOSED routing at this slot's
+    // editorClosedCb. Called whenever the callback is (re)set and from
+    // prepareToPlay — the first call after a respawn migrated the slot onto a
+    // NEW PipeServer. A no-op when no callback is registered or the slot has no
+    // pipe yet.
+    void registerEditorClosedRouting();
 
     void waitForEditorClosed();
 

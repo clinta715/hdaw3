@@ -705,3 +705,23 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     (`StopRacesInFlightBoundedRead` via `__slowstate__`) and a handle-count leak gate
     (`GetProcessHandleCount` over N spawn→kill cycles) — a leak shows as a steady climb.
 
+41. **An exchange lock fixes CONCURRENCY, not STALENESS.** One proxy pipe carries several
+    concurrent users per slot (message-thread timer `pollProgramCount`, UI editor calls, the
+    background state-retry worker, the editor watcher) and `PipeServer` had no exchange-level
+    serialization, so `A-send, B-send, A-receive` could consume each other's replies. Fixed with
+    ONE `Exchange` guard spanning each full transaction (all sends + all replies, `STATE_CHUNK`
+    continuations included), `try_lock`-per-iteration for the unrequested-await loop, a one-way
+    path for heartbeats, and a documented lock order (take the LEASE first; never call back into
+    `ProxyProcessManager` while holding the guard; `stop()` never takes it; never block a
+    periodic/message-thread path on it — `try_lock` + skip).
+    **What that does NOT fix:** a bounded receive that times out leaves its reply QUEUED (by
+    design — "a late response is still consumable"), and `ProxyMessage`/`ProxyResponse` are
+    exactly 256 bytes with NO correlation id and NO end-of-response marker (a `GET_STATE` answer
+    is a header plus N chunks whose count lives in the header). So after a timeout the number of
+    queued messages is unbounded, and a stale reply of the SAME type is indistinguishable from the
+    fresh one. Type-matching + a `desynced_` flag + logged discards (plus routing an unsolicited
+    `EDITOR_CLOSED` to its callback) is best-effort, NOT a guarantee. Real fixes: (i) add a
+    correlation id echoed by the child (shrinks `data[244]`→`[240]`, touches every message path and
+    the chunk math) or (ii) make a timeout fatal/desyncing and restart the connection before the
+    next exchange. Choose one deliberately; do not ship a drain window as "fixed".
+

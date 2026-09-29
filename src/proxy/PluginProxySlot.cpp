@@ -73,6 +73,13 @@ PluginProxySlot::~PluginProxySlot() {
     if (editorWatcherThread.joinable())
         editorWatcherThread.join();
 
+    // Both this-capturing workers are joined above, so nothing else can route
+    // through the slot callback: drop the pipe's handler now. It captures
+    // `this`, and the PipeServer is owned by the manager map + leases — not by
+    // the slot — so it must not be left pointing at a freed slot.
+    if (auto pipe = processManager.getPipe(slotId))
+        pipe->setEditorClosedHandler(nullptr);
+
     processManager.removeSlotCrashCallback(slotId);
     processManager.killPluginHost(slotId, KillMode::KillGraceful);
     releaseResources();
@@ -127,10 +134,20 @@ void PluginProxySlot::prepareToPlay(double sampleRate, int samplesPerBlock) {
     // before answering (see the PREPARE handler). If the child is dead or
     // hung, this still prevents blocking the message thread (which holds
     // graphLock) and avoids starving the audio callback.
+    //
+    // ONE exchange: the 45 s request→response handshake is atomic against every
+    // other user of this pipe. Re-register the editor-closed routing here: this
+    // is the first call after a respawn migrated the slot to a NEW pipe
+    // (migrateToNewSlot runs under graphLock, so it must not call back into
+    // ProxyProcessManager; prepareToPlay runs after that lock is released).
+    if (editorClosedCb)
+        pipe->setEditorClosedHandler([this] { if (editorClosedCb) editorClosedCb(); });
+
     static constexpr DWORD kPrepareTimeoutMs = 45000;
-    pipe->sendMsgBounded(msg, kPrepareTimeoutMs);
+    PipeServer::Exchange ex(*pipe);
+    ex.sendRequest(msg, kPrepareTimeoutMs);
     ProxyResponse resp{};
-    pipe->receiveRespBounded(resp, kPrepareTimeoutMs);
+    ex.receiveReply(resp, MessageType::PREPARE_RESULT, kPrepareTimeoutMs);
 
     // Tell the child whether this slot belongs to an export render graph
     // (child Sleep-paces its audio loop only in that mode). Reset the
@@ -201,17 +218,24 @@ void PluginProxySlot::fetchParamMetadata() {
         return;
     }
 
+    // ONE exchange spanning the WHOLE metadata fetch: the child answers these
+    // requests strictly in order, so letting another thread interleave between
+    // them would let it consume THIS sequence's replies. The guard is released
+    // by RAII on every early return below; fetchParamMetadata runs from the
+    // slot constructor, before this pipe has any other user.
+    PipeServer::Exchange ex(*pipe);
+
     static constexpr DWORD kMetaTimeoutMs = 3000;
 
     ProxyMessage countMsg{};
     countMsg.type = MessageType::GET_PARAM_COUNT;
     countMsg.slotId = slotId;
-    if (!pipe->sendMsgBounded(countMsg, kMetaTimeoutMs)) {
+    if (!ex.sendRequest(countMsg, kMetaTimeoutMs)) {
         PARAM_TRACE("P2 fail send-count");
         return;
     }
     ProxyResponse countResp{};
-    if (!pipe->receiveRespBounded(countResp, kMetaTimeoutMs)) {
+    if (!ex.receiveReply(countResp, MessageType::GET_PARAM_COUNT_RESULT, kMetaTimeoutMs)) {
         PARAM_TRACE("P2 fail recv-count");
         return;
     }
@@ -254,9 +278,9 @@ void PluginProxySlot::fetchParamMetadata() {
         infoMsg.slotId = slotId;
         std::memcpy(infoMsg.data, &i, sizeof(uint32_t));
         infoMsg.dataSize = sizeof(uint32_t);
-        if (!pipe->sendMsgBounded(infoMsg, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail info-send i=%u", i); paramCacheSize_ = 0; return; }
+        if (!ex.sendRequest(infoMsg, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail info-send i=%u", i); paramCacheSize_ = 0; return; }
         ProxyResponse infoResp{};
-        if (!pipe->receiveRespBounded(infoResp, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail info-recv i=%u", i); paramCacheSize_ = 0; return; }
+        if (!ex.receiveReply(infoResp, MessageType::GET_PARAM_INFO_RESULT, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail info-recv i=%u", i); paramCacheSize_ = 0; return; }
         if (infoResp.type != MessageType::GET_PARAM_INFO_RESULT || infoResp.result != 1) { PARAM_TRACE("P2 fail info-type i=%u", i); paramCacheSize_ = 0; return; }
 
         float defaultValue = 0.f;
@@ -286,7 +310,7 @@ void PluginProxySlot::fetchParamMetadata() {
         uint32_t got = inFirst;
         while (got < nameLen) {
             ProxyResponse chunk{};
-            if (!pipe->receiveRespBounded(chunk, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail name-recv i=%u", i); paramCacheSize_ = 0; return; }
+            if (!ex.receiveReply(chunk, MessageType::STATE_CHUNK, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail name-recv i=%u", i); paramCacheSize_ = 0; return; }
             if (chunk.type != MessageType::STATE_CHUNK) { PARAM_TRACE("P2 fail name-type i=%u", i); paramCacheSize_ = 0; return; }
             uint32_t take = std::min<uint32_t>(chunk.dataSize, nameLen - got);
             take = std::min<uint32_t>(take, sizeof(chunk.data));
@@ -304,9 +328,9 @@ void PluginProxySlot::fetchParamMetadata() {
         std::memcpy(getMsg.data, &i, sizeof(uint32_t));
         getMsg.dataSize = sizeof(uint32_t);
         float value = defaultValue;
-        if (pipe->sendMsgBounded(getMsg, kMetaTimeoutMs)) {
+        if (ex.sendRequest(getMsg, kMetaTimeoutMs)) {
             ProxyResponse getResp{};
-            if (pipe->receiveRespBounded(getResp, kMetaTimeoutMs)
+            if (ex.receiveReply(getResp, MessageType::GET_PARAM_RESULT, kMetaTimeoutMs)
                 && getResp.type == MessageType::GET_PARAM_RESULT
                 && getResp.result == 1
                 && getResp.dataSize >= sizeof(float)) {
@@ -324,9 +348,9 @@ void PluginProxySlot::fetchParamMetadata() {
     ProxyMessage progMsg{};
     progMsg.type = MessageType::GET_PROGRAM_COUNT;
     progMsg.slotId = slotId;
-    if (pipe->sendMsgBounded(progMsg, kMetaTimeoutMs)) {
+    if (ex.sendRequest(progMsg, kMetaTimeoutMs)) {
         ProxyResponse progResp{};
-        if (pipe->receiveRespBounded(progResp, kMetaTimeoutMs)
+        if (ex.receiveReply(progResp, MessageType::GET_PROGRAM_COUNT_RESULT, kMetaTimeoutMs)
             && progResp.type == MessageType::GET_PROGRAM_COUNT_RESULT
             && progResp.result == 1
             && progResp.dataSize >= sizeof(uint32_t)) {
@@ -343,9 +367,10 @@ int PluginProxySlot::getCurrentProgram() {
     msg.type = MessageType::GET_CURRENT_PROGRAM;
     msg.slotId = slotId;
     static constexpr DWORD kT = 3000;
-    if (!pipe->sendMsgBounded(msg, kT)) return 0;
+    PipeServer::Exchange ex(*pipe);
+    if (!ex.sendRequest(msg, kT)) return 0;
     ProxyResponse resp{};
-    if (!pipe->receiveRespBounded(resp, kT)) return 0;
+    if (!ex.receiveReply(resp, MessageType::GET_CURRENT_PROGRAM_RESULT, kT)) return 0;
     if (resp.type != MessageType::GET_CURRENT_PROGRAM_RESULT || resp.result != 1) return 0;
     if (resp.dataSize < sizeof(uint32_t)) return 0;
     uint32_t cur = 0;
@@ -364,9 +389,10 @@ void PluginProxySlot::setCurrentProgram(int index) {
     std::memcpy(msg.data, &idx, sizeof(uint32_t));
     msg.dataSize = sizeof(uint32_t);
     static constexpr DWORD kT = 3000;
-    pipe->sendMsgBounded(msg, kT);
+    PipeServer::Exchange ex(*pipe);
+    ex.sendRequest(msg, kT);
     ProxyResponse resp{};
-    pipe->receiveRespBounded(resp, kT);
+    ex.receiveReply(resp, MessageType::SET_PROGRAM_RESULT, kT);
 }
 
 const juce::String PluginProxySlot::getProgramName(int index) {
@@ -380,9 +406,10 @@ const juce::String PluginProxySlot::getProgramName(int index) {
     std::memcpy(msg.data, &idx, sizeof(uint32_t));
     msg.dataSize = sizeof(uint32_t);
     static constexpr DWORD kT = 3000;
-    if (!pipe->sendMsgBounded(msg, kT)) return {};
+    PipeServer::Exchange ex(*pipe);
+    if (!ex.sendRequest(msg, kT)) return {};
     ProxyResponse resp{};
-    if (!pipe->receiveRespBounded(resp, kT)) return {};
+    if (!ex.receiveReply(resp, MessageType::GET_PROGRAM_NAME_RESULT, kT)) return {};
     if (resp.type != MessageType::GET_PROGRAM_NAME_RESULT || resp.result != 1) return {};
     uint32_t total = resp.dataSize;
     std::vector<char> buf;
@@ -393,7 +420,7 @@ const juce::String PluginProxySlot::getProgramName(int index) {
     uint32_t got = first;
     while (got < total) {
         ProxyResponse chunk{};
-        if (!pipe->receiveRespBounded(chunk, kT)) return {};
+        if (!ex.receiveReply(chunk, MessageType::STATE_CHUNK, kT)) return {};
         if (chunk.type != MessageType::STATE_CHUNK) return {};
         uint32_t take = std::min<uint32_t>(chunk.dataSize, total - got);
         take = std::min<uint32_t>(take, sizeof(chunk.data));
@@ -788,6 +815,13 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
     auto pipe = processManager.getPipe(slotId);
     if (!pipe) return;
 
+    // ONE exchange spanning the WHOLE retry loop (including the 150 ms backoff
+    // sleeps): the loop re-sends GET_STATE, so releasing the lock between
+    // attempts would let another thread slip a request in and consume this
+    // sequence's replies — and would let THIS loop read theirs. Holding it for
+    // the (bounded) retry budget is what makes the transaction atomic.
+    PipeServer::Exchange ex(*pipe);
+
     ProxyMessage msg{};
     msg.type = MessageType::GET_STATE;
     msg.slotId = slotId;
@@ -808,7 +842,7 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
             HDAW_LOG("FxStateRead", "GET_STATE retry attempt=" + juce::String(attempt)
                 + "/" + juce::String(kStateAttempts) + " slot=" + juce::String((int) slotId));
 
-        if (!pipe->sendMsgBounded(msg, kStateTimeoutMs))
+        if (!ex.sendRequest(msg, kStateTimeoutMs))
         {
             if (attempt < kStateAttempts)
             {
@@ -820,7 +854,7 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
         if (stopping_.load(std::memory_order_relaxed)) return;
 
         ProxyResponse resp{};
-        if (!pipe->receiveRespBounded(resp, kStateTimeoutMs))
+        if (!ex.receiveReply(resp, MessageType::GET_STATE_RESULT, kStateTimeoutMs))
         {
             if (attempt < kStateAttempts)
             {
@@ -863,7 +897,7 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
         while (accum.getSize() < total) {
             if (stopping_.load(std::memory_order_relaxed)) return;
             ProxyResponse chunk{};
-            if (!pipe->receiveRespBounded(chunk, kStateTimeoutMs)
+            if (!ex.receiveReply(chunk, MessageType::STATE_CHUNK, kStateTimeoutMs)
                 || chunk.type != MessageType::STATE_CHUNK)
             {
                 complete = false;
@@ -1012,13 +1046,19 @@ bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
     auto pipe = processManager.getPipe(slotId);
     if (!pipe || !data || total == 0) return false;
     static constexpr DWORD kStateTimeoutMs = 3000;
+    // ONE exchange: every SET_STATE chunk and the single reply stay atomic
+    // against the other users of this pipe. Note the decisions this preserves:
+    // the caller (`setStateInformation`) releases this guard before calling
+    // verifyStateApplied, whose nested GET takes its OWN guard sequentially —
+    // that is why the exchange mutex need not be recursive.
+    PipeServer::Exchange ex(*pipe);
     ProxyMessage msg{};
     msg.type = MessageType::SET_STATE;
     msg.slotId = slotId;
     msg.dataSize = static_cast<uint32_t>(total);
     const size_t first = std::min(total, kStateChunkSize);
     std::memcpy(msg.data, data, first);
-    if (!pipe->sendMsgBounded(msg, kStateTimeoutMs)) return false;
+    if (!ex.sendRequest(msg, kStateTimeoutMs)) return false;
     size_t offset = first;
     while (offset < total) {
         if (stopping_.load(std::memory_order_relaxed)) return false;
@@ -1028,11 +1068,11 @@ bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
         const size_t take = std::min(total - offset, kStateChunkSize);
         chunk.dataSize = static_cast<uint32_t>(take);
         std::memcpy(chunk.data, static_cast<const uint8_t*>(data) + offset, take);
-        if (!pipe->sendMsgBounded(chunk, kStateTimeoutMs)) return false;
+        if (!ex.sendRequest(chunk, kStateTimeoutMs)) return false;
         offset += take;
     }
     ProxyResponse resp{};
-    pipe->receiveRespBounded(resp, kStateTimeoutMs);
+    ex.receiveReply(resp, MessageType::SET_STATE, kStateTimeoutMs);
     return true;
 }
 
@@ -1135,20 +1175,46 @@ bool PluginProxySlot::restoreStateFromTemp() {
     return false;
 }
 
+void PluginProxySlot::registerEditorClosedRouting() {
+    if (!editorClosedCb) return;
+    if (auto pipe = processManager.getPipe(slotId))
+        // The lambda re-reads editorClosedCb rather than copying it, so a later
+        // setEditorClosedCallback is honoured without re-registering.
+        pipe->setEditorClosedHandler([this] { if (editorClosedCb) editorClosedCb(); });
+}
+
 void PluginProxySlot::waitForEditorClosed() {
     // Lease held for the WHOLE loop: the watcher must keep the PipeServer alive
     // for the lifetime of its reads (the manager map entry can be erased by any
     // kill). This mirrors the pre-existing behaviour of capturing one pointer
     // at entry — a respawn does NOT re-point this watcher.
+    //
+    // LOCK ORDER: the lease above is taken FIRST, then (per iteration) the
+    // exchange lock via try_lock — never the other way round.
     auto pipe = processManager.getPipe(slotId);
     if (!pipe) return;
-    proxy::ProxyResponse resp{};
     // Loop until either the child dies or the dtor signals shutdown; the
     // bounded 500 ms receive keeps every iteration short so the destructor's
     // join returns promptly (never detached, never left running past `this`).
     while (!editorWatchStop_.load(std::memory_order_relaxed)
            && childAlive.load(std::memory_order_relaxed)) {
-        if (pipe->receiveRespBounded(resp, 500)) {
+        // TRY-lock per iteration: an await loop must never queue up behind (and
+        // thereby starve) a real request→response transaction, and it must
+        // release the lock between iterations so the transaction can win it.
+        PipeServer::Exchange ex(*pipe, std::try_to_lock);
+        if (!ex.acquired()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+        proxy::ProxyResponse resp{};
+        // The watcher IS an EDITOR_CLOSED consumer, so that is its expectation;
+        // anything else it reads is routed/discarded by the guard exactly like
+        // any other exchange's stray reply (it can never swallow a real
+        // exchange's answer).
+        // timeoutIsDesync=false: an idle 500 ms timeout is this loop's NORMAL
+        // outcome, not evidence of a desynced stream.
+        if (ex.receiveReply(resp, proxy::MessageType::EDITOR_CLOSED, 500,
+                            /*timeoutIsDesync=*/false)) {
             if (resp.type == proxy::MessageType::EDITOR_CLOSED) {
                 if (editorClosedCb) editorClosedCb();
                 return;
@@ -1190,9 +1256,19 @@ void PluginProxySlot::pollProgramCount() {
     msg.type = MessageType::GET_PROGRAM_COUNT;
     msg.slotId = slotId;
     static constexpr DWORD kT = 1500;
-    if (!pipe->sendMsgBounded(msg, kT)) return;
+    // OPPORTUNISTIC poll: NEVER block on the exchange lock. This runs from the
+    // 100 ms message-thread timer, while a state exchange (getStateInformation:
+    // 3 attempts + 150 ms backoffs, or the 45 s PREPARE handshake) can hold the
+    // lock for seconds — a blocking acquisition here would stall the JUCE
+    // message pump (timers/UI/pump-dependent machinery). Losing a tick costs
+    // nothing: the next 100 ms tick (or the ~1 s cadence) simply retries, and
+    // the poll is bounded to 45 attempts.
+    PipeServer::Exchange ex(*pipe, std::try_to_lock);
+    if (!ex.acquired())
+        return;   // busy with a real exchange: skip this tick, no I/O, no wait
+    if (!ex.sendRequest(msg, kT)) return;
     ProxyResponse resp{};
-    if (!pipe->receiveRespBounded(resp, kT)) return;
+    if (!ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, kT)) return;
     if (resp.type != MessageType::GET_PROGRAM_COUNT_RESULT || resp.result != 1) return;
     if (resp.dataSize < sizeof(uint32_t)) return;
     uint32_t count = 0;

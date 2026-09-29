@@ -210,12 +210,20 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   `StopRacesInFlightBoundedRead` (a kill lands while a `__slowstate__` read is in flight),
   `EditorWatcherVsKill`, `ShmLeaseSurvivesKill`, and `PipeHandleNotLeakedAcrossKillCycles`
   (20 spawn→lease→kill→release cycles with `GetProcessHandleCount`, growth ≤ 6). The AUDIO path stays
-  non-owning (`shmHandle`, no-op deleter, Gate 3) while the slot holds an owning `shmLease_`. This
-  patch is **lifetime/handle hardening, NOT full resolution**: the response protocol still has no
-  per-slot exchange serialization, and `checkAllChildren()` reads `perSlotCrashCallbacks` outside the
-  mutex while `~PluginProxySlot` can erase an entry — both listed as OPEN in
-  [`docs/realtime-safety.md`](realtime-safety.md), where the external-state-reader affinity is also
-  marked UNVERIFIED rather than guaranteed.
+  non-owning (`shmHandle`, no-op deleter, Gate 3) while the slot holds an owning `shmLease_`.
+  **THIRD PATCH (same session, 2026-09-28):** the pipe now serializes whole exchanges
+  (`PipeServer::Exchange`: one guard per request→response transaction, `try_lock` for the
+  unrequested-await loop, `try_lock`+skip for the 100 ms `pollProgramCount`, documented lock order)
+  and `checkAllChildren()` snapshots its callback map under the mutex before invoking (the
+  iterator-invalidation race is FIXED). Tests: `ConcurrentExchangesDoNotMisattribute`,
+  `UnsolicitedEditorClosedIsRoutedNotConsumed`, `DesyncedPipeDiscardsUnexpectedReply`,
+  `CrashCallbackSweepSnapshotsUnderTheLockAndInvokesOutside`. Final canonical run on this build:
+  **2140/2140 executed, 2101 passed, 39 skipped, 0 failures**. **STILL OPEN, needs a design
+  decision:** stale replies after a timeout — the protocol has no correlation id and no
+  end-of-response marker, so a same-type late reply cannot be distinguished; the current
+  desync-flag/type-matching is best-effort. Real fixes: a protocol correlation id (both structs
+  shrink `data[244]`→`[240]`, child echoes it) or timeout⇒desync⇒restart. Also still UNVERIFIED:
+  external state-reader affinity (see [`docs/realtime-safety.md`](realtime-safety.md)).
 - **Runner wart: a per-test exclusion does not survive a whole-suite unit (measured 2026-09-28).**
   `run-tests-sharded.ps1` enumerates with `--gtest_list_tests --gtest_filter=<Filter>` (so
   `*-Suite.Test` lowers the intended count) but then runs any suite with ≤ `-WholeSuiteThreshold`

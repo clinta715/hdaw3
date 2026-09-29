@@ -48,10 +48,15 @@ void HDAW::TrackFXSlot::showEditor()
         proxy::ProxyMessage msg{};
         msg.type = proxy::MessageType::SHOW_EDITOR;
         msg.slotId = proxySlot->getSlotId();
-        pipe->sendMsg(msg);
+        // ONE exchange for the show-editor handshake (the UI's request and the
+        // child's reply), so no other pipe user can consume the reply. The
+        // unbounded request write is preserved (the child drains its control
+        // loop continuously); the reply keeps the legacy READY budget.
+        proxy::PipeServer::Exchange ex(*pipe);
+        ex.sendRequestUnbounded(msg);
 
         proxy::ProxyResponse resp{};
-        pipe->receiveResp(resp);
+        ex.receiveReplyReady(resp, proxy::MessageType::SHOW_EDITOR);
         remoteEditorOpen.store(true);
         return;
     }
@@ -87,10 +92,11 @@ void HDAW::TrackFXSlot::closeEditor()
                 proxy::ProxyMessage msg{};
                 msg.type = proxy::MessageType::CLOSE_EDITOR;
                 msg.slotId = proxySlot->getSlotId();
-                pipe->sendMsg(msg);
+                proxy::PipeServer::Exchange ex(*pipe);
+                ex.sendRequestUnbounded(msg);
 
                 proxy::ProxyResponse resp{};
-                pipe->receiveResp(resp);
+                ex.receiveReplyReady(resp, proxy::MessageType::CLOSE_EDITOR);
             }
         }
         remoteEditorOpen.store(false);

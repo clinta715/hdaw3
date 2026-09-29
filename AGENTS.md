@@ -18,7 +18,7 @@ SPA or Electron shell. Feature history: `README.md`; per-version changes: git lo
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 40 lessons, full narratives** (one-line index below) |
+| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 41 lessons, full narratives** (one-line index below) |
 | [`docs/architecture.md`](docs/architecture.md) | Build details, key classes, GUI-engine decoupling, beats-vs-seconds |
 | [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread rules, hardening, plugin isolation, latency/quality |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | JUCE pitfalls (scan blacklisting, setProperty no-op, FX clamping, the `small`/`rpcndr.h` include-order macro collision, lesson 35) |
@@ -148,6 +148,7 @@ downloaded), wired into the DSH profile's `cordis.patch.yml`, and checked with
 38. **The tool boundary has a silent-acceptance class** — refuse unknown keys and non-integral numbers with shared bytes (`requireInt` truncation, unknown expectation keys, over-stated ledger aliases).
 39. **A `this`-capturing worker must be stopped and JOINED before the destructor tears anything down** — `std::jthread` joins only during MEMBER destruction (after a dtor body that already freed resources); never `detach()`; make the worker's I/O stop-aware so the join stays bounded (`PluginProxySlot`).
 40. **Shared ownership guarantees the OBJECT, not the HANDLE** — lease the pipe/shm object for the exchange (`shared_ptr` from `getPipe`/`getShm`), give the handle exactly ONE closer (`~PipeServer`), and make `stop()` signal + `CancelIoEx` rather than close (a cleared handle leaks; a closed one double-closes against in-flight I/O).
+41. **An exchange lock fixes CONCURRENCY, not STALENESS** — serialize each whole request→response transaction on a pipe (one guard spanning send + all replies), but a timed-out reply stays queued, and without a correlation id (and an end-of-response marker) a same-type late reply is indistinguishable from a fresh one: no drain window can be proven complete. Routing by expected type + a desync flag is best-effort only; the real fix is a protocol id or a timeout⇒restart policy.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 
@@ -346,14 +347,16 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
 
 - **C++ engine (gtest):** `build/hdaw_tests.exe` (`build-fast.bat test`; `all` also
   builds `hdaw_plugin_host.exe` for the isolation suites). Filter:
-  `--gtest_filter=Suite.*`. **Authoritative baseline 2026-09-28: 2135 tests —
-  2096 passed, 39 skipped, 0 failures.** Canonical full run:
+  `--gtest_filter=Suite.*`. **Authoritative baseline 2026-09-28: 2140 tests —
+  2101 passed, 39 skipped, 0 failures.** Canonical full run:
   `powershell -NoProfile -ExecutionPolicy Bypass -File run-tests-sharded.ps1 -Shards 2` (`Bypass`
-  is required — the `.ps1` is unsigned), 24 min wall, every shard `ran == intended`:
-  960/960, 845/845, 330/330. The earlier 2026-09-28 runs were INCOMPLETE (1814 passed, one dead
+  is required — the `.ps1` is unsigned), 19 min wall, every shard `ran == intended`:
+  960/960, 845/845, 335/335. The earlier 2026-09-28 runs were INCOMPLETE (1814 passed, one dead
   shard) because `PsytranceComposition.PsyDubFiveMinutes` intermittently died: that was a
   **pre-existing `PluginProxySlot` worker-lifetime UAF**, root-caused with CDB (the AV re-reads
-  `this->slotId` after the slot was freed) and FIXED — see lesson 39 and the entry in
+  `this->slotId` after the slot was freed) and FIXED (lesson 39), followed by the proxy pipe/shm
+  lease + single-closer handle hardening (lesson 40) and the pipe exchange serialization +
+  callback-map snapshot fixes (lesson 41) — see the entries in
   [`docs/testing-mcp.md`](docs/testing-mcp.md). Superseded baseline: 2026-09-26, 287 suites /
   2027 tests, 1988 passed / 39 skipped / 0 failures, 27.1 min (shards 850/850, 855/855, 322/322).
   Fast tier: `run_fast_tests.bat`

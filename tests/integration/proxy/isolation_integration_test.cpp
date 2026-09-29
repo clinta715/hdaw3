@@ -2742,3 +2742,288 @@ TEST(PluginIsolation, PipeHandleNotLeakedAcrossKillCycles) {
         << " kill cycles (series " << trace << ") — a leaked pipe/shm HANDLE "
            "would grow ~1 per cycle (the single-closer rule is broken)";
 }
+
+// STEERING 3 gate: the OPTIMISTIC program-count poll runs on the JUCE message
+// thread (100 ms timer) and must NEVER wait for the exchange lock. While another
+// thread holds the lock (here a real multi-second-scale exchange window is
+// simulated by holding the guard), the poll must return promptly AND send
+// nothing — a blocked poll would stall the message pump (timers/UI).
+//
+// Asserted: (a) the poll sequence returns well within the bound while the lock
+// is held by another thread, (b) the cached program count is unchanged (it
+// could only change if a GET_PROGRAM_COUNT had actually reached the child).
+TEST(PluginIsolation, PollProgramCountDoesNotWaitForTheExchangeLock) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9170;
+    ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    PluginProxySlot slot(mgr, slotId, "Passthrough");
+    const int countBefore = slot.getNumPrograms();
+
+    auto pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+
+    std::atomic<bool> lockHeld{false};
+    std::atomic<bool> release{false};
+    std::thread holder([&] {
+        // A blocking exchange owning the lock for the whole window — exactly
+        // what a slow GET_STATE / PREPARE handshake does on this pipe.
+        PipeServer::Exchange ex(*pipe);
+        lockHeld.store(true);
+        while (!release.load())
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    });
+    for (int i = 0; i < 1000 && !lockHeld.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    ASSERT_TRUE(lockHeld.load()) << "the helper exchange never acquired the lock";
+
+    // The poll gates on a ~1 s cadence (every 10th tick), so drive enough ticks
+    // that the guarded path is certainly reached.
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i < 12; ++i)
+        slot.pollProgramCount();
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    EXPECT_LT(elapsedMs, 50)
+        << "pollProgramCount waited " << elapsedMs
+        << " ms for the exchange lock — the message-thread timer must try_lock "
+           "and skip when the pipe is busy";
+    EXPECT_EQ(slot.getNumPrograms(), countBefore)
+        << "a skipped poll must not have reached the child";
+
+    release.store(true);
+    holder.join();
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// ========================================================================
+// Exchange serialization (defect A): one lock spans every request→response
+// transaction on a slot's PipeServer, so two users of the SAME pipe can never
+// interleave `A-send, B-send, A-receive` and consume each other's reply.
+// ========================================================================
+
+namespace {
+// Unique OS pipe name per test invocation (the manager's own namespace helper
+// is not reachable here and a fixed name would collide across parallel runs).
+std::string uniqueExchangeTestPipeName(const char* tag) {
+    static std::atomic<uint32_t> counter{0};
+    return std::string("\\\\.\\pipe\\hdaw_test_exchange_") + tag + "_"
+        + std::to_string(static_cast<unsigned>(::GetCurrentProcessId())) + "_"
+        + std::to_string(counter.fetch_add(1));
+}
+} // namespace
+
+// Two threads issue DISTINGUISHABLE request→response transactions on the SAME
+// slot's pipe concurrently and must each receive THEIR OWN reply.
+//
+// Pre-fix (no exchange lock) this test fails in one of two ways, both
+// probabilistic: a thread reads the other's response type (its own type check
+// then rejects a reply it did receive), or — with the run long enough — a
+// reply is consumed by the wrong caller. Post-fix the transactions are
+// serialized, so the assertion below is deterministic: every reply carries the
+// type the issuing thread asked for and NOTHING was ever observed stale.
+TEST(PluginIsolation, ConcurrentExchangesDoNotMisattribute) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9700;
+    ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    auto pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+
+    constexpr int kIterations = 50;
+    std::atomic<int> countWrong{0}, currentWrong{0};
+    std::atomic<int> countOk{0}, currentOk{0};
+
+    auto runProgramCount = [&] {
+        for (int i = 0; i < kIterations; ++i) {
+            PipeServer::Exchange ex(*pipe);
+            ProxyMessage msg{};
+            msg.type = MessageType::GET_PROGRAM_COUNT;
+            msg.slotId = slotId;
+            if (!ex.sendRequest(msg, 3000)) { ++countWrong; continue; }
+            ProxyResponse resp{};
+            // The expectation is THIS thread's reply type: an interleaved
+            // transaction's reply is a different type and would be counted.
+            if (!ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, 3000)
+                || resp.type != MessageType::GET_PROGRAM_COUNT_RESULT
+                || resp.result != 1)
+                ++countWrong;
+            else
+                ++countOk;
+        }
+    };
+    auto runCurrentProgram = [&] {
+        for (int i = 0; i < kIterations; ++i) {
+            PipeServer::Exchange ex(*pipe);
+            ProxyMessage msg{};
+            msg.type = MessageType::GET_CURRENT_PROGRAM;
+            msg.slotId = slotId;
+            if (!ex.sendRequest(msg, 3000)) { ++currentWrong; continue; }
+            ProxyResponse resp{};
+            if (!ex.receiveReply(resp, MessageType::GET_CURRENT_PROGRAM_RESULT, 3000)
+                || resp.type != MessageType::GET_CURRENT_PROGRAM_RESULT
+                || resp.result != 1)
+                ++currentWrong;
+            else
+                ++currentOk;
+        }
+    };
+
+    std::thread a(runProgramCount);
+    std::thread b(runCurrentProgram);
+    a.join();
+    b.join();
+
+    EXPECT_EQ(countWrong.load(), 0)
+        << "GET_PROGRAM_COUNT received a reply that was not its own "
+        << countWrong.load() << "/" << kIterations << " times";
+    EXPECT_EQ(currentWrong.load(), 0)
+        << "GET_CURRENT_PROGRAM received a reply that was not its own "
+        << currentWrong.load() << "/" << kIterations << " times";
+    EXPECT_EQ(countOk.load(), kIterations);
+    EXPECT_EQ(currentOk.load(), kIterations);
+
+    // Serialization means no reply can ever be observed out of order.
+    EXPECT_EQ(pipe->staleRepliesDiscarded(), 0u)
+        << "a reply arrived out of order — the exchange lock did not span a "
+           "complete transaction";
+    EXPECT_FALSE(pipe->isDesynced());
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// An UNSOLICITED EDITOR_CLOSED that lands while another exchange owns the pipe
+// must reach the editor-closed callback, NOT the in-flight exchange as its
+// reply. In-process pipe pair (no child process) so the ordering is exact.
+TEST(PluginIsolation, UnsolicitedEditorClosedIsRoutedNotConsumed) {
+    const std::string pipeName = uniqueExchangeTestPipeName("editorclosed");
+    PipeServer srv(pipeName);
+    DWORD err = 0;
+    ASSERT_TRUE(srv.start(&err));
+
+    std::atomic<int> editorClosedCalls{0};
+    srv.setEditorClosedHandler([&] { editorClosedCalls.fetch_add(1); });
+
+    std::atomic<bool> clientUp{false};
+    std::thread client([&] {
+        PipeClient cli(pipeName);
+        if (!cli.connect()) return;
+        clientUp.store(true);
+        // 1) the unsolicited editor-close notification, 2) the real reply for
+        // the exchange the parent is running.
+        ProxyResponse closed{};
+        closed.type = MessageType::EDITOR_CLOSED;
+        closed.result = 1;
+        cli.sendResp(closed);
+
+        ProxyResponse ok{};
+        ok.type = MessageType::GET_PROGRAM_COUNT_RESULT;
+        ok.result = 1;
+        const uint32_t count = 3;
+        ok.dataSize = sizeof(count);
+        std::memcpy(ok.data, &count, sizeof(count));
+        cli.sendResp(ok);
+    });
+    for (int i = 0; i < 1000 && !clientUp.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    ASSERT_TRUE(clientUp.load()) << "in-process PipeClient failed to connect";
+
+    PipeServer::Exchange ex(srv);
+    ProxyResponse resp{};
+    ASSERT_TRUE(ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, 5000))
+        << "the exchange must still receive its OWN reply behind the "
+           "unsolicited EDITOR_CLOSED";
+
+    EXPECT_EQ(editorClosedCalls.load(), 1)
+        << "an unsolicited EDITOR_CLOSED must be routed to the editor-closed "
+           "callback exactly once";
+    EXPECT_EQ(resp.type, MessageType::GET_PROGRAM_COUNT_RESULT);
+    uint32_t got = 0;
+    std::memcpy(&got, resp.data, sizeof(got));
+    EXPECT_EQ(got, 3u);
+    // A routed EDITOR_CLOSED is NOT a stale reply, and the exchange that
+    // completed behind it leaves the pipe in sync.
+    EXPECT_EQ(srv.staleRepliesDiscarded(), 0u);
+    EXPECT_FALSE(srv.isDesynced());
+
+    client.join();
+}
+
+// Observable half of the late-reply analysis (the un-observable half is
+// documented on PipeServer as an OPEN item: the 256-byte protocol structs
+// carry no correlation id and there is no end-of-response marker, so a stale
+// reply of the EXPECTED type cannot be told from a fresh one).
+//
+// What IS provable: a bounded receive that times out records the desync, and
+// the next exchange discards a reply whose type it does not expect (best
+// effort) and still returns its OWN reply.
+TEST(PluginIsolation, DesyncedPipeDiscardsUnexpectedReply) {
+    const std::string pipeName = uniqueExchangeTestPipeName("desync");
+    PipeServer srv(pipeName);
+    DWORD err = 0;
+    ASSERT_TRUE(srv.start(&err));
+
+    std::atomic<bool> clientUp{false};
+    std::atomic<bool> staleWritten{false};
+    std::thread client([&] {
+        PipeClient cli(pipeName);
+        if (!cli.connect()) return;
+        clientUp.store(true);
+        // Wait until the parent's first exchange has timed out: the stale reply
+        // then provably lands INSIDE the late-reply window that timeout opens.
+        for (int i = 0; i < 2000 && !srv.isDesynced(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        ProxyResponse stale{};
+        stale.type = MessageType::GET_PARAM_INFO_RESULT;   // NOT what is expected next
+        stale.result = 1;
+        if (cli.sendResp(stale))
+            staleWritten.store(true);
+        ProxyResponse ok{};
+        ok.type = MessageType::GET_PROGRAM_COUNT_RESULT;
+        ok.result = 1;
+        const uint32_t count = 7;
+        ok.dataSize = sizeof(count);
+        std::memcpy(ok.data, &count, sizeof(count));
+        cli.sendResp(ok);
+    });
+    for (int i = 0; i < 1000 && !clientUp.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    ASSERT_TRUE(clientUp.load()) << "in-process PipeClient failed to connect";
+
+    // Exchange 1: nothing is queued for this expectation, so the bounded
+    // receive times out and the pipe records the desync.
+    {
+        PipeServer::Exchange ex(srv);
+        ProxyResponse resp{};
+        EXPECT_FALSE(ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, 200))
+            << "the first exchange must time out (no reply is queued yet)";
+    }
+    EXPECT_TRUE(srv.isDesynced()) << "a bounded-receive timeout must mark the pipe desynced";
+    EXPECT_GE(srv.desyncEvents(), 1u);
+
+    for (int i = 0; i < 2000 && !staleWritten.load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    ASSERT_TRUE(staleWritten.load());
+
+    // Exchange 2: reads the STALE reply first (type != expectation), discards
+    // it, then returns its own.
+    {
+        PipeServer::Exchange ex(srv);
+        ProxyResponse resp{};
+        ASSERT_TRUE(ex.receiveReply(resp, MessageType::GET_PROGRAM_COUNT_RESULT, 5000))
+            << "the desynced exchange must skip the stale reply and still get its own";
+        EXPECT_EQ(resp.type, MessageType::GET_PROGRAM_COUNT_RESULT);
+        uint32_t got = 0;
+        std::memcpy(&got, resp.data, sizeof(got));
+        EXPECT_EQ(got, 7u);
+    }
+    EXPECT_EQ(srv.staleRepliesDiscarded(), 1u)
+        << "the stale reply must be logged/counted as discarded";
+    EXPECT_FALSE(srv.isDesynced()) << "a completed exchange clears the desync hint";
+
+    client.join();
+}
+
