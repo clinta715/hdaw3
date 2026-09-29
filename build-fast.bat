@@ -5,7 +5,7 @@ REM build-fast.bat — incremental build script for HDAW
 REM Usage:
 REM   build-fast              Build HDAW.exe only (RelWithDebInfo, optimized)
 REM   build-fast debug        Build HDAW.exe with Debug (breakpoints)
-REM   build-fast test         Build hdaw_tests.exe only
+REM   build-fast test         Build the four test exes; 'build-fast test <target>' builds one
 REM   build-fast all          Build everything
 REM   build-fast ninja        Reconfigure with Ninja (one-time, much faster)
 REM   build-fast frontend     Build frontend only (dist/ + dist-electron/)
@@ -115,9 +115,23 @@ echo [build-fast] HDAW.exe up to date (config: %CONFIG%).
 goto :check_pkg
 
 :test
-call :build_target hdaw_tests
+REM 2026-09-28 test-time split: four per-seam exes replaced the single
+REM hdaw_tests target (tests/CMakeLists.txt). Optional %2 builds exactly one.
+if not "%2"=="" goto :test_one
+call :build_target hdaw_tests_engine
 if !errorlevel! neq 0 exit /b !errorlevel!
-echo [build-fast] hdaw_tests.exe up to date (config: %CONFIG%).
+call :build_target hdaw_tests_mcp
+if !errorlevel! neq 0 exit /b !errorlevel!
+call :build_target hdaw_tests_frontend
+if !errorlevel! neq 0 exit /b !errorlevel!
+call :build_target hdaw_tests_platform
+if !errorlevel! neq 0 exit /b !errorlevel!
+echo [build-fast] test exes up to date (engine, mcp, frontend, platform; config: %CONFIG%).
+goto :eof
+:test_one
+call :build_target %2
+if !errorlevel! neq 0 exit /b !errorlevel!
+echo [build-fast] %2 up to date (config: %CONFIG%).
 goto :eof
 
 :all

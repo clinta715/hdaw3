@@ -593,8 +593,12 @@ endif()
 # builds. /INCREMENTAL cuts relinks to seconds; it changes binary layout only,
 # never codegen, so runtime behavior is identical. Toggle off for pristine
 # release packaging (HDAW_INCREMENTAL_DEV_LINK=OFF).
-option(HDAW_INCREMENTAL_DEV_LINK "Use /INCREMENTAL for hdaw_tests + HDAW_headless dev links" ON)
+option(HDAW_INCREMENTAL_DEV_LINK "Use /INCREMENTAL for the test exes + HDAW_headless dev links" ON)
 if(HDAW_INCREMENTAL_DEV_LINK AND MSVC)
-    set_property(TARGET hdaw_tests APPEND_STRING PROPERTY LINK_FLAGS " /INCREMENTAL")
+    # 2026-09-28 test-time split: the former single hdaw_tests target became four
+    # per-seam exes (tests/CMakeLists.txt); each gets the same fast dev link.
+    foreach(_test_exe IN ITEMS hdaw_tests_engine hdaw_tests_mcp hdaw_tests_frontend hdaw_tests_platform)
+        set_property(TARGET ${_test_exe} APPEND_STRING PROPERTY LINK_FLAGS " /INCREMENTAL")
+    endforeach()
     set_property(TARGET HDAW_headless APPEND_STRING PROPERTY LINK_FLAGS " /INCREMENTAL")
 endif()

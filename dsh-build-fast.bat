@@ -6,10 +6,12 @@ REM
 REM Usage (same as build-fast.bat):
 REM   dsh-build-fast.bat              Build HDAW.exe (RelWithDebInfo)
 REM   dsh-build-fast.bat debug        Build HDAW.exe (Debug)
-REM   dsh-build-fast.bat test         Build hdaw_tests.exe only
+REM   dsh-build-fast.bat test         Build the four test exes; 'test <target>' builds one
 REM   dsh-build-fast.bat all          Build everything
 REM   dsh-build-fast.bat frontend     Build frontend
 REM   dsh-build-fast.bat ninja        Reconfigure with Ninja (recommended)
+REM   dsh-build-fast.bat configure    Re-run CMake configure into the existing build dir
+REM                                   (needed after CMakeLists.txt edits: CMAKE_SUPPRESS_REGENERATION=ON suppresses the automatic re-run)
 REM
 REM Compiler selection (env var HDAW_COMPILER):
 REM   HDAW_COMPILER=msvc   (default) Uses cl.exe, build dir: build/
@@ -133,6 +135,7 @@ if not defined NINJA_EXE (
 REM -- Target dispatch -------------------------------------------------------
 if "%1"=="debug" set CONFIG=Debug
 if "%1"=="ninja" goto :ninja
+if "%1"=="configure" goto :configure
 if "%1"=="clang-ninja" goto :clang_ninja
 if "%1"=="frontend" goto :frontend
 if "%1"=="package" goto :package
@@ -150,9 +153,23 @@ echo [dsh-build] HDAW.exe up to date (config: %CONFIG%, compiler: %COMPILER%).
 goto :eof
 
 :test
-call :build_target hdaw_tests
+REM 2026-09-28 test-time split: four per-seam exes replaced the single
+REM hdaw_tests target (tests/CMakeLists.txt). Optional %2 builds exactly one.
+if not "%2"=="" goto :test_one
+call :build_target hdaw_tests_engine
 if !errorlevel! neq 0 exit /b !errorlevel!
-echo [dsh-build] hdaw_tests.exe up to date (config: %CONFIG%, compiler: %COMPILER%).
+call :build_target hdaw_tests_mcp
+if !errorlevel! neq 0 exit /b !errorlevel!
+call :build_target hdaw_tests_frontend
+if !errorlevel! neq 0 exit /b !errorlevel!
+call :build_target hdaw_tests_platform
+if !errorlevel! neq 0 exit /b !errorlevel!
+echo [dsh-build] test exes up to date (engine, mcp, frontend, platform; config: %CONFIG%, compiler: %COMPILER%).
+goto :eof
+:test_one
+call :build_target %2
+if !errorlevel! neq 0 exit /b !errorlevel!
+echo [dsh-build] %2 up to date (config: %CONFIG%, compiler: %COMPILER%).
 goto :eof
 
 :all
@@ -179,6 +196,17 @@ if exist "%BUILD_DIR%\build.ninja" (
     )
 )
 exit /b !errorlevel!
+
+:configure
+echo [dsh-build] Re-running CMake configure into %BUILD_DIR% (MSVC env bootstrapped)...
+if "%CMAKE_PREFIX_PATH%"=="" if exist "C:\Qt\6.11.2\msvc2022_64" set "CMAKE_PREFIX_PATH=C:\Qt\6.11.2\msvc2022_64"
+"!CMAKE_EXE!" -S "%ROOT%." -B "%BUILD_DIR%"
+if %errorlevel% neq 0 (
+    echo [dsh-build] ERROR: configure failed ^(rc=!errorlevel!^).
+    exit /b 1
+)
+echo [dsh-build] Configure done.
+goto :eof
 
 :ninja
 echo [dsh-build] Configuring with Ninja (one-time setup)...

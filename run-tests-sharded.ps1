@@ -89,6 +89,7 @@
 .EXAMPLE
   powershell -File run-tests-sharded.ps1                     # full suite, 4 shards
   powershell -File run-tests-sharded.ps1 -Shards 6           # faster
+  powershell -File run-tests-sharded.ps1 -Binaries build\hdaw_tests_mcp.exe  # one exe of the 2026-09-28 split
   powershell -File run-tests-sharded.ps1 -Filter "FxMidiInjection.*" -Shards 4
   $env:HDAW_REAL_PLUGIN_TESTS=1; powershell -File run-tests-sharded.ps1 -Shards 3
 #>
@@ -96,6 +97,10 @@ param(
     [int]$Shards = 2,
     [string]$Filter = "*",
     [string]$Binary = "",
+    # 2026-09-28 test-time split: one or more test exes. Empty = the four
+    # per-seam exes under build\ (hdaw_tests_engine/_mcp/_frontend/_platform).
+    # -Binary still works for a single explicit binary.
+    [string[]]$Binaries = @(),
     [int]$WholeSuiteThreshold = 25,   # suites with <= N tests run as one unit
     # Device/plugin dependent suites: each shard process would open the audio device and
     # spawn its own isolated plugin children, so these are kept out of the shard set and
@@ -107,6 +112,13 @@ param(
     # --gtest_filter args. 24000 is far below the 32767-char Windows command-line limit,
     # which must also carry the exe path and (for the flagfile route) the flag name.
     [int]$MaxFilterArgLength = 24000,
+    # 2026-09-29: shardable units are dealt into Shards * BucketFactor buckets
+    # that run through a greedy work pool (lanes = Shards). Finer buckets let the
+    # pool re-pack work as lanes free up; fixed one-bucket-per-lane waves let a
+    # single heavy bucket stall its whole lane (measured 2026-09-28: a 13.6-min
+    # engine bucket held lane 2 while lane 1 idled - full-suite wall 23.1 min vs
+    # the 19.7 min single-binary baseline).
+    [int]$BucketFactor = 3,
     # Diagnostics only: force the `--gtest_flagfile` route off (it is probed at runtime;
     # see the route table in the run section). Used to exercise the sequential fallback.
     [switch]$DisableFlagfile,
@@ -115,9 +127,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $Binary) { $Binary = Join-Path $root "build\hdaw_tests.exe" }
-if (-not (Test-Path $Binary)) {
-    throw "test binary not found: $Binary  (build it: build-fast.bat test)"
+if (-not $Binaries -or $Binaries.Count -eq 0) {
+    if ($Binary) { $Binaries = @($Binary) }
+    else {
+        # 2026-09-28 test-time split default: the four per-seam exes.
+        $Binaries = @('hdaw_tests_engine', 'hdaw_tests_mcp', 'hdaw_tests_frontend', 'hdaw_tests_platform') |
+            ForEach-Object { Join-Path $root "build\$_.exe" }
+    }
+}
+foreach ($b in $Binaries) {
+    if (-not (Test-Path $b)) {
+        throw "test binary not found: $b  (build it: build-fast.bat test)"
+    }
 }
 if ($Shards -lt 1) { $Shards = 1 }
 
@@ -158,36 +179,56 @@ if (-not $tmp) { throw "no writable shard log directory (tried: $($logCandidates
 
 $stamp = Get-Date -Format "HHmmss"
 
-# --- 1) enumerate units (suite whole, or per test for big suites) -------------
-$list = & $Binary --gtest_list_tests "--gtest_filter=$Filter" 2>$null
-$suites = [ordered]@{}
-$current = $null
-foreach ($line in $list) {
-    if ($line -match '^(\S+)\.\s*$') { $current = $Matches[1]; $suites[$current] = @(); continue }
-    if ($current -and $line -match '^\s+(\S+)') { $suites[$current] += $Matches[1] }
+# --- 1) enumerate units PER BINARY (suite whole, or per test for big suites) --
+# 2026-09-28 test-time split: units become (binary, unit) pairs so one run can
+# cover several exes. Every test must live in exactly ONE exe: a suite name
+# present in two exes would run twice (and double-count in the aggregate), so
+# that is a hard error, not a warning.
+$groups = @()
+foreach ($b in $Binaries) {
+    $list = & $b --gtest_list_tests "--gtest_filter=$Filter" 2>$null
+    $suites = [ordered]@{}
+    $current = $null
+    foreach ($line in $list) {
+        if ($line -match '^(\S+)\.\s*$') { $current = $Matches[1]; $suites[$current] = @(); continue }
+        if ($current -and $line -match '^\s+(\S+)') { $suites[$current] += $Matches[1] }
+    }
+    $units = New-Object System.Collections.Generic.List[string]
+    $serialUnits = New-Object System.Collections.Generic.List[string]
+    # unit -> how many TESTS that unit intends to run (whole suite: its listed test count;
+    # Suite.Test: 1). Read straight from --gtest_list_tests, so it is the same universe gtest
+    # itself selects from, and it is what the executed count is verified against in step 4.
+    $unitTests = @{}
+    foreach ($suite in $suites.Keys) {
+        $isSerial = $SerialSuites -and ($suite -match $SerialSuites)
+        $tests = $suites[$suite]
+        if ($isSerial) { $serialUnits.Add("$suite.*"); $unitTests["$suite.*"] = [int]$tests.Count; continue }
+        if ($tests.Count -eq 0 -or $tests.Count -le $WholeSuiteThreshold) { $units.Add("$suite.*"); $unitTests["$suite.*"] = [int]$tests.Count }
+        else { foreach ($t in $tests) { $units.Add("$suite.$t"); $unitTests["$suite.$t"] = 1 } }
+    }
+    $groups += [pscustomobject]@{ Bin = $b; Suites = $suites; Units = $units; SerialUnits = $serialUnits; UnitTests = $unitTests }
 }
-$units = New-Object System.Collections.Generic.List[string]
-$serialUnits = New-Object System.Collections.Generic.List[string]
-# unit -> how many TESTS that unit intends to run (whole suite: its listed test count;
-# Suite.Test: 1). Read straight from --gtest_list_tests, so it is the same universe gtest
-# itself selects from, and it is what the executed count is verified against in step 4.
-$unitTests = @{}
-foreach ($suite in $suites.Keys) {
-    $isSerial = $SerialSuites -and ($suite -match $SerialSuites)
-    $tests = $suites[$suite]
-    if ($isSerial) { $serialUnits.Add("$suite.*"); $unitTests["$suite.*"] = [int]$tests.Count; continue }
-    if ($tests.Count -eq 0 -or $tests.Count -le $WholeSuiteThreshold) { $units.Add("$suite.*"); $unitTests["$suite.*"] = [int]$tests.Count }
-    else { foreach ($t in $tests) { $units.Add("$suite.$t"); $unitTests["$suite.$t"] = 1 } }
+$seenSuites = @{}
+foreach ($g in $groups) {
+    foreach ($s in $g.Suites.Keys) {
+        if ($seenSuites.ContainsKey($s)) { throw "suite '$s' is present in more than one test exe ('$($seenSuites[$s])' and '$($g.Bin)') - the split assigns every suite to exactly one exe" }
+        $seenSuites[$s] = $g.Bin
+    }
 }
-if (($units.Count + $serialUnits.Count) -eq 0) { throw "no tests matched filter '$Filter'" }
+$totalShardable = ($groups | ForEach-Object { $_.Units.Count } | Measure-Object -Sum).Sum
+$totalSerial = ($groups | ForEach-Object { $_.SerialUnits.Count } | Measure-Object -Sum).Sum
+if (($totalShardable + $totalSerial) -eq 0) { throw "no tests matched filter '$Filter' in any of the $($Binaries.Count) test exe(s)" }
 
-# --- 2) deal round-robin ------------------------------------------------------
+# --- 2) deal round-robin (across binaries; each bucket keeps (bin, unit) pairs)
+$flat = @()
+foreach ($g in $groups) { foreach ($u in $g.Units) { $flat += [pscustomobject]@{ Bin = $g.Bin; Unit = $u; Tests = [int]$g.UnitTests[$u] } } }
+$laneCount = $Shards * ([Math]::Max(1, $BucketFactor))
 $buckets = @()
-for ($i = 0; $i -lt $Shards; $i++) { $buckets += ,(New-Object System.Collections.Generic.List[string]) }
-for ($i = 0; $i -lt $units.Count; $i++) { $buckets[$i % $Shards].Add($units[$i]) }
+for ($i = 0; $i -lt $laneCount; $i++) { $buckets += ,(New-Object System.Collections.Generic.List[object]) }
+for ($i = 0; $i -lt $flat.Count; $i++) { $buckets[$i % $laneCount].Add($flat[$i]) }
 
 $realPlugins = [bool]$env:HDAW_REAL_PLUGIN_TESTS
-"hdaw sharded run: $($units.Count) shardable units from $($suites.Count) suites -> $Shards shards (+ $($serialUnits.Count) serial suites) (filter '$Filter', real plugins: $realPlugins)"
+"hdaw sharded run: $($flat.Count) shardable units from $($seenSuites.Count) suites across $($Binaries.Count) exe(s) -> $laneCount buckets on $Shards lanes (+ $totalSerial serial suites) (filter '$Filter', real plugins: $realPlugins)"
 
 # --- 3) run ------------------------------------------------------------------
 # ONE gtest process accepts exactly ONE --gtest_filter: gtest OVERWRITES the flag for
@@ -264,66 +305,124 @@ function Get-BucketPlan([object]$bucket, [string]$tag, [object]$suites, [string]
     return [pscustomobject]@{ Route = $route; Args = $plan }
 }
 
-# Launch every pending invocation of $metas wave by wave (wave 0 for all shards first, so
-# the normal one-invocation-per-bucket case is exactly as concurrent as before; a bucket's
-# own invocations never overlap), then stitch the per-invocation part logs together.
-function Invoke-ShardWaves([object]$metas, [string]$binary) {
-    $maxInvocations = 0
-    foreach ($m in $metas) { if ($m.Plan.Count -gt $maxInvocations) { $maxInvocations = $m.Plan.Count } }
-    for ($i = 0; $i -lt $maxInvocations; $i++) {
-        $wave = @()
-        foreach ($m in $metas) {
-            if ($i -ge $m.Plan.Count) { continue }
-            $part = if ($m.Plan.Count -eq 1) { $m.Log } else { "$($m.Log).part$i" }
+# Get-InvocationPlans turns one bucket into per-binary invocations (see its
+# comment); Invoke-BucketPool runs bucket metas through a greedy work pool -
+# up to $lanes buckets in flight, no wave barriers - and stitches each bucket's
+# per-invocation part logs together when the bucket completes.
+# Turn one bucket (a list of {Bin, Unit, Tests}) into per-binary invocations:
+# units are grouped by exe preserving deal order, each group goes through
+# Get-BucketPlan (single filter / flagfile / sequential), and the results are
+# chained into ONE Plan of {Bin, Args} invocation entries. A bucket spanning
+# several exes therefore runs one gtest process per exe, sequentially.
+function Get-InvocationPlans([object]$bucket, [string]$tag, [object]$groups, [string]$dir, [string]$stamp, [int]$maxLen) {
+    $byBin = [ordered]@{}
+    foreach ($u in $bucket) {
+        if (-not $byBin.Contains($u.Bin)) { $byBin[$u.Bin] = (New-Object System.Collections.Generic.List[object]) }
+        $byBin[$u.Bin].Add($u)
+    }
+    $invocations = New-Object System.Collections.Generic.List[object]
+    $routes = @(); $intended = 0
+    foreach ($bin in $byBin.Keys) {
+        $units = $byBin[$bin]
+        $unitStrings = @($units | ForEach-Object { $_.Unit })
+        foreach ($t in $units) { $intended += $t.Tests }
+        $suitesForBin = @($groups | Where-Object { $_.Bin -eq $bin })[0].Suites
+        $bp = Get-BucketPlan $unitStrings $tag $suitesForBin $bin $dir $stamp $maxLen
+        $routes += $bp.Route
+        foreach ($a in $bp.Args) { $invocations.Add([pscustomobject]@{ Bin = $bin; Args = $a }) }
+    }
+    return [pscustomobject]@{ Invocations = $invocations; Route = (($routes | Sort-Object -Unique) -join '+'); Intended = $intended }
+}
+
+function Invoke-BucketPool([object]$metas, [int]$lanes) {
+    $pending = New-Object System.Collections.Generic.Queue[object]
+    foreach ($m in $metas) { $m | Add-Member -NotePropertyName Next -NotePropertyValue 0 -Force; $pending.Enqueue($m) }
+    $active = @()
+    while ($pending.Count -gt 0 -or $active.Count -gt 0) {
+        while ($pending.Count -gt 0 -and $active.Count -lt $lanes) {
+            $m = $pending.Dequeue()
+            $inv = $m.Plan[$m.Next]
+            # Defensive (2026-09-29): a full 12-minute run once died here on a null
+            # Bin deep into the run. Skip-and-log with a full Plan dump instead of
+            # dying: the affected bucket comes back INCOMPLETE via the banner
+            # shortfall check, the run survives, and the dump names the entry.
+            if (-not $inv -or [string]::IsNullOrWhiteSpace($inv.Bin)) {
+                $dump = ($m.Plan | ForEach-Object { "[" + $_.Bin + "] " + ($_.Args -join ' ') }) -join "`n"
+                [System.IO.File]::AppendAllText($m.Log + ".poolerror", "POOL ERROR: bucket $($m.Index) invocation $($m.Next): null/empty Bin. Plan dump:`n" + $dump + "`n")
+                $script:poolErrorCount = $script:poolErrorCount + 1
+                "POOL ERROR: bucket $($m.Index) invocation $($m.Next) has a null/empty Bin - bucket abandoned, remaining tests NOT run (see $($m.Log).poolerror)"
+                continue
+            }
+            $part = if ($m.Plan.Count -eq 1) { $m.Log } else { "$($m.Log).part$($m.Next)" }
             $m.Parts.Add($part)
+            # Each Plan entry names its own binary: a bucket may hold units from
+            # several exes, one invocation per exe, never concurrent with itself.
             # -ArgumentList is bound through a temp variable: PS 5.1 refuses the indexed
             # member access (Object[] -> String) when written inline here.
-            $invocationArgs = [string[]]$m.Plan[$i]
-            $m.Proc = Start-Process -FilePath $binary -ArgumentList $invocationArgs `
+            $invocationArgs = [string[]]$inv.Args
+            $m.Proc = Start-Process -FilePath $inv.Bin -ArgumentList $invocationArgs `
                           -RedirectStandardOutput $part -RedirectStandardError "$part.err" `
                           -PassThru -NoNewWindow
-            $wave += $m.Proc
+            $active += $m
         }
-        foreach ($p in $wave) { $p.WaitForExit() }
-    }
-    foreach ($m in $metas) {
-        if ($m.Plan.Count -le 1) { continue }
-        [System.IO.File]::WriteAllText($m.Log, "")
-        foreach ($part in $m.Parts) {
-            [System.IO.File]::AppendAllText($m.Log, [System.IO.File]::ReadAllText($part))
-            Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+        if ($active.Count -gt 0) { Start-Sleep -Milliseconds 400 }
+        $finished = @($active | Where-Object { $_.Proc.HasExited })
+        foreach ($d in $finished) {
+            # The meta LEAVES the lane on every exit: re-enqueued buckets must not
+            # stay in $active, or the next poll double-counts them (Next jumps,
+            # invocations skip/duplicate, Plan[i] goes null - measured 2026-09-29
+            # as 'invocation 4 has a null/empty Bin' + a double-stitch crash).
+            $active = @($active | Where-Object { $_ -ne $d })
+            $d.Next = $d.Next + 1
+            if ($d.Next -lt $d.Plan.Count) {
+                $pending.Enqueue($d)
+            } else {
+                if ($d.Plan.Count -gt 1) {
+                    [System.IO.File]::WriteAllText($d.Log, "")
+                    foreach ($part in $d.Parts) {
+                        [System.IO.File]::AppendAllText($d.Log, [System.IO.File]::ReadAllText($part))
+                        Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
         }
     }
 }
 
 $allMetas = @()
 $shardMetas = @()
-for ($s = 0; $s -lt $Shards; $s++) {
+for ($s = 0; $s -lt $laneCount; $s++) {
     if ($buckets[$s].Count -eq 0) { continue }
-    $intended = 0; foreach ($u in $buckets[$s]) { $intended += [int]$unitTests[$u] }
-    $bucketPlan = Get-BucketPlan $buckets[$s] "$s" $suites $Binary $tmp $stamp $MaxFilterArgLength
+    $bucketPlan = Get-InvocationPlans $buckets[$s] "$s" $groups $tmp $stamp $MaxFilterArgLength
     $meta = [pscustomobject]@{
         Index = $s; Log = Join-Path $tmp "hdaw_shard_${stamp}_$s.log"; Count = $buckets[$s].Count
-        Intended = $intended; Plan = $bucketPlan.Args; Route = $bucketPlan.Route
+        Intended = $bucketPlan.Intended; Plan = $bucketPlan.Invocations; Route = $bucketPlan.Route
         Parts = (New-Object System.Collections.Generic.List[string]); Proc = $null
     }
     $shardMetas += $meta; $allMetas += $meta
 }
 
+$poolErrorCount = 0
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-Invoke-ShardWaves $shardMetas $Binary
+Invoke-BucketPool $shardMetas $Shards
 
-# --- 3b) the contention-sensitive suites, serially ---------------------------
-# Device/plugin suites run in ONE extra bucket AFTER the shards, exactly as before.
-if ($serialUnits.Count -gt 0) {
-    $serialIntended = 0; foreach ($u in $serialUnits) { $serialIntended += [int]$unitTests[$u] }
-    $serialPlan = Get-BucketPlan $serialUnits "serial" $suites $Binary $tmp $stamp $MaxFilterArgLength
+# --- 3b) the contention-sensitive suites, serially, one exe at a time ---------
+# Device/plugin suites run in ONE extra bucket per exe AFTER the shards, exactly
+# as before - each exe's serial bucket is a single process, and the exes run
+# back-to-back (never concurrently: these open the audio device / spawn children).
+foreach ($g in $groups) {
+    if ($g.SerialUnits.Count -eq 0) { continue }
+    $tag = [System.IO.Path]::GetFileNameWithoutExtension($g.Bin) -replace '^hdaw_tests_', ''
+    $serialIntended = 0; foreach ($u in $g.SerialUnits) { $serialIntended += [int]$g.UnitTests[$u] }
+    $serialPlan = Get-BucketPlan @($g.SerialUnits) "serial_$tag" $g.Suites $g.Bin $tmp $stamp $MaxFilterArgLength
+    $serialInv = New-Object System.Collections.Generic.List[object]
+    foreach ($a in $serialPlan.Args) { $serialInv.Add([pscustomobject]@{ Bin = $g.Bin; Args = $a }) }
     $serialMeta = [pscustomobject]@{
-        Index = 'serial'; Log = Join-Path $tmp "hdaw_shard_${stamp}_serial.log"; Count = $serialUnits.Count
-        Intended = $serialIntended; Plan = $serialPlan.Args; Route = $serialPlan.Route
+        Index = "serial_$tag"; Log = Join-Path $tmp "hdaw_shard_${stamp}_serial_$tag.log"; Count = $g.SerialUnits.Count
+        Intended = $serialIntended; Plan = $serialInv; Route = $serialPlan.Route
         Parts = (New-Object System.Collections.Generic.List[string]); Proc = $null
     }
-    Invoke-ShardWaves @($serialMeta) $Binary
+    Invoke-BucketPool @($serialMeta) 1
     $allMetas += $serialMeta
 }
 $sw.Stop()
@@ -395,4 +494,7 @@ if ($incompleteShards.Count -gt 0) {
     "INCOMPLETE SHARDS ($($incompleteShards.Count)): the shard did not execute every test its bucket intended - its log has no/too few gtest completion summaries or the counts disagree, so its missing tests are NOT counted as passed. This is a RUNNER failure, not a test failure:"
     foreach ($ic in $incompleteShards) { "  INCOMPLETE SHARDS: shard $($ic.Index) (ran $($ic.Ran) of $($ic.Intended) intended tests): $($ic.Reason)" }
 }
-exit ([int](($failed -gt 0) -or ($incompleteShards.Count -gt 0)))
+if ($poolErrorCount -gt 0) {
+    "POOL ERRORS: $poolErrorCount invocation(s) skipped (null/empty Bin) - see *.poolerror files; affected buckets are INCOMPLETE above"
+}
+exit ([int](($failed -gt 0) -or ($incompleteShards.Count -gt 0) -or ($poolErrorCount -gt 0)))

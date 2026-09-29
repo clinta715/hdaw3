@@ -17,11 +17,14 @@ option in the top-level `CMakeLists.txt`). The MCP module is the pilot —
 its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
 
 - **Run all tests**: `ctest --test-dir build -C Debug --output-on-failure`
-  (registers the `hdaw_tests` aggregate) — or run the binary directly:
-  `build/Debug/hdaw_tests.exe`. Filter a single gtest sub-suite with
-  the binary's `--gtest_filter=SuiteName.*` (e.g. `--gtest_filter=JsonRpc.*`).
-  The project's CTest setup registers only the aggregate `hdaw_tests`
-  target, not individual gtest sub-suites, so `ctest -R JsonRpc` does
+  (one CTest entry per exe) — or run the binaries directly. Since the
+  2026-09-28 split there are FOUR exes (`hdaw_test_exe()` in
+  `tests/CMakeLists.txt`): `build/hdaw_tests_engine.exe` (225 suites / 1292
+  tests), `build/hdaw_tests_mcp.exe` (22 / 365), `build/hdaw_tests_frontend.exe`
+  (31 / 280), `build/hdaw_tests_platform.exe` (19 / 209) — 297 suites / 2146
+  tests in total. Filter a single gtest sub-suite with
+  the binary's `--gtest_filter=SuiteName.*` (e.g.
+  `hdaw_tests_mcp.exe --gtest_filter=JsonRpc.*`). `ctest -R JsonRpc` does
   **not** work — use the gtest binary's filter instead.
 - **Layout** mirrors the source path: `tests/unit/mcp/json_rpc_test.cpp`
   tests `src/mcp/McpJsonRpc.h`, `tests/integration/mcp/mcp_server_test.cpp`
@@ -44,6 +47,12 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   flaky at the start of iteration 2. A comment in the test file
   documents this. A future fix is to make the test order-independent
   (e.g. by isolating the audio device).
+  **Update 2026-09-28 (test-time split):** `McpServer.*` now lives in
+  `hdaw_tests_mcp.exe` among only the other MCP suites, and the full 365-test
+  mcp run passed with `HttpRoundTrip` mid-suite (`[ OK ] … (84 ms)`, exit 0) —
+  the binary-order hazard (engine/frontend suites' WASAPI/COM teardown landing
+  ahead of it in the same process) is gone by construction. The within-exe
+  caveat above still stands for `--gtest_repeat`.
 - **`McpServer.HttpRoundTrip` no longer binds a FIXED port (fixed 2026-09-23).**
   The test now starts `TransportHttp t(0)` (mcp_server_test.cpp:118) — an
   OS-assigned **ephemeral** port — so it can never collide with a live engine

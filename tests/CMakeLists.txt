@@ -10,32 +10,48 @@ add_executable(scan_hang_helper
     scan_hang_helper/main.cpp
 )
 
-add_executable(hdaw_tests
-    test_main.cpp
-    unit/mcp/json_rpc_test.cpp
-    unit/mcp/mcp_jobs_test.cpp
-    unit/mcp/schema_test.cpp
-    unit/mcp/tool_registry_test.cpp
-    unit/mcp/psy_fm_mod_matrix_debug_test.cpp
-    unit/mcp/preset_file_parser_test.cpp
-    unit/mcp/apply_preset_test.cpp
-    unit/mcp/dry_run_test.cpp
-    unit/mcp/note_id_test.cpp
-    unit/mcp/transport_stdio_test.cpp
-    unit/mcp/transport_http_test.cpp
-    integration/mcp/mcp_server_test.cpp
-    integration/mcp/mcp_functionality_test.cpp
-    integration/mcp/mcp_coverage_test.cpp
-    integration/mcp/engine_tools_test.cpp
-    integration/mcp/workflow_pack_test.cpp
-    integration/mcp/matrix_presets_test.cpp
-    integration/mcp/matrix_presets_rpc_test.cpp
-    integration/mcp/plugin_param_persist_test.cpp
-    integration/mcp/device_params_test.cpp
-    unit/proxy/common_test.cpp
-    unit/proxy/pipe_test.cpp
-    unit/proxy/shm_test.cpp
-    unit/proxy/crash_recovery_test.cpp
+# ── Test executables (2026-09-28 test-time split) ────────────────────────────
+# The former single `hdaw_tests` target (one ~190-TU binary) is now one exe per
+# source seam, so an edit to one group's tests recompiles + relinks only that
+# group's exe, a hard crash is confined to its own process's queue, and the
+# per-process WASAPI/COM init hazard is scoped to the mcp exe.
+# Plan + gates: docs/plans/2026-09-28-build-test-time-split.md (Phase 1).
+#
+# Every exe shares the surface the old target had — include dirs,
+# /FI cstdio_compat.h force-include, the same link set, Qt deploy, CTest
+# registration — so the grouping is the ONLY variable between them.
+# GTest::gtest_main is linked for parity with the old target; test_main.cpp
+# defines its own main(), so gtest_main's object is never pulled in.
+function(hdaw_test_exe name)
+    cmake_parse_arguments(ARG "" "" "SOURCES" ${ARGN})
+    add_executable(${name}
+        test_main.cpp
+        ${ARG_SOURCES}
+    )
+    target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(${name} PRIVATE /FI${CMAKE_SOURCE_DIR}/tests/cstdio_compat.h)
+    target_link_libraries(${name} PRIVATE
+        Qt6::Core
+        Qt6::Network
+        Qt6::WebSockets
+        Qt6::Test
+        HDAW_lib
+        GTest::gtest_main
+    )
+    add_test(NAME ${name} COMMAND ${name})
+    hdaw_deploy_qt(${name})
+endfunction()
+
+# clap_preset_probe_test.cpp installs an SEH translator around plugin init()
+# (containment guard); _set_se_translator only takes effect with /EHa. The
+# rest of the suite keeps the default exception-handling mode.
+if(MSVC)
+    set_source_files_properties(unit/engine/clap_preset_probe_test.cpp
+        PROPERTIES COMPILE_OPTIONS "/EHa")
+endif()
+
+# engine: 130 TUs — the long export/composition/render suites live here.
+hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/audioengine_read_facade_test.cpp
     unit/engine/rave_service_test.cpp
     unit/engine/rave_settings_test.cpp
@@ -166,15 +182,35 @@ add_executable(hdaw_tests
     unit/engine/library_clusterer_test.cpp
     unit/engine/cluster_preset_store_test.cpp
     unit/engine/durable_ref_migration_test.cpp
-    unit/common/read_model_test.cpp
-    unit/common/commands_test.cpp
-    unit/common/param_verity_math_test.cpp
-    unit/common/tone_verity_test.cpp
-    unit/common/message_pump_test.cpp
-    unit/common/headless_args_test.cpp
-    unit/common/param_override_ledger_test.cpp
-    unit/model/project_model_test.cpp
-    unit/model/clip_slicing_test.cpp
+)
+
+# mcp: 20 TUs — unit/mcp + integration/mcp. McpServer.HttpRoundTrip's
+# binary-order sensitivity is now scoped to THIS process.
+hdaw_test_exe(hdaw_tests_mcp SOURCES
+    unit/mcp/json_rpc_test.cpp
+    unit/mcp/mcp_jobs_test.cpp
+    unit/mcp/schema_test.cpp
+    unit/mcp/tool_registry_test.cpp
+    unit/mcp/psy_fm_mod_matrix_debug_test.cpp
+    unit/mcp/preset_file_parser_test.cpp
+    unit/mcp/apply_preset_test.cpp
+    unit/mcp/dry_run_test.cpp
+    unit/mcp/note_id_test.cpp
+    unit/mcp/transport_stdio_test.cpp
+    unit/mcp/transport_http_test.cpp
+    integration/mcp/mcp_server_test.cpp
+    integration/mcp/mcp_functionality_test.cpp
+    integration/mcp/mcp_coverage_test.cpp
+    integration/mcp/engine_tools_test.cpp
+    integration/mcp/workflow_pack_test.cpp
+    integration/mcp/matrix_presets_test.cpp
+    integration/mcp/matrix_presets_rpc_test.cpp
+    integration/mcp/plugin_param_persist_test.cpp
+    integration/mcp/device_params_test.cpp
+)
+
+# frontend: 22 TUs — JSON-RPC router surface + parity ratchets.
+hdaw_test_exe(hdaw_tests_frontend SOURCES
     unit/frontend/frontend_server_test.cpp
     unit/frontend/ghost_clips_rpc_test.cpp
     unit/frontend/envelope_generation_rpc_test.cpp
@@ -197,27 +233,23 @@ add_executable(hdaw_tests
     unit/frontend/window_unit_parity_test.cpp
     unit/frontend/capability_route_parity_test.cpp
     unit/frontend/fm_library_parity_test.cpp
+)
+
+# platform: 15 TUs — proxy IPC + common contracts + project model.
+hdaw_test_exe(hdaw_tests_platform SOURCES
+    unit/proxy/common_test.cpp
+    unit/proxy/pipe_test.cpp
+    unit/proxy/shm_test.cpp
+    unit/proxy/crash_recovery_test.cpp
     integration/proxy/isolation_integration_test.cpp
     integration/proxy/namespace_collision_test.cpp
+    unit/common/read_model_test.cpp
+    unit/common/commands_test.cpp
+    unit/common/param_verity_math_test.cpp
+    unit/common/tone_verity_test.cpp
+    unit/common/message_pump_test.cpp
+    unit/common/headless_args_test.cpp
+    unit/common/param_override_ledger_test.cpp
+    unit/model/project_model_test.cpp
+    unit/model/clip_slicing_test.cpp
 )
-
-target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_compile_options(hdaw_tests PRIVATE /FI${CMAKE_SOURCE_DIR}/tests/cstdio_compat.h)
-# clap_preset_probe_test.cpp installs an SEH translator around plugin init()
-# (containment guard); _set_se_translator only takes effect with /EHa. The
-# rest of the suite keeps the default exception-handling mode.
-if(MSVC)
-    set_source_files_properties(unit/engine/clap_preset_probe_test.cpp
-        PROPERTIES COMPILE_OPTIONS "/EHa")
-endif()
-target_link_libraries(hdaw_tests PRIVATE
-    Qt6::Core
-    Qt6::Network
-    Qt6::WebSockets
-    Qt6::Test
-    HDAW_lib
-    GTest::gtest_main
-)
-add_test(NAME hdaw_tests COMMAND hdaw_tests)
-
-hdaw_deploy_qt(hdaw_tests)

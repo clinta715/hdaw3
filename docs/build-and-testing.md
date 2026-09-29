@@ -6,17 +6,18 @@ and one-line rules; the full narratives live here.
 # Build
 
 - **Canonical (native Windows, from a plain shell):** `build-fast.bat` builds
-  `HDAW.exe` (RelWithDebInfo), `build-fast.bat test` builds `hdaw_tests.exe`,
-  `build-fast.bat all` builds everything, `build-fast.bat debug` builds Debug.
+  `HDAW.exe` (RelWithDebInfo), `build-fast.bat test` builds the four test exes
+  (`build-fast.bat test <target>` builds one), `build-fast.bat all` builds
+  everything, `build-fast.bat debug` builds Debug.
   The script bootstraps MSVC (`vcvars64.bat`) and resolves the VS-bundled CMake
   when neither is on PATH — no developer prompt required.
 - Raw configure/build: `cmake --build build --config Debug`
-- Outputs: `build/Debug/HDAW.exe`, `build/Debug/HDAW_headless.exe`, `build/Debug/hdaw_tests.exe`
+- Outputs: `build/Debug/HDAW.exe`, `build/Debug/HDAW_headless.exe`, `build/Debug/hdaw_tests_{engine,mcp,frontend,platform}.exe`
 - Do NOT run `build/Release/HDAW.exe` — stale binary, contains none of the fixes.
 - **Two launch modes:** Default (browser), Headless (Electron).
 - **Frontend build — DEPRECATED (2026-09-23):** the Electron frontend is a separate
   project; do NOT build it as part of engine work (`npm run build`,
-  `frontend\build.bat`). Engine-only verification: `build/hdaw_tests.exe` (gtest) +
+  `frontend\build.bat`). Engine-only verification: the `build/hdaw_tests_*.exe` gtest binaries +
   the MCP surface. See the dated banner on "How frontend changes reach the running
   app" below.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
@@ -40,7 +41,7 @@ the same no-op is **2 s (0 steps)** and the TU edit is **52 s (3 steps)**.
 - Legitimate costs that remain: a widely-included header edit rebuilds its real
   fan-out (e.g. `src/common/ProjectCommands.h` → 155 TUs, ~260 s);
   `HDAW_lib` is built with LTO (`INTERPROCEDURAL_OPTIMIZATION`);
-  `windeployqt` runs as a POST_BUILD step on `hdaw_tests`.
+  `windeployqt` runs as a POST_BUILD step on every test exe (and the Qt-linked engine exes).
 
 ### `cmake --build` never re-runs CMake here (the suppressed-regeneration trap)
 
@@ -67,7 +68,11 @@ the *build graph* is stale:
 
 - **Fix (always after adding/removing/renaming a source, target, or option):**
   re-run CMake explicitly, then build:
-  `cmake -S . -B build` then `cmake --build build --target hdaw_tests`
+  `cmake -S . -B build` then `cmake --build build --target hdaw_tests_mcp`
+  (agents in a sandboxed shell: `dsh-build-fast.bat configure` — a bare
+  `cmake -S . -B build` there dies in the configure-time try_compile with
+  `C1083: Cannot open include file: 'windows.h'` because the MSVC env is not
+  bootstrapped; measured 2026-09-28)
   (equivalently `cmake --build build --target rebuild_cache`, or
   `cmake --regenerate-during-build -S . -B build` — what CMake itself would run).
 - **Do NOT** conclude "the tool/file is broken" from an unresolved external
@@ -78,12 +83,25 @@ the *build graph* is stale:
 
 ### Test speed: shard the suite across processes (2026-09-21)
 
-`run-tests-sharded.ps1 [-Shards N] [-Filter <regex>] [-SerialSuites <regex>]`
+`run-tests-sharded.ps1 [-Shards N] [-Filter <regex>] [-SerialSuites <regex>] [-Binaries <exe[]>]`
 (repo root) shards the gtest list across N
-concurrent `hdaw_tests.exe` processes (the engine is a singleton *per process* and
+concurrent test-exe processes (the engine is a singleton *per process* and
 proxy children get a unique namespace per manager instance, so concurrent runs are
 safe). It shards small suites whole and large ones per test. Run it with
 `powershell -File run-tests-sharded.ps1 -Shards 4` (or `pwsh`).
+
+- **2026-09-28 test-time split:** the suite is FOUR exes (`hdaw_tests_engine` /
+  `_mcp` / `_frontend` / `_platform`, built by `hdaw_test_exe()` in
+  `tests/CMakeLists.txt`; plan + gates:
+  `docs/plans/2026-09-28-build-test-time-split.md`). The runner defaults to all
+  four, deals `(binary, unit)` pairs into the shard buckets, and runs one gtest
+  process per exe per bucket; `-Binary`/`-Binaries` selects a subset. A suite
+  name present in more than one exe is a hard runner error — every suite must
+  live in exactly one exe. Shards run as a greedy pool (`-BucketFactor`, default 3):
+  units are dealt into `-Shards × BucketFactor` buckets with no wave barriers, so one
+  heavy bucket only holds its own lane. Passing MULTIPLE exes: `powershell -File` binds
+  ONE value per parameter — use `-Command "& '.\run-tests-sharded.ps1' -Binaries
+  'a.exe','b.exe'"` (or pass a single exe).
 
 - **Native, no env forwarding:** the child processes are launched by PowerShell and
   inherit this shell's environment directly — `$env:HDAW_REAL_PLUGIN_TESTS=1`
@@ -425,7 +443,7 @@ reconfigure — do not "fix" it by editing `dsh-build-fast.bat`/`build-fast.bat`
 
 ## Testing
 
-- **C++ engine tests (gtest):** `build/hdaw_tests.exe` (flat Ninja RelWithDebInfo layout — there is no `build/Debug/`; `build-fast.bat test` builds it, `build-fast.bat all` also builds `hdaw_plugin_host.exe` which the PluginIsolation/CrashRecovery suites require)
+- **C++ engine tests (gtest):** `build/hdaw_tests_engine.exe` + `hdaw_tests_mcp.exe` + `hdaw_tests_frontend.exe` + `hdaw_tests_platform.exe` (flat Ninja RelWithDebInfo layout — there is no `build/Debug/`; 2026-09-28 test-time split, `build-fast.bat test` builds all four, `build-fast.bat all` also builds `hdaw_plugin_host.exe` which the PluginIsolation/CrashRecovery suites require)
   - Filter: `--gtest_filter=SuiteName.*`
   - Full suite: **1768 tests / 264 suites, ~44 min serial** (measured 2026-09-21 — STALE: the
     suite was 1328/216 on 2026-09-02 and keeps growing. The current reference run is the
