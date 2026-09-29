@@ -212,7 +212,8 @@ first and the flags they read last.
 Evidence: `PluginIsolation.DestroyWhileStateRetryWorkerRuns` (5 cycles, ~640 ms/cycle) and
 `DestroyWhileEditorWatcherRuns` (1.04 s), both with the measured destruction time inside the
 assertion; `PluginIsolation.*` 53/53; `CrashRecovery.*` + `ProxyNamespace*.*` 16/16; canary 5/5 green;
-canonical shards complete on the final build (2130/2130, 0 failures). Lesson 39 records the rule.
+canonical shards complete on THAT build (2130/2130, 0 failures — §8 re-ran the suite after the lease
+fix and records 2135/2135). Lesson 39 records the rule.
 
 Not fixed (unverified code-read concerns only, no runtime evidence): `getPipe`/`getShm` hand out raw
 `ChildInfo` pointers that a kill may free mid-use, and external callers (save/export threads) may read

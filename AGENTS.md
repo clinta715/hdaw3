@@ -350,7 +350,7 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
   2096 passed, 39 skipped, 0 failures.** Canonical full run:
   `powershell -NoProfile -ExecutionPolicy Bypass -File run-tests-sharded.ps1 -Shards 2` (`Bypass`
   is required — the `.ps1` is unsigned), 24 min wall, every shard `ran == intended`:
-  960/960, 845/845, 325/325. The earlier 2026-09-28 runs were INCOMPLETE (1814 passed, one dead
+  960/960, 845/845, 330/330. The earlier 2026-09-28 runs were INCOMPLETE (1814 passed, one dead
   shard) because `PsytranceComposition.PsyDubFiveMinutes` intermittently died: that was a
   **pre-existing `PluginProxySlot` worker-lifetime UAF**, root-caused with CDB (the AV re-reads
   `this->slotId` after the slot was freed) and FIXED — see lesson 39 and the entry in

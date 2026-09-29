@@ -197,7 +197,8 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   ONE in-flight bounded op (~100 ms in the normal case, ≤ one 3 s bounded pipe op worst case). **Evidence:** `PluginIsolation.DestroyWhileStateRetryWorkerRuns` (5 cycles) +
   `DestroyWhileEditorWatcherRuns` (measured destruction time inside each assertion); `PluginIsolation.*`
   53/53; canary 5/5 green before the hardening pass and the hardened build passes the canonical
-  shards complete — **2130/2130 executed, 2091 passed, 0 failures**.
+  shards complete — **2135/2135 executed, 2096 passed, 39 skipped, 0 failures** (the slot fix's own
+  build measured 2130/2130 before the lease patch added five tests).
   **FOLLOW-UP RESOLVED (same session, 2026-09-28):** the raw-pointer hazard above is now FIXED —
   `ChildInfo` owns `std::shared_ptr<PipeServer>`/`<ShmRegion>` and `getPipe`/`getShm` hand out
   LEASES, so a kill's `children.erase` can no longer free an object another thread is using
