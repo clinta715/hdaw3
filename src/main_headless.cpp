@@ -47,16 +47,12 @@ static bool parseFlag(int argc, char** argv, const char* name)
     return false;
 }
 
-static const char* parseValue(int argc, char** argv, const char* name)
-{
-    const QString prefix = QString::fromUtf8(name) + "=";
-    for (int i = 1; i < argc; ++i) {
-        const QString a = QString::fromUtf8(argv[i]);
-        if (a.startsWith(prefix))
-            return argv[i] + prefix.toUtf8().size();
-    }
-    return nullptr;
-}
+// NOTE: the old `parseValue` (`--name=value` ONLY) is gone — every value-taking
+// argument now goes through HDAW::parseHeadlessArgs (src/common/HeadlessArgs.h),
+// which accepts BOTH spellings and refuses a malformed value loudly. The
+// `=`-only parser silently ignored `--port 8799` and fell back to the DEFAULT
+// port (measured 2026-09-30: the process then collided with the live session
+// engine and exited 1 with a bind error that never mentioned the argument).
 
 int main(int argc, char *argv[])
 {
@@ -87,15 +83,24 @@ int main(int argc, char *argv[])
     // Default to headless (WebSocket) mode when no flag is specified
     const bool headlessFrontend = !mcpStdio;
 
+    // Bootstrap args (--project + the listen ports) — ONE parser, both spellings,
+    // malformed values are HARD errors. It runs BEFORE the MCP-HTTP settings write
+    // below and before any socket binds, so a typo cannot silently fall back to a
+    // default port and collide with the live session engine (measured 2026-09-30:
+    // `--port 8799` was ignored and the process tried 8766).
+    const HDAW::HeadlessArgs bootArgs = HDAW::parseHeadlessArgs(argc, argv);
+    if (!bootArgs.ok) {
+        HDAW_LOG("main_headless", QString("Argument error: %1")
+            .arg(QString::fromStdString(bootArgs.error)));
+        return 2;
+    }
+
     QString mcpHttpHost = QString::fromUtf8(SettingsKeys::kDefaultMcpHttpHost);
     quint16 mcpHttpPort = SettingsKeys::kDefaultMcpHttpPort;
-    if (const char* hostArg = parseValue(argc, argv, "--mcp-http-host"))
-        mcpHttpHost = QString::fromUtf8(hostArg);
-    if (const char* portArg = parseValue(argc, argv, "--mcp-http-port")) {
-        bool ok = false;
-        auto parsed = QString::fromUtf8(portArg).toUShort(&ok);
-        if (ok && parsed > 0) mcpHttpPort = parsed;
-    }
+    if (bootArgs.hasMcpHttpHost)
+        mcpHttpHost = QString::fromStdString(bootArgs.mcpHttpHost);
+    if (bootArgs.hasMcpHttpPort)
+        mcpHttpPort = static_cast<quint16>(bootArgs.mcpHttpPort);
 
     if (enableMcpHttp) {
         QSettings s;
@@ -113,14 +118,9 @@ int main(int argc, char *argv[])
 
     // One-shot session bootstrap (docs/plans/2026-09-28-agent-mechanization.md §6):
     // `--project <file>` / `--project=<file>` loads a project right after the
-    // deferred engine init. A malformed --project (no value) is a HARD error —
-    // never a silently empty project.
-    const HDAW::HeadlessArgs bootArgs = HDAW::parseHeadlessArgs(argc, argv);
-    if (!bootArgs.ok) {
-        HDAW_LOG("main_headless", QString("Argument error: %1")
-            .arg(QString::fromStdString(bootArgs.error)));
-        return 2;
-    }
+    // deferred engine init. bootArgs was parsed and validated above (before any
+    // socket binds); a malformed value is a HARD error — never a silently empty
+    // project and never a silently default port.
     if (bootArgs.hasProject && !mcpStdio)
         HDAW_LOG("main_headless", "--project is only honored with --mcp-stdio; ignoring it");
 
@@ -170,13 +170,11 @@ int main(int argc, char *argv[])
         return app.exec();
     }
 
-    // Headless WebSocket mode
+    // Headless WebSocket mode. `--port 0` (or `--port=0`) is a VALID request for
+    // an OS-assigned free port — read it back from server.port() in the log line.
     quint16 port = kDefaultFrontendPort;
-    if (const char* p = parseValue(argc, argv, "--port")) {
-        bool ok = false;
-        auto parsed = QString::fromUtf8(p).toUShort(&ok);
-        if (ok) port = parsed;
-    }
+    if (bootArgs.hasFrontendPort)
+        port = static_cast<quint16>(bootArgs.frontendPort);
 
     AudioEngine engine;
 
