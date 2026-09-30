@@ -180,9 +180,12 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({ "apply_song_brief",
         "Apply a psy-song-session Song Brief (JSON object or string) as the song plan: "
-        "bpm/keyRoot/scaleMode/style/seed/totalBars/sections[{name,type,bars}]. Brief type aliases "
-        "(peak/outro/drop) map onto canonical kinds — alias 'drop' resolves to kind mainB, so pass "
-        "an explicit kind when the exact section kind matters. Argument: `brief` (object or JSON string). "
+        "bpm/keyRoot/scaleMode/style/seed/totalBars/sections[{name,type,bars}]. A section's `kind` "
+        "is honoured when given (kind: intro|build|mainA|mini|mainB|breakdown|finale|other); "
+        "otherwise it comes from `type`, whose brief aliases map onto canonical kinds "
+        "(peak→mainA, drop→mainB, outro→finale) — so pass an explicit `kind` when the exact section "
+        "kind matters. A section carrying BOTH whose kinds disagree is refused (nothing applied). "
+        "Argument: `brief` (object or JSON string). "
         "Returns the resolved plan {ok, briefApplied, bpm, keyRoot, scaleMode, seed, style, totalBars, "
         "regionsCreated, regionsUpdated, warnings[], sections:[{name, kind, startBeat, endBeat, bars}]}. "
         "One atomic undoable step.",
@@ -466,9 +469,12 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
 
         s.registerTool({ "get_layer_handoffs",
             "Read the project layer-handoff ledger. With trackId: that track only. Without: every "
-            "track. Each entry: {trackId, name, hasHandoff, role, soundIntent, patternIntent, "
-            "modulation {target, recipe, depth, readback}, verify {beforeRms, afterRms, verifyPart, "
-            "warnings}}. Tracks without a handoff are included with hasHandoff=false and no fields.",
+            "track. Each entry: {trackId, trackID, name, hasHandoff, role, soundIntent, "
+            "patternIntent, modulation {target, recipe, depth, readback}, verify {beforeRms, "
+            "afterRms, verifyPart, warnings}}. `trackId` is the POSITIONAL index (the argument this "
+            "tool takes; it shifts when a track above is removed or moved) and `trackID` is the "
+            "track's STABLE identity — hold it when you must address the same track later. Tracks "
+            "without a handoff are included with hasHandoff=false and no fields.",
             objSchema({ { "trackId", QJsonObject{ { "type", "integer" } } } }, {}),
             "composition",
             [e](const QJsonObject& a) -> McpToolResult {

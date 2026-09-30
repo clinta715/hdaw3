@@ -12,6 +12,7 @@
 #include "engine/PsyFmState.h"
 #include "engine/PsyFmModMatrix.h"
 #include "../common/ParamOverrideLedger.h"
+#include "../common/LiveTrackLookupError.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <cmath>
@@ -25,6 +26,25 @@
 #ifdef slots
 #undef slots
 #endif
+
+namespace {
+
+// P1-a: the ONE place a failed LIVE-track lookup reads the engine's audio-device
+// state. The text itself is pure (common/LiveTrackLookupError.h, unit-tested
+// without hardware); this wrapper only reads the engine. `deviceOpen` is the
+// same test captureFxSlotState already uses below: a current device means the
+// graph is being clocked, so a null live track really IS a track problem and the
+// legacy "track not found: N" text must stay byte-identical.
+std::string liveTrackNotFoundText(AudioEngine& engine, int trackIndex)
+{
+    auto& dm = engine.getDeviceManager();
+    const auto setup = dm.getAudioDeviceSetup();
+    return HDAW::liveTrackNotFoundError(trackIndex,
+                                        dm.getCurrentAudioDevice() != nullptr,
+                                        setup.outputDeviceName.toStdString());
+}
+
+} // namespace
 
 // â”€â”€â”€ ProjectCommands â€” FX operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -446,7 +466,7 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
         track = proc != nullptr ? proc->getTrack(trackIndex) : nullptr;
     }
     if (track == nullptr)
-        return fail("track not found: " + std::to_string(trackIndex));
+        return fail(liveTrackNotFoundText(engine_, trackIndex));
     auto& chain = track->getFXChain();
     if (static_cast<size_t>(slotIndex) >= chain.size())
         return fail("slot not found: " + std::to_string(slotIndex));
@@ -637,7 +657,7 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
         track = proc != nullptr ? proc->getTrack(params.trackIndex) : nullptr;
     }
     if (track == nullptr)
-        return fail("track not found: " + std::to_string(params.trackIndex));
+        return fail(liveTrackNotFoundText(engine_, params.trackIndex));
     auto& chain = track->getFXChain();
     if (params.slotIndex < 0 || static_cast<size_t>(params.slotIndex) >= chain.size())
         return fail("slot not found: " + std::to_string(params.slotIndex));

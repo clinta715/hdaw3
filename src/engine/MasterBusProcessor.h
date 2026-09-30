@@ -19,6 +19,18 @@ namespace HDAW {
 // recomputed per block from the atomics (a few tan/mul ops — cheaper and
 // safer than a coefficient-swap dance; contrast TrackFXSlot's stateLock
 // pattern, lesson 13).
+//
+// Per-block signal order: FX chain (eq / compressor / limiter, each slot
+// clamping its own stage) -> smoothed master gain -> post-gain ceiling clamp
+// -> meter. The post-gain clamp (2026-09-30, P2-a) re-applies the ENABLED
+// limiter slot's effective ceiling after the gain, because the chain runs
+// before the gain and therefore could not protect the output from a gain
+// above unity (measured: ceiling 0.97 + master gain 1.6 -> peak 1.0 with
+// 22.7% of frames at full scale, while gain 1.0 held the peak at exactly
+// 0.97). It reads the atomics once and clamps per sample — no allocation, no
+// lock, no string work (Gate 3). With NO limiter slot enabled the clamp does
+// not run at all, so the gain stays the last stage exactly as before — the
+// loudness-compatibility guarantee for existing limiter-free projects.
 class MasterBusProcessor : public BusProcessorBase
 {
 public:
@@ -144,6 +156,11 @@ public:
         // EQ coefficients are recomputed per block from the atomics; the
         // compressor/limiter read their member params directly (same benign
         // pattern as TrackFXSlot::applyInternalParamToDsp under stateLock).
+        //
+        // postGainCeiling carries the enabled limiter slot's effective ceiling
+        // out of the chain so it can be re-applied AFTER the master gain
+        // (P2-a, 2026-09-30). 0 = no limiter slot enabled = no post-gain clamp.
+        float postGainCeiling = 0.0f;
         if (currentSampleRate > 0.0)
         {
             for (int i = 0; i < kMaxSlots; ++i)
@@ -202,6 +219,12 @@ public:
                     // alloc/lock (Gate 3).
                     const float ceilingRaw = slotParams[(size_t) i][2].load(std::memory_order_relaxed);
                     const float ceiling = (ceilingRaw >= 0.5f) ? ceilingRaw : 1.0f;
+                    // P2-a: hand the SAME effective ceiling to the post-gain
+                    // clamp so the two rules cannot disagree. The lowest
+                    // enabled limiter ceiling wins (with several limiter slots
+                    // the strictest one governs the emitted buffer).
+                    if (postGainCeiling <= 0.0f || ceiling < postGainCeiling)
+                        postGainCeiling = ceiling;
                     if (ceiling < 1.0f)
                     {
                         for (int ch = 0; ch < numChannels; ++ch)
@@ -226,8 +249,33 @@ public:
                 buffer.setSample(ch, s, buffer.getSample(ch, s) * g);
         }
 
-        // Meter reads POST-gain (after FX, so the meter reflects the true
-        // output level the limiter is holding at the ceiling).
+        // ── Post-gain ceiling clamp (P2-a, 2026-09-30) ──
+        // The chain (and with it the limiter) runs BEFORE the gain, so a
+        // master gain above unity walked straight past the ceiling: measured
+        // on a real project with ceiling 0.97 + gain 1.6 -> peak 1.0 with
+        // 22.7% of frames at full scale, while the same limiter at gain 1.0
+        // held the peak at exactly 0.97. Re-apply the enabled limiter's
+        // effective ceiling to the post-gain buffer so the limiter's promise
+        // covers the buffer this bus actually emits. Audio-thread safe: the
+        // ceiling was already read once from the atomics in the chain loop
+        // above, and this is a per-sample clamp only — no allocation, no lock,
+        // no string work (Gate 3). Skipped entirely when no limiter slot is
+        // enabled (postGainCeiling == 0), which is what keeps existing
+        // limiter-free projects bit-identical to the previous behaviour.
+        if (postGainCeiling > 0.0f)
+        {
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                auto* data = buffer.getWritePointer(ch);
+                for (int s = 0; s < numSamples; ++s)
+                    data[s] = juce::jlimit(-postGainCeiling, postGainCeiling, data[s]);
+            }
+        }
+
+        // Meter reads POST-gain and POST-ceiling-clamp — the last stage — so it
+        // reflects the true output level the limiter is holding at the ceiling.
+        // (Before the post-gain clamp landed this claim was untrue as soon as
+        // the master gain was above unity.)
         meter.update(buffer);
 
         HDAW::BufferCheck::checkBuffer(buffer, getSampleRate(), 0);

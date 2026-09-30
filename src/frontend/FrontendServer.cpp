@@ -23,7 +23,6 @@
 namespace frontend {
 
 namespace {
-constexpr quint16 kDefaultPort = 8766;   // MCP HTTP defaults to 18765; keep them distinct.
 constexpr int kPushIntervalMs = 33;      // ~30 Hz, matches the Qt GUI cadence.
 } // namespace
 
@@ -91,7 +90,13 @@ FrontendServer::~FrontendServer()
 }
 
 bool FrontendServer::start(quint16 port) {
-    if (port == 0) port = kDefaultPort;
+    // `port == 0` means "ask the OS for a free port" (the caller reads it back
+    // from port()) — the contract this header already advertised. The old
+    // `0 -> 8766` rewrite contradicted it and made start(0) bind the LIVE
+    // engine's port, so every test fixture that wanted an ephemeral server
+    // failed with "server failed to bind" (measured 2026-09-30: all 24
+    // FrontendServer.* tests red while an engine held 8766). Callers that want
+    // the conventional 8766 pass it explicitly; main / main_headless do.
     if (!server_->listen(QHostAddress::LocalHost, port)) {
         // listen() fails if already listening or port in use.
         if (!server_->isListening())

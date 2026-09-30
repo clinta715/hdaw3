@@ -26,6 +26,7 @@
 #include <string>
 
 #include "common/ProjectCommands.h"
+#include "common/LiveTrackLookupError.h"
 #include "engine/AudioEngine.h"
 #include "engine/MainAudioProcessor.h"
 
@@ -169,5 +170,64 @@ TEST(LiveRoutingSeam, DeferredAddThenSendFxMidiAndParamsResolve)
 
     const auto params = engine.getPluginParamService().getParams(ref.trackIndex, ref.pluginId);
     ASSERT_FALSE(params.empty()) << "isolated plugin slot listed zero params after a deferred add";
+    engine.shutdown();
+}
+
+// ─── P1-a: a DEVICELESS engine must not blame the TRACK ────────────────────
+// Measured 2026-09-30 (ion_rift): with no output device open, processBlock never
+// runs, the live graph stays empty, and live-slot tools answered
+// "track not found: N" for tracks list_tracks plainly lists — blaming the track
+// for a device problem. The message is built by a PURE formatter (a bool + a
+// device name, no engine, no hardware), so both branches are asserted here
+// without depending on THIS machine's audio hardware.
+
+TEST(LiveRoutingSeam, DevicelessTrackNotFoundNamesTheDeviceAndTheFix)
+{
+    const auto msg = HDAW::liveTrackNotFoundError(7, /*deviceOpen=*/false, /*outputDeviceName=*/"");
+    EXPECT_EQ(msg.rfind("track not found: 7", 0), 0u) << msg
+        << "the legacy prefix must survive, so a prefix match still works";
+    EXPECT_NE(msg.find("no audio output device is open"), std::string::npos) << msg;
+    EXPECT_NE(msg.find("set_audio_output_device"), std::string::npos) << msg;
+}
+
+TEST(LiveRoutingSeam, DevicelessTrackNotFoundNamesAConfiguredOutput)
+{
+    const auto msg = HDAW::liveTrackNotFoundError(3, false, "Speakers (Realtek Audio)");
+    EXPECT_NE(msg.find("Speakers (Realtek Audio)"), std::string::npos) << msg
+        << "a configured-but-not-open output must be named";
+    EXPECT_NE(msg.find("set_audio_output_device"), std::string::npos) << msg;
+}
+
+// The compatibility half: a device IS clocking the graph, so a null live track
+// really is a track problem and the text must stay BYTE-IDENTICAL to the
+// pre-fix message (existing tests + agents match on it verbatim).
+TEST(LiveRoutingSeam, TrackNotFoundIsByteIdenticalWhenADeviceIsOpen)
+{
+    EXPECT_EQ(HDAW::liveTrackNotFoundError(7, true, "Speakers"), "track not found: 7");
+    EXPECT_EQ(HDAW::liveTrackNotFoundError(0, true, ""), "track not found: 0");
+    EXPECT_EQ(HDAW::liveTrackNotFoundError(999, true, "Speakers (Realtek Audio)"),
+              "track not found: 999");
+}
+
+// Wiring: the command path must actually USE the formatter, with the engine's
+// own device state. The expectation is computed from the same accessors, so this
+// is deterministic whether or not this machine has an output open — it pins the
+// call site, not the hardware.
+TEST(LiveRoutingSeam, SendFxMidiTrackNotFoundUsesTheDeviceAwareText)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& dm = engine.getDeviceManager();
+    const auto setup = dm.getAudioDeviceSetup();
+    const auto expected = HDAW::liveTrackNotFoundError(
+        999, dm.getCurrentAudioDevice() != nullptr, setup.outputDeviceName.toStdString());
+
+    ProjectCommands::FxMidiParams mp;
+    mp.trackIndex = 999; // can never resolve
+    mp.slotIndex = 0;
+    mp.events.push_back({ProjectCommands::FxMidiEvent::Kind::ControlChange, 1, 74, 64});
+    const auto mr = engine.getProjectCommands().sendFxMidi(mp);
+    ASSERT_FALSE(mr.ok);
+    EXPECT_EQ(mr.error, expected);
     engine.shutdown();
 }

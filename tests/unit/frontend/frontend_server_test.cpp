@@ -184,6 +184,29 @@ void seedTrack(AudioEngine& engine)
 
 } // namespace
 
+// start(0) asks the OS for a FREE port — the contract FrontendServer.h's
+// `port()` accessor has always advertised ("handy if start(0) was used to pick
+// a free port"), which the implementation contradicted by rewriting 0 to 8766.
+// That rewrite is why every test in this file failed with "server failed to
+// bind" whenever a live engine held 8766 (measured 2026-09-30). Two servers in
+// one process can only coexist if 0 really means ephemeral.
+TEST(FrontendServer, StartZeroBindsAnEphemeralPortAndTwoServersCoexist) {
+    AudioEngine engine;
+    engine.initialize();
+
+    frontend::FrontendServer a(engine);
+    ASSERT_TRUE(a.start(0)) << "start(0) must bind an OS-assigned port";
+    EXPECT_NE(a.port(), 0) << "port() must report the port the OS chose";
+
+    frontend::FrontendServer b(engine);
+    EXPECT_TRUE(b.start(0)) << "a second ephemeral server must coexist (a fixed port would collide)";
+    EXPECT_NE(b.port(), a.port()) << "two live servers cannot share a port";
+
+    b.stop();
+    a.stop();
+    engine.shutdown();
+}
+
 // Smoke test: server binds, client connects, a read returns the default
 // project. Validates the full WebSocket → router → ReadModel → JSON path.
 TEST(FrontendServer, SnapshotRoundTrip) {

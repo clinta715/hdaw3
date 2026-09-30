@@ -137,6 +137,19 @@ private:
     // during/after it is still captured. Written (release) BEFORE warmupActive
     // is raised and never zeroed, so the pair is race-free under acquire loads.
     std::atomic<int> warmupExpectedMs{0};
+    // One tick per warmup START (bumped next to warmupActive, before it is
+    // raised). The watchdog resets its hang counter when the epoch changes, so
+    // each warmup owns its own budget. Without it the counter carried over
+    // between two back-to-back warmups: the sampler runs every 250 ms, and two
+    // warmups can be ~1 ms apart (warmup #1 clears processBlockActive and the
+    // control loop immediately starts warmup #2), so the `justFinishedWarmup`
+    // edge was never observed, warmup #1's ~12 s stayed in `hangMs`, and
+    // warmup #2 tripped `warmupExpectedMs + 1 s` after only ~1 s — a SPURIOUS
+    // dump during a perfectly healthy warmup (measured 2026-09-30: warmups
+    // 26 ms apart, dump 1.87 s into #2). An epoch reset does NOT hide a real
+    // hang: a genuinely stuck processBlock still reaches the threshold inside
+    // its own warmup's window.
+    std::atomic<uint32_t> warmupEpoch{0};
     void applyPendingRingState();
 
     // Last state successfully handed to the plugin. Re-applied after

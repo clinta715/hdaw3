@@ -49,6 +49,14 @@ QJsonArray layerHandoffsJson(const juce::ValueTree& trackList, int trackId)
     const auto emitEntry = [&arr](const juce::ValueTree& t) {
         QJsonObject o;
         o["trackId"] = t.getParent().indexOf(t);
+        // The STABLE identity beside the positional one (design B1/B2), read off
+        // the TRACK node on every call. `trackId` keeps meaning the positional
+        // index — the argument every track tool takes, which shifts under a
+        // removeTrack/moveTrack splice — so an agent that must address the same
+        // track later uses `trackID` (added 2026-09-30: this shaper is shared by
+        // get_layer_handoffs and composition.getLayerHandoffs, so both surfaces
+        // gained it at once).
+        o["trackID"] = static_cast<int>(t.getProperty(IDs::trackID, 0));
         o["name"] = jstr(t.getProperty(IDs::name, "Track").toString());
         o["hasHandoff"] = t.hasProperty(IDs::layerRole) || t.hasProperty(IDs::layerSoundIntent)
             || t.hasProperty(IDs::layerPatternIntent) || t.hasProperty(IDs::layerModulation)

@@ -23,19 +23,11 @@
 
 namespace {
 
-// Render a mono-source stereo sine through the master bus and return peak.
-float renderPeak(double sampleRate, int samples, float freqHz, float amplitude,
-                 int slotIndex, bool bypassed, const std::vector<float>& params,
-                 const char* slotKind = "limiter")
+// Build the mono-source stereo sine the master-bus tests drive (identical on
+// both channels).
+juce::AudioBuffer<float> makeSineBuffer(double sampleRate, int samples, float freqHz,
+                                        float amplitude)
 {
-    HDAW::MasterBusProcessor master;
-    master.prepareToPlay(sampleRate, 512);
-    // Slot type must be explicit: fresh slots default to empty (no DSP runs).
-    master.setSlotType(slotIndex, juce::String(slotKind));
-    master.setSlotBypassed(slotIndex, bypassed);
-    for (size_t i = 0; i < params.size(); ++i)
-        master.setSlotParam(slotIndex, (int) i, params[i]);
-
     juce::AudioBuffer<float> buf(2, samples);
     const double twoPi = 6.28318530717958647692;
     for (int s = 0; s < samples; ++s)
@@ -44,11 +36,34 @@ float renderPeak(double sampleRate, int samples, float freqHz, float amplitude,
         buf.setSample(0, s, v);
         buf.setSample(1, s, v);
     }
+    return buf;
+}
+
+// Render `src` through a fresh master bus and return the processed buffer.
+// masterGain is pinned BEFORE prepareToPlay, so the smoothed gain starts at
+// exactly that value (no ramp) and the render is deterministic — that is what
+// makes the bit-exact post-gain assertions below meaningful.
+juce::AudioBuffer<float> renderMasterBuffer(const juce::AudioBuffer<float>& src, double sampleRate,
+                                           int slotIndex, bool bypassed,
+                                           const std::vector<float>& params,
+                                           const char* slotKind = "limiter",
+                                           float masterGain = 1.0f)
+{
+    HDAW::MasterBusProcessor master;
+    master.setGain(masterGain);
+    master.prepareToPlay(sampleRate, 512);
+    // Slot type must be explicit: fresh slots default to empty (no DSP runs).
+    master.setSlotType(slotIndex, juce::String(slotKind));
+    master.setSlotBypassed(slotIndex, bypassed);
+    for (size_t i = 0; i < params.size(); ++i)
+        master.setSlotParam(slotIndex, (int) i, params[i]);
+
+    juce::AudioBuffer<float> buf(src);
     juce::MidiBuffer midi;
     // Drive in prepared-block-size chunks (lesson 14: fixed-size scratch).
-    for (int start = 0; start < samples; start += 512)
+    for (int start = 0; start < buf.getNumSamples(); start += 512)
     {
-        const int n = std::min(512, samples - start);
+        const int n = std::min(512, buf.getNumSamples() - start);
         juce::AudioBuffer<float> chunk(2, n);
         for (int ch = 0; ch < 2; ++ch)
             chunk.copyFrom(ch, 0, buf, ch, start, n);
@@ -57,10 +72,20 @@ float renderPeak(double sampleRate, int samples, float freqHz, float amplitude,
             for (int i = 0; i < n; ++i)
                 buf.setSample(ch, start + i, chunk.getSample(ch, i));
     }
+    return buf;
+}
+
+// Render a mono-source stereo sine through the master bus and return peak.
+float renderPeak(double sampleRate, int samples, float freqHz, float amplitude,
+                 int slotIndex, bool bypassed, const std::vector<float>& params,
+                 const char* slotKind = "limiter", float masterGain = 1.0f)
+{
+    auto buf = renderMasterBuffer(makeSineBuffer(sampleRate, samples, freqHz, amplitude),
+                                  sampleRate, slotIndex, bypassed, params, slotKind, masterGain);
 
     float peak = 0.0f;
     for (int ch = 0; ch < 2; ++ch)
-        for (int s = 0; s < samples; ++s)
+        for (int s = 0; s < buf.getNumSamples(); ++s)
             peak = std::max(peak, std::abs(buf.getSample(ch, s)));
     return peak;
 }
@@ -250,6 +275,104 @@ TEST(MasterBusFx, LimiterBypassedPassesThrough)
     const std::vector<float> limiterParams = { -12.0f, 80.0f };
     const float peak = renderPeak(44100.0, 44100, 200.0f, 0.5f, 1, true, limiterParams, "limiter");
     EXPECT_NEAR(peak, 0.5f, 0.02f);
+}
+
+// ---- P2-a (2026-09-30): post-gain ceiling clamp ---------------------------
+//
+// The master FX chain runs BEFORE the master gain, so the limiter's ceiling
+// clamp could not protect the output from a gain above unity: measured on a
+// real project, ceiling 0.97 + set_master_gain 1.6 -> peak 1.0 with 22.7% of
+// frames at full scale (rms 0.46), while the same limiter at gain 1.0 held
+// the peak at exactly 0.97 with zero ceiling hits. The fix re-applies the
+// enabled limiter slot's effective ceiling to the post-gain buffer, using the
+// SAME `ceilingRaw >= 0.5 ? ceilingRaw : 1.0` rule the chain already uses.
+
+TEST(MasterBusFx, PostGainClampHoldsLimiterCeilingAboveUnityGain)
+{
+    const std::vector<float> params = { -12.0f, 80.0f, 0.8f };
+    const float limitedUnity = renderPeak(44100.0, 44100, 200.0f, 1.5f, 1, false, params, "limiter", 1.0f);
+    const float limitedHot   = renderPeak(44100.0, 44100, 200.0f, 1.5f, 1, false, params, "limiter", 1.6f);
+    // Control: the same 1.6x gain with the limiter BYPASSED is what the pre-fix
+    // code produced with the limiter ENABLED (chain output x gain, no clamp).
+    const float unprotected  = renderPeak(44100.0, 44100, 200.0f, 1.5f, 1, true, params, "limiter", 1.6f);
+
+    EXPECT_LE(limitedUnity, 0.81f) << "in-chain ceiling (gain 1.0) unchanged";
+    EXPECT_GT(limitedUnity * 1.6f, 0.81f) << "control: pre-fix, ceiling x gain exceeded the ceiling";
+    EXPECT_GT(unprotected, 1.0f) << "control: 1.5 amplitude x 1.6 is over full scale";
+
+    EXPECT_LE(limitedHot, 0.81f) << "gain > 1 must not push the output past the limiter ceiling (P2-a)";
+    EXPECT_GE(limitedHot, 0.5f) << "the post-gain clamp must clamp, not mute";
+
+    // The exact configuration from the bug report (ceiling 0.97 + gain 1.6).
+    const std::vector<float> measured = { -12.0f, 80.0f, 0.97f };
+    const float measuredHot = renderPeak(44100.0, 44100, 200.0f, 1.5f, 1, false, measured, "limiter", 1.6f);
+    EXPECT_LE(measuredHot, 0.971f) << "the measured 0.97-ceiling + 1.6-gain case must hold";
+}
+
+TEST(MasterBusFx, PostGainClampIsExactGainScalingAtOrBelowUnityGain)
+{
+    // gain <= 1 can only attenuate, so the post-gain clamp is a no-op there:
+    // the output must stay bit-identical to the pre-fix `chainOut * gain`.
+    const std::vector<float> params = { -12.0f, 80.0f, 0.8f };
+    auto unity = renderMasterBuffer(makeSineBuffer(44100.0, 8192, 200.0f, 1.5f),
+                                    44100.0, 1, false, params, "limiter", 1.0f);
+    auto half  = renderMasterBuffer(makeSineBuffer(44100.0, 8192, 200.0f, 1.5f),
+                                    44100.0, 1, false, params, "limiter", 0.5f);
+
+    float unityPeak = 0.0f;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int s = 0; s < unity.getNumSamples(); ++s)
+        {
+            unityPeak = std::max(unityPeak, std::abs(unity.getSample(ch, s)));
+            EXPECT_FLOAT_EQ(half.getSample(ch, s), unity.getSample(ch, s) * 0.5f)
+                << "ch " << ch << " sample " << s;
+        }
+
+    EXPECT_LE(unityPeak, 0.81f) << "limiter + gain 1.0 unchanged from today";
+    EXPECT_GT(unityPeak, 0.5f) << "limiter + gain 1.0 must not be muted";
+}
+
+TEST(MasterBusFx, NoEnabledLimiterLeavesGainUnclampedBitIdentical)
+{
+    // COMPATIBILITY GUARANTEE (P2-a): with no limiter slot enabled the
+    // post-gain clamp must not run at all. The pre-fix — and still current —
+    // behaviour is exactly out = in * gain, so a project that never engages
+    // the master limiter renders bit-identically to before this change.
+    const float gain = 1.6f;
+    const std::vector<float> params = { -12.0f, 80.0f, 0.8f };
+    auto src = makeSineBuffer(44100.0, 4096, 200.0f, 1.5f);
+
+    // (a) limiter slot present but BYPASSED; (b) no slot kind at all.
+    auto bypassed  = renderMasterBuffer(src, 44100.0, 1, true, params, "limiter", gain);
+    auto emptySlot = renderMasterBuffer(src, 44100.0, 1, true, params, "", gain);
+
+    for (int ch = 0; ch < 2; ++ch)
+        for (int s = 0; s < src.getNumSamples(); ++s)
+        {
+            const float expected = src.getSample(ch, s) * gain;
+            EXPECT_FLOAT_EQ(bypassed.getSample(ch, s), expected)
+                << "bypassed limiter, ch " << ch << " sample " << s;
+            EXPECT_FLOAT_EQ(emptySlot.getSample(ch, s), expected)
+                << "no slot kind, ch " << ch << " sample " << s;
+        }
+
+    // Provably unclamped: 1.5 amplitude x 1.6 = 2.4 peak, far above full scale.
+    EXPECT_GT(bypassed.getMagnitude(0, 0, bypassed.getNumSamples()), 2.3f);
+}
+
+TEST(MasterBusFx, PostGainClampKeepsUnityCeilingForLegacyUnsetCeiling)
+{
+    // ceilingRaw < 0.5 means the slot never stored a ceiling (legacy project /
+    // direct construction — the command layer cannot write below the 0.5 def
+    // minimum). The in-chain rule treats that as unity; the post-gain clamp
+    // must reuse the SAME rule, so gain > 1 is clamped at 1.0 — never left to
+    // clip past full scale, and never clamped to the raw sub-0.5 value (0.0
+    // would mute the bus).
+    const std::vector<float> params = { -12.0f, 80.0f };   // param_2 never stored
+    const float peak = renderPeak(44100.0, 44100, 200.0f, 1.5f, 1, false, params, "limiter", 1.6f);
+
+    EXPECT_LE(peak, 1.0f) << "legacy/unset ceiling keeps the unity-ceiling contract post-gain";
+    EXPECT_GT(peak, 0.9f) << "the limiter's makeup still drives near full scale (not muted)";
 }
 
 // ---- Gate 2: EQ boost/cut observable in RMS --------------------------------

@@ -1,4 +1,4 @@
-﻿#include "McpTools.h"
+#include "McpTools.h"
 #include "McpTools_Private.h"
 // B2: the stable-id argument helpers (`trackId`/`trackID`) — thin readers over
 // the ONE shared rule in common/StableRefResolve.h, whose error text is what
@@ -14,6 +14,8 @@
 #include "../common/ParamVerity.h"
 #include "../common/FxCaptureStatus.h"
 #include "../common/FxPluginIdCheck.h"
+// P3-b: the bounded plugin-boot wait (a booting child is not a broken one).
+#include "../common/PluginBootGate.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/EnvelopeGenerator.h"
@@ -249,7 +251,7 @@ s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot. " +
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth). Plugin (CLAP) params additionally report hasRange/minVal/maxVal/defaultVal/plainValue/stepped plus minText/maxText/defaultText (real units) so writes can be mapped meaningfully; hasRange=false means blind normalized 0..1 (VST3, older children). " +
+s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth). Plugin (CLAP) params additionally report hasRange/minVal/maxVal/defaultVal/plainValue/stepped plus minText/maxText/defaultText (real units) so writes can be mapped meaningfully; hasRange=false means blind normalized 0..1 (VST3, older children). A plugin slot whose isolated child is still BOOTING (the emulated devices warm up for ~12 s) publishes no parameters yet: the call waits briefly for them rather than answering instantly, so an EMPTY params list right after add_fx/load means the child is still booting (retry) or the slot is genuinely broken/paramless — check get_fx_capture_status and the plugin-host log before concluding it is broken. " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"trackID",   QJsonObject{{"type","integer"}}},
@@ -271,6 +273,21 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
             {
                 auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
                 auto& paramSvc = e->getPluginParamService();
+                // P3-b (2026-09-30): an isolated child that is still booting
+                // publishes NO parameters, which used to be reported as an empty
+                // list — indistinguishable from a broken slot. Wait out the
+                // measured warmup (bounded, short: this is a READ) so a slot
+                // that is merely booting answers with its real parameters. The
+                // payload shape is unchanged; a list that is STILL empty after
+                // the budget is the "broken or paramless" case (the tool
+                // description says so).
+                if (params.empty())
+                {
+                    (void) HDAW::awaitPluginParams([&] {
+                        params = paramSvc.getParams(ti, fxSlots[si].pluginId);
+                        return ! params.empty();
+                    }, HDAW::kPluginReadBudgetMs);
+                }
                 // Persisted offline-replay overrides (IDs::appliedParamOverrides).
                 // An `overridden` index survives into tree-copy renders
                 // (export_audio / audition_plugin / verify_part) and save/load;

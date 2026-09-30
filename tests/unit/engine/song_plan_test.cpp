@@ -216,6 +216,82 @@ TEST_F(SongPlan, BriefRoundTripAndValidation)
     EXPECT_EQ(cmds.getSongPlan().sections.size(), 4u); // unchanged
 }
 
+// P1-d (lesson 34 — an ACCEPTED argument must not be dropped): a brief
+// section's `kind` is honoured. The tool description promised it
+// ("pass an explicit kind when the exact section kind matters") while the parser
+// read ONLY `type`, so `{"kind":"mainB"}` silently landed as the `type` default
+// mainA. Assert the OBSERVABLE plan (the section's resolved kind + the typed
+// arranger region), never the success payload.
+TEST_F(SongPlan, BriefExplicitKindIsHonoured)
+{
+    auto& cmds = engine.getProjectCommands();
+
+    // kind alone (no type): the explicit kind wins over the mainA default.
+    auto r = cmds.applySongBrief(
+        R"({"bpm":138,"totalBars":16,"sections":[{"name":"drop2","kind":"mainB","bars":16}]})");
+    ASSERT_TRUE(r.ok) << r.error;
+    ASSERT_EQ(r.plan.sections.size(), 1u);
+    EXPECT_EQ(r.plan.sections[0].kind, "mainB");
+
+    // …and the engine state agrees: getSongPlan is the observable projection.
+    auto stored = cmds.getSongPlan();
+    ASSERT_EQ(stored.sections.size(), 1u);
+    EXPECT_EQ(stored.sections[0].kind, "mainB");
+    EXPECT_EQ(stored.sections[0].name, "drop2");
+
+    // kind wins over a DISAGREEING type when... no: that pair is refused below.
+    // kind over an AGREEING type is fine and lands the explicit spelling.
+    auto agree = cmds.applySongBrief(
+        R"({"bpm":138,"totalBars":16,"sections":[{"name":"peak1","type":"drop","kind":"mainB","bars":16}]})");
+    ASSERT_TRUE(agree.ok) << agree.error;
+    EXPECT_EQ(agree.plan.sections[0].kind, "mainB");
+
+    // `type` is still the fallback when kind is absent (aliases intact).
+    auto fallback = cmds.applySongBrief(
+        R"({"bpm":138,"totalBars":24,"sections":[{"name":"a","type":"peak","bars":8},)"
+        R"({"name":"b","type":"outro","bars":16}]})");
+    ASSERT_TRUE(fallback.ok) << fallback.error;
+    ASSERT_EQ(fallback.plan.sections.size(), 2u);
+    EXPECT_EQ(fallback.plan.sections[0].kind, "mainA") << "peak → mainA, the measured alias";
+    EXPECT_EQ(fallback.plan.sections[1].kind, "finale") << "outro → finale, the measured alias";
+}
+
+// P1-d: a section carrying BOTH whose kinds resolve DIFFERENTLY is refused
+// loudly — the whole brief, nothing applied (never a silent pick).
+TEST_F(SongPlan, BriefTypeKindConflictIsRefused)
+{
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_TRUE(cmds.applySongBrief(
+        R"({"bpm":138,"totalBars":16,"sections":[{"name":"keep","type":"intro","bars":16}]})").ok);
+    const auto before = cmds.getSongPlan();
+    ASSERT_EQ(before.sections.size(), 1u);
+    EXPECT_EQ(before.sections[0].kind, "intro");
+
+    // drop → mainB, kind finale: a genuine disagreement.
+    auto r = cmds.applySongBrief(
+        R"({"bpm":138,"totalBars":16,"sections":[{"name":"x","type":"drop","kind":"finale","bars":16}]})");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.error.find("disagree"), std::string::npos) << r.error;
+    EXPECT_NE(r.error.find("section 'x'"), std::string::npos) << r.error;
+    EXPECT_NE(r.error.find("mainB"), std::string::npos) << r.error
+        << "the refusal names the kind `type` resolved to";
+    EXPECT_NE(r.error.find("finale"), std::string::npos) << r.error
+        << "…and the kind that was given";
+
+    // Refused means NOT APPLIED: the previous plan is untouched.
+    auto after = cmds.getSongPlan();
+    ASSERT_EQ(after.sections.size(), 1u);
+    EXPECT_EQ(after.sections[0].kind, "intro");
+    EXPECT_EQ(after.sections[0].name, "keep");
+
+    // The trust boundary is unchanged: an explicit kind that is not a kind
+    // (here a TYPE alias) is still refused, not silently accepted.
+    EXPECT_FALSE(cmds.applySongBrief(
+        R"({"totalBars":8,"sections":[{"name":"y","kind":"drop","bars":8}]})").ok);
+    EXPECT_FALSE(cmds.applySongBrief(
+        R"({"totalBars":8,"sections":[{"name":"y","kind":"wub","bars":8}]})").ok);
+}
+
 // ── Cells (Phase C) ───────────────────────────────────────────────────────
 
 namespace {

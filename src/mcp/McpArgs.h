@@ -32,13 +32,17 @@
 
 namespace mcp {
 
-// The two numbers one resolution needs, or the error for a non-numeric key.
-// (The tool schemas type these properties as integers, so this only fires for a
-// tool registered without its schema — the message mirrors the RPC half's.)
+// The two numbers one resolution needs, plus whether the STABLE key was sent at
+// all, or the error for a non-numeric key. (The tool schemas type these
+// properties as integers, so this only fires for a tool registered without its
+// schema — the message mirrors the RPC half's.) `stablePresent` is what lets
+// `trackID: 0` be answered "unknown trackID 0" instead of the positional half's
+// "trackId required" (P1-c): presence is `contains()`, never the value.
 inline HDAW::StableRefResult refArgs(const QJsonObject& a, HDAW::StableRefKeys keys,
-                                     int& index, int& stableID) {
+                                     int& index, int& stableID, bool& stablePresent) {
     index = HDAW::kNoRef;
     stableID = 0;
+    stablePresent = false;
     if (a.contains(keys.index)) {
         if (!a.value(keys.index).isDouble())
             return HDAW::stableRefError(std::string("missing or non-numeric param: ") + keys.index);
@@ -58,6 +62,7 @@ inline HDAW::StableRefResult refArgs(const QJsonObject& a, HDAW::StableRefKeys k
             return HDAW::stableRefError(std::string("invalid params: ") + keys.stable
                                         + ": expected integer");
         stableID = static_cast<int>(a.value(keys.stable).toDouble());
+        stablePresent = true;
     }
     return {};
 }
@@ -69,8 +74,10 @@ inline HDAW::StableRefResult refArgs(const QJsonObject& a, HDAW::StableRefKeys k
 inline bool trackIndexArg(const QJsonObject& a, const juce::ValueTree& trackList, int& out,
                           std::string& error, HDAW::StableRefKeys keys = HDAW::kTrackRefKeys) {
     int index = HDAW::kNoRef, stableID = 0;
-    const auto read = refArgs(a, keys, index, stableID);
-    const auto r = read.ok ? HDAW::resolveTrackRef(trackList, index, stableID, keys) : read;
+    bool stablePresent = false;
+    const auto read = refArgs(a, keys, index, stableID, stablePresent);
+    const auto r = read.ok ? HDAW::resolveTrackRef(trackList, index, stableID, keys, stablePresent)
+                           : read;
     if (!r.ok) {
         error = r.error;
         return false;
@@ -85,8 +92,11 @@ inline bool sendIndexArg(const QJsonObject& a, const juce::ValueTree& trackList,
                          int& out, std::string& error,
                          HDAW::StableRefKeys keys = HDAW::kSendRefKeys) {
     int index = HDAW::kNoRef, stableID = 0;
-    const auto read = refArgs(a, keys, index, stableID);
-    const auto r = read.ok ? HDAW::resolveSendRef(trackList, trackIndex, index, stableID, keys) : read;
+    bool stablePresent = false;
+    const auto read = refArgs(a, keys, index, stableID, stablePresent);
+    const auto r = read.ok
+        ? HDAW::resolveSendRef(trackList, trackIndex, index, stableID, keys, stablePresent)
+        : read;
     if (!r.ok) {
         error = r.error;
         return false;

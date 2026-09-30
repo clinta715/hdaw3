@@ -15,7 +15,7 @@ write notes, automation, or arrangement structure.
 `sub_synth_import_sysex`, `apply_sub_synth_mod_preset`, `psy_fm_load_preset`, `sampler_set_sample`,
 `set_sampler_param`, `sampler_get_state`, `audition_plugin`, `audition_patch`,
 `search_library`, `get_library_entry`, `list_tracks`, `get_project_summary`,
-`set_track`, `list_plugins`, `scan_plugins`
+`set_track`, `list_plugins`, `scan_plugins`, `whoami`, `tool_help`
 
 FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
 `generate_arrangement*`, `add_instrument_part`, ...), automation writes, and
@@ -60,7 +60,10 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    the stable-ref work: `audition_plugin` and `verify_part` are `trackIndex`-only,
    while the fx/automation/plugin tool families take the optional stable `trackID`
    (prefer it when you hold a stable id). Silent-at-default presets
-   are rejected, not shipped. Sampler roles: `sampler_set_sample` + `sampler_get_state` to verify.
+   are rejected, not shipped. On a DEVICELESS engine (no output device open) the
+   temp-probe/render mode is the ONLY audibility evidence — `hasSound:false` there is
+   "no device", not "no sound" (use `hasSampleFile` + an offline render;
+   `../reference.md` § "Deviceless engine"). Sampler roles: `sampler_set_sample` + `sampler_get_state` to verify.
    **After any `sub_synth_import_sysex`, read the slot back and set `Cutoff`**: a
    Virus patch with a closed filter imports at 20 Hz and renders near-silent while
    the import reports success (see the trap in `docs/psytrance-va-and-production.md` §5c).
@@ -80,6 +83,11 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    committing; vary banks/engines across songs.
 
 ## Surface gotchas (smoke-run feedback)
+- Argument spellings are CHECKABLE, not guessable: `tool_help {name}` returns the
+  tool's exact `tools/list` entry (`{name, description, category, inputSchema}` +
+  the one-object `examples` array), so "is it `trackIndex` or `trackId`?" is ONE
+  read-only call instead of a failed write. `whoami` first proves which
+  engine/transport/project you are attached to.
 - `add_track_with_fx` enum EXCLUDES `sub_synth` — create a generic track
   (`fxType:'filter'`) then `add_fx {fxType:'sub_synth'}` + `remove_fx` the carrier.
 - `apply_sub_synth_mod_preset` is all-or-nothing: a bad presetId or a

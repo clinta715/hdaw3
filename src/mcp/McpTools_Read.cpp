@@ -4,6 +4,8 @@
 #include "McpToolDef.h"
 // Slice S2: the SAME beat-window builder the read.queryClips route calls.
 #include "common/ProjectQuery.h"
+// P1-b: the list_tracks row grammar ({id positional, trackID stable}).
+#include "common/TrackListJson.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "common/Version.h"
@@ -61,25 +63,20 @@ void registerReadTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"list_tracks",
-        "List all tracks (id, name, color, volume, pan, mute, solo, clipCount). Returns a BARE JSON array of track objects (there is no {\"tracks\":[...]} wrapper).",
+        "List all tracks. Returns a BARE JSON array of track objects "
+        "(id, trackID, name, color, volume, pan, mute, solo, clipCount) — there is no "
+        "{\"tracks\":[...]} wrapper. `id` is the POSITIONAL TRACK_LIST index: the number the "
+        "`trackId` argument means, which SHIFTS when a track above it is removed or moved. "
+        "`trackID` is the track's STABLE identity, read from the track itself: it never changes, "
+        "so hold it and pass it as the `trackID` argument when you must address the same track "
+        "later (an index can go stale between two calls).",
         QJsonObject{{"type","object"}},
         "project",
         [e](const QJsonObject&) {
             auto tl = e->getProjectModel().getTrackListTree();
             QJsonArray arr;
-            for (int i = 0; i < tl.getNumChildren(); ++i) {
-                auto t = tl.getChild(i);
-                arr.append(QJsonObject{
-                    {"id", i},
-                    {"name", jstr(t.getProperty(IDs::name).toString())},
-                    {"color", static_cast<int>(t.getProperty(IDs::color))},
-                    {"volume", static_cast<double>(t.getProperty(IDs::volume))},
-                    {"pan", static_cast<double>(t.getProperty(IDs::pan))},
-                    {"mute", static_cast<bool>(t.getProperty(IDs::isMuted))},
-                    {"solo", static_cast<bool>(t.getProperty(IDs::isSoloed))},
-                    {"clipCount", t.getChildWithName(IDs::CLIP_LIST).getNumChildren()}
-                });
-            }
+            for (int i = 0; i < tl.getNumChildren(); ++i)
+                arr.append(HDAW::trackListRowJson(tl.getChild(i), i));
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});

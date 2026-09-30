@@ -492,7 +492,7 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 - **B6**: target-aware verdict — optional `targets` (masterRms ±5% mono convention, ceilingHitPctMax, kickProminenceMin, targetDurationSeconds) adds per-target `targetChecks` rows + a `targets` gate to `mix_report`/`mix_verdict` on both surfaces; per-channel `ceilingHitPct` (frames with any |sample| ≥ 0.999) closes the mono-peak blindness. Conventions pinned in `brief.schema.json`.
 - **B7 (vector-bloom polish)**: transient-edge trims at the 7 reported clamp boundaries (5 ms clip fade-ins × 14 clips + per-note gains × 32 notes) — the windowed edges verify 0 clamp frames; re-render passes `mix_verdict` ok with `ceilingHitPct` 0.00023% (vs the 5% brief budget). Full-render FS pins elsewhere documented as known-issue.
 - **B8**: build TMP/TEMP scratch default in both build scripts (closes the LNK1104 class); locked-DLL + render-log + 394 MB debug-log leftovers cleared; `:ninja` block parse bug fixed.
-- **Tooling**: `scripts/mcp_call.py` (stdio MCP client: tools/list, schemas, desc, call, run steps.json) + `scripts/patch_pi_fabric_advisor.py` (fabric advisor prose-coercion patch).
+- **Tooling**: `scripts/mcp_call.py` (stdio MCP client: tools/list, schemas, desc, call, run steps.json — spawns a FRESH engine per invocation, so roles must not use it) + `scripts/hdaw_mcp_http.py` (the HTTP twin: tools, whoami, desc, schemas, call, run — same shared engine, no fresh spawn) + `scripts/patch_pi_fabric_advisor.py` (fabric advisor prose-coercion patch).
 
 ### v0.39.1 — Engine bugfixes: pattern round-trip, automation_preset sections, sampler hasSound (2026-09-26)
 

@@ -99,6 +99,60 @@ Seven principles from the production sessions. They extend §0 and inform
 
 ---
 
+## 1.5 Mechanization — read, batch, verify (tools shipped 2026-09-28)
+
+Ten tools that compress the loop of §1 steps 4–7. Full semantics, payloads and refusals:
+[`docs/composition-toolkit.md`](composition-toolkit.md) § "Agent mechanization";
+operational notes in `docs/testing-mcp.md`. Reach for them in this order:
+
+1. **Read a window before you rewrite it** — `query_notes {startBeat, endBeat,
+   trackIndex|trackID}` / `query_clips {startBeat, endBeat}`. Rows are in absolute
+   PROJECT beats with the edit-ready `noteId`/`clipId`; the window is an interval
+   overlap (a note sustaining INTO it is returned), the span clamped to its clip with a
+   `truncated` flag. This is what you call when a mix gate says "beat 657.5" and you need
+   to know what is actually there — instead of regex archaeology over the `.hdaw` XML.
+2. **Batch a group of small edits into ONE undo unit** — `set_notes_gain {noteIds, gain}`
+   and `set_clips_edit {edits:[{clipId, start?, duration?, gain?, fadeIn?, fadeOut?,
+   name?, looping?}]}` (a per-clip PARTIAL edit: an unset field is left untouched;
+   `start`/`duration` beats, fades seconds). Validate-then-apply: an EMPTY array or ONE
+   unknown id refuses the WHOLE batch — nothing written, no undo unit — and a typo'd key
+   inside an `edits` item is rejected, not silently dropped. For a run longer than one
+   call, wrap it: `begin_batch {name}` … `end_batch` puts the whole run in one named undo
+   unit, so a single `undo` reverts it (only the stdio session may open a batch; ONE at a
+   time; every write from any surface joins it; a command failure does NOT close it — call
+   `end_batch` on the failure path too).
+3. **Verify at the end of the batch, in the same call** — `end_batch {verify:{targets?,
+   outputPath?}}` SEALS first and only then optionally renders + composes the release
+   verdict; a verification failure never un-seals (payload stays `{ok:true, sealed:true}`
+   plus `verificationError`).
+4. **Localise a mix problem before paying for a full render** — `verify_window {startBeat,
+   endBeat, targets?|expect?, outputPath?, timeoutMs?}` renders the WHOLE project and gates
+   ONE window's promoted stats, with STRICT expectation keys (`rmsMin`, `masterRms`,
+   `ceilingHitPctMax`, `kickProminenceMin`, `targetDurationSeconds`; an unknown key is
+   refused before any render). It costs about ONE full export, and a windowed render does
+   NOT predict the full render (plugin state re-bakes per window) — so **`mix_verdict` over
+   the full render stays the release gate**; windows only tell you WHERE the problem is.
+   `render_and_verify {outputPath, …}` = full render + the `mix_verdict`-identical verdict
+   in one call.
+5. **Discovery / lifecycle** — `tool_help {name}` returns that tool's exact `tools/list`
+   entry (argument names, units, one example) in one call, killing the `tools/list` →
+   schema → description round trips plus the failed call from a guessed argument name;
+   `whoami` reports engine + transport + session project + `batchOpen`/`batchDepth`/
+   `batchName`. Both are MCP-only (no RPC twin).
+6. **Window units** — every window-taking tool accepts the `*Beat` spelling, its `*Sec`
+   twin, and (for a bare window) the bare key + an optional `unit`; two spellings that
+   disagree are refused rather than silently picked.
+
+**PowerShell trap when probing the surface (measured 2026-09-28):** the engine's raw
+`tools/list` body contains keys differing only in case (`trackID` vs `trackId`), so
+`ConvertFrom-Json` FAILS on the whole document (`… contains keys with different casing.
+Please use the -AsHashTable switch instead.`). Use `-AsHashtable`, or skip parsing and use
+`python scripts\hdaw_mcp_http.py tools|schemas|whoami|call <tool> '<json-args>'` (that
+helper talks to the already-running engine at `127.0.0.1:18765`; `scripts\mcp_call.py` is
+the stateless stdio twin).
+
+---
+
 ## 2. Sample pipeline (timbre-lib)
 
 ### Index new packs (one-time per pack)
@@ -280,7 +334,7 @@ The key tools and their shapes, distilled from the composition sessions:
 | `apply_sub_synth_mod_preset` | `{trackId, slotIndex, presetId}` | `"ok: preset '…' applied (params 27-32)"` | sub_synth LFO factory presets; atomic + undoable, patch params 0–26 untouched. presetId ∈ {off, slow_filter_drift, vibrato, tremolo, fm_motion, animated_sweep}. |
 | `set_song_plan` | `{bpm, keyRoot, scaleMode, style, seed, totalBars, sections[{name,kind,bars}]}` | resolved plan JSON | Deterministic skeleton; syncs section-typed arranger regions in ONE undo unit; 4/4, totalBars must equal the bars sum; kinds: intro/build/mainA/mini/mainB/breakdown/finale/other. |
 | `get_song_plan` | `{}` | `{hasPlan, sections[…startBeat/endBeat]}` | Read the plan back — every other tool references sections by NAME. |
-| `apply_song_brief` / `export_song_brief` | `{brief}` / `{}` | plan echo / verbatim brief JSON | psy-song-session Brief ⇄ plan (peak→mainA, outro→finale, drop→mainB). |
+| `apply_song_brief` / `export_song_brief` | `{brief}` / `{}` | plan echo / verbatim brief JSON | psy-song-session Brief ⇄ plan. A section's `kind` wins when given, else its `type` (`peak`→mainA, `outro`→finale, `drop`→mainB); a section whose `type` and `kind` disagree is REFUSED (nothing applied). |
 | `set_cell` / `set_cells` / `get_cells` / `remove_cell` | `{section, role, trackId, source, params, seed, locked}` etc. / `{cells:[…recipes]}` | ok / cells JSON | Content recipes on the section×role matrix. source ∈ phrase/rhythm/break/pattern/harvest; seed 0 = derived from plan seed. **`set_cells` is the batch form: N recipes in ONE undo unit and one round trip** (a 9-role × 10-section track is 55 cells); per-recipe failures are reported without aborting the batch. |
 | `fill_cells` | `{mode: all\|unfilled}` | `{filled, skippedLocked, failed, cells[{clipId, noteCount, seedUsed}]}` | ONE undo transaction; clips span exactly their section window; re-fill reuses the cell's clip; locked cells skipped. |
 | `reroll` / `get_clip_provenance` | `{section?, role?}` / `{clipId}` | batch JSON / `{found, tool, source, seed}` | Variation = lastSeed+1, deterministic; provenance answers "where did this clip come from". |
@@ -365,6 +419,20 @@ await mcp_call("fill_cells", {"mode": "all"})
 # export_audio → mix_report {filePath, fromPlan: true}   (windows come from the plan)
 await mcp_call("reroll", {"section": "drop"})   # same cell, seed+1 — structure untouched
 ```
+
+**`apply_song_brief` honours `sections[].kind` (fixed 2026-09-30, source-verified).**
+A section's kind is its explicit `kind` key when given; otherwise it comes from
+`type` — the brief aliases are `peak`→mainA, `outro`→finale, `drop`→mainB,
+everything else passed through to `PsytranceGenerator::kindFromName`
+(`intro`/`build`/`buildup`/`mainA`/`main`/`mini`/`mainB`/`breakdown`/`finale`/
+`outro`; an unknown name is REJECTED at the trust boundary, not silently
+accepted). A section carrying BOTH whose kinds resolve DIFFERENTLY refuses the
+whole brief (`section 'x': type 'drop' (kind mainB) and kind 'finale' disagree`) —
+nothing is applied, so the pair can never be a silent coin flip. Before the fix
+the parser read ONLY `type` and silently dropped `kind` (measured 2026-09-28), so
+`{"name":"drop2","kind":"mainB","bars":40}` landed as `mainA` with no error and
+no warning; that spelling now lands `mainB`. Practical rule: pass `kind` for the
+kind you mean, or omit it and write `type:"drop"` (→ mainB).
 
 Sources: `phrase` (all generate_phrase styles + styleParams), `rhythm`
 (euclidean/DSL/bank), `break` (needs `set_sampler_mode slice` +

@@ -160,11 +160,15 @@ inline QJsonObject paramsObject(const QJsonValue& params) {
 // whose `message` is the shared resolver's text; pass a real `err` — with
 // nullptr the caller's own literal would mask the id the failure has to name.
 
-// The two numbers one resolution needs, or the error for a non-numeric key.
+// The two numbers one resolution needs, plus whether the STABLE key was sent at
+// all, or the error for a non-numeric key. `stablePresent` is what lets
+// `trackID: 0` be answered "unknown trackID 0" instead of the positional half's
+// "trackId required" (P1-c): presence is `contains()`, never the value.
 inline HDAW::StableRefResult refArgs(const QJsonObject& o, HDAW::StableRefKeys keys,
-                                     int& index, int& stableID) {
+                                     int& index, int& stableID, bool& stablePresent) {
     index = HDAW::kNoRef;
     stableID = 0;
+    stablePresent = false;
     if (o.contains(keys.index)) {
         // requireInt's exact wording: the positional half of this check predates
         // B2 and its message is part of the surface. A numeric-but-NON-INTEGRAL
@@ -185,6 +189,7 @@ inline HDAW::StableRefResult refArgs(const QJsonObject& o, HDAW::StableRefKeys k
             return HDAW::stableRefError(std::string("invalid params: ") + keys.stable
                                         + ": expected integer");
         stableID = static_cast<int>(o.value(keys.stable).toDouble());
+        stablePresent = true;
     }
     return {};
 }
@@ -194,8 +199,10 @@ inline HDAW::StableRefResult refArgs(const QJsonObject& o, HDAW::StableRefKeys k
 inline bool trackIndexArg(const QJsonObject& o, const juce::ValueTree& trackList, int& out,
                           DispatchResult* err, HDAW::StableRefKeys keys = HDAW::kTrackRefKeys) {
     int index = HDAW::kNoRef, stableID = 0;
-    const auto read = refArgs(o, keys, index, stableID);
-    const auto r = read.ok ? HDAW::resolveTrackRef(trackList, index, stableID, keys) : read;
+    bool stablePresent = false;
+    const auto read = refArgs(o, keys, index, stableID, stablePresent);
+    const auto r = read.ok ? HDAW::resolveTrackRef(trackList, index, stableID, keys, stablePresent)
+                           : read;
     if (!r.ok) {
         if (err) *err = makeError(-32602, QString::fromStdString(r.error));
         return false;
@@ -210,8 +217,11 @@ inline bool sendIndexArg(const QJsonObject& o, const juce::ValueTree& trackList,
                          int& out, DispatchResult* err,
                          HDAW::StableRefKeys keys = HDAW::kSendRefKeys) {
     int index = HDAW::kNoRef, stableID = 0;
-    const auto read = refArgs(o, keys, index, stableID);
-    const auto r = read.ok ? HDAW::resolveSendRef(trackList, trackIndex, index, stableID, keys) : read;
+    bool stablePresent = false;
+    const auto read = refArgs(o, keys, index, stableID, stablePresent);
+    const auto r = read.ok
+        ? HDAW::resolveSendRef(trackList, trackIndex, index, stableID, keys, stablePresent)
+        : read;
     if (!r.ok) {
         if (err) *err = makeError(-32602, QString::fromStdString(r.error));
         return false;

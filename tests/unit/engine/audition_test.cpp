@@ -127,6 +127,30 @@ TEST(Audition, InvalidParamsError)
     EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
 }
 
+// The style vocabulary is CASE-SENSITIVE and its refusal must SAY so: the
+// ion_rift session's trap was `style:"lead"` (for "Lead") being rejected with a
+// bare "unknown style: lead" and no way to discover the valid spellings. The
+// list lives next to the parser that rejects the name, so it cannot drift.
+TEST(Audition, UnknownStyleRefusalNamesTheValidSpellings)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    ProjectCommands::AuditionParams p;
+    p.trackIndex = 0;          // an existing track: the style gate runs before any render
+    p.style = "lead";          // the wrong casing — the measured trap
+    p.lengthBeats = 4.0;
+    p.windowSeconds = 2.0;
+    const auto r = engine.getProjectCommands().auditionPlugin(p);
+
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.error.find("unknown style: lead"), std::string::npos) << r.error;
+    EXPECT_NE(r.error.find("Lead"), std::string::npos)
+        << "the refusal must show the correct spelling: " << r.error;
+    EXPECT_NE(r.error.find("case-sensitive"), std::string::npos) << r.error;
+    EXPECT_NE(r.error.find("BassLine"), std::string::npos) << r.error;
+}
+
 TEST(Audition, RealPluginAudibleProgram)
 {
     if (!tyrellN6Available())

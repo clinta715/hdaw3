@@ -155,7 +155,7 @@ range before writing (lesson 23 discipline: no out-of-range writes).
   JE8086 wrapper retargets it onto the sounding temp performance, so the file's patch
   sounds immediately. No `CC0=1 USER + PC` recall is sent any more — a JP-8080 PC
   *loads* the emulator's bank program into the current patch and overwrote the dump
-  (probe: 2026-09-20). Confirm the load with `poll_fx_capture` + a render: a patch
+  (probe: 2026-09-20). Confirm the load with `get_fx_capture_status` + a render: a patch
   dump does not appear in the param list, and the persisted `IDs::presetSysex`
   replay is what carries it into exports. `preset` is the 1-based patch unit
   in file order — choose one from the je8086 survey `roleShortlist` refs
@@ -198,7 +198,7 @@ range before writing (lesson 23 discipline: no out-of-range writes).
     PC *loads* the bank program and discarded the dump). Device probe + gate:
     `docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md`,
     `FxMidiInjection.Je8086UserPatchDumpChangesOfflineRender`. **Confirming a load:**
-    use `poll_fx_capture` + a render A/B — the param list does **not** move for a
+    use `get_fx_capture_status` + a render A/B — the param list does **not** move for a
     patch dump (a bank write never changed it, and the SysEx path does not echo back),
     and the live child state blob stayed constant too (2026-09-21). The durable
     readback is the persisted `IDs::presetSysex` replay, which is why a rebuilt child
@@ -666,8 +666,8 @@ final tone shaping.
   LFO or lane on pid 100+0 sweeps the carrier off-integer and reads as discord. Same for sub_synth
   semitone/pitch and sampler Transpose. Static detune ≈≤10 cents is fine; moving pitch is not.
 - **Volume-lane authority (fader writes can be ignored):** an ENABLED Volume
-  automation lane makes automation authoritative for that track, so `set_track_volume`
-  afterwards is overridden (this masked a whole round of gain corrections).
+  automation lane makes automation authoritative for that track, so `set_track`
+  volume writes afterwards are overridden (this masked a whole round of gain corrections).
   `audit_modulation_coverage` reports it per track (`faderOverridden`,
   `volumeLanes.enabled`) and in `summary.faderOverriddenIds`; call
   `set_fader_authoritative {trackId, authoritative:true}` before gain staging

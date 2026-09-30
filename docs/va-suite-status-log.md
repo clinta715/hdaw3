@@ -422,6 +422,6 @@ specific, the param cache never echoes SysEx patch loads for these emulations (s
 note in `OsTIrusPresetChangeReflectsInChildParams`). The durable readback is the
 persisted slot state: `sendFxMidi` stores the raw DT1 dumps in `IDs::presetSysex` and
 `Track.cpp` **replays** them into every fresh child at rebuild/restore, so the patch
-survives export/save-load. Confirm with `poll_fx_capture` then a render A/B. Probe plan
+survives export/save-load. Confirm with `get_fx_capture_status` then a render A/B. Probe plan
 + full evidence: `docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md`.
 

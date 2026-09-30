@@ -5260,4 +5260,158 @@ TEST_F(McpCoverageTest, SendIdAloneAddressesTheSurvivorAfterASplice) {
         << "remove_send reports the position the id occupied";
 }
 
+// ─── P1-b: list_tracks carries the STABLE trackID beside the positional id ──
+// Measured 2026-09-30 (ion_rift): the ONLY surface that reported a stable id was
+// an add_track*/duplicate_track return, so an agent that had lost it could not
+// rediscover it — list_tracks' `id` is the POSITIONAL index, an address that
+// shifts under removeTrack/moveTrack. Each row now carries both: `id` unchanged
+// (byte-compatible) and `trackID` read off the TRACK node on every call.
+TEST_F(McpCoverageTest, ListTracksCarriesTheStableIdBesideThePositionalId) {
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_GE(cmds.addTrack("B"), 0);
+    ASSERT_GE(cmds.addTrack("C"), 0);
+    engine->drainPendingRoutingRebuild();
+    auto tl = engine->getProjectModel().getTrackListTree();
+    ASSERT_EQ(tl.getNumChildren(), 3);
+
+    auto rows = trackList();
+    ASSERT_EQ(rows.size(), 3);
+    for (int i = 0; i < 3; ++i) {
+        const auto row = rows[i].toObject();
+        EXPECT_EQ(row.value("id").toInt(-1), i) << "`id` is still the POSITIONAL index";
+        EXPECT_EQ(row.value("trackID").toInt(0),
+                  static_cast<int>(tl.getChild(i).getProperty(IDs::trackID, 0)))
+            << "`trackID` is the TRACK node's own property, not recomputed";
+        EXPECT_GT(row.value("trackID").toInt(0), 0);
+    }
+    // The two numbers are NOT interchangeable: 0-based positions, 1-based ids.
+    EXPECT_EQ(rows[0].toObject().value("id").toInt(), 0);
+    EXPECT_EQ(rows[0].toObject().value("trackID").toInt(), 1);
+
+    // A splice moves the ADDRESS and leaves the identity alone — the whole point
+    // of publishing it.
+    const int idOfC = static_cast<int>(tl.getChild(2).getProperty(IDs::trackID, 0));
+    ASSERT_TRUE(cmds.removeTrack(0).ok);
+    engine->drainPendingRoutingRebuild();
+    rows = trackList();
+    ASSERT_EQ(rows.size(), 2);
+    EXPECT_EQ(rows[0].toObject().value("name").toString(), QString("B"));
+    EXPECT_EQ(rows[1].toObject().value("name").toString(), QString("C"));
+    EXPECT_EQ(rows[1].toObject().value("id").toInt(), 1) << "C's index shifted down";
+    EXPECT_EQ(rows[1].toObject().value("trackID").toInt(), idOfC) << "C's identity did not";
+}
+
+// The description IS the contract for an agent (the schema is all it sees), so
+// it must say which number is which.
+TEST_F(McpCoverageTest, ListTracksDescriptionDistinguishesPositionalFromStable) {
+    const auto help = QJsonDocument::fromJson(
+        callText("tool_help", { { "name", "list_tracks" } }).toString().toUtf8()).object();
+    ASSERT_FALSE(help.isEmpty());
+    const QString desc = help.value("description").toString();
+    EXPECT_TRUE(desc.contains("POSITIONAL")) << desc.toStdString();
+    EXPECT_TRUE(desc.contains("STABLE")) << desc.toStdString();
+    EXPECT_TRUE(desc.contains("trackID")) << desc.toStdString();
+}
+
+// ─── P1-c: an explicit `trackID: 0` is UNKNOWN, not "required" ──────────────
+// The measured misleading text: a caller that plainly sent an id was told the
+// KEY was missing ("trackId required"). A stable id is 1-based, so 0 names
+// nothing and must say so — while a genuinely absent key keeps its old text.
+TEST_F(McpCoverageTest, ExplicitZeroTrackIdIsUnknownNotRequired) {
+    auto zero = call("set_track", { { "trackID", 0 }, { "name", "Nope" } });
+    ASSERT_TRUE(isError(zero));
+    EXPECT_EQ(text(zero).toStdString(), "unknown trackID 0");
+    EXPECT_EQ(engine->getProjectModel().getTrackListTree().getChild(0)
+                  .getProperty(IDs::name).toString(),
+              juce::String("Track"))
+        << "a refused resolution must not write anywhere";
+
+    // The MISSING key is unchanged: still "required".
+    auto missing = call("set_track", { { "name", "Nope" } });
+    ASSERT_TRUE(isError(missing));
+    EXPECT_EQ(text(missing).toStdString(), "trackId required");
+
+    // An unknown non-zero id is unchanged.
+    auto unknown = call("set_track", { { "trackID", 4242 }, { "name", "Nope" } });
+    ASSERT_TRUE(isError(unknown));
+    EXPECT_EQ(text(unknown).toStdString(), "unknown trackID 4242");
+
+    // A real id still drives the write (the additive half must not regress).
+    const int real = static_cast<int>(engine->getProjectModel().getTrackListTree()
+                                          .getChild(0).getProperty(IDs::trackID, 0));
+    ASSERT_GT(real, 0);
+    auto ok = call("set_track", { { "trackID", real }, { "name", "ByStableId" } });
+    ASSERT_FALSE(isError(ok)) << text(ok).toStdString();
+    EXPECT_EQ(engine->getProjectModel().getTrackListTree().getChild(0)
+                  .getProperty(IDs::name).toString(),
+              juce::String("ByStableId"));
+}
+
+// ─── Stable ids on the remaining READ payloads (2026-09-30) ────────────────
+// Two read surfaces still hid the identity after P1-b: snapshot_project's rows
+// (the RPC twin read.snapshot has reported trackID all along — FrontendRpc.h
+// toJson(TrackSnapshot)) and get_layer_handoffs' ledger rows (one SHARED shaper
+// feeds the tool and composition.getLayerHandoffs, so both gained it at once).
+TEST_F(McpCoverageTest, SnapshotProjectCarriesTheStableTrackIdLikeItsRpcTwin) {
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_GE(cmds.addTrack("SnapB"), 0);
+    engine->drainPendingRoutingRebuild();
+    auto tl = engine->getProjectModel().getTrackListTree();
+    ASSERT_EQ(tl.getNumChildren(), 2);
+
+    const auto snap = QJsonDocument::fromJson(text(call("snapshot_project")).toUtf8()).object();
+    const auto rows = snap.value("tracks").toArray();
+    ASSERT_EQ(rows.size(), 2);
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_EQ(rows[i].toObject().value("index").toInt(-1), i)
+            << "`index` stays the POSITIONAL index";
+        EXPECT_EQ(rows[i].toObject().value("trackID").toInt(0),
+                  static_cast<int>(tl.getChild(i).getProperty(IDs::trackID, 0)))
+            << "`trackID` is the TRACK node's own property";
+    }
+
+    // The RPC twin already published it; assert the two surfaces AGREE on the
+    // value (the ledger maps snapshot_project -> read.snapshot).
+    const auto rpc = frontend::dispatch(*engine, "read.snapshot", QJsonObject{});
+    ASSERT_FALSE(rpc.isError);
+    const auto rpcRows = rpc.payload.toObject().value("tracks").toArray();
+    ASSERT_EQ(rpcRows.size(), 2);
+    for (int i = 0; i < 2; ++i)
+        EXPECT_EQ(rpcRows[i].toObject().value("trackID").toInt(0),
+                  rows[i].toObject().value("trackID").toInt(0))
+            << "tool and route must name the same identity for track " << i;
+}
+
+TEST_F(McpCoverageTest, LayerHandoffsCarryTheStableTrackIdOnBothSurfaces) {
+    auto& cmds = engine->getProjectCommands();
+    ASSERT_GE(cmds.addTrack("HandB"), 0);
+    engine->drainPendingRoutingRebuild();
+    auto tl = engine->getProjectModel().getTrackListTree();
+    ASSERT_EQ(tl.getNumChildren(), 2);
+
+    const auto rows = QJsonDocument::fromJson(
+        callText("get_layer_handoffs").toString().toUtf8()).array();
+    ASSERT_EQ(rows.size(), 2);
+    for (int i = 0; i < 2; ++i) {
+        const auto o = rows[i].toObject();
+        EXPECT_EQ(o.value("trackId").toInt(-1), i)
+            << "`trackId` keeps meaning the POSITIONAL index (the argument convention)";
+        EXPECT_EQ(o.value("trackID").toInt(0),
+                  static_cast<int>(tl.getChild(i).getProperty(IDs::trackID, 0)));
+    }
+
+    // ONE shared shaper (common/SongPlanView.cpp) feeds both surfaces, so the
+    // route must report the same identities — parity by construction, pinned.
+    const auto rpc = frontend::dispatch(*engine, "composition.getLayerHandoffs", QJsonObject{});
+    ASSERT_FALSE(rpc.isError);
+    const auto rpcRows = rpc.payload.toArray();
+    ASSERT_EQ(rpcRows.size(), 2);
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_EQ(rpcRows[i].toObject().value("trackID").toInt(0),
+                  rows[i].toObject().value("trackID").toInt(0));
+        EXPECT_EQ(rpcRows[i].toObject().value("trackId").toInt(-1),
+                  rows[i].toObject().value("trackId").toInt(-1));
+    }
+}
+
 } // namespace

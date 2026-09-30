@@ -135,6 +135,11 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
                 }
                 tracks.append(QJsonObject{
                     {"index", t.index},
+                    // Stable identity (design B1) next to the positional index,
+                    // exactly as read.snapshot's per-track JSON already reports
+                    // it (FrontendRpc.h toJson(TrackSnapshot)) — the MCP tool was
+                    // the only surface that omitted it (fixed 2026-09-30).
+                    {"trackID", t.trackID},
                     {"name", QString::fromStdString(t.name)},
                     {"color", t.color},
                     {"volume", t.volume},

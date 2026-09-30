@@ -487,7 +487,9 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
             if (!o.value("trackID").isDouble())
                 return makeError(-32602, "missing or non-numeric param: trackID");
             stableID = static_cast<int>(o.value("trackID").toDouble());
-            const auto ref = HDAW::resolveTrackRef(trackList, index, stableID, keys);
+            // P1-c: the key was required just above, so presence is stated —
+            // `trackID: 0` is an unknown id, not a missing key.
+            const auto ref = HDAW::resolveTrackRef(trackList, index, stableID, keys, true);
             if (!ref.ok)
                 return makeError(-32602, QString::fromStdString(ref.error));
             ti = ref.index;

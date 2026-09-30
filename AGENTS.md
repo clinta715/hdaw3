@@ -234,6 +234,13 @@ separate project and is no longer a delivery target.
   `set_clips_edit` (batch, one undo unit); `begin_batch` / `end_batch` (long-lived
   stdio session, one named undo unit); `tool_help` (one tool's exact `tools/list`
   entry); `whoami` (engine + transport + session project + batch state).
+- **Agent transport, one shared engine**: DSH-hosted agents have no `mcp()` proxy
+  tool — they reach the SAME per-session engine over HTTP with
+  `python scripts/hdaw_mcp_http.py {tools|whoami|desc|schemas|call|run}`
+  (e.g. `call whoami '{}'`), the HTTP twin of the stdio `scripts/mcp_call.py`.
+  `mcp_call.py` spawns a FRESH engine per invocation, so a role must never use
+  it; and never launch a stdio engine / `mcp-launch.bat` from a role — that kills
+  the shared engine every other agent is attached to.
 - **Time windows in either unit**: every window-taking tool/call accepts the `*Beat`
   and `*Sec` spellings plus its own key — disagreeing spellings are refused
   (`src/common/WindowUnitArgs.h`; `docs/testing-mcp.md` § "Time windows").

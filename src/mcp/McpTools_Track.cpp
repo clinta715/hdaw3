@@ -194,7 +194,14 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
-    s.registerTool({"set_master_gain", "Set the master bus gain (linear, >= 0).",
+    s.registerTool({"set_master_gain",
+        "Set the master bus gain (linear, >= 0). The gain sits AFTER the master FX chain, and when a "
+        "LIMITER slot is enabled its ceiling is re-applied after the gain — so a gain above unity "
+        "pushes INTO the limiter ceiling (density, not loudness) and cannot clip the output; the "
+        "master meter reads post-gain/post-clamp. With NO limiter slot enabled the gain is the last "
+        "stage and nothing clamps it (gain > 1 can exceed full scale). To make a mix LOUDER, drive "
+        "the chain (master EQ gain pre-limiter, or the limiter threshold) rather than the master "
+        "gain.",
         objSchema({{"gain", QJsonObject{{"type","number"},{"minimum",0}}}}, {"gain"}),
         "track",
         [e](const QJsonObject& a) -> McpToolResult {

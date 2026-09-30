@@ -34,6 +34,10 @@ public:
 
     // Bind to the given port on the loopback interface. Returns false if the
     // port is already in use. Idempotent: a second start() after stop() works.
+    // `port == 0` asks the OS for a FREE port — read it back with port() below.
+    // (It used to be silently rewritten to 8766, which contradicted port()'s
+    // own contract and made two servers in one process impossible; callers that
+    // want the conventional 8766 pass it explicitly — main / main_headless do.)
     bool start(quint16 port);
 
     // Stop listening, close all client sockets, stop the push timers.

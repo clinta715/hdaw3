@@ -11,7 +11,8 @@ plus optional layer-agent dispatches for final-track quality. Immutable Song
 Brief, machine-verifiable gates between roles.
 
 **Shared reference**: `reference.md` (modulation-first, depth targets, render
-variance, hardware loader status, 10 s timeout discipline). Role files link to
+variance, hardware loader status, 10 s timeout discipline, unit-tagged time
+windows, the 2026-09-28 mechanization tools). Role files link to
 it on demand — do NOT include it in dispatch prompts.
 
 ## Role files
@@ -46,18 +47,28 @@ songs. Vary the section layout per style/brief, not one template.
 ## Dispatch — shared-engine contract (CRITICAL)
 
 The engine is a PER-SESSION SINGLETON: mcp-launch.bat kills any running
-engine on launch. Role subagents MUST use the shared HTTP engine's mcp proxy
-(`await mcp({server:'hdaw-http', tool:..., args:...})`), never spawn their own
-stdio server. Dispatch with `extensions: true` and `tools: [<core>, "mcp"]`.
+engine on launch. Role subagents MUST reach that ONE engine and never spawn
+their own stdio server. Three call shapes, same tool names: pi-hosted agents
+use the mcp proxy (`await mcp({server:'hdaw-http', tool:..., args:...})`),
+omp-harness agents write to `xd://mcp__hdaw_<tool>`, and DSH-hosted agents use
+the CLI `python scripts/hdaw_mcp_http.py call <tool> '<json-args>'`. Dispatch
+with `extensions: true` and `tools: [<core>, "mcp"]`. Full contract + the
+`whoami`/`tool_help` pre-flight pair: `dispatch-preamble.md`.
 
 **Every mutating call must stay under the wrapper's 10 s timeout** — on
-timeout the wrapper restarts the engine (exit 42), wiping unsaved state.
-Batch small; `save_project` IMMEDIATELY after each mutation group; never
+timeout the wrapper discards the connection and the next call relaunches the
+engine onto a **fresh empty project**, wiping unsaved state. That is NOT exit
+42: 42 comes only from the deliberate `engine_restart` tool, never from a
+timeout. Batch small; `save_project` IMMEDIATELY after each mutation group; never
 blind-retry a timed-out call. `scripts/crash-diag.ps1 report` gives exit
 codes + dump inventory.
 
 **Checkpoint saves**: the Arranger saves immediately after each mutation
 group. An engine death between phases must never lose more than one batch.
+
+**Multi-step mutation groups** are the Arranger's ONE named undo unit via
+`begin_batch {name}` / `end_batch {verify?}` — stdio transport only (refused on
+HTTP/CLI), one at a time, and it must be closed on the failure path too.
 
 ## Global modulation rule
 
@@ -70,9 +81,11 @@ Full rule + targets: `reference.md`.
 
 1. **Parallel offline**: Curator + Pattern Researcher (never touch the engine)
 2. **Sound Selector**: tempo/scale, track map, FX chains, patches, auditioning
-3. **Arranger** (single writer): plan/cell tools, fills sections
+3. **Arranger** (single writer): plan/cell tools, fills sections; multi-step
+   mutation groups wrapped in `begin_batch`/`end_batch` (stdio) = one undo unit
 4. **FX & Automation Engineer**: cross-section movement, modulation audit
-5. **Mix Verifier**: export, measure, fix-first loop (max 3), final verdict
+5. **Mix Verifier**: export, measure, fix-first loop (max 3), final verdict —
+   `verify_window` localises a bad window, `render_and_verify` is the release gate
 6. **Persist** only on a PASS verdict
 
 Multiple roles may hold the engine ONLY if all are read-only. Any mutation →
@@ -92,7 +105,13 @@ capture the shape, then rebuilt layer by layer when the track goes final.
 
 A handoff WITHOUT gate evidence is rejected. Evidence = machine output:
 `tone_verity`, `param_verity`, `param_verity_corpus`, `mix_report`,
-`mix_verdict`, `audit_modulation_coverage`, `audit_song_structure`. Prose is not evidence.
+`mix_verdict`, `verify_window`, `render_and_verify`, `audit_modulation_coverage`,
+`audit_song_structure`. Prose is not evidence.
+`verify_window` costs about one full export and gates ONE beat window's
+PROMOTED stats; `render_and_verify` = full render + a verdict byte-identical to
+`mix_verdict`, so it is the release gate. A windowed render does NOT predict the
+full render (plugin state re-bakes per window) — windows LOCALISE a problem,
+the full render remains the gate.
 Render variance (~±2% RMS for emulated synths): use spectral properties for
 A/B; the probe's baseline spread is the trust threshold.
 
@@ -100,6 +119,8 @@ A/B; the probe's baseline spread is the trust threshold.
 
 - Role blocker: orchestrator re-routes to the owning role with evidence.
 - Verifier FAIL: fix-first loop, max 3 re-renders, then surface to user.
-- Engine exit 0x2A (42) = wrapper timeout restart, NOT a crash: re-load the
-  checkpoint and continue. Real crashes land a WER dump — check
+- Engine exit 0x2A (42) = the deliberate `engine_restart` tool, NOT a crash and
+  NOT a timeout: re-load the checkpoint and continue. A request TIMEOUT never
+  yields 42 — it discards the connection, and the next call relaunches the
+  engine onto a fresh empty project. Real crashes land a WER dump — check
   `scripts/crash-diag.ps1 report` for exit codes + dumps before debugging.

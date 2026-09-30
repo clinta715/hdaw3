@@ -463,6 +463,13 @@ reconfigure — do not "fix" it by editing `dsh-build-fast.bat`/`build-fast.bat`
     warmup→audio transition, and a genuine hang still dumps (`warmupExpectedMs + 1 s`). Test hook
     `HDAW_TEST_HANG_MS` (default unset/dead) covers the real-hang path; regression tests
     `PluginIsolation.VirusWarmupWritesNoHangDump` / `PluginIsolation.RealHangWritesHangDump`.
+    **Size, fixed 2026-09-30 (P2-b):** the watchdog's dump is now **stack-only** (`MiniDumpNormal` —
+    thread stacks + module list, kilobytes) because the pre-fix `MiniDumpWithFullMemory` wrote
+    **1.5-2 GB per dump** (twice in one ion_rift session; the emulated device's firmware image
+    dominates the child's address space) — the watchdog's question is WHERE `processBlock` is stuck,
+    which a stack answers. Only the SEH **crash** path still takes a full-memory dump. The 330-670 MB
+    figures above are pre-fix history. Policy pinned by `DumpPolicy.*` (`tests/unit/proxy/common_test.cpp`);
+    `PluginHost.cpp` also logs the measured duration/threshold next to the stable dump filename.
   - **Default device open probes for capture endpoints instead of always attempting 2-in/2-out (2026-09-25).**
     `AudioEngine::initialize` used to always attempt `initialiseWithDefaultDevices(2,2)` and fall back to
     `(0,2)`; on a capture-less box (RDP render-only, documented above) the first attempt always failed. Now

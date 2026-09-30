@@ -80,7 +80,7 @@ kick stem: peak 0.0002 → **0.387**, RMS 0.00003 → **0.056**, sub band 7870.
 
 Writing a fallback movement lane on **Volume** (`pid 1`) with the `subtleLife`/`randomDrift`
 presets sets the level to ~0.5 AND makes automation authoritative (`set_fader_authoritative`
-territory), so the track is quietly halved and later `set_track_volume` writes are ignored —
+territory), so the track is quietly halved and later `set_track` volume writes are ignored —
 measured: hats/clap dropped to RMS 0.002/0.005. **Prefer pan / cutoff / wave-morph lanes for fallback
 modulation**; if a Volume lane is genuinely wanted, call `set_fader_authoritative` before gain
 staging (and re-check `audit_modulation_coverage` → `faderOverriddenIds`). After swapping hats/clap

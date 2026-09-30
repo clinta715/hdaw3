@@ -2475,6 +2475,74 @@ TEST(PluginIsolation, VirusWarmupWritesNoHangDump) {
 }
 
 // ========================================================================
+// P2-b (2026-09-30) — the warmup-EPOCH carryover. The watchdog samples every
+// 250 ms, but two warmups on ONE child can be ~1 ms apart: warmup #1 clears
+// processBlockActive and the control loop immediately starts warmup #2, so the
+// `justFinishedWarmup` edge is never observed and the hang counter carries
+// warmup #1's elapsed time into #2 — which then trips its own
+// `warmupExpectedMs + 1 s` threshold after only ~1 s and writes a dump during a
+// perfectly HEALTHY warmup (measured live: warmups 26 ms apart, dump 1.87 s into
+// #2). Fixed by a per-warmup epoch counter that resets the budget when a new
+// warmup starts. This test is the regression pin: with the carryover, warmup #2
+// dumps; with the fix, neither does. (A genuine hang still dumps —
+// RealHangWritesHangDump.)
+// ========================================================================
+TEST(PluginIsolation, BackToBackWarmupsWriteNoHangDump) {
+    auto scratch = freshScratchDir("warmup2");
+    ASSERT_TRUE(scratch.createDirectory());
+
+    const std::string oldTmp  = setChildEnv("TMP",  scratch.getFullPathName().toStdString());
+    const std::string oldTemp = setChildEnv("TEMP", scratch.getFullPathName().toStdString());
+    const std::string oldSec  = setChildEnv("HDAW_CHILD_WARMUP_SECONDS", "2");
+
+    ProxyProcessManager mgr;
+    const uint32_t slot = 9482;
+    ASSERT_TRUE(mgr.spawnPluginHost("C:\\fake\\Osirus.vst3", slot));
+    auto pipe = mgr.getPipe(slot);
+    ASSERT_NE(pipe, nullptr);
+
+    // Two PREPAREs with NOTHING between them: no gap the 250 ms sampler can see.
+    auto prepareOnce = [&](const char* which) {
+        ProxyMessage prepareMsg{};
+        prepareMsg.type = MessageType::PREPARE;
+        prepareMsg.slotId = slot;
+        struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+        std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+        prepareMsg.dataSize = sizeof(pd);
+        pipe->sendMsg(prepareMsg);
+
+        ProxyResponse resp{};
+        const auto t0 = std::chrono::steady_clock::now();
+        EXPECT_TRUE(pipe->receiveResp(resp)) << which << ": child should answer PREPARE";
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        EXPECT_EQ(resp.result, 1u);
+        EXPECT_GT(elapsedMs, 1000) << which
+            << ": warmup did not run long enough to exercise the watchdog";
+    };
+
+    prepareOnce("warmup #1");
+    prepareOnce("warmup #2");
+
+    // Let any (pre-fix) dump finish writing before measuring.
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    juce::StringArray dumps;
+    countHungDumps(scratch, dumps);
+    std::fprintf(stderr, "MARK warmup2 scratch=%s dumps=%s\n",
+                 scratch.getFullPathName().toRawUTF8(),
+                 dumps.isEmpty() ? "(none)" : dumps.joinIntoString("; ").toRawUTF8());
+    EXPECT_EQ(dumps.size(), 0)
+        << "watchdog dump(s) produced by two HEALTHY back-to-back warmups (epoch "
+           "carryover): " << dumps.joinIntoString(", ");
+
+    mgr.killPluginHost(slot, KillMode::KillHard);
+    restoreChildEnv("HDAW_CHILD_WARMUP_SECONDS", oldSec);
+    restoreChildEnv("TEMP", oldTemp);
+    restoreChildEnv("TMP",  oldTmp);
+    scratch.deleteRecursively();
+}
+
+// ========================================================================
 // Change A — a GENUINE hang must still dump. The test-only HDAW_TEST_HANG_MS
 // hook (PassthroughProcessor::processBlock) holds one processBlock call for
 // 2500 ms; with no warmup running the 1 s watchdog must write the minidump.

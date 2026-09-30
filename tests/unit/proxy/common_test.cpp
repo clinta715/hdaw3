@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "proxy/ProxyCommon.h"
+#include "proxy/DumpPolicy.h"   // P2-b: hang dumps stay stack-only
 
 using namespace proxy;
 
@@ -31,4 +32,25 @@ TEST(RingBuffer, ComputeShmSize) {
     EXPECT_GT(size2ch, sizeof(ShmHeader));
     EXPECT_GT(size1ch, sizeof(ShmHeader));
     EXPECT_GT(size2ch, size1ch);
+}
+
+// P2-b (2026-09-30): the hang watchdog used to write MiniDumpWithFullMemory —
+// 1.5-2 GB per dump, twice in one session (the emulated device's firmware image
+// dominates the child's address space). The watchdog's question is WHERE
+// processBlock is stuck, which thread stacks answer; the crash (SEH) path keeps
+// the full-memory dump it always had. This pins the policy, which is the whole
+// fix — the WHEN (thresholds) is untouched, so a real hang is still captured.
+TEST(DumpPolicy, HangDumpIsStackOnlyWhileTheCrashDumpKeepsFullMemory) {
+    EXPECT_EQ(HDAW::minidumpTypeFor(HDAW::DumpKind::Hang), MiniDumpNormal);
+    EXPECT_FALSE(HDAW::dumpCapturesFullMemory(HDAW::minidumpTypeFor(HDAW::DumpKind::Hang)))
+        << "the hang dump must not carry the whole address space";
+    EXPECT_EQ(HDAW::minidumpTypeFor(HDAW::DumpKind::Crash), MiniDumpWithFullMemory);
+    EXPECT_TRUE(HDAW::dumpCapturesFullMemory(HDAW::minidumpTypeFor(HDAW::DumpKind::Crash)))
+        << "the SEH crash path keeps its pre-existing diagnostic";
+
+    // No indirect-memory walk either: the hang dump must not grow with the
+    // plugin's heap (that is the 2 GB class, one flag away).
+    const uint32_t hang = static_cast<uint32_t>(HDAW::kHangDumpType);
+    EXPECT_EQ(hang & static_cast<uint32_t>(MiniDumpWithIndirectlyReferencedMemory), 0u);
+    EXPECT_EQ(hang & static_cast<uint32_t>(MiniDumpWithPrivateReadWriteMemory), 0u);
 }

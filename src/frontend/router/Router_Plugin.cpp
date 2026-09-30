@@ -8,6 +8,9 @@
 #include "../../common/SettingsKeys.h"
 #include "../../common/NordBankLoader.h"
 #include "../../common/PresetApply.h"   // loadPresetFile: the shared setStateInformation loader
+// P3-b: the bounded plugin-boot wait — the MCP twin (list_fx_params) uses it too,
+// so a booting child cannot look like a broken one on either surface.
+#include "../../common/PluginBootGate.h"
 #include "../../engine/AudioEngine.h"
 #include "../../model/ProjectModel.h"
 
@@ -230,7 +233,26 @@ DispatchResult dispatchPluginParam(AudioEngine& engine, const QString& m, const 
         if (slotIndex >= 0)
             overrides = engine.getProjectCommands().getPluginParamOverrides(i, slotIndex);
         QJsonArray arr;
-        for (const auto& p : s.getParams(i, id)) {
+        auto params = s.getParams(i, id);
+        // P3-b (2026-09-30): the MCP twin (list_fx_params) waits out a booting
+        // isolated child before reporting an empty list; the route does the SAME
+        // so the two surfaces cannot disagree about a slot that is merely
+        // warming up. Payload shape unchanged.
+        //
+        // Guarded on the slot EXISTING: an unknown pluginID (or a slot the
+        // ReadModel does not project) has nothing to wait for — without this a
+        // typo'd id would stall the call for the whole read budget. The MCP
+        // branch needs no such guard: it is already inside `fxType == "plugin"`,
+        // i.e. the slot exists, so there an empty list really is the
+        // booting-or-broken case the wait is for.
+        if (params.empty() && slotIndex >= 0)
+        {
+            (void) HDAW::awaitPluginParams([&] {
+                params = s.getParams(i, id);
+                return ! params.empty();
+            }, HDAW::kPluginReadBudgetMs);
+        }
+        for (const auto& p : params) {
             bool overridden = false;
             for (const auto& ov : overrides)
                 if (ov.first == p.index) { overridden = true; break; }

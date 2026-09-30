@@ -422,7 +422,38 @@ ProjectCommands::SongPlanResult AudioEngineCommands::applySongBrief(const std::s
         const auto& s = sections[i];
         auto& out = plan.sections.emplace_back();
         out.name = s.getProperty("name", "").toString().toStdString();
-        out.kind = briefTypeToKind(s.getProperty("type", "mainA").toString().toStdString());
+        // P1-d (lesson 34 — an accepted argument must not be dropped): a
+        // section's `kind` is a REAL key here, not decoration. An explicit
+        // `kind` WINS (that is the key the tool description tells callers to use
+        // when the exact kind matters); `type` stays the fallback and keeps its
+        // brief aliases (peak→mainA, drop→mainB, outro→finale). A section
+        // carrying BOTH that resolve to DIFFERENT kinds is refused outright —
+        // picking one silently is how a brief's drop lands as an intro. The
+        // trust boundary is unchanged: validatePlan still rejects an unknown
+        // kind, so `kind:"drop"` (a TYPE alias, not a kind) is refused rather
+        // than quietly accepted.
+        const bool hasKind = s.hasProperty("kind");
+        const bool hasType = s.hasProperty("type");
+        const std::string typeKind =
+            briefTypeToKind(s.getProperty("type", "mainA").toString().toStdString());
+        if (hasKind)
+        {
+            out.kind = s.getProperty("kind", "").toString().toStdString();
+            // Canonical comparison: run BOTH spellings through the same alias
+            // table + kind table, so `type:"drop"` + `kind:"mainB"` (and
+            // `kind:"drop"`) agree instead of producing a false refusal.
+            if (hasType && knownSectionKind(out.kind)
+                && HDAW::PsytranceGenerator::kindFromName(briefTypeToKind(out.kind))
+                       != HDAW::PsytranceGenerator::kindFromName(typeKind))
+                return fail("section '" + juce::String(out.name) + "': type '"
+                            + s.getProperty("type", "").toString() + "' (kind "
+                            + juce::String(typeKind) + ") and kind '"
+                            + juce::String(out.kind) + "' disagree");
+        }
+        else
+        {
+            out.kind = typeKind;
+        }
         out.bars = (int) s.getProperty("bars", 8);
         barSum += out.bars;
     }

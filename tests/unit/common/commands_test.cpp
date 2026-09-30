@@ -2,6 +2,7 @@
 #include "common/ProjectCommands.h"
 #include "common/StableRefResolve.h"   // design B2: the stable-id argument rule
 #include "common/TrackIdRefs.h"        // design B3: stable-id folder/cell refs
+#include "common/PluginBootGate.h"     // P3-b: booting vs broken plugin slots
 #include "engine/AudioEngine.h"
 #include "engine/RoutingManager.h"
 #include "engine/MidiClipProcessor.h"
@@ -1728,4 +1729,145 @@ TEST_F(Commands, StableFolderRefUsesTheFolderKeyNames)
     const auto neither = HDAW::resolveTrackRef(tl, HDAW::kNoRef, 0, HDAW::kFolderRefKeys);
     EXPECT_FALSE(neither.ok);
     EXPECT_EQ(neither.error, "folderId required");
+}
+
+// ─── P1-c: an explicit ZERO stable id is UNKNOWN, not "required" ───────────
+// Measured 2026-09-30 (ion_rift): the stable half decided presence with a VALUE
+// test (`stableID > 0`), so `trackID: 0` — a key the caller plainly sent — fell
+// through to the positional half's "trackId required". Stable ids are 1-based
+// (design B1), so 0 is simply an id that names nothing and must say so, exactly
+// like 4242 always has. The flag is how the surfaces state presence for the
+// non-positive values the value itself cannot express.
+TEST_F(Commands, StableTrackRefZeroIdIsUnknownNotRequired)
+{
+    ASSERT_GE(seedTrack(engine, "Z"), 0);
+    const auto tl = engine.getProjectModel().getTrackListTree();
+    ASSERT_GT(trackIdAt(engine, 0), 0);
+
+    // `trackID: 0` sent (stablePresent=true) with no positional argument.
+    const auto zero = HDAW::resolveTrackRef(tl, HDAW::kNoRef, 0, HDAW::kTrackRefKeys, true);
+    EXPECT_FALSE(zero.ok);
+    EXPECT_EQ(zero.error, "unknown trackID 0");
+    EXPECT_EQ(zero.index, HDAW::kNoRef);
+
+    // …and with a positional argument that would otherwise resolve: an unknown
+    // id never falls back to the index (the documented rule).
+    const auto zeroWithIndex = HDAW::resolveTrackRef(tl, 0, 0, HDAW::kTrackRefKeys, true);
+    EXPECT_FALSE(zeroWithIndex.ok);
+    EXPECT_EQ(zeroWithIndex.error, "unknown trackID 0");
+
+    // A negative id is not an entity either.
+    const auto negative = HDAW::resolveTrackRef(tl, HDAW::kNoRef, -3, HDAW::kTrackRefKeys, true);
+    EXPECT_FALSE(negative.ok);
+    EXPECT_EQ(negative.error, "unknown trackID -3");
+
+    // The MISSING key still says "required" — presence false, value 0.
+    const auto missing = HDAW::resolveTrackRef(tl, HDAW::kNoRef, 0, HDAW::kTrackRefKeys, false);
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.error, "trackId required");
+
+    // The folder spelling goes through the same rule.
+    const auto folderZero = HDAW::resolveTrackRef(tl, HDAW::kNoRef, 0, HDAW::kFolderRefKeys, true);
+    EXPECT_FALSE(folderZero.ok);
+    EXPECT_EQ(folderZero.error, "unknown folderID 0");
+
+    // Backwards compatibility: a POSITIVE id still implies presence, so every
+    // pre-P1-c caller (flag left at its default) resolves exactly as before.
+    const int id = trackIdAt(engine, 0);
+    const auto legacy = HDAW::resolveTrackRef(tl, HDAW::kNoRef, id);
+    ASSERT_TRUE(legacy.ok) << legacy.error;
+    EXPECT_EQ(legacy.index, 0);
+}
+
+// The send half of the same rule.
+TEST_F(Commands, StableSendRefZeroIdIsUnknownNotRequired)
+{
+    ASSERT_GE(seedTrack(engine, "SZ"), 0);
+    auto& cmds = engine.getProjectCommands();
+    ASSERT_EQ(cmds.createSend(0, 1, 0.25f, false).sendIndex, 0);
+    engine.drainPendingRoutingRebuild();
+    const auto tl = engine.getProjectModel().getTrackListTree();
+
+    const auto zero = HDAW::resolveSendRef(tl, 0, HDAW::kNoRef, 0, HDAW::kSendRefKeys, true);
+    EXPECT_FALSE(zero.ok);
+    EXPECT_EQ(zero.error, "unknown sendID 0");
+
+    const auto missing = HDAW::resolveSendRef(tl, 0, HDAW::kNoRef, 0, HDAW::kSendRefKeys, false);
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.error, "sendIndex required");
+}
+
+// ─── P3-b: a BOOTING isolated plugin slot is not a BROKEN one ──────────────
+// Measured 2026-09-30 (ion_rift): an isolated child warms up for ~12 s and
+// publishes no parameters until it finishes, so `list_fx_params` answered `{}`
+// and params-dependent calls failed — byte-identical to a broken slot, and a
+// caller had no way to tell "wait" from "give up". The gate below is the shared
+// decision both param surfaces now run through (list_fx_params /
+// pluginParam.getParams): bounded wait, then name the state. Pure by
+// construction, so every branch is pinned here without a plugin or a child.
+TEST(PluginBootGate, StateFollowsTheObservableAndTheBudget)
+{
+    using HDAW::PluginBootState;
+    EXPECT_EQ(HDAW::pluginBootState(true, 0, 15000), PluginBootState::Ready);
+    EXPECT_EQ(HDAW::pluginBootState(true, 99999, 15000), PluginBootState::Ready)
+        << "an available observable is ready no matter how long it took";
+    EXPECT_EQ(HDAW::pluginBootState(false, 0, 15000), PluginBootState::Booting)
+        << "an empty list inside the budget is BOOTING, not broken";
+    EXPECT_EQ(HDAW::pluginBootState(false, 14999, 15000), PluginBootState::Booting);
+    EXPECT_EQ(HDAW::pluginBootState(false, 15000, 15000), PluginBootState::Broken)
+        << "only a spent budget reports broken";
+    EXPECT_EQ(std::string(HDAW::pluginBootStateName(PluginBootState::Ready)), "ready");
+    EXPECT_EQ(std::string(HDAW::pluginBootStateName(PluginBootState::Booting)), "booting");
+    EXPECT_EQ(std::string(HDAW::pluginBootStateName(PluginBootState::Broken)), "broken");
+}
+
+TEST(PluginBootGate, WaitStopsAtTheFirstSuccessAndGivesUpAtTheBudget)
+{
+    int calls = 0;
+    const auto third = [&calls] { return ++calls >= 3; };
+    const auto ready = HDAW::waitForPluginReady(third, 5000, 1);
+    EXPECT_TRUE(ready.ready);
+    EXPECT_EQ(calls, 3) << "stops at the first success (no extra probe)";
+    EXPECT_LT(ready.waitedMs, 5000);
+
+    // A non-positive budget probes exactly once: a read must not stall.
+    int neverCalls = 0;
+    const auto never = [&neverCalls] { ++neverCalls; return false; };
+    const auto none = HDAW::waitForPluginReady(never, 0, 1);
+    EXPECT_FALSE(none.ready);
+    EXPECT_EQ(neverCalls, 1);
+    EXPECT_EQ(HDAW::pluginBootState(none.ready, none.waitedMs, 0), HDAW::PluginBootState::Broken);
+
+    // A real budget polls until it expires — bounded, not infinite.
+    int boundedCalls = 0;
+    const auto bounded = HDAW::waitForPluginReady(
+        [&boundedCalls] { ++boundedCalls; return false; }, 60, 1);
+    EXPECT_FALSE(bounded.ready);
+    EXPECT_GE(boundedCalls, 2);
+    EXPECT_GE(bounded.waitedMs, 60) << "the wait ends AT the budget, never past it";
+}
+
+TEST(PluginBootGate, AwaitPluginParamsReportsTheStateAndTheWait)
+{
+    int calls = 0;
+    int waited = -1;
+    const auto state = HDAW::awaitPluginParams([&calls] { return ++calls >= 2; }, 5000, &waited);
+    EXPECT_EQ(state, HDAW::PluginBootState::Ready);
+    EXPECT_GE(waited, 0);
+    EXPECT_LT(waited, 5000);
+
+    int brokenWaited = -1;
+    const auto broken = HDAW::awaitPluginParams([] { return false; }, 0, &brokenWaited);
+    EXPECT_EQ(broken, HDAW::PluginBootState::Broken);
+    EXPECT_EQ(brokenWaited, 0);
+}
+
+TEST(PluginBootGate, FailureTextNamesTheCallTheWaitAndTheEvidence)
+{
+    const auto text = HDAW::pluginBootFailureText("list_fx_params", 1500, 1500);
+    EXPECT_NE(text.find("list_fx_params"), std::string::npos) << text;
+    EXPECT_NE(text.find("1500"), std::string::npos) << text;
+    EXPECT_NE(text.find("booting"), std::string::npos) << text;
+    EXPECT_NE(text.find("get_fx_capture_status"), std::string::npos)
+        << "the message must point at the evidence that separates booting from broken: " << text;
 }

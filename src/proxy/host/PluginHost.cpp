@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
+#include "../DumpPolicy.h"   // P2-b: hang dumps stay stack-only (see the header)
 #endif
 
 namespace {
@@ -47,7 +48,11 @@ static LONG WINAPI processBlockSehFilter(EXCEPTION_POINTERS* ep)
 }
 
 // Write a minidump of the current process. Used by the watchdog to capture
-// the state of a hanging processBlock.
+// the state of a hanging processBlock, and by the SEH filter for a fault.
+// P2-b (2026-09-30): the DUMP SIZE depends on which — a hang needs the thread
+// stacks (MiniDumpNormal, kilobytes), a crash keeps the full-memory dump it
+// always had. Measured pre-fix: 1.5-2 GB per watchdog dump, twice in one
+// session (the emulated device's firmware image dominates the address space).
 static void writeMinidump(const char* reason, EXCEPTION_POINTERS* eps = nullptr)
 {
     wchar_t dumpPath[MAX_PATH]{};
@@ -69,11 +74,14 @@ static void writeMinidump(const char* reason, EXCEPTION_POINTERS* eps = nullptr)
     if (eps == nullptr)
         mei.ThreadId = 0;
 
+    const auto dumpType = HDAW::minidumpTypeFor(eps != nullptr ? HDAW::DumpKind::Crash
+                                                               : HDAW::DumpKind::Hang);
     MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
-                      hFile, MiniDumpWithFullMemory, &mei, nullptr, nullptr);
+                      hFile, dumpType, &mei, nullptr, nullptr);
     CloseHandle(hFile);
 
     HDAW_LOG("plugin_host", juce::String("Wrote minidump: ") + reason
+        + (HDAW::dumpCapturesFullMemory(dumpType) ? " (full memory)" : " (stack-only)")
         + " path=" + juce::String(juce::CharPointer_UTF16(dumpPath)));
 }
 #endif
@@ -981,10 +989,24 @@ int PluginHost::run()
         watchdogThread = std::thread([this]() {
         int hangMs = 0;
         bool inWarmupPrev = false;
+        uint32_t warmupEpochPrev = warmupEpoch.load(std::memory_order_acquire);
         while (running.load()) {
             Sleep(250);
             const bool active = processBlockActive.load(std::memory_order_acquire);
             const bool inWarmup = warmupActive.load(std::memory_order_acquire);
+            // P2-b: a NEW warmup started since the last tick. Two warmups can be
+            // closer together than this 250 ms sample interval (warmup #1 clears
+            // processBlockActive and the control loop starts #2 immediately), so
+            // the justFinishedWarmup edge below may never be observed — and
+            // without this reset warmup #1's elapsed time carried into warmup #2
+            // and tripped its `warmupExpectedMs + 1 s` threshold after ~1 s,
+            // dumping during a HEALTHY warmup. Each warmup owns its own budget;
+            // a genuine hang still reaches the threshold inside its own window.
+            const uint32_t epoch = warmupEpoch.load(std::memory_order_acquire);
+            if (epoch != warmupEpochPrev) {
+                warmupEpochPrev = epoch;
+                hangMs = 0;
+            }
             // The intentional Virus warmup pumps processBlock on the control
             // thread for its whole (real-time paced) duration, so
             // processBlockActive is legitimately held true well past the 1 s
@@ -1006,6 +1028,15 @@ int PluginHost::run()
                     : 1000;
                 if (hangMs >= thresholdMs) {
                     dumpWritten.store(true);
+                    // P2-b: the dump FILE NAME stays stable (cleanup/tooling
+                    // glob it), so the measured duration and which threshold
+                    // fired go to the log instead — the old "hung for 1s"
+                    // filename was also written for a warmup+1s threshold,
+                    // which made the artifact ambiguous.
+                    HDAW_LOG("plugin_host", juce::String("watchdog: processBlock held for ")
+                        + juce::String(hangMs) + " ms (threshold " + juce::String(thresholdMs)
+                        + " ms, warmup=" + (inWarmup ? "yes" : "no")
+                        + ") - writing a stack-only dump");
                     writeMinidump("processBlock hung for 1s");
                 }
             } else {
@@ -1204,6 +1235,11 @@ void PluginHost::controlLoop()
                             warmupExpectedMs.store(static_cast<int>(
                                 static_cast<double>(totalBlocks) * preparedBlockSize
                                 / preparedSampleRate * 1000.0), std::memory_order_release);
+                            // P2-b: bump the warmup epoch BEFORE raising
+                            // warmupActive, so the watchdog sees the new epoch no
+                            // later than it sees the new warmup and gives THIS
+                            // warmup its own hang budget (see PluginHost.h).
+                            warmupEpoch.fetch_add(1, std::memory_order_release);
                             warmupActive.store(true, std::memory_order_release);
                             // Pace the warmup at ~real time: the emulated OS's
                             // bring-up sequencing is wall-clock driven (hardware

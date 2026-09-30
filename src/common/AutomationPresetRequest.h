@@ -213,7 +213,9 @@ inline QString automationPresetToolText(ProjectCommands& commands,
         if (! args.value("trackID").isDouble())
             return QString::fromUtf8("missing or non-numeric param: trackID");
         stableID = static_cast<int>(args.value("trackID").toDouble());
-        const auto ref = resolveTrackRef(trackList, index, stableID);
+        // P1-c: gated on contains("trackID") above, so presence is stated —
+        // `trackID: 0` is an unknown id, not a missing key.
+        const auto ref = resolveTrackRef(trackList, index, stableID, HDAW::kTrackRefKeys, true);
         if (! ref.ok)
             return QString::fromStdString(ref.error);
         trackId = ref.index;

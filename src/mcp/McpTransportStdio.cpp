@@ -1,6 +1,7 @@
 #include "McpTransportStdio.h"
 #include "McpServer.h"
 #include "McpJsonRpc.h"
+#include "../common/DebugLog.h"
 #include <QCoreApplication>
 #include <QFile>
 #include <QTextStream>
@@ -89,6 +90,14 @@ public:
         }
 #endif
         if (QCoreApplication::instance()) {
+            // P3-a (2026-09-30): a clean engine exit (code 0) mid-session is
+            // THIS path, not a fault — stdin hit EOF, i.e. the MCP client
+            // (lazy-mcp / the harness) closed the pipe or went away. Name the
+            // reason in the log so the next occurrence is self-explanatory
+            // instead of an investigation: the engine has no other clean-exit
+            // path (2 = bad args / --project load failure, 42 = engine_restart).
+            HDAW_LOG("McpStdio", "stdin EOF - client closed the transport; quitting "
+                                 "(engine exit 0 by design)");
             QMetaObject::invokeMethod(QCoreApplication::instance(), "quit",
                                       Qt::QueuedConnection);
         }

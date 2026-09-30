@@ -239,7 +239,7 @@ host parameters) → `get_fx_capture_status` → `audition_plugin` (reference de
    (measured 0.0129 / 0.0154). For those, assert **effect only** (`delta > 1e-4`) and
    say so; do not pretend a floor-based test resolved it.
 4. **Delivery ≠ audibility, and the host param list is not a receipt.**
-   `poll_fx_capture` + a render A/B are the evidence. SysEx/PC patch loads do **not**
+   `get_fx_capture_status` + a render A/B are the evidence. SysEx/PC patch loads do **not**
    echo into the host param cache for these emulations (JE8086's 461-param cache stayed
    byte-identical across an audibly-applied `.syx`; same finding for OsTIrus). The live
    child state blob (`GET_STATE`) is *usually* a good delivery probe (the
@@ -247,7 +247,7 @@ host parameters) → `get_fx_capture_status` → `audition_plugin` (reference de
    JE8086** — it stayed constant across the load (2026-09-21). For JE8086 the durable
    readback is the persisted `IDs::presetSysex` dump replay: `Track.cpp` replays the raw
    DT1s into every fresh child, so a rebuilt child reproduces the patch exactly. Verify a
-   load with `poll_fx_capture` + render.
+   load with `get_fx_capture_status` + render.
 5. **Name the gate when you claim a capability.** `FxMidiInjection.*` is the
    contract: `OsirusBootPatchAwakening`, `OsirusPresetChangeReflectsInRender`,
    `OsTIrusRenderAudibility`, `OsTIrusInjectionCapturesToTreeAndSurvivesRebuild`,
@@ -276,7 +276,7 @@ host parameters) → `get_fx_capture_status` → `audition_plugin` (reference de
 * **JE8086** DT1 dumps *and* parameters apply: dumps via the 2026-09-20 wrapper retarget
   (`load_je8086_preset`), parameters via `set_fx_param` by name (461). A loaded patch is
   **not** visible in the param list or the live state blob — confirm via
-  `poll_fx_capture` + render (see §7 item 4).
+  `get_fx_capture_status` + render (see §7 item 4).
 * **Per-sub-parameter automation of polymorphic FX slots** is impossible by design
   (derived-parameter collapse) — use type-level params or a whole-patch dump.
 * **Vavra's non-public params** cannot be published (measured); the remaining 277

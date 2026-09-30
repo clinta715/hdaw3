@@ -12,6 +12,13 @@ Protocol) server so an LLM client (Claude Desktop, opencode, etc.)
 can drive the DAW. 36 tools cover transport, tracks, clips, MIDI notes,
 composition (`PhraseGenerator`), FX, automation, undo, and audio export.
 
+**Audio output device = a SETUP step, not a fault.** The headless engine can start
+with no output device selected; then the LIVE graph has no tracks, and live-slot
+tools (patch loaders, `list_fx_params`, capture) fail with `track not found: N` for
+tracks `list_tracks` lists. Check `get_audio_current_setup` — if `output` is empty,
+call `set_audio_output_device` first (full rule:
+`docs/skills/psy-song-session/reference.md` § "Deviceless engine").
+
 ### Engine binary update flow (`engine_info` / `engine_restart`)
 
 Rebuilding `HDAW_headless.exe` does not update a **running** engine — the
@@ -232,7 +239,10 @@ echo-friendly default is right for most servers but wrong for a DAW
 engine that holds live session state. Config changes take effect on the
 next lazy-mcp start (a new pi session); procdump exit-code forensics live
 in `%TEMP%\hdaw_crash_captures\engine_*\procdump.log` — exit 0x00000000
-= the idle/EOF path (lazy-mcp lifecycle, not an engine bug), exit 0x1
+= the idle/EOF path (lazy-mcp lifecycle, not an engine bug; since 2026-09-30 the
+engine logs it directly — `McpStdio: stdin EOF - client closed the transport;
+quitting (engine exit 0 by design)` in `%TEMP%\hdaw_debug.log` — so a clean
+mid-session exit is self-explanatory without procdump), exit 0x1
 after a long render = the response pipe died mid-render. Also relevant:
 the saved `.hdaw` is the source of truth — after ANY engine relaunch,
 `load_project` before doing anything else.

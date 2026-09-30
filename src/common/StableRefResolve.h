@@ -40,6 +40,16 @@
 // absent key is passed in as index = -1 / stableID = 0 — the two sentinels
 // below — and `index < 0` in the result means "no positional argument".
 //
+// P1-c (2026-09-30): the STABLE half needed the same treatment. It used to test
+// the VALUE (`stableID > 0`), so an explicit `trackID: 0` was misread as "key
+// absent" and answered with the positional half's "trackId required" — a
+// misleading message for a caller who plainly sent an id (measured in the
+// ion_rift session). A stable id is never 0 (design B1 mints 1-based), so
+// `trackID: 0` is an UNKNOWN id and now says so, exactly like `trackID: 4242`
+// always has. `stablePresent` carries that fact for the two non-positive cases
+// (0 / negative) that the value cannot express; a POSITIVE id still implies
+// presence, so every pre-P1-c caller keeps working unchanged.
+//
 // The rule lives HERE, in src/common (NO Qt — this directory takes none), so
 // both surfaces run ONE implementation instead of two. Each surface only reads
 // its own two keys off its own QJsonObject and hands the numbers in; every
@@ -113,7 +123,11 @@ inline int findChildByStableID(const juce::ValueTree& list,
 
 // Resolve a track — or a folder target, with HDAW::kFolderRefKeys — argument.
 // `index` is the positional value (-1 when its key was absent), `stableID` the
-// stable id (0 when its key was absent).
+// stable id (0 when absent — and also the value an explicit `trackID: 0` sends),
+// `stablePresent` whether the STABLE key was actually sent
+// (QJsonObject::contains — see the presence rule above; a positive `stableID`
+// implies it even when the flag is left at its default, so every pre-P1-c caller
+// keeps its behaviour).
 //
 // The positional path does NOT range-check `index`: an out-of-range index keeps
 // today's outcome exactly (the command's own refusal, or the route's/tool's
@@ -121,10 +135,17 @@ inline int findChildByStableID(const juce::ValueTree& list,
 // only in the happy path. An out-of-range index WITH a stable id cannot occur —
 // the id's own position is the answer.
 inline StableRefResult resolveTrackRef(const juce::ValueTree& trackList, int index, int stableID,
-                                       StableRefKeys keys = kTrackRefKeys)
+                                       StableRefKeys keys = kTrackRefKeys,
+                                       bool stablePresent = false)
 {
-    if (stableID > 0)
+    if (stablePresent || stableID > 0)
     {
+        // A non-positive id is not an entity: report it as unknown (naming the
+        // key AND the id) rather than falling back to the positional index —
+        // the documented rule, and the P1-c fix.
+        if (stableID <= 0)
+            return stableRefError(std::string("unknown ") + keys.stable + " "
+                                  + std::to_string(stableID));
         const int found = findChildByStableID(trackList, IDs::trackID, stableID);
         if (found < 0)
             return stableRefError(std::string("unknown ") + keys.stable + " "
@@ -150,13 +171,18 @@ inline StableRefResult resolveTrackRef(const juce::ValueTree& trackList, int ind
 // allocateSendID — but the ADDRESS is not: resolving across tracks would let a
 // typo'd track argument mutate a send on a track the caller never named.)
 inline StableRefResult resolveSendRef(const juce::ValueTree& trackList, int trackIndex,
-                                      int index, int stableID, StableRefKeys keys = kSendRefKeys)
+                                      int index, int stableID, StableRefKeys keys = kSendRefKeys,
+                                      bool stablePresent = false)
 {
-    if (stableID > 0)
+    if (stablePresent || stableID > 0)
     {
         const auto sendList = (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
                                   ? trackList.getChild(trackIndex).getChildWithName(IDs::SEND_LIST)
                                   : juce::ValueTree();
+        // Same P1-c rule as the track half: a non-positive sendID is unknown.
+        if (stableID <= 0)
+            return stableRefError(std::string("unknown ") + keys.stable + " "
+                                  + std::to_string(stableID));
         const int found = findChildByStableID(sendList, IDs::sendID, stableID);
         if (found < 0)
             return stableRefError(std::string("unknown ") + keys.stable + " "

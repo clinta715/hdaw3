@@ -15,7 +15,10 @@
     "sections": {
       "type": "array",
       "items": { "type": "object", "required": ["name", "type", "bars"],
-        "properties": { "name": {"type":"string"}, "type": {"enum":["intro","build","peak","breakdown","outro"]}, "bars": {"type":"integer"} } }
+        "properties": { "name": {"type":"string"},
+          "type": {"enum":["intro","build","peak","drop","breakdown","outro"], "description":"brief section type; maps onto a canonical kind (peak→mainA, drop→mainB, outro→finale)"},
+          "kind": {"type":"string", "description":"OPTIONAL explicit canonical kind (intro|build|mainA|mini|mainB|breakdown|finale|other). Honoured by apply_song_brief and WINS over `type`; a section whose `type` and `kind` resolve to different kinds refuses the whole brief."},
+          "bars": {"type":"integer"} } }
     },
     "paletteTrackMap": {
       "type": "object",

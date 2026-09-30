@@ -25,9 +25,9 @@ BEFORE writing (G1-G4 below), then write, then self-gate.
 
 | Kind | Tools |
 | --- | --- |
-| Reads | `get_project_summary`, `list_tracks`, `list_fx_params`, `get_internal_fx_param`, `get_song_plan`, `get_cells`, `list_clips`, `list_notes`, `snapshot_project`, `engine_info`, `list_fx` |
-| Measurement | `export_audio` (async — poll the job with `poll_job` / `engine_info` while exporting), `mix_report` (`{filePath, fromPlan: true, wait: false}` + `poll_job`), `analyze_tuning` (`{wavPath, role, wait: false}` + `poll_job`), `get_waveform_peaks` (`{path}`), `validate_sample`, `verify_part` |
-| Writes | `add_track_with_fx`, `add_fx`, `remove_fx`, `set_internal_fx_param`, `set_fx_param`, `list_fx_params` (verify after write), `sampler_set_sample`, `psy_fm_load_preset`, `apply_sub_synth_mod_preset`, `set_track` (volume / mute / pan ONLY), `add_midi_clip`, `add_notes` (batch), `set_note_velocities`, `add_automation_lane`, `set_automation_points`, `automation_preset`, `add_lfo`, `set_lfo_param`, `set_fader_authoritative`, `add_midi_fx` (transpose etc.) |
+| Reads | `get_project_summary`, `list_tracks`, `list_fx_params`, `get_internal_fx_param`, `get_song_plan`, `get_cells`, `list_clips`, `list_notes`, `snapshot_project`, `engine_info`, `list_fx`, `query_notes`, `query_clips`, `whoami`, `tool_help` |
+| Measurement | `export_audio` (async — poll the job with `poll_job` / `engine_info` while exporting), `mix_report` (`{filePath, fromPlan: true, wait: false}` + `poll_job`), `analyze_tuning` (`{wavPath, role, wait: false}` + `poll_job`), `get_waveform_peaks` (`{path}`), `validate_sample`, `verify_part`, `verify_window` (render the WHOLE project, gate ONE beat window's promoted stats — ≈ one full export) |
+| Writes | `add_track_with_fx`, `add_fx`, `remove_fx`, `set_internal_fx_param`, `set_fx_param`, `list_fx_params` (verify after write), `sampler_set_sample`, `psy_fm_load_preset`, `apply_sub_synth_mod_preset`, `set_track` (volume / mute / pan ONLY), `add_midi_clip`, `add_notes` (batch), `set_note_velocities`, `set_notes_gain` (batch), `set_clips_edit` (batch), `add_automation_lane`, `set_automation_points`, `automation_preset`, `add_lfo`, `set_lfo_param`, `set_fader_authoritative`, `add_midi_fx` (transpose etc.) |
 
 **FORBIDDEN:** `export_audio` is allowed for MEASUREMENT renders only (your
 gates, your temp wavs). NEVER call `load_project` / `save_project` — the
@@ -116,7 +116,20 @@ measured. Never fix the mix by editing someone else's layer.
   indistinguishable modulation instead. Record target, preset/shape, depth, and
   readback in the handoff.
 - **Batch:** one coherent change = one undo unit; never N single calls in a
-  loop (AGENTS.md performance rules).
+  loop (AGENTS.md performance rules). Repairing MANY notes/clips is the batch
+  editor, not N singles: `set_notes_gain {noteIds, gain}` and
+  `set_clips_edit {edits}` are validate-then-apply — an EMPTY array or ANY unknown
+  id refuses the WHOLE batch (nothing written, no undo unit), and a typo'd `edits`
+  key is REJECTED rather than dropped — so read the ids back first with
+  `query_notes {startBeat, endBeat, trackIndex|trackID}` /
+  `query_clips {startBeat, endBeat}` (interval OVERLAP in ABSOLUTE project beats,
+  span clamped to the clip, `truncated` flag) instead of guessing them or regexing
+  the saved XML. Windows are unit-tagged: the `*Beat` spelling, its `*Sec` twin,
+  and the bare key are all accepted, but two DISAGREEING spellings are REFUSED
+  (`../reference.md` § "Unit-tagged time windows").
+- **Argument spellings are checkable:** `tool_help {name}` returns the tool's
+  exact `tools/list` entry (schema + example); `whoami` proves the
+  engine/transport/project you are attached to.
 
 ## Self-gate BEFORE handoff (all must hold)
 
@@ -127,6 +140,8 @@ measured. Never fix the mix by editing someone else's layer.
 - [ ] Modulation exists on this layer (audible preferred; subtle fallback allowed)
       with target/preset/depth reported
 - [ ] Batch: one coherent change = one undo unit; no N-loop single calls
+- [ ] Multi-note/multi-clip repairs applied through `set_notes_gain`/`set_clips_edit`
+      against ids read back with `query_notes`/`query_clips`
 - [ ] Mutation pass: the layer carries human variation — a MIDI-FX humanize/
   chance/strum lane, `set_note_chance`/`set_note_velocities` drift, or
   velocity/timing edits audibly different from the generator grid (verify by

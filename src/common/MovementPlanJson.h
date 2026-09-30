@@ -67,7 +67,10 @@ inline bool parseMovementPlan(const juce::ValueTree& trackList,
                 return false;
             }
             stableID = static_cast<int>(o.value("trackID").toDouble());
-            const auto ref = resolveTrackRef(trackList, index, stableID);
+            // P1-c: this branch is entered only when `trackID` is present, so
+            // presence is stated — `trackID: 0` is an unknown id, not a missing
+            // key (the old value test answered "trackId required").
+            const auto ref = resolveTrackRef(trackList, index, stableID, HDAW::kTrackRefKeys, true);
             if (! ref.ok)
             {
                 error = ref.error;

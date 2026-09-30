@@ -60,14 +60,21 @@ product pillar and should be reached for wherever it fits:
   `set_cell`/`fill_cells`/`reroll`, matching `composition.*` RPC, and the
   Compose tab ▸ **Song Plan** panel; `mix_report` accepts `fromPlan: true`;
   section templates persist under `AppData/HDAW/section-templates`. Variation
-  comes from re-seeded content, never from structure drift.
+  comes from re-seeded content, never from structure drift. **A brief section's
+  kind is its explicit `kind` when given, else its `type`** — `apply_song_brief`
+  reads `kind` first (`peak`→mainA, `outro`→finale, `drop`→mainB on the `type`
+  fallback, anything else passed through to the kind table, and an unknown name
+  rejected at the trust boundary), and a section whose `type` and `kind` resolve
+  to DIFFERENT kinds is REFUSED rather than silently picking one; `set_song_plan`
+  reads `kind` too, so both surfaces agree.
 
 - **Hardware VA suite (gearmulator CLAPs)** — OsTIrus (Virus TI), Osirus
   (Virus A/B/C), Vavra (microQ), Xenia (Microwave), JE8086 (JP-8000),
   NodalRed2x (Nord Lead 2x), Dexed (DX7) run as isolated CLAPs with their real
   firmware (installed in `C:\Program Files\Common Files\CLAP\` with ROMs).
   Injection tools: `send_fx_midi` (PC/CC/note/sysEx), `load_virus_preset`
-  (CC0 bank + PC), `load_dexed_cartridge` (.syx). Per-plugin **matrix presets + morph chains** exist
+  (CC0 bank + PC). (The Dexed `.syx` route `load_dexed_cartridge` was removed
+  2026-09-14 — use the internal `fm_synth` + `fm_synth_import_sysex`.) Per-plugin **matrix presets + morph chains** exist
   for all five devices (`timbre-lib/matrix_presets/`); apply them via the
   `list_matrix_presets` / `apply_matrix_preset` MCP tools (xenia/nord/je8086
   verified live; per-engine measured status in `docs/va-suite-status-log.md` — moved
@@ -81,18 +88,19 @@ product pillar and should be reached for wherever it fits:
   searchable sidecars — `virus_patch.py` (`.virus.json`), `nl2x_patch.py`
   (`.nl2x.json`), `je8086_patch.py` (`.je8086.json` + an exploded per-patch tree),
   `microq_patch.py` (`.vavra.json`); FileLibraryManager ingests all four (register
-  the folder as a *patch* library). **Loaders are evidence-gated:** `load_nord_bank`
-  queues and changes bytes but by EAR the renders stayed near-identical across 14 real
-  patches (2026-09-18 ear pass — delivery gap, see
-  docs/handoffs/2026-09-18-gearmulator-custom-builds.md), `load_virus_preset` (CC0+PC)
-  queues but does NOT change Osirus renders on the current build (preset-load ext
-  absent; finding F-A — under investigation), JE8086 DT1 dumps **do** apply since
-  2026-09-20 (wrapper retargets UserPatch → temp performance; `load_je8086_preset`),
-  as do its 461 parameters — confirm a dump via `poll_fx_capture` + render, not the
-  param list (§9), Vavra exposes no host parameters and its
-  SysEx injection is MEASURED NOT APPLYING (2026-09-16/17: queued but state
-  unchanged; channel filter excluded — see
-  docs/plans/2026-09-16-matrix-preset-engine-fixes.md). **Prefer the device over a plugin for movement:**
+  the folder as a *patch* library). **Loaders are evidence-gated:** JE8086 DT1 dumps
+  **do** apply since 2026-09-20 (wrapper retargets UserPatch → temp performance;
+  `load_je8086_preset`), as do its 461 parameters — confirm a dump via
+  `get_fx_capture_status` + render, not the param list. **(SUPERSEDED 2026-09-20:** the
+  earlier readings — `load_nord_bank` renders "near-identical across 14 real patches"
+  (docs/handoffs/2026-09-18-gearmulator-custom-builds.md); `load_virus_preset` (CC0+PC)
+  "does NOT change Osirus renders … finding F-A — under investigation"; Vavra "exposes
+  no host parameters" and its SysEx "MEASURED NOT APPLYING"
+  (docs/plans/2026-09-16-matrix-preset-engine-fixes.md) — are all corrected: NodalRed2x
+  is VERIFIED AUDIBLE live, F-A is RESOLVED, and Vavra exposes 7557 host params
+  (2026-09-19) with dumps that apply (a buffer-targeting bug, not an emulator limit).
+  Per-engine detail: `docs/va-suite-status-log.md` §9.)**
+  **Prefer the device over a plugin for movement:**
   own modulation matrix → onboard FX → HDAW automation/track LFO → HDAW internal FX →
   third-party plugin last (plugin FX add CPU, latency, isolation and state-round-trip
   risk). Device matrix, per-device FX recipes and caveats:
@@ -185,4 +193,177 @@ toolkit applies.** New note or parameter editing should offer humanize/randomize
 new content types should consider a generative path; new modulatable parameters
 should be wired as modulation targets. Prefer extending these shared utilities
 over one-off randomness, so behavior (and its MCP/RPC surface) stays consistent.
+
+## Agent mechanization — discovery, archaeology, batch edits, verification
+
+Ten tools shipped 2026-09-28 (`docs/plans/2026-09-28-agent-mechanization.md`, close-out
+`docs/handoffs/2026-09-28-agent-mechanization-shipped.md`; operational sections in
+`docs/testing-mcp.md` — "Discovery", "Multi-edit atomicity", "Render → measure → compare",
+"Time windows"). They compress the mechanical repetition of a composition loop. No engine
+or DSP path was restructured: every one is a new `src/common/` shaper plus an MCP tool
+and/or an RPC route calling it, and `mix_report` / `mix_verdict` / `mix_diff` bytes are
+unchanged.
+
+**Discovery — `tool_help {name}` / `whoami`.** `tool_help` returns that tool's exact
+`tools/list` entry — `{name, description, category, inputSchema}` — in one call instead of
+the `tools/list` → schema dump → description dump round trips (plus the one failed call
+from a guessed argument name); both read the SAME stored `McpToolDef`, so the payload
+cannot drift from `tools/list` (`ToolRegistry.ToolHelpReturnsTheExactToolsListEntry`). The
+schema carries the `x-unit` annotation on every numeric field and the tool's one shape
+example in the STANDARD `inputSchema.examples` array (a zero-arg tool carries `[{}]` —
+there is no ad-hoc top-level `example` key for a strict MCP client to strip). An unknown
+name is refused in-band with the shared text `unknown tool <name>`. `whoami` answers "what
+is running?" in one call: the whole `engine_info` payload (running binary path/mtime/size,
+version, exporting — plus the `buildBinaryPath` staleness check and the `expectedVersion`
+cross-check when those optional args are given) PLUS `transport`
+(`"stdio"` / `"http"` / `"unknown"`), the session project (`projectPath` — the file
+loaded/saved THIS session, `""` when none — `projectName`, `trackCount`, `clipCount`) and
+the edit-batch state (`batchOpen` / `batchDepth` / `batchName`). It shares ONE builder
+(`mcp::buildEngineInfoPayload`) with `engine_info`, and a test requires every `engine_info`
+key to appear in `whoami` with an equal value, so the two payloads cannot drift
+(`EngineTools.WhoamiMatchesEngineInfoForSameArgs`). **Both are MCP-only by design** (no RPC
+twin — the `engine_info` precedent): the RPC surface has no tool registry, and cannot
+report its own transport.
+
+**Archaeology — `query_notes` / `query_clips`.** "Which notes sound at beat 657.5, on
+which track, with which IDs" used to take four regex passes over the `.hdaw` XML
+(note-tag vocabulary miss, attribute-order miss, multi-line tags). `query_notes
+{startBeat, endBeat, trackIndex|trackID}` and `query_clips {startBeat, endBeat}` return
+structured rows in PROJECT (absolute) beats — notes carry `noteId, clipId, trackIndex,
+trackID, clipName, absBeat, endBeat, localBeat, durationBeats, pitch, velocity,
+occurrenceIndex, truncated`; clips carry `clipId, trackIndex, trackID, name, type,
+startBeat, endBeat, durationBeats, muted, gain`. The window is an INTERVAL OVERLAP
+(`absStart < endBeat && absEnd > startBeat`), so a note that starts before the window but
+sustains into it is returned, its span clamped to its clip (`truncated` when the clip cut
+the tail). The agent asks in beat-space and gets edit-ready IDs. ONE implementation
+(`src/common/ProjectQuery.{h,cpp}`) sits behind both the MCP tools and their twins
+`read.queryNotes` / `read.queryClips` (which share `HDAW::readBeatWindowArgs`), so the two
+surfaces cannot diverge.
+
+**Batch edits — `set_notes_gain` / `set_clips_edit`.** 52 single-item
+`set_clip`/`set_note_gain` calls per verification run × 3 runs is the cost these remove
+(the repo's own performance rule #1: batch RPCs, not N loops). `set_notes_gain
+{noteIds:[…], gain}` sets per-note gain on every id; `set_clips_edit
+{edits:[{clipId, start?, duration?, gain?, fadeIn?, fadeOut?, name?, looping?}…]}` is a
+per-clip PARTIAL edit — an unset field leaves that property untouched (`start`/`duration`
+beats, `fadeIn`/`fadeOut` seconds, `gain` a scalar). Both return `{ok, applied}` and run
+through ONE `ProjectCommands` entry point (`setNotesGain` / `setClipsEdit`), so the MCP
+tool and the RPC twin (`project.setNotesGain` / `project.setClipsEdit`) share one
+implementation and one undo unit. The whole batch is **validate-then-apply**: an EMPTY
+array (`noteIds must not be empty` / `edits must not be empty`) or ANY unknown id
+(`unknown noteId N` / `unknown clipId N`) refuses the batch — nothing written, NO
+transaction opened, so no undo unit — before any `beginTransaction`. An `edits` item
+declares its properties AND `additionalProperties:false`, so a typo'd key is REJECTED
+rather than silently dropped (lesson 34); the RPC route reproduces the validator's bytes
+via the shared parser (`src/common/BatchEditJson.h`).
+
+**Atomicity — `begin_batch {name}` / `end_batch {verify?}`.** A batch is ONE named undo
+unit: while it is open, EVERY undo boundary a command draws — the command layer's own
+`beginTransaction`/`endTransaction` pair and every internal transaction a command opens —
+is suppressed by the ONE choke point `AudioEngineCommands::transactionBoundary`
+(`src/engine/AudioEngineCommands_Undo.cpp`), so a single `undo` reverts the whole batch
+(measured by `BatchEditRpcTest.BatchCollapsesInternallyTransactionalCommandsIntoOneUndo`).
+That state is a FLAG (`batchActive_` / `batchName_`), **never a depth counter**, because
+JUCE's boundaries are often deliberately UNPAIRED (`createSend` joins `createBus`'s unit)
+and a counter would leak. It is engine-global and **one at a time**: a second `begin_batch`
+while one is open is refused naming the open batch (`a batch is already open (name "…") -
+call end_batch first`), and `end_batch` with none open answers `no open batch`. **Only the
+stdio transport may open one** (refused over HTTP): the stdio process owns a dedicated
+engine with no WebSocket frontend branch, so its one client is the only writer. Every write
+from ANY surface while it is open joins the batch — keep batches short — and a command
+FAILURE does not close it, so call `end_batch` on the failure path too. `end_batch
+{verify:{targets?, outputPath?}}` **SEALS FIRST** and only then optionally renders the whole
+project + composes the release verdict; a verification FAILURE never un-seals — the payload
+stays `{ok:true, sealed:true}` and reports the failure in `verificationError` (success adds
+`verification:{wavPath, verdict}`; with no `verify` the payload is exactly
+`{ok:true, sealed:true}`, and argument errors are refused BEFORE the seal). The RPC twins
+`project.beginBatch` / `project.endBatch` call the SAME entry points — exact ledger twins,
+not aliases of the raw `beginTransaction`/`endTransaction` pair — with the same refusal
+texts and ONE recorded asymmetry: the route is not transport-gated.
+`project.beginTransaction` / `endTransaction` stay the RPC grouping path and are not
+batch-gated, so a group opened while a batch is open joins it (engine-global state,
+documented).
+
+**Verification — `verify_window` / `render_and_verify`.** Five verification iterations of
+export + measure + parse (with the decisive per-channel ceiling check run OUTSIDE the
+engine) collapse into one call. `verify_window {startBeat, endBeat, targets?|expect?,
+outputPath?, timeoutMs?}` (RPC `composition.verifyWindow`) renders the WHOLE project on a
+tree copy through the shared launcher (`src/common/RenderLaunch.h` — the same tree-copy /
+`trackIds` filter / `ExportManager::startExport` path `export_audio` and `export.audio`
+use) and WAITS for it, then measures ONLY `[startBeat, endBeat)`. `buildWindowReportPayload`
+promotes the WINDOW's stats (`duration/peak/rms/bands/kickProminence/ceilingHitPct/
+ceilingHitFrames`) to the payload ROOT, so `targets` gates the window and not the whole
+song; payload `{ok, wavPath, window:{startBeat,endBeat,startSec,endSec,durationSec},
+report, targetChecks, targetsOk}`. Its expectation keys are **STRICT** — `targets`/`expect`
+accept ONLY `rmsMin`, `masterRms`, `ceilingHitPctMax`, `kickProminenceMin`,
+`targetDurationSeconds`; an unknown key is refused (`unknown expectation key <key>`,
+−32602 on BOTH surfaces) BEFORE any render (`src/common/RenderToolArgs.h`). `rmsMin` is a
+LINEAR RMS floor in the SAME units as the report's root `rms` and as `masterRms`;
+`masterRms` is the linear mono-downmix RMS within 5%; `ceilingHitPctMax` a percent of
+frames with any channel |sample| ≥ 0.999; `kickProminenceMin` 0..1 at-least;
+`targetDurationSeconds` seconds within 2 s. `render_and_verify {outputPath, targets?,
+timeoutMs?, fromPlan?, dropBuildRatio?=0.9, introSeconds?=2}` (RPC
+`export.renderAndVerify`) is render + a verdict BYTE-IDENTICAL to `mix_verdict
+{filePath:<produced>, …}` — both resolve their inputs through `src/common/MixVerdictInputs.h`
+— with `fromPlan` defaulting FALSE like `mix_verdict`, so the no-args calls agree even on a
+project WITH a song plan (pass `fromPlan:true` to BOTH to gate the plan; on a plan-less
+project it falls back to the whole-file verdict rather than refusing, having already
+rendered). **Cost + trap:** a `verify_window` costs about ONE full export (bounded by
+`timeoutMs`, default 600000), and a WINDOWED render does NOT predict the full render —
+plugin state re-bakes per window, and the v0.39.2 close-out measured **0 clamps** on a
+windowed render of a file whose full render carried **32 exact-FS frames**. Windows
+localise a problem; **the full render stays the release gate.** The rendered WAV is kept
+for A/B and is the CALLER's to delete (an omitted `outputPath` lands in the OS temp dir; a
+caller-supplied path is reused, not deleted) — deliverable renders still follow the
+repo-root `compositions/` convention at the top of this file.
+
+**Time windows in either unit.** Every window-taking tool/call accepts three spellings: the
+musical one (`startBeat`/`endBeat`, `lengthBeat`, `durationBeat`, `timeBeat`,
+`newStartBeat`, `positionBeat`, `loopStartBeat`/`loopEndBeat`, …), its wall-clock
+`*Sec`/`*Seconds` twin, and — for the tools whose window key is bare — that bare key read
+per an optional top-level `unit: "beats"|"seconds"` (default: the tool's documented unit).
+Two present spellings of the SAME endpoint whose converted beats differ by more than 1e-9
+are **REFUSED** (`conflicting window units: <keyA> and <keyB> disagree` — −32602 on the
+route, the same string as the MCP tool error) rather than silently picked; agreeing
+spellings are accepted, and any other `unit` value is refused (`invalid unit: <v> (expected
+"beats" or "seconds")`). Seconds convert at the project BPM, EXCEPT `mix_report` /
+`mix_verdict` / `mix_diff`, which describe a RENDERED FILE and therefore use their own
+`bpm` argument when it is present and > 0. The response echoes the unit actually used — a
+JSON payload gains `"unit"`, `export_audio`'s status line appends `… unit=beats`,
+`add_arranger_region` answers `{"regionID":<id>,"unit":<u>}`, and
+`set_arranger_region_bounds` / `transport` / `seek` answer `{"ok":true,"unit":<u>}`
+(`transport` with no loop argument reports no window and stays the bare `{"ok":true}`). ONE
+resolver, `src/common/WindowUnitArgs.h`, runs at BOTH dispatch choke points
+(`McpServer::handleToolsCall` BEFORE schema validation, so an accepted alias also satisfies
+a schema that still requires the canonical key, and `FrontendRouter::dispatch` before the
+namespace routers) and **DECLARES** every accepted spelling into the stored schema — so the
+validator and the resolver cannot drift. Pinned by `WindowUnitParityTest.*` /
+`WindowUnitResolver.*`.
+
+**Probing the surface: the PowerShell `ConvertFrom-Json` trap (measured 2026-09-28).** The
+engine's `tools/list` body carries keys that differ only in CASE: **68 of the 317 tools
+declare BOTH `trackID` and `trackId` in one `inputSchema.properties` object** (`set_track`,
+`trigger_sampler_slice`, `get_fx_capture_status`, …), and Windows PowerShell's
+`ConvertFrom-Json` fails on the WHOLE document:
+
+```
+Cannot convert the JSON string because it contains keys with different casing. Please use
+the -AsHashTable switch instead. The key that was attempted to be added to the existing key
+'trackID' was 'trackId'.
+```
+
+Parse with `-AsHashtable` (PowerShell 7; engine v0.39.2 answers 317 tools), or skip parsing
+the raw body and drive the running engine through the helper:
+
+```powershell
+python scripts\hdaw_mcp_http.py tools                                  # count + every tool name
+python scripts\hdaw_mcp_http.py schemas query_notes,set_clips_edit
+python scripts\hdaw_mcp_http.py whoami
+python scripts\hdaw_mcp_http.py call tool_help '{"name":"verify_window"}'
+```
+
+`hdaw_mcp_http.py` talks to an ALREADY-RUNNING engine (MCP over HTTP,
+`http://127.0.0.1:18765/mcp`), so nothing is spawned or killed; the stdio twin
+`scripts/mcp_call.py` starts a FRESH stateless engine per `call` — use `run <steps.json>`
+for a multi-step proof in one engine lifetime.
 

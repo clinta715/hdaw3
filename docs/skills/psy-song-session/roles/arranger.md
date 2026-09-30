@@ -29,6 +29,11 @@ Legacy/one-shot writers below remain for sketch work:
 `set_arranger_region_*`, `add_tempo_point`, `set_tempo_point_bpm`,
 `set_fader_authoritative`, `verify_part`
 
+Archaeology + batch edits (2026-09-28): `query_notes` / `query_clips` (what is
+ACTUALLY in a window), `set_notes_gain` / `set_clips_edit` (many edits, ONE undo
+unit), `begin_batch` / `end_batch` (ONE named undo unit for a whole multi-step
+group; stdio transport only), `tool_help`, `whoami`.
+
 Track automation lanes (`add_automation_lane`, `set_automation_points`,
 `automation_preset`) are NOT in your surface — they are the FX & Automation
 Engineer's movement layer (runs after you; see `roles/fx-automation-engineer.md`).
@@ -55,7 +60,7 @@ library ingestion or preset choice (Sound Selector) except to READ the palette.
    variation, or set `corpusRole` (kick/snare/clap/hats/perc/...) for a
    corpus-bank groove) — then ONE `fill_cells {mode:"all"}` (one undo unit;
    each clip spans its section window exactly and carries provenance). Iterate:
-   `reroll` weak cells, `lock` keepers, re-`fill_cells`. Never N per-role generate
+   `reroll` weak cells, lock keepers with `set_cell {…, locked:true}`, re-`fill_cells`. Never N per-role generate
    calls in a loop — the batch rule is exactly what fill_cells exists for. The
    sketch generators (`generate_psytrance*`, `generate_arrangement*`) remain for
    throwaway sketches only — structure coming from them is not pinned.
@@ -68,7 +73,9 @@ library ingestion or preset choice (Sound Selector) except to READ the palette.
    room/wet automation is NOT the fix; the fix is arrangement-level (tail window
    gate in the PsyDub work: beats 636-640 needed > -40 dBFS). **Iterate windowed**:
    compose/fix through WINDOWED renders against the running engine (`verify_part`
-   with `startBeat`/`endBeat`, short preview windows); full-length renders only at
+   with `startBeat`/`endBeat` — or their `*Sec` twins; disagreeing spellings are
+   REFUSED, see `../reference.md` § "Unit-tagged time windows" — short preview
+   windows); full-length renders only at
    gates and freeze-last — `test/gfreeze` is a regression pin, not a sketchpad.
 5. **Melodic voices that get filtered need a basis**: chords, or
    note + octave-down + 7th-up + octave-up (one `add_notes` batch, stack voices
@@ -82,6 +89,26 @@ library ingestion or preset choice (Sound Selector) except to READ the palette.
 8. **Per-part self-verify**: `verify_part` per composed part (solo + mix, audible,
    nonClipping, bandsPresent). Failing parts get reworked before handoff.
 
+**Batch groups (2026-09-28).** A multi-step mutation group — a cell-map rebuild,
+a section re-fill, a cross-window note repair — belongs inside ONE
+`begin_batch {name}` … `end_batch`, so a single `undo` reverts all of it,
+INCLUDING the commands that open their own internal transaction. Rules: stdio
+transport only (`begin_batch` is REFUSED on HTTP/CLI — there, split into the
+smallest coherent groups and `save_project` between them); one batch at a time
+(a second `begin_batch` is refused naming the open one); it is a FLAG, not a
+counter, and a command FAILURE does not close it — call `end_batch` on the
+failure path too. `whoami` reports `batchOpen`/`batchDepth`/`batchName`.
+
+**Read before you repair.** `query_notes {startBeat, endBeat, trackIndex|trackID}`
+/ `query_clips {startBeat, endBeat}` answer "what is actually in this window" in
+ABSOLUTE project beats with edit-ready ids: the window is an interval OVERLAP (a
+note sustaining into it is returned, its span clamped to its clip with
+`truncated`), so it replaces regexing the saved XML. Then write in ONE batch —
+`set_notes_gain {noteIds, gain}` / `set_clips_edit {edits}` are
+validate-then-apply: an empty array or ONE unknown id refuses the WHOLE batch
+(nothing written, no undo unit), and a typo'd `edits` key is rejected rather than
+dropped.
+
 ## Handoff
 Full arrangement + `verify_part` evidence per part + the cell map
 (`get_cells`: section/role/source/seed per filled clip, so every part's
@@ -92,6 +119,10 @@ you do not export.
 - [ ] State verified before first mutation.
 - [ ] Every section named and covered; no silent gaps after the last clip.
 - [ ] Batched mutations only; every structural change = one undo unit.
+- [ ] Multi-step mutation groups wrapped in one `begin_batch`/`end_batch` (or, on
+      HTTP/CLI where batches are refused, split into small groups + saved between).
+- [ ] Window repairs driven by `query_notes`/`query_clips` ids and applied through
+      the batch editors (one undo unit; the strict refusals respected).
 - [ ] Filtered melodic parts carry the stacked basis.
 - [ ] `verify_part` evidence per part; nonClipping=true, audible=true.
 - [ ] Cell map reported (`get_cells`) — filled/locked/rerolled state per section×role.

@@ -55,6 +55,20 @@ bool styleFromName(const std::string& name, PhraseGenerator::Style& out)
     return false;
 }
 
+// The vocabulary `styleFromName` accepts, in ONE place. The refusal names it, so a
+// caller that guesses the casing ("lead" for "Lead" — the ion_rift session's
+// audition trap, 2026-09-30) is told the valid spellings instead of having to
+// guess again. Every caller that rejects a style (generate + audition) uses this,
+// which is why the list lives next to the parser rather than in two messages.
+constexpr const char* kPhraseStyleNames =
+    "Standard, Arpeggio, BassLine, ChordStab, Pad, Lead, RandomWalk, Buildup, "
+    "Euclidean, Percussion";
+
+std::string unknownStyleError(const std::string& name)
+{
+    return "unknown style: " + name + " (valid: " + kPhraseStyleNames + "; case-sensitive)";
+}
+
 // ASCII lowercase for role normalization (role names are ASCII).
 std::string toLowerAscii(std::string s)
 {
@@ -771,7 +785,7 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
     PhraseGenerator::Style style;
     if (!styleFromName(p.style, style))
     {
-        result.error = "unknown style: " + p.style;
+        result.error = unknownStyleError(p.style);
         return result;
     }
     if (p.placement != "region" && p.placement != "wholeSong")
@@ -1226,7 +1240,7 @@ ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const Auditi
     PhraseGenerator::Style style;
     if (!styleFromName(params.style, style))
     {
-        result.error = "unknown style: " + params.style;
+        result.error = unknownStyleError(params.style);
         return result;
     }
     if (!(params.lengthBeats > 0.0))

@@ -68,7 +68,10 @@ durability; call this FIRST to pick a target), `list_fx_chains`, `load_fx_chain`
 `list_bus_fx_params`, `set_bus_fx_param`, `set_bus_target`,
 `set_track_send_level`, `set_track_send_mode`, `set_track_send_bypassed`,
 `get_track_sends`,
-`set_fader_authoritative`, `verify_part`, `list_tracks`, `list_clips`,
+`set_fader_authoritative`, `verify_part`, `verify_window` (render the WHOLE
+project, gate ONE beat window's promoted stats), `query_notes` / `query_clips`
+(read back what is actually in the window you automated), `tool_help`, `whoami`,
+`list_tracks`, `list_clips`,
 `get_project_summary`
 
 FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
@@ -79,8 +82,9 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
 0. **Matrix presets first**: for a core-synth track, read
    `timbre-lib/matrix_presets/<engine>.json` before inventing chains or adding
    plugin FX; pick a harvested preset, apply it via its `appliesVia` path (or
-   `apply_matrix_preset`), then audition and re-verify (live status per engine:
-   "Matrix presets first" table above).
+   `apply_matrix_preset`), then audition and re-verify (lookup-first rule + live
+   per-engine status: `docs/va-suite-status-log.md` § "9. Per-plugin matrix presets
+   (harvested)").
 1. **Read the state + layer ledger**: `list_tracks`, `list_automation_lanes`
    per track, plus `get_layer_handoffs` (the project-native ledger written by the
    layer agents — `compositions/<song>/layers.json` is only the human mirror). Know
@@ -107,14 +111,30 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
 6. **Verify**: for each lane, `verify_part {trackIndex}` with the lane enabled —
    solo rms must differ from the pre-automation capture (or the lane is a no-op:
    fix depth or delete the lane). Keep `verify_part` evidence per changed track.
+   To prove a gesture lands in the RIGHT bars, gate the window itself with
+   `verify_window {startBeat, endBeat, targets?|expect?}` — it renders the WHOLE
+   project and gates ONE window's PROMOTED stats, so it costs about one full
+   export and is a localiser, not an iteration toy (a windowed render does not
+   predict the full render). `query_notes`/`query_clips` read back what is
+   actually inside that window (absolute project beats, interval overlap, span
+   clamped to the clip) when a measurement disagrees with your intent.
 7. **Checkpoints**: save after each track's processing (engine deaths must not
    lose FX/automation work).
+
+**Windows are unit-tagged (2026-09-28).** `automation_preset` and
+`apply_movement_plan` take a bare `start`/`end` window (default BEATS) PLUS the
+`startBeat`/`endBeat` spellings and their `*Sec` twins, read per an optional
+`unit: "beats"|"seconds"`; two spellings that DISAGREE are REFUSED
+(`conflicting window units: … disagree`) rather than silently picked. Seconds
+convert at the project BPM. See `../reference.md` § "Unit-tagged time windows".
 
 ## Gates (all must hold)
 - [ ] Every palette track carries its factory chain (or a justified custom one).
 - [ ] Every sounding palette track has modulation (audible movement preferred;
       subtle fallback allowed and named).
 - [ ] Every musical automation lane HEARABLE: verify_part solo rms moved vs pre-pass capture.
+- [ ] A gesture that must land in named bars is gated by `verify_window` on THAT
+      window (promoted window stats + `targetChecks`), not by the whole-file numbers.
 - [ ] Lanes enabled; no pid collisions; no automation in breakdowns that fights
       the breakdown (pump off, movement slow).
 - [ ] Global choreography is documented by section: each build/drop/breakdown has
