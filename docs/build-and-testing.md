@@ -289,8 +289,8 @@ safe). It shards small suites whole and large ones per test. Run it with
   test passes solo in 9.4 s — the same unclassified run-level death as the 4-shard losses above.
 - **Memory/concurrency context for those deaths (measured 2026-09-25).** Box: 31.92 GiB visible RAM
   (`Win32_OperatingSystem.TotalVisibleMemorySize` = 33,475,520 KiB), ~14.3 GiB free at measurement.
-  The runner runs up to **`-Shards` (4) concurrent `hdaw_tests.exe`** plus **one serial
-  `hdaw_tests.exe`** for the device/plugin suites, and each heavy shard additionally runs large
+  The runner runs up to **`-Shards` (4) concurrent test-exe processes** (from the four
+  per-seam exes) plus **one serial process per exe** for the device/plugin suites, and each heavy shard additionally runs large
   offline renders and spawns its own isolated CLAP children (`hdaw_plugin_host.exe`), so a 4-shard
   run is ~5 test processes plus N plugin hosts competing for CPU and memory; the three observed
   deaths (one process lost per run) are consistent with resource pressure, but with no dump and no
@@ -356,7 +356,7 @@ date — the repo no longer builds or tests it. The table and instructions below
 retained for reference only (do NOT run `frontend\build.bat`, `npm run build`,
 `npm run package:dir`, or `npm run dev`). The stale-`app.asar` warning printed by
 `frontend\build.bat` is therefore expected noise that can be ignored. Engine-only
-verification — `build/hdaw_tests.exe` (gtest) + the MCP surface — is the live path.
+verification — the four `build/hdaw_tests_*.exe` gtest binaries + the MCP surface — is the live path.
 
 The React frontend is delivered three ways, and **a plain `cmake --build`
 updates NONE of them**. If a frontend fix "doesn't take effect after
@@ -501,8 +501,8 @@ reconfigure — do not "fix" it by editing `dsh-build-fast.bat`/`build-fast.bat`
 - **DEPRECATED (2026-09-23):** the Electron frontend is a separate project — do NOT
   run its suites (`cd frontend; npm test`, `npm run test:watch`,
   `npm run test:coverage`, `cd frontend; npm run test:e2e`). Retained below for the
-  day it returns; engine-only verification is `build/hdaw_tests.exe` (gtest) + the
-  MCP surface.
+  day it returns; engine-only verification is the four `build/hdaw_tests_*.exe` gtest
+  binaries + the MCP surface.
 - **Frontend unit tests (Vitest) — DEPRECATED (2026-09-23):** do NOT run (`cd frontend; npm test`)
   - ~177 tests: Zustand stores (transport, ui, project, notify, meter, browser),
     hooks (useTimelineDrag), utils (rowLayout, theme, grooveUtils), and

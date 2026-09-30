@@ -259,14 +259,14 @@ separate project and is no longer a delivery target.
   writes outside workspace need `danger-full-access`. ACL fix for `D:\`:
   `icacls "D:\pdf\roo projects\hdaw3" /grant "DOMAIN\user:(OI)(CI)(WO)"`.
 - Configure/build: `cmake --build build --config Debug` (or `dsh-build-fast.bat`)
-- Outputs: `build/HDAW.exe`, `build/HDAW_headless.exe`, `build/hdaw_tests.exe` (flat Ninja layout)
+- Outputs: `build/HDAW.exe`, `build/HDAW_headless.exe`, `build/hdaw_tests_{engine,mcp,frontend,platform}.exe` (flat Ninja layout; layered libs `hdaw_common`/`hdaw_engine`/`hdaw_surface`/`hdaw_proxy` + `hdaw_juce`)
 - **Do NOT run `build/Release/HDAW.exe`** — stale binary.
 - After editing `CMakeLists.txt` (adding sources/targets): re-run
   `cmake -S . -B build` explicitly — suppressed-regeneration trap.
 - **Frontend:** `cd frontend; npm run build`, then rebuild the C++ project.
   **DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
   date — do NOT build it (`npm run build`, `frontend\build.bat`). Engine-only
-  verification: `build/hdaw_tests.exe` (gtest) + the MCP surface. The source tree
+  verification: the four `build/hdaw_tests_*.exe` gtest binaries + the MCP surface. The source tree
   remains in-repo for reference.
   Full details of the traps: [`docs/build-and-testing.md`](docs/build-and-testing.md).
 
@@ -334,7 +334,7 @@ while provisioning failed, the confined child was not genuinely restricted.
 **DEPRECATED (2026-09-23):** the Electron frontend is a separate project — do NOT
 build or repackage it (`frontend\build.bat`, `npm run build`, `npm run dev`). The
 table below is retained for reference; engine-only verification
-(`build/hdaw_tests.exe` gtest + the MCP surface) is the live path.
+(the four `build/hdaw_tests_*.exe` gtest binaries + the MCP surface) is the live path.
 
 | Run mode | To pick up frontend changes |
 | --- | --- |
@@ -347,8 +347,9 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
 
 ## Testing
 
-- **C++ engine (gtest):** `build/hdaw_tests.exe` (`build-fast.bat test`; `all` also
-  builds `hdaw_plugin_host.exe` for the isolation suites). Filter:
+- **C++ engine (gtest):** `build/hdaw_tests_engine.exe` + `_mcp`/`_frontend`/`_platform`
+  (2026-09-29 split; `build-fast.bat test` builds all four, `test <target>` one; `all` also
+  builds `hdaw_plugin_host.exe` for the isolation suites). Filter per exe:
   `--gtest_filter=Suite.*`. **Authoritative baseline 2026-09-28: 2146 tests —
   2107 passed, 39 skipped, 0 failures.** Canonical full run:
   `powershell -NoProfile -ExecutionPolicy Bypass -File run-tests-sharded.ps1 -Shards 2` (`Bypass`
@@ -384,8 +385,8 @@ only after building it. Full table: [`docs/build-and-testing.md`](docs/build-and
   run its suites. Commands retained for reference: **Frontend (Vitest)**
   `cd frontend; npm test` · **E2E (Playwright)** `npm run test:e2e` (auto-starts
   engine + Vite; `workers: 1`; clip-position assertions must poll with
-  `expect.toPass()`). Engine-only verification: `build/hdaw_tests.exe` (gtest) +
-  the MCP surface.
+  `expect.toPass()`). Engine-only verification: the four `build/hdaw_tests_*.exe` gtest
+  binaries + the MCP surface.
 - **Engine change test discipline:** identify affected gtest suites before
   finishing; new RPC method/command with no coverage → add a gtest. Full details:
   [`docs/build-and-testing.md`](docs/build-and-testing.md).

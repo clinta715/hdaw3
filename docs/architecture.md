@@ -67,11 +67,11 @@ full list of working features and the priority-ordered roadmap, see
 ## Build
 
 - Configuration: `cmake --build build --config Debug`
-- Outputs: `build/Debug/HDAW.exe` (engine + React frontend, default build), `build/Debug/HDAW_headless.exe` (engine-only for Electron), `build/Debug/hdaw_tests.exe` (gtest)
+- Outputs (flat Ninja layout): `build/HDAW.exe`, `build/HDAW_headless.exe`, and four per-seam gtest executables `build/hdaw_tests_{engine,mcp,frontend,platform}.exe`; layered static libs `hdaw_common`/`hdaw_engine`/`hdaw_surface`/`hdaw_proxy` + `hdaw_juce` (JUCE modules compile once)
 - Do NOT run `build/Release/HDAW.exe` — it is a stale binary from before
   the bug-fix series began and contains none of the fixes.
-- On Windows, the `HDAW_lib` static library, `HDAW` exe, and `hdaw_tests`
-  exe each run a `windeployqt` POST_BUILD step (see `hdaw_deploy_qt()`
+- On Windows, the layered static libs, the `HDAW`/`HDAW_headless` exes, and
+  the four test exes each run a `windeployqt` POST_BUILD step (see `hdaw_deploy_qt()`
   in `CMakeLists.txt`) that copies the required Qt DLLs
   (`Qt6Cored.dll`, `Qt6HttpServerd.dll`, `Qt6WebSocketsd.dll`, …) into
   `build/Debug/`. On a clean machine this is the difference between

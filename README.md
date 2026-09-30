@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.39.2
+**Current version**: 0.39.3
 
 ## Quick start
 
@@ -25,7 +25,7 @@ defaults to RelWithDebInfo; pass `Debug` for breakpoint debugging. The Electron
 frontend is a separate project (AGENTS.md "DEPRECATED 2026-09-23") — engine work
 never builds it.
 
-## What works today (v0.39.2)
+## What works today (v0.39.3)
 
 ### v0.39.0 session highlights (2026-09-25/26)
 - **Stable `trackID` accepted across the fx/automation/plugin surfaces (B2b)**:
@@ -476,6 +476,15 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
   `MultiExportRereadsLiveTree`); `HttpTransport.AdvertisesKeepAliveTimeoutAtLeast900`
   carried a test-side use-after-free (the intermittent shard-death class).
 - **PsyDub v3.2** breakdown tail fix (held tonic into the drop edge).
+### v0.39.3 — Build/test-time restructure: layered libs, four test exes, JUCE compile-once (2026-09-29)
+
+- **Four per-seam test executables** (`hdaw_tests_{engine,mcp,frontend,platform}`) replace the single 190-TU binary: an edit to one group's tests relinks only its exe; crashes are confined per process; the shard runner (`-Shards`, `-BucketFactor`) runs them as a greedy pool with the flake/incomplete-shard protocol intact.
+- **`HDAW_lib` split into layered static libs** — `hdaw_common` ← `hdaw_engine` (+model) ← `hdaw_surface`; `hdaw_proxy` over common+engine — identical PUBLIC surface applied by one foreach, enforced layer order, `HDAW_PLUGIN_ISOLATION=1` PUBLIC on every layer (PluginManager compiles 10 `#if` blocks against it).
+- **JUCE modules compile once** in `hdaw_juce` (usage-requirement transplant via TARGET_PROPERTY genexes; `INTERFACE_SOURCES=""` blocking does not work). `hdaw_juce` stays IPO-off — one LTO archive for all of JUCE made every downstream link do link-time codegen over JUCE. Full build 638 → 445 steps; JUCE TUs 212-across-consumers → 16; engine-touch build 375.5 → **291.4 s**.
+- **Fresh-clone fix**: the `*.cmake` ignore rule had excluded JUCEHelper/CheckVersionSync/RunTimeSync/SoundTouchHelper — tracked now (configure died at `include(cmake/JUCEHelper.cmake)`).
+- **Fabric advisor fix**: the prose-coercion patch is upgrade-proof (dynamic validator location) + auto-reapplied on session start; verified against pi-fabric 0.102.0.
+- Full suite: 2146 tests green on every landed shape. Device-dependent suite validation is DEFERRED while the box's audio route is degraded — the device-independent tier is fully green, and the device tier re-runs when the route returns (deviceless signature is lessons 9/17).
+
 ### v0.39.2 — Backlog closeout: B4-B8 + vector-bloom clamp trims (2026-09-27)
 
 - **B4**: dead `anyPartialSampler` pre-clear removed — a bypassed key-ranged sampler is now transparent (was silently wiping the track's pre-FX buffer). `MultiSamplerChain.BypassedKeyRangeSamplerPassesAudioThrough` pins it.

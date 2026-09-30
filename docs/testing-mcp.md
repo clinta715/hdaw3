@@ -603,7 +603,7 @@ have none. Pinned by `WindowUnitParityTest.*` / `WindowUnitResolver.*`.
 date — the repo no longer builds or tests it. Do NOT run these suites (`npm test`,
 `npm run test:watch`, `npm run test:coverage`, `npm run test:e2e`,
 `npm run test:e2e:ui`); the commands and listings below are retained for reference.
-Engine-only verification: `build/hdaw_tests.exe` (gtest) + the MCP surface.
+Engine-only verification: the four `build/hdaw_tests_*.exe` gtest binaries + the MCP surface.
 
 The React frontend has a comprehensive test suite using **Vitest** for
 unit/component tests and **Playwright** for E2E tests.
