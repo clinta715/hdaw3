@@ -5,8 +5,8 @@
     "runner": "pi"
   },
   "executor": {
-    "pythonRuntime": "monty",
+    "pythonRuntime": "cpython",
     "kernel": "typescript",
-    "runtime": "node-process"
+    "runtime": "quickjs"
   }
 }
