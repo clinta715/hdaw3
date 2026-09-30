@@ -106,12 +106,41 @@ function(hdaw_deploy_qt target)
     )
 endfunction()
 
-# --- HDAW_lib: engine + model static library (no GUI / Qt Widgets) ---
-# Contains all non-GUI sources so tests can link the engine+model
-# without spinning up a QApplication. Future MCP sources will be added
-# here in later tasks.
+# --- Layered static libs (2026-09-29, plan Phase 2): monolithic lib split ---
+# hdaw_common (src/common) <- hdaw_engine (src/engine + src/model) <- hdaw_surface
+# (src/mcp + src/frontend); hdaw_proxy over common+engine. Same PUBLIC surface the
+# monolith exposed (include dir, JUCE/Qt/clap links, defs, STL PCH, /arch:AVX2, IPO)
+# so downstream targets only swap the old monolith for ${HDAW_LIBS}. Plan section 5.
+# All non-GUI sources; tests link the engine+model layers without a QApplication.
 option(HDAW_PLUGIN_ISOLATION "Build with plugin process isolation support" ON)
-add_library(HDAW_lib STATIC
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported)
+
+option(HDAW_ENABLE_AVX2 "Enable AVX2 SIMD instructions" ON)
+
+set(HDAW_LIBS hdaw_common hdaw_engine hdaw_surface hdaw_proxy)
+
+add_library(hdaw_common STATIC
+    src/common/MessagePumpThread.cpp
+    src/common/HeadlessArgs.cpp
+    src/common/DeviceParamMap.cpp
+    src/common/PsyFmModMatrixView.cpp
+    src/common/ParamOverrideLedger.cpp
+    src/common/MatrixPresetService.cpp
+    src/common/SongPlanView.cpp
+    src/common/FxCaptureStatus.cpp
+    src/common/TuningAnalysis.cpp
+    src/common/MixReportJson.cpp
+    src/common/ParamVerity.cpp
+    src/common/ToneVerity.cpp
+    src/common/MixVerdict.cpp
+    src/common/BatchEnd.cpp
+    src/common/ModulationCoverage.cpp
+    src/common/NordBankLoader.cpp
+    src/common/ProjectQuery.cpp
+)
+
+add_library(hdaw_engine STATIC
     src/engine/AudioEngine.cpp
     src/engine/AudioEngineCommands.cpp
     src/engine/AudioEngineCommands_Clips.cpp
@@ -186,8 +215,8 @@ add_library(HDAW_lib STATIC
     src/engine/msfa/lfo.cc
     src/engine/msfa/dx7note.cc
     src/engine/msfa/porta.cpp
-        src/engine/PluginManager.cpp
-        src/engine/CrashRecoveryManager.cpp
+    src/engine/PluginManager.cpp
+    src/engine/CrashRecoveryManager.cpp
     src/engine/MidiInputManager.cpp
     src/engine/MidiImport.cpp
     src/engine/MidiAnalyzer.cpp
@@ -206,31 +235,18 @@ add_library(HDAW_lib STATIC
     src/engine/BarSnap.cpp
     src/engine/AudioImport.cpp
     src/engine/AudioPreviewPlayer.cpp
-src/engine/StretchRenderer.cpp
+    src/engine/StretchRenderer.cpp
     src/engine/LoopAnalyzer.cpp
     src/engine/StretchCache.cpp
     src/engine/TransientDetector.cpp
     src/engine/FileLibraryManager.cpp
     src/engine/LibraryClusterer.cpp
     src/engine/ClusterPresetStore.cpp
-    src/common/MessagePumpThread.cpp
-    src/common/HeadlessArgs.cpp
-    src/common/DeviceParamMap.cpp
-    src/common/PsyFmModMatrixView.cpp
-    src/common/ParamOverrideLedger.cpp
-    src/common/MatrixPresetService.cpp
-    src/common/SongPlanView.cpp
-    src/common/FxCaptureStatus.cpp
-    src/common/TuningAnalysis.cpp
-    src/common/MixReportJson.cpp
-    src/common/ParamVerity.cpp
-    src/common/ToneVerity.cpp
-    src/common/MixVerdict.cpp
-    src/common/BatchEnd.cpp
-    src/common/ModulationCoverage.cpp
-    src/common/NordBankLoader.cpp
-    src/common/ProjectQuery.cpp
+    src/engine/RegionClipboard.cpp
     src/model/ProjectModel.cpp
+)
+
+add_library(hdaw_surface STATIC
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
     src/mcp/McpServer.cpp
@@ -277,9 +293,6 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp
-    src/proxy/ProxyPipe.cpp
-    src/proxy/ProxySharedMemory.cpp
-    src/engine/RegionClipboard.cpp
     src/frontend/FrontendRouter.cpp
     src/frontend/router/Router_Project.cpp
     src/frontend/router/Router_Session.cpp
@@ -307,82 +320,103 @@ src/engine/StretchRenderer.cpp
     src/frontend/UiHttpServer.cpp
 )
 
+add_library(hdaw_proxy STATIC
+    src/proxy/ProxyPipe.cpp
+    src/proxy/ProxySharedMemory.cpp
+)
+
 if(HDAW_PLUGIN_ISOLATION)
-    target_sources(HDAW_lib PRIVATE
+    target_sources(hdaw_proxy PRIVATE
         src/proxy/ProxyProcessManager.cpp
         src/proxy/PluginProxySlot.cpp
         src/proxy/ProxyEditor.cpp
         src/proxy/CrashDialog.cpp
     )
-    target_compile_definitions(HDAW_lib PUBLIC HDAW_PLUGIN_ISOLATION=1)
-    target_link_libraries(HDAW_lib PUBLIC Qt6::Widgets)
 endif()
 
-target_include_directories(HDAW_lib PUBLIC src)
-target_link_libraries(HDAW_lib PUBLIC
-    juce::juce_audio_utils
-    juce::juce_audio_processors
-    juce::juce_audio_devices
-    juce::juce_dsp
-    juce::juce_core
-    juce::juce_gui_basics
-    Qt6::Core
-    Qt6::Network
-    Qt6::HttpServer
-    Qt6::WebSockets
-    clap_juce_extensions
-    HDAW::SoundTouch
-    HDAW::aubio
-)
+foreach(_lib ${HDAW_LIBS})
+    target_include_directories(${_lib} PUBLIC src)
+    target_compile_definitions(${_lib} PUBLIC
+        JUCE_PLUGINHOST_VST3=1
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_STRICT_REFCOUNTEDPOINTER=1
+    )
+    target_link_libraries(${_lib} PUBLIC
+        juce::juce_audio_utils
+        juce::juce_audio_processors
+        juce::juce_audio_devices
+        juce::juce_dsp
+        juce::juce_core
+        juce::juce_gui_basics
+        Qt6::Core
+        Qt6::Network
+        Qt6::HttpServer
+        Qt6::WebSockets
+        clap_juce_extensions
+        HDAW::SoundTouch
+        HDAW::aubio
+    )
+    target_precompile_headers(${_lib} PRIVATE
+        <string>
+        <vector>
+        <memory>
+        <functional>
+        <algorithm>
+        <array>
+        <span>
+        <optional>
+        <variant>
+        <unordered_map>
+        <map>
+        <set>
+        <mutex>
+        <atomic>
+        <thread>
+        <chrono>
+        <cassert>
+        <cstring>
+        <cmath>
+    )
+    if(MSVC)
+        target_compile_options(${_lib} PRIVATE /MP /FS)
+        if(HDAW_ENABLE_AVX2)
+            target_compile_options(${_lib} PRIVATE /arch:AVX2)
+        endif()
+        target_compile_options(${_lib} PRIVATE
+            $<$<CONFIG:Release,RelWithDebInfo>:/O2 /Ob2 /Oi /Oy /GT>
+        )
+    endif()
+    if(ipo_supported)
+        set_property(TARGET ${_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+        set_property(TARGET ${_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    endif()
+    if(HDAW_PLUGIN_ISOLATION)
+        # PUBLIC on every lib, exactly as the old monolithic lib had it: PluginManager
+        # and other non-proxy TUs compile #if HDAW_PLUGIN_ISOLATION blocks, so a
+        # proxy-only def would silently compile isolation out of the engine layer.
+        target_compile_definitions(${_lib} PUBLIC HDAW_PLUGIN_ISOLATION=1)
+    endif()
+endforeach()
 
-# Enable VST3 plugin hosting (needed by PluginManager.cpp -> juce::VST3PluginFormat)
-target_compile_definitions(HDAW_lib PUBLIC
-    JUCE_PLUGINHOST_VST3=1
-    JUCE_MODAL_LOOPS_PERMITTED=1
-    JUCE_USE_CURL=0
-    JUCE_WEB_BROWSER=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_REPORT_APP_USAGE=0
-    JUCE_STRICT_REFCOUNTEDPOINTER=1
-)
+# Layer order (plan section 5): common <- engine <- surface; proxy over common+engine.
+target_link_libraries(hdaw_engine PUBLIC hdaw_common)
+target_link_libraries(hdaw_surface PUBLIC hdaw_common hdaw_engine)
+target_link_libraries(hdaw_proxy PUBLIC hdaw_common hdaw_engine)
 
-# ── Precompiled Headers (PCH) ────────────────────────────────────────────────
-# Pre-compile heavy headers to reduce per-TU compilation time by 30-50%.
-# The PCH is shared across all .cpp files in HDAW_lib, so each file only
-# compiles its own unique code instead of re-parsing JUCE/Qt/STL headers.
-#
-# NOTE: JUCE and Qt headers are excluded from PCH because they have complex
-# macro dependencies and platform-specific configurations that can conflict
-# with the PCH approach. The standard library headers provide the most benefit.
-target_precompile_headers(HDAW_lib PRIVATE
-    # Standard library (most frequently included)
-    <string>
-    <vector>
-    <memory>
-    <functional>
-    <algorithm>
-    <array>
-    <span>
-    <optional>
-    <variant>
-    <unordered_map>
-    <map>
-    <set>
-    <mutex>
-    <atomic>
-    <thread>
-    <chrono>
-    <cassert>
-    <cstring>
-    <cmath>
-)
+if(HDAW_PLUGIN_ISOLATION)
+    target_link_libraries(hdaw_proxy PUBLIC Qt6::Widgets)
+endif()
 
 # ── Unity Build ──────────────────────────────────────────────────────────────
 # Unity builds are disabled for now because the codebase has files with
 # conflicting definitions (msfa headers without include guards, MCP tools
 # with aggregate initialization issues) that cause compilation errors when
 # combined. This can be revisited after those issues are resolved.
-# set_target_properties(HDAW_lib PROPERTIES
+# set_target_properties(hdaw_engine PROPERTIES
 #     UNITY_BUILD ON
 #     UNITY_BUILD_BATCH_SIZE 0
 # )
@@ -400,31 +434,22 @@ target_link_libraries(HDAW
     Qt6::Gui
     Qt6::Network
     Qt6::HttpServer
-    juce::juce_audio_utils
-    juce::juce_dsp
-    juce::juce_gui_basics
-    clap_juce_extensions
-    HDAW_lib
+    ${HDAW_LIBS}
 )
 
 
 
 # Link-Time Optimization: allows inlining across .cpp boundaries (10-30% runtime
 # speedup). Only for optimized configs — Debug keeps full debuggability.
-include(CheckIPOSupported)
-check_ipo_supported(RESULT ipo_supported)
 if(ipo_supported)
-    set_property(TARGET HDAW_lib PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
-    set_property(TARGET HDAW_lib PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     set_property(TARGET HDAW PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_property(TARGET HDAW PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
-# JUCE_PLUGINHOST_VST3 / JUCE_MODAL_LOOPS_PERMITTED are inherited from HDAW_lib (PUBLIC)
+# JUCE_PLUGINHOST_VST3 / JUCE_MODAL_LOOPS_PERMITTED are inherited from the layered libs (PUBLIC)
 
 # Enable modern C++ features for MSVC; /MP enables parallel compilation
 if(MSVC)
-    target_compile_options(HDAW_lib PRIVATE /MP /FS)
     target_compile_options(HDAW PRIVATE /W4 /permissive- /EHa /MP)
 
     # Suppress C++20/C++23 std-library deprecation warnings (C4996
@@ -440,15 +465,11 @@ if(MSVC)
     # -DHDAW_ENABLE_AVX2=OFF if targeting older hardware.
     option(HDAW_ENABLE_AVX2 "Enable AVX2 SIMD instructions" ON)
     if(HDAW_ENABLE_AVX2)
-        target_compile_options(HDAW_lib PRIVATE /arch:AVX2)
         target_compile_options(HDAW PRIVATE /arch:AVX2)
     endif()
 
     # Per-config optimization flags for Release and RelWithDebInfo.
     # Debug keeps /Od (no optimization) for full debuggability.
-    target_compile_options(HDAW_lib PRIVATE
-        $<$<CONFIG:Release,RelWithDebInfo>:/O2 /Ob2 /Oi /Oy /GT>
-    )
     target_compile_options(HDAW PRIVATE
         $<$<CONFIG:Release,RelWithDebInfo>:/O2 /Ob2 /Oi /Oy /GT>
     )
@@ -484,13 +505,13 @@ add_executable(HDAW_headless
 )
 target_link_libraries(HDAW_headless
     PRIVATE
-    HDAW_lib
+    ${HDAW_LIBS}
 )
 set_target_properties(HDAW_headless PROPERTIES
     OUTPUT_NAME "HDAW_headless"
 )
 # Deploy Qt DLLs next to the headless binary, same as the other Qt-linked
-# exes (HDAW, hdaw_plugin_scanner, hdaw_tests). HDAW_lib pulls in
+# exes (HDAW, hdaw_plugin_scanner, hdaw_tests). the layered libs pull in
 # Qt6::Core/Network/HttpServer/WebSockets, so without this a clean
 # `cmake --build build --target HDAW_headless` produces a binary that fails
 # to start with STATUS_DLL_NOT_FOUND. See AGENTS.md "Build" section.
@@ -514,12 +535,7 @@ if(HDAW_PLUGIN_ISOLATION)
         target_compile_options(hdaw_plugin_host PRIVATE /EHa)
     endif()
     target_link_libraries(hdaw_plugin_host PRIVATE
-        HDAW_lib
-        juce::juce_audio_processors
-        juce::juce_audio_utils
-        juce::juce_gui_basics
-        juce::juce_events
-        juce::juce_core
+        ${HDAW_LIBS}
     )
 endif()
 
@@ -529,9 +545,7 @@ add_executable(hdaw_plugin_scanner
 )
 target_include_directories(hdaw_plugin_scanner PRIVATE src)
 target_link_libraries(hdaw_plugin_scanner PRIVATE
-    HDAW_lib
-    juce::juce_audio_processors
-    juce::juce_core
+    ${HDAW_LIBS}
 )
 # NOTE: hdaw_plugin_scanner does NOT link Qt (JUCE-only exe — verified via
 # dumpbin /DEPENDENTS: no Qt6*.dll in its import table). Do not call

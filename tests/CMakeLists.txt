@@ -35,7 +35,7 @@ function(hdaw_test_exe name)
         Qt6::Network
         Qt6::WebSockets
         Qt6::Test
-        HDAW_lib
+        ${HDAW_LIBS}
         GTest::gtest_main
     )
     add_test(NAME ${name} COMMAND ${name})
