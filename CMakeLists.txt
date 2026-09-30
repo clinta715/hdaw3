@@ -120,6 +120,24 @@ option(HDAW_ENABLE_AVX2 "Enable AVX2 SIMD instructions" ON)
 
 set(HDAW_LIBS hdaw_common hdaw_engine hdaw_surface hdaw_proxy)
 
+# --- hdaw_juce: JUCE module TUs compile ONCE here (plan Phase 3) ---
+# The juce:: targets are INTERFACE carriers: their module sources and usage
+# requirements are transplanted explicitly via TARGET_PROPERTY genexes.
+# hdaw_juce compiles the sources PRIVATEly; the layer libs receive the
+# identical include/def requirements PUBLICly (same genexes, same values -
+# ODR-safe by construction) and never the sources, so no consumer re-compiles
+# the module set (the per-consumer copies measured 212 juce-src steps of a
+# 638-step full build). The juce:: targets are never linked anywhere.
+add_library(hdaw_juce STATIC)
+foreach(_mod juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_devices juce::juce_dsp juce::juce_core juce::juce_gui_basics)
+    target_sources(hdaw_juce PRIVATE $<TARGET_PROPERTY:${_mod},INTERFACE_SOURCES>)
+    target_include_directories(hdaw_juce PRIVATE $<TARGET_PROPERTY:${_mod},INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_definitions(hdaw_juce PRIVATE $<TARGET_PROPERTY:${_mod},INTERFACE_COMPILE_DEFINITIONS>)
+    target_include_directories(hdaw_juce PUBLIC $<TARGET_PROPERTY:${_mod},INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_definitions(hdaw_juce PUBLIC $<TARGET_PROPERTY:${_mod},INTERFACE_COMPILE_DEFINITIONS>)
+endforeach()
+target_link_libraries(hdaw_juce PUBLIC clap_juce_extensions HDAW::SoundTouch HDAW::aubio)
+
 add_library(hdaw_common STATIC
     src/common/MessagePumpThread.cpp
     src/common/HeadlessArgs.cpp
@@ -334,7 +352,7 @@ if(HDAW_PLUGIN_ISOLATION)
     )
 endif()
 
-foreach(_lib ${HDAW_LIBS})
+foreach(_lib hdaw_juce ${HDAW_LIBS})
     target_include_directories(${_lib} PUBLIC src)
     target_compile_definitions(${_lib} PUBLIC
         JUCE_PLUGINHOST_VST3=1
@@ -344,21 +362,6 @@ foreach(_lib ${HDAW_LIBS})
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_REPORT_APP_USAGE=0
         JUCE_STRICT_REFCOUNTEDPOINTER=1
-    )
-    target_link_libraries(${_lib} PUBLIC
-        juce::juce_audio_utils
-        juce::juce_audio_processors
-        juce::juce_audio_devices
-        juce::juce_dsp
-        juce::juce_core
-        juce::juce_gui_basics
-        Qt6::Core
-        Qt6::Network
-        Qt6::HttpServer
-        Qt6::WebSockets
-        clap_juce_extensions
-        HDAW::SoundTouch
-        HDAW::aubio
     )
     target_precompile_headers(${_lib} PRIVATE
         <string>
@@ -383,6 +386,11 @@ foreach(_lib ${HDAW_LIBS})
     )
     if(MSVC)
         target_compile_options(${_lib} PRIVATE /MP /FS)
+        if(_lib STREQUAL hdaw_juce)
+            # Without /GL (hdaw_juce is IPO-off) the JUCE module objects are real
+            # COFF objects and exceed the section limit (C1128 juce_gui_basics).
+            target_compile_options(${_lib} PRIVATE /bigobj)
+        endif()
         if(HDAW_ENABLE_AVX2)
             target_compile_options(${_lib} PRIVATE /arch:AVX2)
         endif()
@@ -391,8 +399,15 @@ foreach(_lib ${HDAW_LIBS})
         )
     endif()
     if(ipo_supported)
-        set_property(TARGET ${_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
-        set_property(TARGET ${_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+        # hdaw_juce stays IPO-off: one LTO archive for the whole JUCE module set
+        # made every downstream link run link-time codegen over all of JUCE
+        # (engine-touch build 344.7 s -> 559.6/582.7 s, identical 13 steps, zero
+        # JUCE compiles - deterministic across two runs). JUCE module code gains
+        # little from cross-module LTO; the app libs keep theirs. A/B in plan 12.
+        if(NOT _lib STREQUAL hdaw_juce)
+            set_property(TARGET ${_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+            set_property(TARGET ${_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+        endif()
     endif()
     if(HDAW_PLUGIN_ISOLATION)
         # PUBLIC on every lib, exactly as the old monolithic lib had it: PluginManager
@@ -403,9 +418,10 @@ foreach(_lib ${HDAW_LIBS})
 endforeach()
 
 # Layer order (plan section 5): common <- engine <- surface; proxy over common+engine.
-target_link_libraries(hdaw_engine PUBLIC hdaw_common)
-target_link_libraries(hdaw_surface PUBLIC hdaw_common hdaw_engine)
-target_link_libraries(hdaw_proxy PUBLIC hdaw_common hdaw_engine)
+target_link_libraries(hdaw_common PUBLIC hdaw_juce Qt6::Core Qt6::Network Qt6::HttpServer Qt6::WebSockets)
+target_link_libraries(hdaw_engine PUBLIC hdaw_juce hdaw_common Qt6::Core Qt6::Network Qt6::HttpServer Qt6::WebSockets)
+target_link_libraries(hdaw_surface PUBLIC hdaw_juce hdaw_common hdaw_engine Qt6::Core Qt6::Network Qt6::HttpServer Qt6::WebSockets)
+target_link_libraries(hdaw_proxy PUBLIC hdaw_juce hdaw_common hdaw_engine Qt6::Core Qt6::Network Qt6::HttpServer Qt6::WebSockets)
 
 if(HDAW_PLUGIN_ISOLATION)
     target_link_libraries(hdaw_proxy PUBLIC Qt6::Widgets)
