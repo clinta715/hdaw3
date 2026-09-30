@@ -195,6 +195,7 @@ renders/
 clap-libs/
 test.zip
 .tmp_*
+.scratch_*
 *.tmp
 *.bak
 

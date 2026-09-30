@@ -176,3 +176,162 @@ byte-unchanged. The tree is UNCOMMITTED (HEAD `e342a3d`).
 2. Phase 2: on sign-off, B1 and/or B6 in their own subagent + tests.
 3. Phase 3: B7/B5 investigation notes.
 4. Handoff row + docs update; parity ledger check if any route moved.
+
+---
+
+# Phase 4 — residual tool-surface polish (2026-09-30, after the close-out)
+
+Four items the `ion_rift_remix` session reported but deliberately did not fix. All are
+discoverability/contract gaps on the agent surface, not engine defects. Locations verified.
+
+## Success gates
+
+- [ ] **P4-a `apply_song_brief`'s `brief` type.** `McpTools_SongPlan.cpp:192` declares
+      `{"type":"object"}` while the handler accepts an OBJECT **or** a JSON STRING
+      (`bv.isObject() || bv.isString()`). The schema must express both, or the string form must be
+      dropped — decide which and make the description agree. If the MCP validator cannot express a
+      union type, say so and take the documented alternative rather than inventing a schema dialect.
+- [ ] **P4-b `add_fx` and the plugin path.** The schema's `fxType` enum omits `plugin` while the
+      tool's OWN description says "fxType in {…}, **OR a pluginId**" — and `add_fx {trackId,
+      pluginId}` demonstrably works. Either `fxType:"plugin"` is a supported spelling (then add it to
+      the enum) or it is not (then the schema/description must make the pluginId-only path
+      unambiguous). Check the RPC twin `project.addFx` for the same gap. Do not "fix" this by adding
+      an enum value the handler does not accept.
+- [ ] **P4-c enum refusals must list the allowed values.** The generic validator refusal is
+      `McpSchema.cpp:29` → `"value not in enum"`, which names neither the offending value nor the
+      allowed set; `McpTools_CompositionGenerate.cpp:382` hand-rolls its own `"unknown style: …"`.
+      Make the refusal carry the offending value AND the allowed list, sourced from the SAME schema
+      the validator used (one source of truth — the `audition_plugin` `style` fix is the precedent),
+      and route the hand-rolled sites through it. Highest-value item: it improves every
+      enum-bearing tool on both surfaces.
+- [ ] **P4-d `scripts/hdaw_mcp_http.py` truncation.** `call` truncates at ~4000 chars unless
+      `--full`. Keep the guard against flooding, but make the limit explicit and adjustable (an env
+      override) and make the truncation notice say how to get the rest; consider not truncating
+      `run` output, which is the multi-step evidence path.
+- [ ] **P4-e** `dsh-build-fast.bat test` builds; new/extended tests cover P4-a..P4-c; `node
+      tools/rpc_parity_map.mjs` ledger line unchanged unless a route moved; `git status` shows only
+      intended files.
+
+## Dependency map
+
+- P4-a: `src/mcp/McpTools_SongPlan.cpp` (+ the RPC twin `composition.applySongBrief` for parity).
+- P4-b: the `add_fx` registration in `src/mcp/` and `project.addFx` in `src/frontend/router/`.
+- P4-c: `src/mcp/McpSchema.cpp` (the validator) + every hand-rolled enum refusal — grep
+  `unknown .*: ` and `not in enum` before claiming completeness.
+- P4-d: `scripts/hdaw_mcp_http.py` only (no build).
+
+## Pitfall gates
+
+| Gate | Applies | Note |
+|---|---|---|
+| 2 unimplemented path | **all** | A schema change the handler does not honour is the lesson-34 class this batch exists to remove. Assert observable behaviour, not schema text. |
+| 4 stale binaries | P4-e | Build, then test the binary that was built. |
+| 38 silent acceptance | **all** | Refusals must refuse loudly and name what is allowed. |
+
+## Sequencing constraint (measured)
+
+Engine PID 9604 runs `build/HDAW_headless.exe` **directly**, so a rebuild cannot relink while it is
+alive. The remix sample pass therefore runs FIRST on that engine; the engine is stopped before this
+Phase 4 build starts. Final cleanup (stop the stray engines, delete dumps) closes the session.
+
+---
+
+# Phase 5 — `apply_matrix_preset` on microQ injects into the wrong buffer (CONFIRMED)
+
+**Found by:** the Waldorf corpus agent while writing `docs/psy-waldorf-recipes.md`.
+**Confirmed by me at source** (2026-09-30), so it is a defect, not a suspicion.
+
+## The defect
+
+`grep -n 'd\[5\] = 0x20' src/` returns **exactly one hit** — `src/common/PresetApply.h:559`. That is
+the microQ/Vavra edit-buffer retarget added 2026-09-18 to fix the documented "NOT APPLYING" failure:
+real bank dumps carry their original buffer byte (**`0x30` = multi-edit**, or `0x40+` = bank slot),
+which the single-mode OS does not play, so the retarget rewrites `d[5] = 0x20`,
+`d[6] = 0x00` and recomputes the Waldorf checksum (`sum(d[4 .. size-2)) & 0x7F`).
+
+That retarget exists **only** in the file-loader path. The `apply_matrix_preset` device-native dump
+route (`src/common/MatrixPresetService.cpp:620-645`) validates only the `F0`/`F7` framing and the
+size, then pushes the sheet's `sysex` array **verbatim** into `ProjectCommands::sendFxMidi` — which
+contains no retarget either.
+
+Measured consequence (agent's corpus scan): **all 40 `timbre-lib/matrix_presets/vavra.json` presets
+and all 20 `vavra_morphs.json` step dumps carry byte5 = `0x30`**, as do **528/528** corpus `.syx`.
+So `apply_matrix_preset {engine:"vavra"}` injects into exactly the buffer the VA-suite log already
+documented as the root cause — **the preset silently does not sound.** Xenia is unaffected because
+its offline tooling (`xenia_matrix_sysex.py`) already re-frames to `0x20`; the microQ mirror
+(`vavra_matrix_sysex.py`) does not — a real asymmetry between the two sheets.
+
+**Why it matters beyond a curiosity:** the Waldorf recipes use matrix presets / morph chains as the
+*movement* route for microQ, so a silently-no-op injector invalidates that half of the deliverable.
+
+## Success gates
+
+- [ ] **P5-a** the microQ edit-buffer retarget has **ONE implementation**, called by BOTH the
+      file-loader path and the `apply_matrix_preset` dump path (house rule: same payload by
+      construction, not by discipline) — a shared helper in `src/common/`, not a copy.
+- [ ] **P5-b** a unit test proves the matrix route now rewrites a `0x30` 392-byte microQ dump to
+      `0x20/0x00` **and** recomputes the checksum, and that a non-microQ / non-392-byte dump is
+      passed through byte-identical (no over-reach).
+- [ ] **P5-c** the fix does not regress the existing routes: `apply_preset` Waldorf Sysex, the
+      Xenia path (already `0x20`), and the non-Waldorf dump routes stay byte-identical.
+- [ ] **P5-d** `dsh-build-fast.bat test` rc 0; the affected suites green; `git status` shows only the
+      intended files.
+- [ ] **P5-e** the two documented workarounds in `docs/psy-waldorf-recipes.md` §9 are updated to say
+      the route is now fixed (or removed if the fix lands).
+
+## Pitfall gates
+
+| Gate | Applies | Note |
+|---|---|---|
+| 2 unimplemented path | **yes** | This IS that class: an argument accepted, a payload emitted, and the sounding result unchanged. Assert the observable bytes, not the `route:"device_dump"` success payload. |
+| 23 (params clamp at every entry point) | adjacent | Same spirit — a transform must be applied at EVERY entry point, not one. |
+| 4 stale binaries | yes | Build, then test the binary built. |
+
+## Sequencing
+
+Requires a build, and engine PID 9604 holds `build/HDAW_headless.exe` — stop that engine first (the
+remix is complete and promoted: `ion_rift_remix.wav` verified at rms 0.17869 / peak 0.7747 /
+`ceilingHitPct` 0 / verdict `ok:true`, project saved).
+
+---
+
+# Phase 6 — `set_audio_output_device` silently accepts an unknown device (CONFIRMED, measured)
+
+**Found 2026-09-30** while verifying the Waldorf recipes against the live host surface.
+
+## The defect
+
+`set_audio_output_device {"name": "<anything>"}` returns **`ok` whether or not the device exists**,
+and an unknown name **leaves the engine deviceless**. Reproduced three times on engine 29592:
+
+| call | returned | resulting `get_audio_current_setup.output` |
+|---|---|---|
+| `{"name":"Speakers (Focusrite USB Audio)"}` (not in THIS engine's device list — it lists only `Remote Audio`) | `ok` | `""` — **unchanged, still deviceless** |
+| `{"name":"Remote Audio"}` (the one it lists) | `ok` | `"Remote Audio"` ✅ device opened |
+| `{"name":"No Such Device 12345"}` | `ok` | `""` — **device DROPPED** |
+| `{"name":"R"}` (an agent-side array-unwrap bug fed it a 1-char name) | `ok` | `""` — device dropped |
+
+**Why it matters more than a cosmetic bug:** the deviceless state is exactly the condition that makes
+every live-slot tool fail with the misleading **`track not found: N`** (Phase 5's sibling problem,
+diagnosed earlier this session and documented in the skill). So a typo'd or stale device name is
+accepted silently and then presents as "the plugin/engine is broken". It cost real time twice today.
+
+## Success gates
+
+- [ ] **P6-a** an unknown device name is **refused** with an error naming the requested name and the
+      available devices (`set_audio_output_device {"name":"X"}` → error, not `ok`).
+- [ ] **P6-b** a failed set leaves the previously open device **untouched** (no silent drop).
+- [ ] **P6-c** a valid name behaves exactly as today (opens, and `get_audio_current_setup.output`
+      reports it).
+- [ ] **P6-d** a test covers: unknown name refused; valid name accepted; failed set is
+      non-destructive; and `""` (if it is the intended "close" spelling) is distinguished from an
+      unknown name — document which spelling closes the device.
+- [ ] **P6-e** `dsh-build-fast.bat test` rc 0; affected suites green.
+
+## Pitfall gates
+
+| Gate | Applies | Note |
+|---|---|---|
+| 9 id/name validation at trust boundaries | **yes** | This is an unvalidated name crossing a trust boundary — the same class as Gate 9's `stoi`/ID rules. |
+| 38 silent acceptance | **yes** | The `ok` payload with no effect is exactly the accepted-arg-dropped class. |
+| 2 unimplemented path | yes | Assert the observable `output`, not the `ok`. |
