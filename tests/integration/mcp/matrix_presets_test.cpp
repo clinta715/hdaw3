@@ -12,10 +12,16 @@
 #include "engine/MainAudioProcessor.h"
 #include "engine/ExportManager.h"
 #include "engine/ProjectSerializer.h"
+#include "engine/Track.h"
+#include "engine/TrackFXSlot.h"
+#include "common/PresetApply.h"
+#include "common/ProjectCommands.h"
+#include "common/WaldorfEditBuffer.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
 #include "mcp/McpTransportLoopback.h"
 #include "mcp/McpJsonRpc.h"
+#include "mcp/PresetFileParser.h"
 #include "model/ProjectModel.h"
 
 #include <QDir>
@@ -37,6 +43,119 @@ QJsonObject parseOne(const QByteArray& buf)
     const int nl = buf.indexOf('\n');
     const QByteArray line = nl >= 0 ? buf.left(nl) : buf;
     return QJsonDocument::fromJson(line).object();
+}
+
+// ── Phase 5 (2026-09-30): microQ edit-buffer retarget ───────────────────────
+// A 392-byte microQ dump in the REAL corpus shape: byte5 = 0x30 (multi-edit),
+// the buffer the single-mode OS does not play. Both the DEVICE-native matrix
+// dump routes and the apply_preset file-loader route must retarget it to
+// 0x20/0x00 and recompute the Waldorf checksum — through ONE implementation
+// (src/common/WaldorfEditBuffer.h).
+std::vector<uint8_t> makeMicroQDump(uint8_t bufferByte, uint8_t locationByte)
+{
+    std::vector<uint8_t> d(392, 0);
+    d[0] = 0xF0;
+    d[1] = mcp::kWaldorfId;
+    d[2] = mcp::kWaldorfMachineMicroQ;
+    d[3] = 0x00;
+    d[4] = 0x01;
+    d[5] = bufferByte;
+    d[6] = locationByte;
+    for (size_t i = 7; i + 2 < d.size(); ++i)
+        d[i] = static_cast<uint8_t>(i & 0x7f);
+    d[d.size() - 1] = 0xF7;
+    uint8_t cs = 0;
+    for (size_t i = 4; i + 2 < d.size(); ++i)
+        cs += d[i];
+    d[d.size() - 2] = cs & 0x7f;
+    return d;
+}
+
+uint8_t dumpChecksum(const std::vector<uint8_t>& d)
+{
+    uint8_t cs = 0;
+    for (size_t i = 4; i + 2 < d.size(); ++i)
+        cs += d[i];
+    return cs & 0x7f;
+}
+
+QJsonArray microQDumpJson()
+{
+    QJsonArray a;
+    for (const auto b : makeMicroQDump(0x30, 0x40))
+        a.append(static_cast<int>(b));
+    return a;
+}
+
+/// Minimal recording plugin: captures every non-empty MIDI buffer it is handed,
+/// so the bytes the isolated child WOULD receive are observable without a real
+/// CLAP (the override set mirrors tests/unit/engine/fx_midi_injection_test.cpp).
+struct RecordingPlugin : juce::AudioPluginInstance
+{
+    RecordingPlugin()
+        : juce::AudioPluginInstance(
+              juce::AudioProcessor::BusesProperties()
+                  .withInput("In", juce::AudioChannelSet::stereo())
+                  .withOutput("Out", juce::AudioChannelSet::stereo())) {}
+
+    std::vector<juce::MidiBuffer> received;
+
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+    const juce::String getName() const override { return "RecordingPlugin"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer& midi) override
+    {
+        if (midi.isEmpty())
+            return;
+        juce::MidiBuffer copy;
+        for (const auto metadata : midi)
+            copy.addEvent(metadata.getMessage(), metadata.samplePosition);
+        received.push_back(copy);
+    }
+    void processBlock(juce::AudioBuffer<double>&, juce::MidiBuffer&) override {}
+    bool hasEditor() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    int getNumParameters() override { return 0; }
+    float getParameter(int) override { return 0; }
+    void setParameter(int, float) override {}
+    const juce::String getParameterName(int) override { return {}; }
+    const juce::String getParameterText(int) override { return {}; }
+    bool acceptsMidi() const override { return true; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void fillInPluginDescription(juce::PluginDescription& desc) const override
+    {
+        desc.name = "RecordingPlugin";
+        desc.pluginFormatName = "Internal";
+    }
+};
+
+/// The last SysEx dump the fake received, re-framed as the full wire dump:
+/// JUCE's getSysExData()/getSysExDataSize() give only the bytes BETWEEN the
+/// leading 0xF0 and the trailing 0xF7 (392-byte dump -> 390 payload bytes).
+std::vector<uint8_t> lastSysex(const RecordingPlugin& rec)
+{
+    for (auto it = rec.received.rbegin(); it != rec.received.rend(); ++it)
+        for (const auto metadata : *it)
+        {
+            const auto m = metadata.getMessage();
+            if (!m.isSysEx())
+                continue;
+            std::vector<uint8_t> out;
+            out.push_back(0xF0);
+            const auto* p = m.getSysExData();
+            out.insert(out.end(), p, p + m.getSysExDataSize());
+            out.push_back(0xF7);
+            return out;
+        }
+    return {};
 }
 
 class MatrixPresetsTest : public ::testing::Test {
@@ -150,6 +269,45 @@ protected:
                                              { "steps", QJsonArray { s3 } } } } } })
                            .toJson(QJsonDocument::Indented)))
             return false;
+
+        // microQ (vavra) sheets for the Phase-5 edit-buffer retarget test: BOTH
+        // dump routes (a preset's device-native dump and a morph step's sysex)
+        // carry the real corpus payload — byte5 = 0x30, a buffer the single-mode
+        // OS does not play.
+        const QJsonArray microQDump = microQDumpJson();
+        const QJsonObject vavraPreset {
+            { "id", "fx00000000000060" },
+            { "name", "fixture microq device dump" },
+            { "role", "movement" },
+            { "appliesVia", "sysex" },
+            { "evidence", "fixture" },
+            { "sysex", microQDump } };
+        if (!writeFile(temp_.filePath("vavra.json"),
+                       QJsonDocument(QJsonObject {
+                           { "schema", "hdaw.matrix.preset.v1" },
+                           { "engine", "vavra" },
+                           { "patchCount", 1 },
+                           { "presets", QJsonArray { vavraPreset } } })
+                           .toJson(QJsonDocument::Indented)))
+            return false;
+
+        const QJsonObject vavraStep {
+            { "preset", QJsonObject {
+                { "id", "ms00000000000060" },
+                { "name", "fixture microq morph step" },
+                { "appliesVia", "sysex" },
+                { "params", QJsonObject {} } } },
+            { "jumps", QJsonArray {} },
+            { "sysex", microQDump } };
+        if (!writeFile(temp_.filePath("vavra_morphs.json"),
+                       QJsonDocument(QJsonObject {
+                           { "schema", "hdaw.matrix.preset.morph.v1" },
+                           { "engine", "vavra" },
+                           { "pairs", QJsonArray {
+                               QJsonObject { { "pair", "1:2" }, { "distance", 0.1 },
+                                             { "steps", QJsonArray { vavraStep } } } } } })
+                           .toJson(QJsonDocument::Indented)))
+            return false;
         return true;
     }
 
@@ -215,10 +373,41 @@ protected:
         ASSERT_GT(fxChain.getNumChildren(), 0) << "the fixture slot must exist";
     }
 
+    // Adds a plugin-typed TREE slot AND installs a recording fake at the same
+    // index on the LIVE chain, so the bytes send_fx_midi hands to the child are
+    // observable without a real CLAP (the tree slot keeps the slot valid for the
+    // IDs::presetSysex replay payload). Returns the slot index, or -1 when the
+    // deviceless live-routing seam did not settle — the caller must FAIL loudly
+    // in that case, never claim a pass.
+    int installFakePluginSlot() {
+        engine->getProjectCommands().addFxSlot(0, "plugin", -1, "fixture.test");
+        const auto fxChain = engine->getProjectModel().getTrackListTree()
+                                 .getChild(0).getChildWithName(IDs::FX_CHAIN);
+        if (!fxChain.isValid() || fxChain.getNumChildren() <= 0)
+            return -1;
+        const int si = fxChain.getNumChildren() - 1;
+
+        engine->ensureLiveRouting(0);
+        auto* proc = engine->getMainProcessor();
+        auto* track = proc != nullptr ? proc->getTrack(0) : nullptr;
+        if (track == nullptr)
+            return -1;
+
+        auto& live = track->getFXChain();
+        if (static_cast<int>(live.size()) <= si)
+            live.resize(static_cast<size_t>(si) + 1);
+        auto fake = std::make_unique<RecordingPlugin>();
+        fake_ = fake.get();
+        live[static_cast<size_t>(si)] =
+            std::make_unique<HDAW::TrackFXSlot>(std::move(fake), "fixture.test", false);
+        return si;
+    }
+
     QTemporaryDir temp_;
     std::unique_ptr<AudioEngine> engine;
     std::unique_ptr<mcp::McpServer> server;
     std::unique_ptr<mcp::TransportLoopback> loopback;
+    RecordingPlugin* fake_ = nullptr;   // live-chain fake plugin, when installed
     int nextId_ = 1;
 };
 
@@ -692,6 +881,139 @@ TEST_F(MatrixPresetsTest, ParamOverrideLedgerSurvivesSaveLoad)
 
 
 } // namespace
+
+// P5 (2026-09-30): apply_matrix_preset on microQ injected into the WRONG edit
+// buffer — a silent no-op, because real dumps carry byte5 = 0x30 (multi-edit).
+// The retarget must live in ONE implementation and fire on EVERY dump route:
+//   (1) the preset's device-native dump, (2) a morph step's sysex dump, and
+//   (3) the apply_preset FILE-LOADER path — all three must emit the same bytes.
+// The fake plugin makes the bytes the child would receive observable, so this
+// test fails if any route pushes the sheet's 0x30 dump verbatim.
+TEST_F(MatrixPresetsTest, MicroQEditBufferRetargetIsOneImplementation)
+{
+    const int si = installFakePluginSlot();
+    ASSERT_GE(si, 0) << "the deviceless live-routing seam did not settle a track/FX chain";
+    ASSERT_NE(fake_, nullptr);
+
+    const auto raw = makeMicroQDump(0x30, 0x40);   // the real corpus shape
+    ASSERT_EQ(raw.size(), 392u);
+    ASSERT_EQ(raw[5], 0x30) << "the fixture must carry the multi-edit buffer byte";
+    const uint8_t rawChecksum = raw[390];
+
+    // The expectation, built WITHOUT the helper (independent arithmetic).
+    auto expected = raw;
+    expected[5] = 0x20;
+    expected[6] = 0x00;
+    expected[390] = dumpChecksum(expected);
+    ASSERT_NE(expected[390], rawChecksum)
+        << "0x30->0x20 and 0x40->0x00 must move the checksum";
+
+    // Negative control: with NO retarget (a direct send_fx_midi of the same
+    // dump) the raw 0x30 bytes come out — this is the pre-fix behaviour of every
+    // route below, and it proves the harness can see the difference (nothing
+    // downstream rewrites the buffer byte).
+    {
+        ProjectCommands::FxMidiParams p;
+        p.trackIndex = 0;
+        p.slotIndex = si;
+        p.captureToTree = false;
+        ProjectCommands::FxMidiEvent ev;
+        ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
+        ev.sysex = raw;
+        p.events.push_back(std::move(ev));
+        fake_->received.clear();
+        const auto r = engine->getProjectCommands().sendFxMidi(p);
+        ASSERT_TRUE(r.ok) << r.error;
+        const auto delivered = lastSysex(*fake_);
+        ASSERT_EQ(delivered.size(), 392u) << "the fake must observe the injected dump";
+        EXPECT_EQ(delivered, raw) << "no retarget => the 0x30 dump goes out verbatim";
+        EXPECT_EQ(delivered[5], 0x30);
+    }
+
+    // (1) matrix DEVICE-NATIVE dump route (preset 'sysex' array).
+    const QJsonObject presetArgs { { "engine", "vavra" }, { "id", "fx00000000000060" },
+                                   { "trackId", 0 }, { "slotIndex", si },
+                                   { "captureToTree", true } };
+    fake_->received.clear();
+    const auto presetPayload = callJson("apply_matrix_preset", presetArgs);
+    const auto presetText = callText("apply_matrix_preset", presetArgs);
+    ASSERT_FALSE(presetPayload.isEmpty()) << presetText.toStdString();
+    ASSERT_EQ(presetPayload.value("route").toString(), QString("device_dump"))
+        << presetText.toStdString();
+    const auto fromPreset = lastSysex(*fake_);
+    ASSERT_EQ(fromPreset.size(), 392u) << "the child received no dump";
+    EXPECT_EQ(fromPreset, expected);
+
+    // (2) matrix MORPH-STEP dump route (the sheet's own 20 vavra steps).
+    const QJsonObject stepArgs { { "engine", "vavra" }, { "id", "1:2:step1" },
+                                 { "trackId", 0 }, { "slotIndex", si },
+                                 { "captureToTree", true } };
+    fake_->received.clear();
+    const auto stepPayload = callJson("apply_matrix_preset", stepArgs);
+    ASSERT_FALSE(stepPayload.isEmpty()) << callText("apply_matrix_preset", stepArgs).toStdString();
+    const auto fromStep = lastSysex(*fake_);
+    ASSERT_EQ(fromStep.size(), 392u) << "the child received no dump";
+    EXPECT_EQ(fromStep, expected);
+
+    // (3) the apply_preset FILE-LOADER path with the SAME dump on disk.
+    const auto syxPath = temp_.filePath("microq_edit_buffer.syx");
+    ASSERT_TRUE(writeFile(syxPath, QByteArray(reinterpret_cast<const char*>(raw.data()),
+                                              static_cast<int>(raw.size()))));
+    fake_->received.clear();
+    bool ok = false;
+    const auto fileText = HDAW::waldorfSysexFileToolText(*engine, 0, si, syxPath,
+                                                         "Vavra.clap", true, &ok);
+    ASSERT_TRUE(ok) << fileText.toStdString();
+    const auto fromFile = lastSysex(*fake_);
+    ASSERT_EQ(fromFile.size(), 392u) << "the child received no dump";
+    EXPECT_EQ(fromFile, expected);
+
+    // THE ONE-IMPLEMENTATION PROPERTY: every route emitted the same bytes.
+    EXPECT_EQ(fromPreset, fromFile) << "matrix route != file-loader route";
+    EXPECT_EQ(fromStep, fromFile) << "morph-step route != file-loader route";
+    EXPECT_EQ(fromFile[5], 0x20);
+    EXPECT_EQ(fromFile[6], 0x00);
+    EXPECT_NE(fromFile[5], raw[5]) << "the retarget must be observable";
+    EXPECT_EQ(fromFile[390], dumpChecksum(fromFile));
+    EXPECT_NE(fromFile[390], rawChecksum);
+
+    // The persisted replay payload (what rebuilds/offline renders replay) holds
+    // the retargeted dump too, not the sheet's 0x30 original.
+    const auto slotTree = engine->getProjectModel().getTrackListTree()
+                              .getChild(0).getChildWithName(IDs::FX_CHAIN).getChild(si);
+    ASSERT_TRUE(slotTree.isValid());
+    const auto persisted = HDAW::decodeFxPresetSysex(
+        slotTree.getProperty(IDs::presetSysex).toString());
+    ASSERT_FALSE(persisted.empty()) << "IDs::presetSysex was not written";
+    EXPECT_EQ(persisted.back(), expected);
+    EXPECT_EQ(persisted.back()[5], 0x20);
+}
+
+// Xenia (Microwave XT) must be untouched: its dumps are a different machine and
+// the offline tooling already frames them at 0x20, so a 0x30-shaped XT dump and
+// an already-0x20 one both pass through byte-identical (no over-reach).
+TEST_F(MatrixPresetsTest, MicroQRetargetLeavesXeniaDumpsByteIdentical)
+{
+    std::vector<uint8_t> xt(392, 0);
+    xt[0] = 0xF0;
+    xt[1] = mcp::kWaldorfId;
+    xt[2] = mcp::kWaldorfMachineMw2;
+    xt[3] = 0x00;
+    xt[4] = 0x01;
+    xt[5] = 0x30;
+    xt[6] = 0x40;
+    for (size_t i = 7; i + 2 < xt.size(); ++i)
+        xt[i] = static_cast<uint8_t>(i & 0x7f);
+    xt[xt.size() - 1] = 0xF7;
+    xt[xt.size() - 2] = dumpChecksum(xt);
+
+    const auto before = xt;
+    EXPECT_FALSE(HDAW::retargetWaldorfDumpForSingleEditBuffer(
+        xt, HDAW::waldorfMachineForName("xenia")));
+    EXPECT_EQ(xt, before);
+    EXPECT_EQ(xt[5], 0x30);
+    EXPECT_EQ(xt[6], 0x40);
+}
 
 // touch 1789771514
 

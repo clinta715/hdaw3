@@ -2,6 +2,7 @@
 #include <juce_core/juce_core.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "mcp/PresetFileParser.h"
+#include "common/WaldorfEditBuffer.h"   // microQ edit-buffer retarget (Phase 5)
 #include <vector>
 
 namespace {
@@ -528,4 +529,170 @@ TEST(PresetFileParser, Jp8080RealKulshanBankUnitsMatchTheSidecarIndex)
     EXPECT_EQ(sysexEvents, 320) << "SMF holds 320 DT1 events (verified 2026-09-16)";
     ASSERT_EQ(parsed, 320);
     EXPECT_EQ(units, 192u) << "64 named performance commons + 128 parts";
+}
+
+// ---------------------------------------------------------------------------
+// microQ/Vavra edit-buffer retarget (src/common/WaldorfEditBuffer.h) — the ONE
+// implementation both the file-loader path and apply_matrix_preset call.
+//
+// Source evidence (2026-09-30): all 40 timbre-lib/matrix_presets/vavra.json
+// presets, all 20 vavra_morphs.json steps and 528/528 corpus .syx carry
+// byte5 = 0x30 (multi-edit) — a buffer the single-mode OS does not play, so an
+// injection aimed there is silent.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr size_t kMicroQDumpSize = 392;
+
+/// Real-shaped microQ single dump, VALID for its own buffer bytes: 0xF0 3E 10,
+/// byte5 = the buffer (0x30 multi-edit in the corpus), byte6 = the sound
+/// location, a deterministic payload, F7 last and a correct Waldorf checksum at
+/// [size-2] (sum of [4 .. size-2) & 0x7F).
+std::vector<uint8_t> makeMicroQDump(uint8_t bufferByte, uint8_t locationByte,
+                                    size_t size = kMicroQDumpSize,
+                                    uint8_t machine = mcp::kWaldorfMachineMicroQ)
+{
+    std::vector<uint8_t> d(size, 0);
+    d[0] = 0xF0;
+    d[1] = mcp::kWaldorfId;
+    d[2] = machine;
+    d[3] = 0x00;   // device id
+    d[4] = 0x01;   // command
+    d[5] = bufferByte;
+    d[6] = locationByte;
+    for (size_t i = 7; i + 2 < size; ++i)
+        d[i] = static_cast<uint8_t>(i & 0x7f);
+    d[size - 1] = 0xF7;
+    uint8_t cs = 0;
+    for (size_t i = 4; i + 2 < size; ++i)
+        cs += d[i];
+    d[size - 2] = cs & 0x7f;
+    return d;
+}
+
+uint8_t waldorfChecksum(const std::vector<uint8_t>& d)
+{
+    uint8_t cs = 0;
+    for (size_t i = 4; i + 2 < d.size(); ++i)
+        cs += d[i];
+    return cs & 0x7f;
+}
+
+} // namespace
+
+// G1: a 392-byte microQ dump is retargeted to the single-mode edit buffer and the
+// checksum is RECOMPUTED (the dump was valid before, so the stored byte changes).
+TEST(WaldorfEditBuffer, MicroQ392ByteDumpIsRetargetedAndRechecksummed)
+{
+    const auto raw = makeMicroQDump(0x30, 0x40);
+    ASSERT_EQ(raw.size(), kMicroQDumpSize);
+    ASSERT_EQ(raw[5], 0x30) << "the fixture must carry the real multi-edit buffer byte";
+    const uint8_t rawChecksum = raw[390];
+
+    // The expectation is built WITHOUT the helper (independent arithmetic).
+    auto expected = raw;
+    expected[5] = 0x20;   // SingleEditBufferSingleMode
+    expected[6] = 0x00;   // EditBufferCurrentSingle
+    expected[390] = waldorfChecksum(expected);
+    EXPECT_NE(expected[390], rawChecksum)
+        << "0x30->0x20 and 0x40->0x00 must move the checksum (+0x50 mod 0x80)";
+
+    auto out = raw;
+    EXPECT_TRUE(HDAW::retargetWaldorfDumpForSingleEditBuffer(
+        out, HDAW::waldorfMachineForName("vavra")));
+    EXPECT_EQ(out, expected);
+    EXPECT_EQ(out[5], 0x20);
+    EXPECT_EQ(out[6], 0x00);
+    EXPECT_EQ(out[390], waldorfChecksum(out));
+    EXPECT_NE(out[390], rawChecksum);
+    // Nothing else moved.
+    for (size_t i = 0; i < out.size(); ++i)
+        if (i != 5 && i != 6 && i != 390)
+            ASSERT_EQ(out[i], raw[i]) << "byte " << i << " must be untouched";
+
+    // The batch spelling (the file-loader path's shape) is the same transform.
+    std::vector<std::vector<uint8_t>> batch { raw, raw };
+    EXPECT_TRUE(HDAW::retargetWaldorfDumpsForSingleEditBuffer(
+        batch, mcp::kWaldorfMachineMicroQ));
+    EXPECT_EQ(batch[0], expected);
+    EXPECT_EQ(batch[1], expected);
+}
+
+// G2: WITHOUT the retarget the same dump is byte-identical to the input — i.e.
+// the 0x30 bytes the corpus carries really are what goes out when the helper is
+// not called (so the call-site tests below can actually fail).
+TEST(WaldorfEditBuffer, UntargetedMicroQDumpKeepsTheMultiEditBufferBytes)
+{
+    const auto raw = makeMicroQDump(0x30, 0x40);
+    const auto untouched = raw;   // a path that never calls the helper
+
+    EXPECT_EQ(untouched, raw);
+    EXPECT_EQ(untouched[5], 0x30);
+    EXPECT_EQ(untouched[6], 0x40);
+
+    // ...and it is NOT what a retargeted dump looks like.
+    auto target = raw;
+    HDAW::retargetWaldorfDumpForSingleEditBuffer(target, mcp::kWaldorfMachineMicroQ);
+    EXPECT_NE(target, untouched);
+    EXPECT_NE(target[5], untouched[5]);
+    EXPECT_NE(target[6], untouched[6]);
+    EXPECT_NE(target[390], untouched[390]);
+}
+
+// G3: no over-reach — a non-microQ dump (Xenia/Microwave XT) and a microQ dump
+// that is not 392 bytes pass through byte-identical and report "unchanged".
+TEST(WaldorfEditBuffer, NonMicroQAndNon392ByteDumpsPassThroughByteIdentical)
+{
+    // (a) microQ, wrong size (the 265-byte XT-ish and 528-byte bank shapes).
+    const size_t sizes[] = { 391, 393, 265 };
+    for (const size_t size : sizes)
+    {
+        auto d = makeMicroQDump(0x30, 0x40, size, mcp::kWaldorfMachineMicroQ);
+        const auto before = d;
+        EXPECT_FALSE(HDAW::retargetWaldorfDumpForSingleEditBuffer(
+            d, mcp::kWaldorfMachineMicroQ)) << "size " << size;
+        EXPECT_EQ(d, before) << "size " << size;
+    }
+
+    // (b) NON-microQ 392-byte dump with the same 0x30 buffer byte (Xenia).
+    auto xenia = makeMicroQDump(0x30, 0x40, kMicroQDumpSize, mcp::kWaldorfMachineMw2);
+    const auto xeniaBefore = xenia;
+    EXPECT_FALSE(HDAW::retargetWaldorfDumpForSingleEditBuffer(
+        xenia, HDAW::waldorfMachineForName("Xenia.clap")));
+    EXPECT_EQ(xenia, xeniaBefore);
+    EXPECT_EQ(xenia[5], 0x30);
+    EXPECT_EQ(xenia[6], 0x40);
+
+    // (c) Xenia's already-0x20 dump is untouched too (machine guard, not size).
+    auto xenia20 = makeMicroQDump(0x20, 0x00, kMicroQDumpSize, mcp::kWaldorfMachineMw2);
+    const auto xenia20Before = xenia20;
+    EXPECT_FALSE(HDAW::retargetWaldorfDumpForSingleEditBuffer(
+        xenia20, mcp::kWaldorfMachineMw2));
+    EXPECT_EQ(xenia20, xenia20Before);
+    EXPECT_EQ(xenia20[390], xenia20Before[390]);
+
+    // (d) degenerate inputs are a clean no-op (never a write).
+    EXPECT_FALSE(HDAW::retargetWaldorfDumpForSingleEditBuffer(
+        static_cast<uint8_t*>(nullptr), kMicroQDumpSize, mcp::kWaldorfMachineMicroQ));
+    std::vector<uint8_t> empty;
+    EXPECT_FALSE(HDAW::retargetWaldorfDumpForSingleEditBuffer(
+        empty, mcp::kWaldorfMachineMicroQ));
+    std::vector<std::vector<uint8_t>> noDumps;
+    EXPECT_FALSE(HDAW::retargetWaldorfDumpsForSingleEditBuffer(
+        noDumps, mcp::kWaldorfMachineMicroQ));
+}
+
+// The identity -> machine rule is shared: a matrix sheet's engine id and a
+// plugin id must resolve to the same machine byte, or the matrix route would
+// silently skip (or wrongly apply) the retarget.
+TEST(WaldorfEditBuffer, MachineIdentityIsSharedBySheetEngineIdAndPluginId)
+{
+    EXPECT_EQ(HDAW::waldorfMachineForName("vavra"), mcp::kWaldorfMachineMicroQ);
+    EXPECT_EQ(HDAW::waldorfMachineForName("Vavra.clap"), mcp::kWaldorfMachineMicroQ);
+    EXPECT_EQ(HDAW::waldorfMachineForName("xenia"), mcp::kWaldorfMachineMw2);
+    EXPECT_EQ(HDAW::waldorfMachineForName("Xenia.clap"), mcp::kWaldorfMachineMw2);
+    // A non-Waldorf engine id can never be the microQ.
+    EXPECT_EQ(HDAW::waldorfMachineForName("je8086"), mcp::kWaldorfMachineMw2);
+    EXPECT_EQ(HDAW::waldorfMachineForName(""), mcp::kWaldorfMachineMw2);
 }

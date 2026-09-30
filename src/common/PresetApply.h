@@ -27,6 +27,7 @@
 #include "../mcp/PresetFileParser.h"
 #include "../common/NordBankLoader.h"
 #include "../common/ProjectCommands.h"
+#include "WaldorfEditBuffer.h"   // ONE microQ edit-buffer retarget (both call sites)
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/Dx7SysexImport.h"
@@ -87,7 +88,9 @@ inline bool isWaldorfPluginId(const std::string& pluginId)
 
 inline uint8_t waldorfMachineForPluginId(const std::string& pluginId)
 {
-    return presetContainsCI(pluginId, "Vavra") ? mcp::kWaldorfMachineMicroQ : mcp::kWaldorfMachineMw2;
+    // ONE identity -> machine rule, shared with the matrix dump route
+    // (src/common/WaldorfEditBuffer.h).
+    return waldorfMachineForName(pluginId);
 }
 
 inline const char* waldorfNameForMachine(uint8_t machine)
@@ -544,25 +547,13 @@ inline QString waldorfSysexFileToolText(AudioEngine& e, int ti, int si,
         totalBytes += d.size();
     }
 
-    // microQ/Vavra edit-buffer retarget (2026-09-18): real bank dumps carry
-    // their ORIGINAL buffer/location bytes (0x30 multi-edit / 0x40+ bank
-    // slots); injected as-is the OS loads a buffer the current sound does not
-    // read, so renders stayed identical ("NOT APPLYING"). q the editor
-    // (mqController::sendSingle) and retarget to the single-mode edit buffer,
-    // recomputing the Waldorf checksum (sum of [4 .. size-2) & 0x7F;
-    // microq_patch.py documents the emulator checks size only, but keep real-
-    // hardware-valid files).
-    const bool isMicroQ = machine == mcp::kWaldorfMachineMicroQ;
-    for (auto& d : dumps)
-        if (isMicroQ && d.size() == 392)
-        {
-            d[5] = 0x20;   // MidiBufferNum::SingleEditBufferSingleMode
-            d[6] = 0x00;   // MidiSoundLocation::EditBufferCurrentSingle
-            uint8_t cs = 0;
-            for (size_t i = 4; i + 2 < d.size(); ++i)
-                cs += d[i];
-            d[d.size() - 2] = cs & 0x7f;
-        }
+    // microQ/Vavra edit-buffer retarget (2026-09-18, shared since 2026-09-30):
+    // real bank dumps carry their ORIGINAL buffer/location bytes (0x30 multi-edit
+    // / 0x40+ bank slots); injected as-is the OS loads a buffer the current sound
+    // does not read, so renders stayed identical ("NOT APPLYING"). The transform
+    // is ONE implementation in src/common/WaldorfEditBuffer.h, also called by
+    // apply_matrix_preset's device-native dump route — identical by construction.
+    retargetWaldorfDumpsForSingleEditBuffer(dumps, machine);
 
     ProjectCommands::FxMidiParams p;
     p.trackIndex = ti;

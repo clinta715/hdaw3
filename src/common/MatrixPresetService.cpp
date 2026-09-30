@@ -6,6 +6,7 @@
 #include "../common/ParamOverrideLedger.h"
 #include "../mcp/PresetFileParser.h"
 #include "NordBankLoader.h"   // pure Nord .syx parsing (juce_core only)
+#include "WaldorfEditBuffer.h"   // ONE microQ edit-buffer retarget (both call sites)
 
 #include <QCoreApplication>
 #include <QDir>
@@ -632,6 +633,14 @@ MatrixOpResult applyMatrixPreset(AudioEngine& e, const QString& engine, const QS
             dev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
             for (const auto& b : presetDump)
                 dev.sysex.push_back(static_cast<uint8_t>(b.toInt() & 0xFF));
+            // microQ/Vavra edit-buffer retarget (2026-09-30) — the SAME shared
+            // helper the apply_preset file-loader path calls. Real dumps carry
+            // 0x30 (multi-edit) / 0x40+ (bank) buffer bytes the single-mode OS
+            // does not play, so pushing the sheet verbatim was a silent no-op
+            // (measured: all 40 vavra.json presets carry byte5 = 0x30). No-op
+            // for a non-microQ engine or a non-392-byte dump.
+            retargetWaldorfDumpForSingleEditBuffer(
+                dev.sysex, waldorfMachineForName(engine.toStdString()));
             dp.events.push_back(std::move(dev));
             const auto dr = e.getProjectCommands().sendFxMidi(dp);
             if (!dr.ok)
@@ -744,6 +753,11 @@ MatrixOpResult applyMatrixPreset(AudioEngine& e, const QString& engine, const QS
         ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
         for (const auto& b : sysex)
             ev.sysex.push_back(static_cast<uint8_t>(b.toInt() & 0xFF));
+        // Morph-step dumps are the same microQ payload as a preset dump (the
+        // sheet's own 20 vavra steps all carry byte5 = 0x30), so the same shared
+        // retarget applies — one implementation for every matrix dump route.
+        retargetWaldorfDumpForSingleEditBuffer(
+            ev.sysex, waldorfMachineForName(engine.toStdString()));
         p.events.push_back(std::move(ev));
         const auto r = e.getProjectCommands().sendFxMidi(p);
         if (!r.ok)
