@@ -411,6 +411,21 @@ AudioEngine::McpHttpConfig AudioEngine::getMcpHttpConfig() const
     cfg.port = static_cast<quint16>(s.value(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(kDefaultMcpHttpPort)).toInt());
     cfg.running = mcpHttpRunning_;
     cfg.lastError = mcpHttpLastError_;
+
+    // The persisted values above are the CONFIGURED ones. When a server is really
+    // running, the LIVE state wins: it is the only source that cannot disagree with
+    // what is actually listening. The settings store is not always writable — on this
+    // dev box HKCU\Software\HDAW\HDAW silently discards writes (measured 2026-10-01:
+    // a QSettings setValue+sync+read round-trip returned the old value, and a direct
+    // registry write failed with "Access is denied"), so a settings read can report a
+    // stale port while the engine serves a different one — exactly the mismatch that
+    // made `--mcp-http-port` look silently dropped.
+    if (mcpHttpRunning_)
+    {
+        cfg.enabled = true;
+        cfg.host = mcpHttpHost_;
+        cfg.port = mcpHttpPort_;
+    }
     return cfg;
 }
 

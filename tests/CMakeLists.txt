@@ -186,7 +186,7 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/durable_ref_migration_test.cpp
 )
 
-# mcp: 20 TUs — unit/mcp + integration/mcp. McpServer.HttpRoundTrip's
+# mcp: 21 TUs — unit/mcp + integration/mcp. McpServer.HttpRoundTrip's
 # binary-order sensitivity is now scoped to THIS process.
 hdaw_test_exe(hdaw_tests_mcp SOURCES
     unit/mcp/json_rpc_test.cpp
@@ -204,6 +204,7 @@ hdaw_test_exe(hdaw_tests_mcp SOURCES
     integration/mcp/mcp_functionality_test.cpp
     integration/mcp/mcp_coverage_test.cpp
     integration/mcp/engine_tools_test.cpp
+    integration/mcp/headless_mcp_http_port_test.cpp
     integration/mcp/workflow_pack_test.cpp
     integration/mcp/matrix_presets_test.cpp
     integration/mcp/matrix_presets_rpc_test.cpp

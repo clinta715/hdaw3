@@ -10,7 +10,6 @@
 // and JUCE — no Qt6::Widgets, no QApplication, no windowing system.
 
 #include <QCoreApplication>
-#include <QSettings>
 #include <QTimer>
 #include "engine/AudioEngine.h"
 #include "mcp/McpServer.h"
@@ -84,8 +83,8 @@ int main(int argc, char *argv[])
     const bool headlessFrontend = !mcpStdio;
 
     // Bootstrap args (--project + the listen ports) — ONE parser, both spellings,
-    // malformed values are HARD errors. It runs BEFORE the MCP-HTTP settings write
-    // below and before any socket binds, so a typo cannot silently fall back to a
+    // malformed values are HARD errors. It runs BEFORE any socket binds (including
+    // the MCP-HTTP server start below), so a typo cannot silently fall back to a
     // default port and collide with the live session engine (measured 2026-09-30:
     // `--port 8799` was ignored and the process tried 8766).
     const HDAW::HeadlessArgs bootArgs = HDAW::parseHeadlessArgs(argc, argv);
@@ -101,13 +100,6 @@ int main(int argc, char *argv[])
         mcpHttpHost = QString::fromStdString(bootArgs.mcpHttpHost);
     if (bootArgs.hasMcpHttpPort)
         mcpHttpPort = static_cast<quint16>(bootArgs.mcpHttpPort);
-
-    if (enableMcpHttp) {
-        QSettings s;
-        s.setValue(SettingsKeys::kKeyMcpHttpEnabled, true);
-        s.setValue(SettingsKeys::kKeyMcpHttpHost, mcpHttpHost);
-        s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(mcpHttpPort));
-    }
 
     QCoreApplication::setOrganizationName("HDAW");
     QCoreApplication::setApplicationName("HDAW");
@@ -189,6 +181,24 @@ int main(int argc, char *argv[])
 
     engine.initialize();
     engine.getPluginManager().loadCache();
+
+    if (enableMcpHttp) {
+        // The command line is authoritative for MCP HTTP. Do NOT round-trip the CLI
+        // host/port through QSettings: a settings write made before the engine starts
+        // has proven unreliable here (measured 2026-10-01 — `--mcp-http-port 18861`
+        // still bound the persisted 18765 and the registry value never changed), and a
+        // silently-ignored port is how a mute engine ends up masquerading as healthy.
+        // setMcpHttpConfig stops any settings-derived server and starts on these values.
+        QString mcpErr;
+        const bool started = engine.setMcpHttpConfig(true, mcpHttpHost, mcpHttpPort, &mcpErr);
+        const auto cfg = engine.getMcpHttpConfig();
+        if (!started || !cfg.running || cfg.port != mcpHttpPort) {
+            HDAW_LOG("main_headless", QString("MCP HTTP NOT serving on the requested port %1 (started=%2 running=%3 port=%4 error=%5) — exiting")
+                .arg(mcpHttpPort).arg(started).arg(cfg.running).arg(cfg.port).arg(mcpErr.isEmpty() ? cfg.lastError : mcpErr));
+            return 1;
+        }
+        HDAW_LOG("main_headless", QString("MCP HTTP listening on %1:%2").arg(cfg.host).arg(cfg.port));
+    }
 
     // First-launch discovery: if the cache is empty, scan the default VST3/CLAP
     // directories on a background thread. We can't block here (the engine main

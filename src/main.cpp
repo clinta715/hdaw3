@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
     }
 
     if (enableMcpHttp) {
-        QSettings s;
+        QSettings s(QStringLiteral("HDAW"), QStringLiteral("HDAW"));   // explicit names: the default ctor needs a QCoreApplication INSTANCE and silently discards the write without one
         s.setValue(SettingsKeys::kKeyMcpHttpEnabled, true);
         s.setValue(SettingsKeys::kKeyMcpHttpHost, mcpHttpHost);
         s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(mcpHttpPort));
