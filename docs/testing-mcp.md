@@ -155,6 +155,21 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   `McpServer.ApplySongPlan` + `SongPlan.TemplateRoundTripDoesNotApply` + `McpCoverageTest.FxChainPresetRoundTrip`
   (`%APPDATA%` writes), and `TransportSurface.StartStopRecording` (no capture endpoint).
   `PluginIsolation.LargeStateRoundTripThroughProxy` did NOT fire in that run (it remains a known flake).
+- **The MCP engine answering your calls may be a STALE COPY in `%TEMP%`, with a DIFFERENT image
+  name (measured 2026-10-01; lesson 46).** `mcp-launch.bat` (and the launcher) copy
+  `build/HDAW_headless.exe` to `%TEMP%\HDAW_headless_mcp.exe` and run THAT, so
+  `taskkill /F /IM HDAW_headless.exe` does **not** kill it, and a `--mcp-http` spawn of
+  `build\HDAW_headless.exe` on the default port exits on a bind failure — every subsequent
+  `hdaw_mcp_http.py` call is then answered by the stale copy. Measured: `whoami` returned
+  `runningBinaryPath = C:/Users/hapbt/AppData/Local/Temp/HDAW_headless_mcp.exe` with an mtime ~20 min
+  older than the freshly built `build/HDAW_headless.exe`, while `findstr` proved the new strings WERE
+  in the built exe. **Before trusting any MCP smoke, read `whoami.runningBinaryPath` +
+  `runningMtime` and compare against the built exe — a mismatch means every number from that run is
+  void.** Do NOT kill the launcher copy blindly: it is another session's backend. For an isolated
+  fresh-binary smoke use `python scripts/mcp_call.py run <steps.json>`, which spawns
+  `build/HDAW_headless.exe` over stdio with no port — the only path guaranteed to exercise the build
+  you just made. A private `--mcp-http-port` is not sufficient on its own: the headless frontend WS
+  port must also be free (`--port`) or the engine exits 1. See `docs/lessons-learned.md` lesson 46.
 - **Clean reference baseline (2026-09-24, post ledger-close): 1971 tests / 285 suites —
   1952 passed, 39 skipped, 11 failures, all environmental** (exact failure list in the
   bullet above; `docs/build-and-testing.md` defers its baseline counts here). Compare any

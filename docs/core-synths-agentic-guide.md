@@ -40,6 +40,7 @@ plugin FX add CPU, latency, isolation and state-round-trip risk.
 | **fm_synth / PsyFm** | internal FM | its own params + **modulation targets 300–308** | internal | `fm_synth_load_preset` / `psy_fm_load_preset` | `set_fx_param`/automation. **Dexed is NOT core** — `fm_synth`/PsyFm is the FM engine |
 | **sub_synth** | internal | its own params + internal LFO | internal | `apply_sub_synth_mod_preset` (6 factory mod presets) | params / automation |
 | **sampler · drum machine** | internal | own params | internal FX chain | file library | `set_fx_param`, sample load |
+| **drum_synth · 11-voice TR-909-style analog drum kit** (Kick, Snare, Clap, Rim, 3 Toms, Closed/Open Hat, Crash, Ride) | internal | own params (no plugin params) | internal FX chain | none — synthesised, no samples required | `set_fx_param` / `set_internal_fx_param`; `add_fx {fxType:"drum_synth"}`. `Voice` selects the instrument (Fixed note map); `Note Map=GM` plays a standard GM drum clip |
 
 Everything else (a third-party synth) is out of scope for "core" and carries the
 extra costs listed in §1.

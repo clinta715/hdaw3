@@ -770,3 +770,53 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     that found it: a `HDAW_TRACE_PARAM`-style env-gated trace of the pump loop (heartbeat +
     `MessageManager::isThisTheMessageThread()`) and of the JUCE timer lifecycle — the pump reported
     `isMsgThread=0` and never ticked again for the rest of the run.
+
+44. **A clamped WAV export hides the true float peak — size headroom from the RENDER, not the file.**
+    A full-kit unison of the new `drum_synth` measured `peak 1.0000 / clipping true` in `mix_report`
+    on an exported WAV, while the true float peak was **3.558× unity (+11 dB)** — the WAV writer
+    clamps to ±1.0 on write, so the file can never report more than 1.0. A headroom fix was sized
+    twice from that clamped number and was wrong both times: first a linear trim (arithmetically
+    unable to serve a 1-voice level and an 11-voice unison at once), then a knee placed *below* a
+    single voice's own raw sum, which compressed every normal hit. **Rules:** (a) to size a
+    level/headroom change read the peak from the render (in-process gtest buffer, or `verify_part`'s
+    solo peak) — never from an exported WAV; (b) a WAV pinned at exactly 1.0000 with a nonzero
+    `ceilingHitPct` means the float signal EXCEEDED unity by an unknown amount — read 1.0 as
+    "≥1.0"; (c) prefer a property assertion (e.g. halving `Output Level` must exactly halve the
+    peak) over an absolute peak band, which breaks on any benign voice tweak.
+
+45. **An N-voice instrument summed into ONE slot cannot be linearly bounded.**
+    The `drum_synth` kit's single kick peaks at ~0.51 output at default params, so eleven of them
+    sum to ~3.56× unity; bounding that linearly needs a trim of ~0.27, which drops a single kick to
+    ~0.2 (−14 dB) — unusable. **Rule:** give a multi-voice internal instrument a **memoryless soft
+    ceiling above the normal-voice range** (knee above what 1–2 voices produce, asymptote below
+    unity) applied to the VOICE SUM before the user's output-level param, so ordinary playing stays
+    bit-identical and only genuinely simultaneous hits are shaped; and place it before the output
+    param so the user's overdrive range survives. Pinned by
+    `DrumSynthEngineTest.SimultaneousFullKitStaysUnderUnity` (11 voices on one sample < 1.0; single
+    kick linear under a halving check).
+
+46. **The MCP engine answering your calls is a COPY in `%TEMP%`, and its image name differs — so
+    `taskkill /IM HDAW_headless.exe` misses it.** `whoami` returned
+    `runningBinaryPath = C:/Users/hapbt/AppData/Local/Temp/HDAW_headless_mcp.exe` with an mtime ~20
+    min older than the freshly built `build/HDAW_headless.exe`, while `findstr` proved the new
+    strings WERE in the built exe; a `--mcp-http` spawn of `build\HDAW_headless.exe` on the default
+    port exits on a bind failure and every subsequent `hdaw_mcp_http.py` call is answered by the
+    stale copy. **Rules:** (a) before trusting any MCP smoke, read `whoami.runningBinaryPath` +
+    `runningMtime` and compare against the built exe — a mismatch means you are testing a stale
+    binary and every number from that run is void; (b) `taskkill /F /IM HDAW_headless.exe` does NOT
+    kill `HDAW_headless_mcp.exe` (and the launcher copy is another session's backend — do not kill
+    it blindly); (c) for an isolated fresh-binary smoke use
+    `python scripts/mcp_call.py run <steps.json>`, which spawns `build/HDAW_headless.exe` over stdio
+    with no port — the only path guaranteed to exercise the build you just made; (d) a private
+    `--mcp-http-port` is not sufficient on its own: the headless frontend WS port must also be free
+    (`--port`) or the engine exits 1.
+
+47. **A windowed offline render never delivers a note-on that falls BEFORE the window start** — so
+    a one-shot/percussive part whose only hits precede the window reports silence. A `drum_synth`
+    clip with all 11 GM hits at beat 0 measured `soloPeak=0 / audible=0` via `verify_part` for
+    windows starting at 0.01 and 0.25 beats, while the full 2-beat export of the same project peaked
+    at 0.457. **Rules:** (a) put the window start at or before the first hit (or place the hits
+    inside the window) when verifying one-shot parts; (b) `verify_part` requires `startBeat > 0`, so
+    place the notes a hair after beat 0 rather than trying `startBeat: 0`; (c) a zero `soloPeak` on
+    a part you can hear in the full export is a windowing artifact first and an engine bug second —
+    check the window before the DSP.

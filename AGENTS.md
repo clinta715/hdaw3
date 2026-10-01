@@ -18,7 +18,7 @@ SPA or Electron shell. Feature history: `README.md`; per-version changes: git lo
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 43 lessons, full narratives** (one-line index below) |
+| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 47 lessons, full narratives** (one-line index below) |
 | [`docs/architecture.md`](docs/architecture.md) | Build details, key classes, GUI-engine decoupling, beats-vs-seconds |
 | [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread rules, hardening, plugin isolation, latency/quality |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | JUCE pitfalls (scan blacklisting, setProperty no-op, FX clamping, the `small`/`rpcndr.h` include-order macro collision, lesson 35) |
@@ -151,6 +151,10 @@ downloaded), wired into the DSH profile's `cordis.patch.yml`, and checked with
 41. **An exchange lock fixes CONCURRENCY, not STALENESS** — serialize each whole request→response transaction on a pipe (one guard spanning send + all replies), but a timed-out reply stays queued, and without a correlation id (and an end-of-response marker) a same-type late reply is indistinguishable from a fresh one: no drain window can be proven complete. The real fix is a per-request protocol id (landed: `requestId` in both structs + a version/legacy guard) or a timeout⇒restart policy.
 42. **Two-process protocol: a version guard must be able to DECODE the reply it guards** — a stale v1 child's READY is unparseable under the new framing, so id-matching discards it and the spawn dies by bare timeout; recognise the legacy layout (or the guard is worthless). `--protocol` flags are not a fix: the old child ignores unknown args.
 43. **`ScopedJuceInitialiser_GUI` is a process-wide KILL SWITCH** — its LAST teardown stops JUCE's `TimerThread` and deletes the `MessageManager`, after which the pump may no longer be the message thread and every `juce::Timer`/`AsyncUpdater` dies silently; `MessagePumpThread` now pins it (deliberately leaked).
+44. **A clamped WAV export hides the true float peak** — size headroom from the RENDER (gtest buffer / `verify_part` solo peak), never the WAV; a file pinned at 1.0000 with `ceilingHitPct` means "≥1.0"; assert a property (halving `Output Level` halves the peak), not an absolute band.
+45. **An N-voice instrument summed into ONE slot cannot be linearly bounded** — put a memoryless soft ceiling above the 1–2 voice range (knee above normal voices, asymptote below unity) on the VOICE SUM before the user's output-level param, so normal hits stay bit-identical.
+46. **The MCP engine answering your calls is a `%TEMP%` COPY with a different image name** — `taskkill /IM HDAW_headless.exe` misses `HDAW_headless_mcp.exe`; read `whoami.runningBinaryPath`/`runningMtime` against the built exe (a mismatch voids the run), and smoke via `python scripts/mcp_call.py run <steps.json>` (stdio, no port).
+47. **A windowed offline render never delivers a note-on that falls BEFORE the window start** — verify one-shot parts with the window start at/after the first hit; `verify_part` requires `startBeat > 0`; a zero `soloPeak` on a part audible in the full export is a windowing artifact first, an engine bug second.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 

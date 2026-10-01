@@ -36,8 +36,8 @@ never builds it.
   QSettings skipped on every failure. 6 gtests, green across openable-device and
   listed-but-unopenable runs on this box (the latter exercises the rollback branch).
   (`set_audio_input_device` has the same defect — open follow-up.)
-- **`list_device_params` covers all 15 internal fxTypes** (191 params: fm_synth 26, sub_synth 33,
-  psy_fm 33, growl_bass 26, psyarp 21, sampler 10, + the core FX). Generated deterministically by
+- **`list_device_params` covers all 16 internal fxTypes** (242 params: fm_synth 26, sub_synth 33,
+  psy_fm 33, growl_bass 26, psyarp 21, sampler 10, drum_synth 51, + the core FX). Generated deterministically by
   `timbre-lib/build_device_map.py` from the in-source C++ param tables (every entry cites
   `file:line`); the 5 VA maps are byte-unchanged. The wire carries
   `index/default/min/max/source/enum` on both surfaces (parity ledger byte-unchanged); pins assert

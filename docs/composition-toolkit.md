@@ -107,10 +107,10 @@ product pillar and should be reached for wherever it fits:
   `docs/hardware-va-suite.md`.
 
 - **Device parameter maps (2026-09-30)** — `list_device_params` now serves ALL
-  20 engines: the 5 VA CLAPs (corpus route) AND the 15 internal fxTypes
+  21 engines: the 5 VA CLAPs (corpus route) AND the 16 internal fxTypes
   (`eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator,
-  sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth`), whose maps are
-  generated straight from the in-source static C++ def tables (verbatim
+  sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth`), whose
+  maps are generated straight from the in-source static C++ def tables (verbatim
   default/min/max + per-param `source` file:line citation + documented enums;
   `appliesVia: set_internal_fx_param`, `durability: valuetree`). Regenerate with
   `python timbre-lib/build_device_map.py` (`--check` pins determinism); never
