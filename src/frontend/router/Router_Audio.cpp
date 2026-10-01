@@ -300,9 +300,9 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         std::string name;
         if (!requireString(o, "name", name, nullptr))
             return makeError(-32602, "name required");
-        auto setup = dm.getAudioDeviceSetup();
-        setup.inputDeviceName = juce::String(name);
-        dm.setAudioDeviceSetup(setup, true);
+        const auto err = HDAW::applyInputDeviceName(dm, juce::String(name));
+        if (err.isNotEmpty())
+            return makeError(-32602, QString::fromUtf8(err.toRawUTF8()));
         QSettings s;
         s.setValue(SettingsKeys::kKeyAudioInputDevice, QString::fromStdString(name));
         return { false, QJsonValue::Null };

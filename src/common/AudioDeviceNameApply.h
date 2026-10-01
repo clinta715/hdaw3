@@ -105,4 +105,63 @@ inline juce::String applyOutputDeviceName(juce::AudioDeviceManager& dm, const ju
     return applyOutputDeviceValidated(dm, name);
 }
 
+// Input twin of applyOutputDeviceValidated — identical sequence, but the name
+// lands in setup.inputDeviceName. (The failure text says "input device".)
+inline juce::String applyInputDeviceValidated(juce::AudioDeviceManager& dm,
+                                              const juce::String& name,
+                                              const DeviceSetupApplyFn& apply = {})
+{
+    auto setup = dm.getAudioDeviceSetup();
+    const auto previous = setup;
+    setup.inputDeviceName = name;
+
+    const auto run = [&dm](const DeviceSetupApplyFn& fn,
+                           const juce::AudioDeviceManager::AudioDeviceSetup& s) {
+        if (fn) return fn(dm, s);
+        return dm.setAudioDeviceSetup(s, true);
+    };
+
+    const auto err = run(apply, setup);
+    if (err.isNotEmpty())
+    {
+        const auto rollbackErr = run(apply, previous);
+        juce::String msg = "could not open input device \"" + name + "\": " + err;
+        if (rollbackErr.isNotEmpty())
+            msg += "; rollback to previous device also failed: " + rollbackErr;
+        return msg;
+    }
+
+    return {};
+}
+
+inline juce::String applyInputDeviceName(juce::AudioDeviceManager& dm, const juce::String& name)
+{
+    if (name.isEmpty())
+    {
+        // Documented "no input" spelling: clear only the input name on the
+        // current setup and let JUCE decide (an output still named re-opens
+        // output-only). No rollback — clearing is the intent here.
+        auto setup = dm.getAudioDeviceSetup();
+        setup.inputDeviceName = {};
+        return dm.setAudioDeviceSetup(setup, true);
+    }
+
+    auto* type = dm.getCurrentDeviceTypeObject();
+    if (type == nullptr)
+        return "no audio driver type is active — cannot resolve input device \"" + name + "\"";
+
+    const auto available = type->getDeviceNames(true);
+    if (! available.contains(name))
+    {
+        juce::StringArray quoted;
+        for (const auto& d : available)
+            quoted.add("\"" + d + "\"");
+
+        return "unknown input device \"" + name + "\""
+             + " — available: " + (quoted.isEmpty() ? juce::String("(none)") : quoted.joinIntoString(", "));
+    }
+
+    return applyInputDeviceValidated(dm, name);
+}
+
 } // namespace HDAW

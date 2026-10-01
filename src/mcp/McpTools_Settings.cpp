@@ -143,15 +143,15 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"set_audio_input_device",
-        "Switch the audio input device.",
+        "Switch the audio input device. An unknown device name is refused (error names the available input devices); the current device is left untouched on refusal. An empty \"\" name means no input device.",
         objSchema({{"name", QJsonObject{{"type","string"}}}}, {"name"}),
         "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& dm = e->getDeviceManager();
             std::string name = a.value("name").toString().toStdString();
-            auto setup = dm.getAudioDeviceSetup();
-            setup.inputDeviceName = juce::String(name);
-            dm.setAudioDeviceSetup(setup, true);
+            const auto err = HDAW::applyInputDeviceName(dm, juce::String(name));
+            if (err.isNotEmpty())
+                return McpToolResult::text(QString::fromUtf8(err.toRawUTF8()), true);
             QSettings st;
             st.setValue(SettingsKeys::kKeyAudioInputDevice, QString::fromStdString(name));
             return McpToolResult::text("ok");
