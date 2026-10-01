@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.39.3
+**Current version**: 0.39.4
 
 ## Quick start
 
@@ -25,7 +25,27 @@ defaults to RelWithDebInfo; pass `Debug` for breakpoint debugging. The Electron
 frontend is a separate project (AGENTS.md "DEPRECATED 2026-09-23") — engine work
 never builds it.
 
-## What works today (v0.39.3)
+## What works today (v0.39.4)
+
+### v0.39.4 — O1 device-name validation, internal-engine device maps (2026-09-30)
+
+- **O1 closed (plan Phase 6):** `set_audio_output_device` / `audio.setOutputDevice` refuse an
+  unknown name with the requested + available device list, identical on both surfaces via the one
+  shared helper (`src/common/AudioDeviceNameApply.h`); `""` is the documented close spelling; a
+  known name that fails to open rolls back to the snapshotted setup (rollback failure is loud);
+  QSettings skipped on every failure. 6 gtests, green on openable- and broken-driver boxes.
+  (`set_audio_input_device` has the same defect — open follow-up.)
+- **`list_device_params` covers all 15 internal fxTypes** (191 params: fm_synth 26, sub_synth 33,
+  psy_fm 33, growl_bass 26, psyarp 21, sampler 10, + the core FX). Generated deterministically by
+  `timbre-lib/build_device_map.py` from the in-source C++ param tables (every entry cites
+  `file:line`); the 5 VA maps are byte-unchanged. The wire carries
+  `index/default/min/max/source/enum` on both surfaces (parity ledger byte-unchanged); pins assert
+  the internal route (`set_internal_fx_param`/ValueTree durability) and lossless projection.
+  Review fix: delay `Feedback` intent `riser` → `delay-throw` + regression pin.
+- **`dub_stab_122`** composed and delivered at `mix_verdict ok:true` (see
+  `docs/handoffs/2026-09-30-dub-stab-and-internal-device-maps.md`).
+- **Known defect (filed, unfixed):** relative-path `save_project` on the stdio surface returns
+  `ok` and writes nothing — always pass an absolute path until fixed.
 
 ### v0.39.0 session highlights (2026-09-25/26)
 - **Stable `trackID` accepted across the fx/automation/plugin surfaces (B2b)**:
