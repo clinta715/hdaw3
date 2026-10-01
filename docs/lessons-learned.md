@@ -796,20 +796,33 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     kick linear under a halving check).
 
 46. **The MCP engine answering your calls is a COPY in `%TEMP%`, and its image name differs — so
-    `taskkill /IM HDAW_headless.exe` misses it.** `whoami` returned
-    `runningBinaryPath = C:/Users/hapbt/AppData/Local/Temp/HDAW_headless_mcp.exe` with an mtime ~20
-    min older than the freshly built `build/HDAW_headless.exe`, while `findstr` proved the new
-    strings WERE in the built exe; a `--mcp-http` spawn of `build\HDAW_headless.exe` on the default
-    port exits on a bind failure and every subsequent `hdaw_mcp_http.py` call is answered by the
-    stale copy. **Rules:** (a) before trusting any MCP smoke, read `whoami.runningBinaryPath` +
-    `runningMtime` and compare against the built exe — a mismatch means you are testing a stale
-    binary and every number from that run is void; (b) `taskkill /F /IM HDAW_headless.exe` does NOT
-    kill `HDAW_headless_mcp.exe` (and the launcher copy is another session's backend — do not kill
-    it blindly); (c) for an isolated fresh-binary smoke use
-    `python scripts/mcp_call.py run <steps.json>`, which spawns `build/HDAW_headless.exe` over stdio
-    with no port — the only path guaranteed to exercise the build you just made; (d) a private
-    `--mcp-http-port` is not sufficient on its own: the headless frontend WS port must also be free
-    (`--port`) or the engine exits 1.
+    `taskkill /IM HDAW_headless.exe` misses it.** `mcp-launch.bat` (and the launcher) copy
+    `build/HDAW_headless.exe` to `%TEMP%\HDAW_headless_mcp.exe` and run THAT, so
+    `taskkill /F /IM HDAW_headless.exe` does not kill it; and a `--mcp-http` spawn of
+    `build\HDAW_headless.exe` on the default port exits on a bind failure, after which every
+    subsequent `hdaw_mcp_http.py` call is answered by the stale copy. The original evidence was a
+    **content** mismatch: `tool_help add_track_with_fx` returned the OLD description while `findstr`
+    proved the NEW string WAS in the built exe. **The identity fields are UNRELIABLE** — measured
+    2026-10-01, a process whose real `ExecutablePath` was `...\build\HDAW_headless.exe` (confirmed
+    twice via `Get-CimInstance Win32_Process -Filter "Name like 'HDAW%'" | Select
+    ProcessId,Name,ExecutablePath`) reported
+    `whoami.runningBinaryPath = C:/Users/hapbt/AppData/Local/Temp/HDAW_headless_mcp.exe` with
+    `runningMtime = 1790868747` (from that copy) while the freshly built exe's mtime was
+    `1790876618`; consequently `engine_info {buildBinaryPath: ".../build/HDAW_headless.exe"}`
+    returned **`stale: true` for a process that WAS the freshly built binary** — a false positive
+    (`src/mcp/McpTools_Engine.cpp:83` sources the field from
+    `QCoreApplication::applicationFilePath()`; filed via `report_issue`). **Rules:** (a) verify the
+    answering binary by **content** — call a tool whose output you know changed in the new build
+    (`tool_help <name>` for a changed description, or `list_fx_params` for a changed param count)
+    and compare against the source/binary; (b) or check **OS process identity** with
+    `Get-CimInstance Win32_Process -Filter "Name like 'HDAW%'" | Select ProcessId,Name,ExecutablePath`;
+    (c) do NOT trust `whoami.runningBinaryPath`, `whoami.runningMtime`, or `engine_info.stale`;
+    (d) `taskkill /F /IM HDAW_headless.exe` does NOT kill `HDAW_headless_mcp.exe` (and the launcher
+    copy is another session's backend — do not kill it blindly); (e) for an isolated fresh-binary
+    smoke use `python scripts/mcp_call.py run <steps.json>`, which spawns
+    `build/HDAW_headless.exe` over stdio with no port — the only path guaranteed to exercise the
+    build you just made; (f) a private `--mcp-http-port` is not sufficient on its own: the headless
+    frontend WS port must also be free (`--port`) or the engine exits 1.
 
 47. **A windowed offline render never delivers a note-on that falls BEFORE the window start** — so
     a one-shot/percussive part whose only hits precede the window reports silence. A `drum_synth`

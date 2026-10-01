@@ -160,13 +160,20 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   `build/HDAW_headless.exe` to `%TEMP%\HDAW_headless_mcp.exe` and run THAT, so
   `taskkill /F /IM HDAW_headless.exe` does **not** kill it, and a `--mcp-http` spawn of
   `build\HDAW_headless.exe` on the default port exits on a bind failure — every subsequent
-  `hdaw_mcp_http.py` call is then answered by the stale copy. Measured: `whoami` returned
-  `runningBinaryPath = C:/Users/hapbt/AppData/Local/Temp/HDAW_headless_mcp.exe` with an mtime ~20 min
-  older than the freshly built `build/HDAW_headless.exe`, while `findstr` proved the new strings WERE
-  in the built exe. **Before trusting any MCP smoke, read `whoami.runningBinaryPath` +
-  `runningMtime` and compare against the built exe — a mismatch means every number from that run is
-  void.** Do NOT kill the launcher copy blindly: it is another session's backend. For an isolated
-  fresh-binary smoke use `python scripts/mcp_call.py run <steps.json>`, which spawns
+  `hdaw_mcp_http.py` call is then answered by the stale copy. The original evidence was a
+  **content** mismatch (`tool_help add_track_with_fx` returned the OLD description while `findstr`
+  proved the NEW string WAS in the built exe). **The identity fields are UNRELIABLE — verify by
+  content, not by path.** Measured 2026-10-01: a process whose real `ExecutablePath` was
+  `...\build\HDAW_headless.exe` (confirmed via
+  `Get-CimInstance Win32_Process -Filter "Name like 'HDAW%'" | Select ProcessId,Name,ExecutablePath`)
+  reported `whoami.runningBinaryPath = C:/Users/hapbt/AppData/Local/Temp/HDAW_headless_mcp.exe` with
+  a `%TEMP%` mtime, so `engine_info {buildBinaryPath: ".../build/HDAW_headless.exe"}` returned
+  **`stale: true` for a freshly built binary** — a false positive. **Before trusting any MCP smoke,
+  probe CONTENT** (`tool_help <name>` for a changed description, or `list_fx_params` for a changed
+  param count) and compare against the source/binary, or check OS process identity via the
+  `Win32_Process` `ExecutablePath` query — do NOT trust `whoami.runningBinaryPath`/`runningMtime` or
+  `engine_info.stale`. Do NOT kill the launcher copy blindly: it is another session's backend.
+  For an isolated fresh-binary smoke use `python scripts/mcp_call.py run <steps.json>`, which spawns
   `build/HDAW_headless.exe` over stdio with no port — the only path guaranteed to exercise the build
   you just made. A private `--mcp-http-port` is not sufficient on its own: the headless frontend WS
   port must also be free (`--port`) or the engine exits 1. See `docs/lessons-learned.md` lesson 46.

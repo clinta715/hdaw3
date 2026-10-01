@@ -1,9 +1,11 @@
 # Handoff — 2026-10-01: internal `drum_synth` — an 11-voice TR-909-style analog drum kit
 
 **Status:** the new internal instrument `fxType` is **shipped and fully tested on the final
-build** (full sharded suite 2195 passed / 0 failed of 2235 intended). **Nothing was committed
-at the time of writing** — the main agent commits. This is the first session of the
-"independently implemented internal instrument" line; no third-party source is vendored.
+build** (full sharded suite 2195 passed / 0 failed of 2235 intended; the per-voice send bus
+follow-up in §7 brings it to **2200 passed / 0 failed of 2240 intended**). The feature and its
+docs landed in `3e0fad0` (feature) and `5b46bce` (docs); the send bus follows in its own commit.
+This is the first session of the "independently implemented internal instrument" line; no
+third-party source is vendored.
 
 ---
 
@@ -169,7 +171,14 @@ Four traps hit this session became **lessons 44–47** (narratives by the siblin
 
 - **No human critical listening of an 11-voice GM demo.** All evidence is numerical/spectral
   (export peak, band energies, `kickProminence`); nobody has judged how the kit *sounds*.
-- **Nothing committed at the time of writing** (the main agent commits).
+- **Committed:** the feature and its docs landed in `3e0fad0` (feature) and `5b46bce` (docs); the
+  per-voice send bus in §7 follows in its own commit. The main agent commits.
+- **Engine-identity defect (NOT fixed).** `engine_info.stale` is a **false positive**:
+  `src/mcp/McpTools_Engine.cpp:83` sources `runningBinaryPath` from
+  `QCoreApplication::applicationFilePath()`, so a genuinely fresh process can report the `%TEMP%`
+  copy's path/mtime and be flagged `stale: true` (measured 2026-10-01). Filed via `report_issue`.
+  Do not trust `engine_info.stale`, `whoami.runningBinaryPath` or `whoami.runningMtime` — verify
+  the answering binary by content or by OS process identity (lesson 46).
 
 ## 6. Files changed
 
@@ -197,3 +206,53 @@ Four traps hit this session became **lessons 44–47** (narratives by the siblin
 | device map | `timbre-lib/build_device_map.py` | `drum_synth` source-table entry |
 | device map | `timbre-lib/device_map/drum_synth.params.json` **(new)** | 51 params, 0 trap / 0 unclassified |
 | device map | `timbre-lib/device_map/index.json` | `drum_synth` (51) added; param count 242 |
+
+---
+
+## 7. Follow-up: per-voice send bus (same day)
+
+The instrument gained a **per-voice send bus** later in the same session — **67 params** (was 51);
+indices `0..50` are unchanged and frozen.
+
+### 7.1 Contract
+
+- **`51..61` — `<Name> Send`** (0..1, default 0), one per instrument in `DrumSynthEngine::Instrument`
+  order: Kick, Snare, Clap, Rim, Tom Low, Tom Mid, Tom High, Closed Hat, Open Hat, Crash, Ride.
+  Each feeds ONE shared in-slot bus.
+- **`62 "Send Delay Time (beats)"`** 0.75 (0.01..4.0) — tempo-derived seconds via
+  `DrumSynthEngine::setTempo` (forwarded from `TrackFXSlot::setTempo`, i.e. the project tempo).
+- **`63 "Send Delay Feedback"`** 0.45 (0..0.95); **`64 "Send Delay Mix"`** 0.35 (0..1).
+- **`65 "Send Reverb Size"`** 3.5 (0.1..10, seconds → `juce::dsp::Reverb` roomSize);
+  **`66 "Send Reverb Mix"`** 0.25 (0..1).
+- **Bus shape:** `delayIn = send`; `delayOut = feedbackDelay(delayIn)`;
+  `reverbIn = send + delayOut`; `reverbOut = reverb(reverbIn)`;
+  `out = dry + delayOut*SendDelayMix + reverbOut*SendReverbMix`. The dry path is sample-level and
+  byte-unchanged; the wet is block-level with preallocated scratch; the wet mix is skipped when its
+  peak is exactly 0, so a send-less kit is **bit-identical** to before. The bus is **mono** (the
+  whole `drum_synth` is mono-summed to all channels).
+
+### 7.2 Evidence (measured this session)
+
+- Full sharded suite: **2200 passed, 0 failed, 2240/2240 intended** (5 new tests).
+- Focused `DrumSynthEngineTest.*` + `FxChainPreset.*` + `InternalFxParamClamp.*`: **31 passed**.
+- New tests: `SendBusIsSilentWhenSendsAreZero` (memcmp bit-identical with the bus mixes at 0 vs 1),
+  `PerVoiceSendIsolatesVoices`, `SendReverbIsAudible`, `SendParamsClamp`, `MaxSendsStayFinite`;
+  `ParamDefs` now asserts 67.
+- Engine author independently compiled the TU and ran a throwaway linked smoke test: **16/16
+  checks**, including bit-identical-at-zero-sends and a clamped oversized block.
+- Device map regenerated: `drum_synth.params.json` **67** params, 0 trap / 0 unclassified; corpus
+  total **242 → 258**; README updated to `drum_synth 67` / 258.
+
+### 7.3 End-to-end `mix_diff` A/B (isolated stdio engine)
+
+Via `scripts/mcp_call.py run` on a 4-bar GM drum clip (kick 36 on all four quarters, snare 38 on
+beats 2 and 4), delay `Send Delay Time (beats) 0.75` / `Feedback 0.5` / `Mix 0.6`:
+A = all sends 0; B = `Snare Send 1.0`; C = `Kick Send 1.0`.
+
+| Pair | `rmsDb` | band deltas (sub / bass / body / high) | reading |
+|---|---|---|---|
+| A vs B | −0.200 | −19.6 / −260.5 / −157.5 / −435.9 | added energy concentrated in **high** (the snare's echo) |
+| A vs C | −4.155 | −10840.4 / −402.8 / −24.9 / −0.0006 | concentrated in **sub**, high untouched (the kick's echo) |
+
+Negative deltas mean B/C carry more energy (`bandA − bandB`). The two voices produce spectrally
+**opposite** additions — the send is genuinely per-voice.
