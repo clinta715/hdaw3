@@ -17,7 +17,7 @@ Usage:
   python scripts/hdaw_mcp_http.py whoami
   python scripts/hdaw_mcp_http.py desc NAME1,NAME2          # first 600 chars each
   python scripts/hdaw_mcp_http.py schemas [NAME1,NAME2]     # inputSchema <=900 chars
-  python scripts/hdaw_mcp_http.py call TOOL '<json-args>' [--timeout SEC] [--full]
+  python scripts/hdaw_mcp_http.py call TOOL '<json-args>' [--timeout SEC] [--brief]
   python scripts/hdaw_mcp_http.py run STEPS.json
 
 steps.json = [{"tool": "name", "args": {...}, "timeout": 600,
@@ -36,9 +36,12 @@ this engine -- it is kept for transport-compatible servers.)
 Failure is LOUD: a JSON-RPC `error`, a tool result with `isError: true`, an
 unreachable endpoint, or an unparseable body prints a clear message on stderr
 and exits non-zero. On success nothing but the payload is printed (no banner
-noise), so results can be piped/grepped. Long tool text is truncated to 4000
-chars (`...[truncated, total N chars]`, same convention as mcp_call.py) unless
-`--full` is given.
+noise), so results can be piped/grepped. `call` prints the FULL payload by
+default -- stdout is machine-parseable end to end. Truncation happens only
+behind the explicit `--brief` flag (the flood guard): stdout is capped at 4000
+chars and the `...[truncated, total N chars]` marker (same convention as
+mcp_call.py) goes to STDERR, so stdout carries payload bytes only. `whoami`
+and `run` keep the truncate-by-default behaviour, unlockable with `--full`.
 
 urllib only -- no third-party dependencies.
 
@@ -204,13 +207,19 @@ def fail(msg, code=1):
     sys.exit(code)
 
 
-def brief(text, full=False, limit=BRIEF_CHARS):
-    """Print `text`, truncated to `limit` with mcp_call.py's marker."""
-    if full or len(text) <= limit:
+def brief(text, limit=BRIEF_CHARS):
+    """Print `text` to stdout; stdout is ALWAYS payload-only.
+
+    `limit=None` prints the payload in full. With a numeric limit, only the
+    first `limit` chars reach stdout and the `...[truncated, total N chars]`
+    marker (mcp_call.py's convention) goes to STDERR -- never stdout, so a
+    consumer parsing stdout never sees notice bytes inside the payload.
+    """
+    if limit is None or len(text) <= limit:
         print(text)
         return
     print(text[:limit])
-    print(f"...[truncated, total {len(text)} chars]")
+    print(f"...[truncated, total {len(text)} chars]", file=sys.stderr)
 
 
 def tool_text(result):
@@ -325,7 +334,7 @@ def mode_tools(argv):
 def mode_whoami(argv):
     _, flags = parse_flags(argv, bool_flags=("--full",))
     result = call_tool("whoami", {})
-    brief(tool_text(result), full=flags.get("full", False))
+    brief(tool_text(result), limit=None if flags.get("full") else BRIEF_CHARS)
 
 
 def mode_desc(argv):
@@ -362,16 +371,18 @@ def mode_schemas(argv):
 
 
 def mode_call(argv):
-    pos, flags = parse_flags(argv, value_flags=("--timeout",), bool_flags=("--full",))
+    pos, flags = parse_flags(argv, value_flags=("--timeout",), bool_flags=("--brief",))
     if not pos:
-        fail("call requires a tool name: call TOOL '<json-args>' [--timeout SEC] [--full]", 2)
+        fail("call requires a tool name: call TOOL '<json-args>' [--timeout SEC] [--brief]", 2)
     tool = pos[0]
     args = json_arg(pos[1], "args") if len(pos) > 1 else {}
     if not isinstance(args, dict):
         fail(f"args must be a JSON object, got {type(args).__name__}", 2)
     timeout = float(flags["timeout"]) if "timeout" in flags else DEFAULT_TIMEOUT
     result = call_tool(tool, args, timeout=timeout)
-    brief(tool_text(result), full=flags.get("full", False))
+    # Full payload by default: stdout stays machine-parseable end to end.
+    # `--brief` is the explicit flood guard; its notice goes to stderr.
+    brief(tool_text(result), limit=BRIEF_CHARS if flags.get("brief") else None)
 
 
 def mode_run(argv):
@@ -403,7 +414,7 @@ def mode_run(argv):
             step.get("timeout", DEFAULT_TIMEOUT))
         try:
             result = call_tool(tool, step.get("args", {}) or {}, timeout=timeout)
-            brief(tool_text(result), full=full)
+            brief(tool_text(result), limit=None if full else BRIEF_CHARS)
         except Exception as e:
             print("STEP ERROR:", e, file=sys.stderr)
             failed += 1
@@ -425,7 +436,7 @@ MODES = {
 USAGE = (
     "usage: python scripts/hdaw_mcp_http.py "
     "{tools [--filter SUBSTR] | whoami | desc NAME1,NAME2 | schemas [NAME1,NAME2] | "
-    "call TOOL '<json-args>' [--timeout SEC] [--full] | run STEPS.json}\n"
+    "call TOOL '<json-args>' [--timeout SEC] [--brief] | run STEPS.json}\n"
     f"endpoint: {URL} (env HDAW_MCP_URL)"
 )
 

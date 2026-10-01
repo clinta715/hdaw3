@@ -74,6 +74,7 @@ These are the mismatches that would silently break a recipe. Each was measured a
 
 ```powershell
 $env:HDAW_MCP_URL = 'http://127.0.0.1:18766/mcp'   # or 18765, with a device open
-python scripts/hdaw_mcp_http.py call list_fx_params '{"trackId":1,"slotIndex":0}' --timeout 300 --full
+python scripts/hdaw_mcp_http.py call list_fx_params '{"trackId":1,"slotIndex":0}' --timeout 300
 ```
+(`call` prints the full payload by default since 2026-09-30; `--brief` opts into truncation.)
 Then normalise digits to `#` to reveal block structure, and scope by the `Ch <n> ` prefix.

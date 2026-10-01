@@ -306,7 +306,7 @@ Agent transport is the **HTTP twin**, never a per-call engine
 
 ```powershell
 python scripts/hdaw_mcp_http.py tools
-python scripts/hdaw_mcp_http.py call list_fx_params '{"trackId":1,"slotIndex":0}' --timeout 300 --full
+python scripts/hdaw_mcp_http.py call list_fx_params '{"trackId":1,"slotIndex":0}' --timeout 300
 ```
 
 `list_fx_params` is the confirmation step: a live `OsTIrus.clap` slot must report
