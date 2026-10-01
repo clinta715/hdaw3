@@ -4634,11 +4634,13 @@ QString exportWait(mcp::TransportLoopback& lb, int& idRef, const QString& path,
 // test can assert on isError as well as the text (exportWait collapses error
 // responses to an empty string). Same pump/poll budget as exportWait and
 // ExportAudioWaitBlocksUntilComplete (120 * 250ms = 30s).
-QJsonObject exportWaitRaw(mcp::TransportLoopback& lb, int& idRef, const QString& path)
+QJsonObject exportWaitRaw(mcp::TransportLoopback& lb, int& idRef, const QString& path,
+                          const QJsonArray& ids = {})
 {
     QJsonObject args{{"outputPath", path}, {"format", "wav"},
                      {"start", 0.0}, {"end", 2.0},
                      {"sampleRate", 44100.0}, {"bitDepth", 16}, {"wait", true}};
+    if (!ids.isEmpty()) args["trackIds"] = ids;
     QJsonObject req;
     req["jsonrpc"] = "2.0"; req["id"] = idRef++;
     req["method"] = "tools/call";
@@ -4832,15 +4834,27 @@ TEST_F(McpCoverageTest, ExportAudioStreamOpenFailureIsToolError) {
 }
 
 // The export_audio trackIds filter must actually restrict the render to the
-// selected tracks. Regression: trackIds used to be schema-only and every
-// 'stem' export rendered the FULL mix (identical peaks across different
-// trackIds), which also made RAVE 'stems' full-mix smears. With the fix,
-// selected tracks play and unselected/unknown tracks render silence.
+// selected tracks, addressed by STABLE trackID (position i carries trackID
+// i+1, so the values never coincide). Regression 1: trackIds used to be
+// schema-only and every 'stem' export rendered the FULL mix. Regression 2
+// (2026-09-30): the filter matched POSITION, so trackIds:[1] muted the kick
+// (position 0) and exported the bass. With the fix, selected trackIDs play,
+// and an unknown id (e.g. a legacy positional 0) refuses the WHOLE render
+// loudly before ExportManager::startExport — all-or-nothing.
 TEST_F(McpCoverageTest, ExportAudioTrackIdsFiltersTracks) {
     auto r1 = call("add_track_with_fx", {{"name", "T1"}, {"fxType", "fm_synth"}});
     ASSERT_FALSE(isError(r1)) << text(r1).toStdString();
     auto r2 = call("add_track_with_fx", {{"name", "T2"}, {"fxType", "fm_synth"}});
     ASSERT_FALSE(isError(r2)) << text(r2).toStdString();
+    // STABLE trackIDs (list_tracks vocabulary), NOT positions.
+    auto idOf = [](const QString& creationJson) {
+        return QJsonDocument::fromJson(creationJson.toUtf8())
+            .object().value("trackID").toInt();
+    };
+    const int idT1 = idOf(text(r1));
+    const int idT2 = idOf(text(r2));
+    ASSERT_GE(idT1, 1);
+    ASSERT_GT(idT2, idT1);
     const int t1 = trackCount() - 2;
     const int t2 = trackCount() - 1;
 
@@ -4861,21 +4875,37 @@ TEST_F(McpCoverageTest, ExportAudioTrackIdsFiltersTracks) {
     const QString pBad = tmpWavPath("hdaw_export_bad");
 
     EXPECT_TRUE(exportWait(*loopback, nextId_, pf, {}).startsWith("export complete:"));
-    EXPECT_TRUE(exportWait(*loopback, nextId_, pT1, QJsonArray{t1}).startsWith("export complete:"));
-    EXPECT_TRUE(exportWait(*loopback, nextId_, pT2, QJsonArray{t2}).startsWith("export complete:"));
-    EXPECT_TRUE(exportWait(*loopback, nextId_, p0, QJsonArray{0}).startsWith("export complete:"));
-    EXPECT_TRUE(exportWait(*loopback, nextId_, pBad, QJsonArray{999}).startsWith("export complete:"));
+    EXPECT_TRUE(exportWait(*loopback, nextId_, pT1, QJsonArray{idT1}).startsWith("export complete:"));
+    EXPECT_TRUE(exportWait(*loopback, nextId_, pT2, QJsonArray{idT2}).startsWith("export complete:"));
+
+    // Unknown ids refuse the whole render loudly: legacy positional 0 (no
+    // track has trackID 0) and a mixed valid+unknown list (all-or-nothing).
+    const QJsonObject bad0 = exportWaitRaw(*loopback, nextId_, p0, QJsonArray{0});
+    EXPECT_TRUE(bad0.value("isError").toBool())
+        << "trackId 0 must be refused, not exported";
+    const QString msg0 = bad0.value("content").toArray().first().toObject()
+                             .value("text").toString();
+    EXPECT_TRUE(msg0.contains("trackID")) << msg0.toStdString();
+    EXPECT_TRUE(msg0.contains("0")) << msg0.toStdString();
+    EXPECT_FALSE(juce::File(p0.toStdString()).existsAsFile())
+        << "a refused render must not write the output file";
+
+    const QJsonObject badMixed = exportWaitRaw(*loopback, nextId_, pBad,
+                                               QJsonArray{idT1, 999});
+    EXPECT_TRUE(badMixed.value("isError").toBool())
+        << "one unknown id must refuse the whole list";
+    const QString msgMixed = badMixed.value("content").toArray().first().toObject()
+                                 .value("text").toString();
+    EXPECT_TRUE(msgMixed.contains("999")) << msgMixed.toStdString();
+    EXPECT_FALSE(juce::File(pBad.toStdString()).existsAsFile())
+        << "a refused render must not write the output file";
 
     const double peakFull = rmsOfWav(pf);
     const double peakT1 = rmsOfWav(pT1);
     const double peakT2 = rmsOfWav(pT2);
-    const double peakEmpty = rmsOfWav(p0);
-    const double peakBad = rmsOfWav(pBad);
     ::testing::Test::RecordProperty("peakFull", std::to_string(peakFull));
     ::testing::Test::RecordProperty("peakT1", std::to_string(peakT1));
     ::testing::Test::RecordProperty("peakT2", std::to_string(peakT2));
-    ::testing::Test::RecordProperty("peakEmpty", std::to_string(peakEmpty));
-    ::testing::Test::RecordProperty("peakBad", std::to_string(peakBad));
 
     EXPECT_GT(peakFull, 0.002);
     EXPECT_GT(peakT1, 0.0008);
@@ -4889,10 +4919,6 @@ TEST_F(McpCoverageTest, ExportAudioTrackIdsFiltersTracks) {
     const double stemDiff = wavDiffSum(pT1, pT2);
     EXPECT_GT(stemDiff, 0.1) << "T1/T2 stems appear sample-identical (sum|diff|="
                              << stemDiff << ")" ;
-
-    // Unselected and unknown tracks must render silence (full-mix leak = bug).
-    EXPECT_LT(peakEmpty, 0.0005) << "empty-track stem leaked the full mix";
-    EXPECT_LT(peakBad, 0.0005) << "unknown trackIds leaked the full mix";
 
     juce::File(pf.toStdString()).deleteFile();
     juce::File(pT1.toStdString()).deleteFile();

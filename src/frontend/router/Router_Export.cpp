@@ -100,10 +100,11 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
         }
 
         // Optional track filter (mirrors the MCP export_audio tool): render
-        // only the requested track indices. Applied to the offline copy by the
-        // shared launcher (HDAW::applyTrackFilterToRenderCopy) — mute + zero
-        // volume on the rest, solo cleared — so the live project and routing
-        // graph are untouched.
+        // only the requested tracks, by STABLE trackID (position i carries
+        // trackID i+1, so the values never coincide). Applied to the offline
+        // copy by the shared launcher (HDAW::applyTrackFilterToRenderCopy) —
+        // mute + zero volume on the rest, solo cleared — so the live project
+        // and routing graph are untouched.
         std::vector<int> trackIds;
         for (const auto& v : o.value("trackIds").toArray())
             trackIds.push_back(v.toInt(-1));

@@ -50,7 +50,7 @@ if(MSVC)
         PROPERTIES COMPILE_OPTIONS "/EHa")
 endif()
 
-# engine: 130 TUs — the long export/composition/render suites live here.
+# engine: 131 TUs — the long export/composition/render suites live here.
 hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/audioengine_read_facade_test.cpp
     unit/engine/rave_service_test.cpp
@@ -162,6 +162,7 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/audition_test.cpp
     unit/engine/verify_part_test.cpp
     unit/engine/verify_window_test.cpp
+    unit/engine/render_launch_track_filter_test.cpp
     unit/engine/offline_render_exclusion_test.cpp
     unit/engine/offline_midi_fx_automation_test.cpp
     unit/engine/master_gain_test.cpp

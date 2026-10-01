@@ -41,7 +41,8 @@ void registerExportTool(McpServer& s) {
                   {"end",        QJsonObject{{"type","number"}}},
                   {"sampleRate", QJsonObject{{"type","number"},{"minimum",8000},{"maximum",192000}}},
                   {"bitDepth",   QJsonObject{{"type","integer"},{"enum", QJsonArray{16,24,32}}}},
-                  {"trackIds",   QJsonObject{{"type","array"},{"items",QJsonObject{{"type","integer"}}}}},
+                  {"trackIds",   QJsonObject{{"type","array"},{"items",QJsonObject{{"type","integer"}}},
+                      {"description","Render only these tracks: STABLE trackID values (from list_tracks; position i carries trackID i+1, so the values never coincide). Unknown ids refuse the whole render with an error."}}},
                   {"dryRun",     QJsonObject{{"type","boolean"}}},
                   {"queue",      QJsonObject{{"type","boolean"}}},
                   {"wait",         QJsonObject{{"type","boolean"}}},
@@ -90,9 +91,10 @@ void registerExportTool(McpServer& s) {
                 }
             }
 
-            // Optional track filter: render only the requested track indices.
-            // Applied to the offline copy (mute + zero volume on the rest,
-            // solo cleared) so a selected track always plays regardless of
+            // Optional track filter: render only the requested tracks, by
+            // STABLE trackID (position i carries trackID i+1, so the values
+            // never coincide). Applied to the offline copy (mute + zero volume
+            // on the rest, solo cleared) so a selected track always plays regardless of
             // project solo state and excluded tracks never contribute.
             std::vector<int> trackIds;
             for (const auto& v : a.value("trackIds").toArray())

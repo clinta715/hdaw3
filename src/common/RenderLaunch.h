@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <set>
 #include <vector>
 
 #include <juce_core/juce_core.h>
@@ -44,7 +45,9 @@ struct ProjectRenderLaunch
 // The export_audio `trackIds` filter, applied to an OFFLINE render copy only:
 // every non-kept track is muted + zeroed with solos cleared, so a kept track
 // plays regardless of the live project's solo state. Empty `trackIds` = no-op
-// (the whole project renders). Shared so the tool and the route cannot drift.
+// (the whole project renders). `trackIds` are the STABLE trackID values
+// (`list_tracks` exposes them; position i carries trackID i+1 by design, so
+// the values never coincide). Shared so the tool and the route cannot drift.
 inline void applyTrackFilterToRenderCopy(juce::ValueTree& projectCopy,
                                          const std::vector<int>& trackIds)
 {
@@ -56,8 +59,10 @@ inline void applyTrackFilterToRenderCopy(juce::ValueTree& projectCopy,
     for (int i = 0; i < trackList.getNumChildren(); ++i)
     {
         bool keep = false;
+        const int trackID = static_cast<int>(trackList.getChild(i)
+                                                 .getProperty(IDs::trackID, 0));
         for (int id : trackIds)
-            if (id == i) { keep = true; break; }
+            if (id == trackID) { keep = true; break; }
         auto tr = trackList.getChild(i);
         tr.setProperty(IDs::isSoloed, false, nullptr);
         tr.setProperty(IDs::isMuted, !keep, nullptr);
@@ -102,6 +107,59 @@ inline ProjectRenderLaunch launchProjectRender(
 
     // Offline render copy: the live project is never mutated by a render.
     juce::ValueTree projectCopy = engine.getProjectModel().getTree().createCopy();
+
+    // Validate BEFORE starting any filtered render — all-or-nothing: one
+    // unknown id refuses the whole list (no partial filter, no render).
+    // trackIds are STABLE trackID values; a legacy positional id (e.g. 0 —
+    // trackIDs start at 1) used to silently export the WRONG track.
+    if (!trackIds.empty())
+    {
+        auto trackList = projectCopy.getChildWithName(IDs::TRACK_LIST);
+        if (!trackList.isValid())
+        {
+            out.error = "project has no track list";
+            return out;
+        }
+        std::set<int> known;
+        const int numTracks = trackList.getNumChildren();
+        for (int i = 0; i < numTracks; ++i)
+        {
+            const int id = static_cast<int>(trackList.getChild(i)
+                                                .getProperty(IDs::trackID, 0));
+            // A malformed/legacy track node without a trackID must not mint a
+            // phantom id 0: `[0]` stays refused and the refusal's existing-ids
+            // list stays honest (trackIDs are floor-1 by contract).
+            if (id > 0)
+                known.insert(id);
+        }
+        juce::String unknown;
+        for (int id : trackIds)
+            if (known.count(id) == 0)
+                unknown += (unknown.isEmpty() ? "" : ", ") + juce::String(id);
+        if (unknown.isNotEmpty())
+        {
+            // Name the ACTUAL existing ids — they are non-contiguous after
+            // removals, so a 1..N range would lie. Cap the list (same honesty
+            // convention as the O1 device lister).
+            juce::String existing;
+            int listed = 0;
+            for (int id : known)
+            {
+                if (listed == 12) { existing += ", …"; break; }
+                existing += (existing.isEmpty() ? "" : ", ") + juce::String(id);
+                ++listed;
+            }
+            const QString unknownList = QString::fromUtf8(unknown.toRawUTF8());
+            const QString existingList = QString::fromUtf8(existing.toRawUTF8());
+            out.error = QString("unknown trackID(s) %1 — trackIds are the "
+                                "stable trackID values exposed by list_tracks "
+                                "(existing: %2); nothing was rendered")
+                            .arg(unknownList)
+                            .arg(existingList);
+            return out;
+        }
+    }
+
     applyTrackFilterToRenderCopy(projectCopy, trackIds);
 
     auto& em = mainProc->getExportManager();
