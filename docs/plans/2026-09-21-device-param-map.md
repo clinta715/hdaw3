@@ -224,8 +224,9 @@ build\hdaw_tests.exe --gtest_filter=DeviceParamsTest.*:DeviceParamsRpcTest.*
   loader (`DeviceParamMap.cpp`) projects the new fields (`source`, `default`, `min`,
   `max`, `enum`) when present — no route changes, parity ledger byte-unchanged. Tests:
   `DeviceParamsInternalTest.*` (**7** after the review reopen — adds
-  `InternalMapsCarryInternalRoute` + `WireProjectionKeepsTableFields`; 14 focused tests
-  total with the fixture suites) — all
+  `InternalMapsCarryInternalRoute` + `WireProjectionKeepsTableFields`); the filtered MCP run
+  was **14/14** (7 fixture + 7 internal) in `hdaw_tests_mcp`, and the RPC twin was **4/4**
+  separately in `hdaw_tests_frontend` — all
   green. Review fix: delay `Feedback` intent `riser` → `delay-throw` (per-engine
   override + regression pin; zero `riser` intents remain in internal maps). Live check:
   `list_device_params` index mode lists all 20 engines; engine mode filters

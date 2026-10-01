@@ -38,8 +38,9 @@ build command's mode name); second restart picked it up.
 
 `compositions/dub_stab_122/dub_stab_122.hdaw` + `_v7.wav`. Am7 stabs + first inversion, 3/16
 piano chops (DESMOS C4 one-shot on a sampler — the FM engine's DEFAULT seeded patch is
-full-sustain (`FmSynthEngine.cpp:44-58`) and no DX7 bank was at hand, so no suitable
-decaying patch was available; loaded DX7 patches can carry decay envelopes), per-onset
+full-sustain (`FmSynthEngine.cpp:44-58`); rather than author and audition a decay-envelope
+DX7 patch, the verified DESMOS one-shot was used — loaded DX7 patches can carry decay
+envelopes), per-onset
 delay automation (230 onsets,
 mix/fb cycling, deduped timestamps, Division 4 = dotted-1/8), descending A-G-F-E bass, periodic
 sub, sparse percussion. **`mix_verdict ok:true`** (audible/clipping/introBlast/modulation all
