@@ -448,7 +448,7 @@
         "appliesVia": "set_internal_fx_param",
         "durability": "valuetree",
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
-        "categoryRules": [{ "id": "ds", "match": ["level", "tune", "decay", "tone", "accent", "voice", "note map", "key track", "output"], "category": "drum-synth" }],
+        "categoryRules": [{ "id": "ds", "match": ["level", "tune", "decay", "tone", "accent", "voice", "note map", "key track", "output", "send", "delay", "reverb"], "category": "drum-synth" }],
         "categoryDefaults": { "drum-synth": { "tier": "identity", "intents": ["amp-env"] } },
         "intentRules": [
           { "id": "ds-level", "match": ["level", "accent"], "intents": ["mix-balance"], "tier": "identity" },
@@ -456,7 +456,10 @@
           { "id": "ds-keytrack", "match": ["key track"], "intents": ["key-vel-track"], "tier": "identity" },
           { "id": "ds-decay", "match": ["decay", "decay scale"], "intents": ["amp-env"], "tier": "identity" },
           { "id": "ds-tone", "match": ["tone"], "intents": ["filter-sweep"], "tier": "movement" },
-          { "id": "ds-select", "match": ["voice", "note map"], "intents": ["fx-type"], "tier": "identity" }
+          { "id": "ds-select", "match": ["voice", "note map"], "intents": ["fx-type"], "tier": "identity" },
+          { "id": "ds-send", "match": ["send"], "intents": ["fx-mix"], "tier": "movement" },
+          { "id": "ds-send-delay", "match": ["send delay"], "intents": ["delay-throw"], "tier": "movement" },
+          { "id": "ds-send-reverb", "match": ["send reverb"], "intents": ["reverb-space"], "tier": "movement" }
         ],
         "paramNotes": {
           "Voice": { "enum": { "0": "Kick", "1": "Snare", "2": "Clap", "3": "Rim", "4": "Tom Low", "5": "Tom Mid", "6": "Tom High", "7": "Closed Hat", "8": "Open Hat", "9": "Crash", "10": "Ride" },

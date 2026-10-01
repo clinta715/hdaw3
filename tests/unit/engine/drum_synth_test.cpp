@@ -3,7 +3,8 @@
 // analog drum kit.
 //
 // What this suite pins:
-//   * the pinned param table (51 rows) as TrackFXSlot advertises it;
+//   * the pinned param table (67 rows: the 51 frozen rows plus the appended
+//     per-voice send bus at 51..66) as TrackFXSlot advertises it;
 //   * every one of the 11 voices actually sounds and reports active;
 //   * the pinned GM note map + Fixed-mode note-ignoring;
 //   * the ClosedHat -> OpenHat choke and its no-discontinuity declick;
@@ -136,10 +137,41 @@ void prepareSlot (TrackFXSlot& slot)
     spec.numChannels      = 2;
     slot.prepare (spec);
 }
+
+// Renders `totalSamples` samples through a prepared DrumSynthEngine (a single
+// note-on at sample 0 of the first block, MIDI cleared after) and returns the
+// RMS of channel 0 over the sample window [from, to). Used by the send-bus
+// tests to measure the wet tail long after the hit itself has died.
+float renderAndRms (DrumSynthEngine& eng, int note, int totalSamples, int from, int to)
+{
+    const int blocks = (totalSamples + kBlockSize - 1) / kBlockSize;
+    std::vector<float> acc (static_cast<size_t> (blocks) * (size_t) kBlockSize, 0.0f);
+
+    for (int b = 0; b < blocks; ++b)
+    {
+        juce::AudioBuffer<float> buffer (2, kBlockSize);
+        juce::MidiBuffer midi;
+        if (b == 0)
+            addNoteOn (midi, note, 100, 0);
+        eng.render (buffer, midi);
+        const float* ch0 = buffer.getReadPointer (0);
+        std::copy (ch0, ch0 + kBlockSize, acc.begin() + (size_t) b * (size_t) kBlockSize);
+    }
+
+    double sum = 0.0;
+    int n = 0;
+    for (int s = from; s < to && s < (int) acc.size(); ++s)
+    {
+        const double v = (double) acc[(size_t) s];
+        sum += v * v;
+        ++n;
+    }
+    return n > 0 ? (float) std::sqrt (sum / (double) n) : 0.0f;
+}
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Param table (the pinned 51-row layout as TrackFXSlot advertises it)
+// Param table (the pinned 67-row layout as TrackFXSlot advertises it)
 // ---------------------------------------------------------------------------
 
 TEST (DrumSynthEngineTest, ParamDefs)
@@ -147,8 +179,8 @@ TEST (DrumSynthEngineTest, ParamDefs)
     HDAW::TrackFXSlot slot ("drum_synth");
     const auto defs = slot.getInternalParamDefs();
 
-    ASSERT_EQ (defs.size(), 51u);
-    for (int i = 0; i < 51; ++i)
+    ASSERT_EQ (defs.size(), 67u);
+    for (int i = 0; i < 67; ++i)
         EXPECT_EQ (defs[static_cast<size_t> (i)].index, i);
 
     // Row 0: Output Level.
@@ -186,8 +218,33 @@ TEST (DrumSynthEngineTest, ParamDefs)
     EXPECT_FLOAT_EQ (defs[50].minValue,     0.0f);
     EXPECT_FLOAT_EQ (defs[50].maxValue,     1.0f);
 
+    // Row 51: Instrument 0 (Kick) Send — the appended per-voice send bus.
+    EXPECT_FLOAT_EQ (defs[51].defaultValue, 0.0f);
+    EXPECT_FLOAT_EQ (defs[51].minValue,     0.0f);
+    EXPECT_FLOAT_EQ (defs[51].maxValue,     1.0f);
+
+    // Row 61: Instrument 10 (Ride) Send  (51 + 10).
+    EXPECT_FLOAT_EQ (defs[61].defaultValue, 0.0f);
+    EXPECT_FLOAT_EQ (defs[61].minValue,     0.0f);
+    EXPECT_FLOAT_EQ (defs[61].maxValue,     1.0f);
+
+    // Row 62: Send Delay Time (beats).
+    EXPECT_FLOAT_EQ (defs[62].defaultValue, 0.75f);
+    EXPECT_FLOAT_EQ (defs[62].minValue,     0.01f);
+    EXPECT_FLOAT_EQ (defs[62].maxValue,     4.0f);
+
+    // Row 65: Send Reverb Size (seconds, like psyarp's Reverb Size).
+    EXPECT_FLOAT_EQ (defs[65].defaultValue, 3.5f);
+    EXPECT_FLOAT_EQ (defs[65].minValue,     0.1f);
+    EXPECT_FLOAT_EQ (defs[65].maxValue,    10.0f);
+
+    // Row 66: Send Reverb Mix.
+    EXPECT_FLOAT_EQ (defs[66].defaultValue, 0.25f);
+    EXPECT_FLOAT_EQ (defs[66].minValue,     0.0f);
+    EXPECT_FLOAT_EQ (defs[66].maxValue,     1.0f);
+
     // The slot's public def table is the one applyFxChain validates against.
-    EXPECT_EQ (HDAW::TrackFXSlot::getParamDefsForType ("drum_synth").size(), 51u);
+    EXPECT_EQ (HDAW::TrackFXSlot::getParamDefsForType ("drum_synth").size(), 67u);
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +486,7 @@ TEST (DrumSynthEngineTest, SlotParamClamp)
     slot.setInternalParam (4, 99.0f);   // Voice        -> 10.0
 
     const auto values = slot.getInternalParamValues();
-    ASSERT_EQ (values.size(), 51u);
+    ASSERT_EQ (values.size(), 67u);
     EXPECT_FLOAT_EQ (values[0], 1.5f);
     EXPECT_FLOAT_EQ (values[4], 10.0f);
 }
@@ -605,4 +662,165 @@ TEST (DrumSynthEngineTest, SimultaneousFullKitStaysUnderUnity)
         EXPECT_TRUE (std::isfinite (peak));
         EXPECT_TRUE (allFinite (buffer));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Send bus (params 51..66): the TR-909 per-instrument send into one in-slot
+// feedback delay + reverb. The five tests below are the behavioural gate.
+// ---------------------------------------------------------------------------
+
+TEST (DrumSynthEngineTest, SendBusIsSilentWhenSendsAreZero)
+{
+    // No-regression gate for the wet path: with every per-voice Send at its 0
+    // default the send bus contributes NOTHING, so raising the bus mixes to
+    // 1.0 must not change a single bit of the output. (A blind addFrom() of an
+    // exactly-zero wet buffer would flip -0.0f to +0.0f and fail this.)
+    auto renderKick = [] (float delayMix, float reverbMix, juce::AudioBuffer<float>& out)
+    {
+        DrumSynthEngine eng;
+        eng.setNoteMap (1);            // GM: note 36 -> Kick
+        eng.setOutputLevel (1.0f);
+        eng.setSendDelayMix (delayMix);
+        eng.setSendReverbMix (reverbMix);
+        eng.prepare (kSampleRate, kBlockSize);
+        juce::MidiBuffer midi;
+        addNoteOn (midi, 36, 100, 0);
+        eng.render (out, midi);
+    };
+
+    juce::AudioBuffer<float> zeroMixes (2, kBlockSize), fullMixes (2, kBlockSize);
+    renderKick (0.0f, 0.0f, zeroMixes);
+    renderKick (1.0f, 1.0f, fullMixes);
+
+    const size_t bytes = sizeof (float) * static_cast<size_t> (kBlockSize);
+    for (int ch = 0; ch < 2; ++ch)
+        EXPECT_EQ (std::memcmp (zeroMixes.getReadPointer (ch),
+                                fullMixes.getReadPointer (ch), bytes), 0)
+            << "channel " << ch;
+}
+
+TEST (DrumSynthEngineTest, PerVoiceSendIsolatesVoices)
+{
+    constexpr int kTotal = 2 * (int) kSampleRate;       // 2 s
+    constexpr int kFrom  = (int) (0.400 * kSampleRate); // 400 ms after the hit
+    constexpr int kTo    = (int) (0.900 * kSampleRate); // ..900 ms
+
+    // One bus setting, per-voice Send amounts varied. Delay 0.5 beats @120 bpm
+    // = 250 ms, so with feedback 0.5 the repeats land inside the window.
+    auto render = [] (int note, float kickSend, float snareSend, float delayMix) -> float
+    {
+        DrumSynthEngine eng;
+        eng.setNoteMap (1);                 // GM
+        eng.setOutputLevel (1.0f);
+        eng.setSendDelayTimeBeats (0.5f);
+        eng.setSendDelayFeedback (0.5f);
+        eng.setSendDelayMix (delayMix);
+        eng.setSendReverbMix (0.0f);
+        eng.setInstrumentSend (DrumSynthEngine::Kick,  kickSend);
+        eng.setInstrumentSend (DrumSynthEngine::Snare, snareSend);
+        eng.prepare (kSampleRate, kBlockSize);   // fresh wet state each render
+        return renderAndRms (eng, note, kTotal, kFrom, kTo);
+    };
+
+    // A SNARE sent into the bus gains a real tail the same snare with Send = 0
+    // does not have.
+    const float snareSent = render (38, 0.0f, 1.0f, 0.6f);
+    const float snareDry  = render (38, 0.0f, 0.0f, 0.6f);
+    EXPECT_GT (snareSent, snareDry);
+    EXPECT_GT (snareSent, 1.0e-4f);
+
+    // The send is PER-VOICE: the Kick's own hit is untouched by the Snare's
+    // Send amount (same bus settings, different voice's send).
+    const float kickWithSnareSent = render (36, 0.0f, 1.0f, 0.6f);
+    const float kickNoSends       = render (36, 0.0f, 0.0f, 0.6f);
+    EXPECT_FLOAT_EQ (kickWithSnareSent, kickNoSends);
+
+    // ...and a KICK-only hit with Kick Send = 0.0 gets NO bus tail at all: its
+    // window RMS is bit-for-bit the same with the bus mixes at 0.0, so nothing
+    // of the bus reaches it. The SAME kick with Kick Send = 1.0 does get one.
+    const float kickNoSendsBusOff = render (36, 0.0f, 0.0f, 0.0f);
+    EXPECT_FLOAT_EQ (kickNoSends, kickNoSendsBusOff);
+
+    const float kickSent = render (36, 1.0f, 0.0f, 0.6f);
+    EXPECT_GT (kickSent, kickNoSends);
+}
+
+TEST (DrumSynthEngineTest, SendReverbIsAudible)
+{
+    constexpr int kTotal = 2 * (int) kSampleRate;
+    constexpr int kFrom  = (int) (0.400 * kSampleRate);
+    constexpr int kTo    = (int) (0.900 * kSampleRate);
+
+    auto render = [] (float snareSend) -> float
+    {
+        DrumSynthEngine eng;
+        eng.setNoteMap (1);                 // GM
+        eng.setOutputLevel (1.0f);
+        eng.setSendDelayMix (0.0f);         // delay muted: reverb alone
+        eng.setSendReverbMix (0.6f);
+        eng.setSendReverbSize (6.0f);
+        eng.setInstrumentSend (DrumSynthEngine::Snare, snareSend);
+        eng.prepare (kSampleRate, kBlockSize);
+        return renderAndRms (eng, 38, kTotal, kFrom, kTo);
+    };
+
+    const float snareSent = render (1.0f);
+    const float snareDry  = render (0.0f);
+    EXPECT_GT (snareSent, snareDry);
+    EXPECT_GT (snareSent, 1.0e-4f);
+}
+
+TEST (DrumSynthEngineTest, SendParamsClamp)
+{
+    HDAW::TrackFXSlot slot ("drum_synth");
+
+    // Out-of-range writes clamp to the def range (lesson 23).
+    slot.setInternalParam (51, 99.0f);   // Kick Send         -> 1.0
+    slot.setInternalParam (63, 99.0f);   // Send Delay Feedback -> 0.95
+    slot.setInternalParam (65, 0.0f);    // Send Reverb Size  -> 0.1
+
+    const auto values = slot.getInternalParamValues();
+    ASSERT_EQ (values.size(), 67u);
+    EXPECT_FLOAT_EQ (values[51], 1.0f);
+    EXPECT_FLOAT_EQ (values[63], 0.95f);
+    EXPECT_FLOAT_EQ (values[65], 0.1f);
+}
+
+TEST (DrumSynthEngineTest, MaxSendsStayFinite)
+{
+    // Every voice at max level AND max Send, delay feedback at its 0.95
+    // ceiling, both mixes at 1.0: deliberate over-drive is the user's choice,
+    // so there is NO < 1.0 assertion here — but the wet path must never emit
+    // NaN/Inf (a runaway feedback line would).
+    DrumSynthEngine eng;
+    eng.setNoteMap (1);   // GM
+    eng.setOutputLevel (1.5f);
+    for (int i = 0; i < DrumSynthEngine::kNumInstruments; ++i)
+    {
+        eng.setInstrumentLevel (i, 1.5f);
+        eng.setInstrumentSend (i, 1.0f);
+    }
+    eng.setSendDelayFeedback (0.95f);
+    eng.setSendDelayMix (1.0f);
+    eng.setSendReverbSize (10.0f);
+    eng.setSendReverbMix (1.0f);
+    eng.prepare (kSampleRate, kBlockSize);
+
+    const int gmKit[11] = { 36, 37, 38, 39, 41, 45, 48, 42, 46, 49, 51 };
+
+    juce::MidiBuffer midi;
+    for (int note : gmKit)
+        addNoteOn (midi, note, 127, 0);
+
+    juce::AudioBuffer<float> buffer (2, kBlockSize);
+    for (int b = 0; b < 4; ++b)          // let the feedback line build up
+    {
+        if (b > 0)
+            midi.clear();
+        eng.render (buffer, midi);
+        EXPECT_TRUE (allFinite (buffer)) << "block " << b;
+    }
+
+    const float peak = peakOf (buffer);
+    EXPECT_TRUE (std::isfinite (peak));
 }

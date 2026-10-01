@@ -395,6 +395,13 @@ public:
         // (DrumSynthEngine). Layout: 7 global params (0..6), then 4 per
         // instrument (level / tune / decay / tone) at 7 + i*4 .. 10 + i*4,
         // instruments in DrumSynthEngine::Instrument order (Kick..Ride).
+        // APPENDED send bus (2026-10-01, indices 51..66): the TR-909
+        // per-instrument SEND — each voice has a Send amount (51 + i, same
+        // Kick..Ride order) into ONE shared in-slot bus holding a feedback
+        // delay plus a reverb, so e.g. only the snare/clap can be sent to a
+        // dotted-8th echo while the kick stays dry. The five bus params follow
+        // at 62..66 (delay time/feedback/mix, reverb size/mix). APPEND ONLY:
+        // every index above is frozen (drum_synth_test.cpp pins them).
         if (type == "drum_synth")
             return {
                 { 0, "Output Level",   0.8f,   0.0f,   1.5f },
@@ -459,6 +466,25 @@ public:
                 {48, "Ride Tune",      0.0f, -24.0f,  24.0f },
                 {49, "Ride Decay",     0.5f,   0.0f,   1.0f },
                 {50, "Ride Tone",      0.5f,   0.0f,   1.0f },
+                // ── Appended send bus (see the header comment above) ──
+                // Per-voice Send into the shared bus, 51 + i in Kick..Ride order.
+                {51, "Kick Send",      0.0f,   0.0f,   1.0f },
+                {52, "Snare Send",     0.0f,   0.0f,   1.0f },
+                {53, "Clap Send",      0.0f,   0.0f,   1.0f },
+                {54, "Rim Send",       0.0f,   0.0f,   1.0f },
+                {55, "Tom Low Send",   0.0f,   0.0f,   1.0f },
+                {56, "Tom Mid Send",   0.0f,   0.0f,   1.0f },
+                {57, "Tom High Send",  0.0f,   0.0f,   1.0f },
+                {58, "Closed Hat Send",0.0f,   0.0f,   1.0f },
+                {59, "Open Hat Send",  0.0f,   0.0f,   1.0f },
+                {60, "Crash Send",     0.0f,   0.0f,   1.0f },
+                {61, "Ride Send",      0.0f,   0.0f,   1.0f },
+                // The shared send bus: feedback delay then reverb.
+                {62, "Send Delay Time (beats)", 0.75f, 0.01f, 4.0f },
+                {63, "Send Delay Feedback",     0.45f, 0.0f,  0.95f },
+                {64, "Send Delay Mix",          0.35f, 0.0f,  1.0f },
+                {65, "Send Reverb Size",        3.5f,  0.1f, 10.0f },
+                {66, "Send Reverb Mix",         0.25f, 0.0f,  1.0f },
             };
         return {};
     }
@@ -557,7 +583,11 @@ public:
     // lock-free, no allocation, safe on the audio thread. Tempo-synced delay
     // divisions read this when SyncToTempo (param 3) is on; the atomic now lives
     // in the shared InternalDelay (slice C3).
-    void setTempo(double bpm) { delay.setTempo(bpm); }
+    //
+    // Also forwarded to the drum_synth send-bus delay so its
+    // "Send Delay Time (beats)" (param 62) follows the project tempo. Null for
+    // every other slot kind, so the guard keeps this a no-op there.
+    void setTempo(double bpm) { delay.setTempo(bpm); if (drumSynth) drumSynth->setTempo(bpm); }
 
     // Multi-sampler chain accumulation (2026-09-26): the chain loop
     // (Track::processBlock) marks every sampler slot AFTER the first engaged
@@ -1177,8 +1207,9 @@ public:
                 if (!drumSynth)
                     drumSynth = std::make_unique<DrumSynthEngine>();
                 drumSynth->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
-                // Push all 51 stored params in the pinned order (7 globals, then
-                // level/tune/decay/tone for each of the 11 instruments).
+                // Push all stored params in the pinned order: the 51 frozen rows
+                // (7 globals, then level/tune/decay/tone for each of the 11
+                // instruments), then the appended send bus at 51..66.
                 const size_t n = internalParamValues.size();
                 if (n > 0) drumSynth->setOutputLevel(internalParamValues[0]);
                 if (n > 1) drumSynth->setKitTune(internalParamValues[1]);
@@ -1195,6 +1226,16 @@ public:
                     if (n > base + 2) drumSynth->setInstrumentDecay(i, internalParamValues[base + 2]);
                     if (n > base + 3) drumSynth->setInstrumentTone (i, internalParamValues[base + 3]);
                 }
+                // Appended send bus (params 51..66): per-voice Send then the
+                // five shared delay/reverb params, guarded like the rows above.
+                for (int i = 0; i < DrumSynthEngine::kNumInstruments; ++i)
+                    if (n > 51 + (size_t) i)
+                        drumSynth->setInstrumentSend(i, internalParamValues[51 + (size_t) i]);
+                if (n > 62) drumSynth->setSendDelayTimeBeats(internalParamValues[62]);
+                if (n > 63) drumSynth->setSendDelayFeedback(internalParamValues[63]);
+                if (n > 64) drumSynth->setSendDelayMix(internalParamValues[64]);
+                if (n > 65) drumSynth->setSendReverbSize(internalParamValues[65]);
+                if (n > 66) drumSynth->setSendReverbMix(internalParamValues[66]);
                 break;
             }
             case ActiveType::None:
@@ -2313,6 +2354,12 @@ private:
                     case 4: drumSynth->setVoice(juce::roundToInt(value)); break;
                     case 5: drumSynth->setNoteMap(juce::roundToInt(value)); break;
                     case 6: drumSynth->setKeyTrack(value); break;
+                    // Params 62..66: the shared send-bus delay/reverb params.
+                    case 62: drumSynth->setSendDelayTimeBeats(value); break;
+                    case 63: drumSynth->setSendDelayFeedback(value); break;
+                    case 64: drumSynth->setSendDelayMix(value); break;
+                    case 65: drumSynth->setSendReverbSize(value); break;
+                    case 66: drumSynth->setSendReverbMix(value); break;
                     default:
                     {
                         // Params 7..50: 4 fields per instrument, in
@@ -2330,6 +2377,12 @@ private:
                                 case 2: drumSynth->setInstrumentDecay(inst, value); break;
                                 case 3: drumSynth->setInstrumentTone(inst, value); break;
                             }
+                        }
+                        // Params 51..61: the per-voice Send into the shared bus
+                        // (51 + i, same DrumSynthEngine::Instrument order).
+                        else if (paramIndex >= 51 && paramIndex <= 61)
+                        {
+                            drumSynth->setInstrumentSend(paramIndex - 51, value);
                         }
                         break;
                     }

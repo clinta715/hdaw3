@@ -403,7 +403,7 @@ protected:
     std::unique_ptr<mcp::TransportLoopback> loopback;
 };
 
-// Index mode lists all 15 internal engines alongside the 5 VA ones.
+// Index mode lists all 16 internal engines alongside the 5 VA ones.
 TEST_F(DeviceParamsInternalTest, IndexModeListsInternalEngines)
 {
     const auto o = callJson("list_device_params");
@@ -414,7 +414,7 @@ TEST_F(DeviceParamsInternalTest, IndexModeListsInternalEngines)
     for (const char* id : { "eq", "compressor", "reverb", "delay", "chorus",
                             "flanger", "phaser", "filter", "saturator",
                             "sampler", "fm_synth", "growl_bass", "psyarp",
-                            "psy_fm", "sub_synth" })
+                            "psy_fm", "sub_synth", "drum_synth" })
         EXPECT_TRUE(engines.contains(QString::fromLatin1(id))) << id;
 }
 
@@ -489,14 +489,14 @@ TEST_F(DeviceParamsInternalTest, DelayDivisionCarriesEnumDoc)
     EXPECT_EQ(fb.value("index").toInt(), 1);
 }
 
-// Root metadata on ALL 15 internal maps: they must carry the internal route
+// Root metadata on ALL 16 internal maps: they must carry the internal route
 // (set_internal_fx_param + valuetree), never the VA plugin routes.
 TEST_F(DeviceParamsInternalTest, InternalMapsCarryInternalRoute)
 {
     for (const char* id : { "eq", "compressor", "reverb", "delay", "chorus",
                             "flanger", "phaser", "filter", "saturator",
                             "sampler", "fm_synth", "growl_bass", "psyarp",
-                            "psy_fm", "sub_synth" })
+                            "psy_fm", "sub_synth", "drum_synth" })
     {
         const auto o = callJson("list_device_params",
                                 { { "engine", QString::fromLatin1(id) } });

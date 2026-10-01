@@ -124,7 +124,7 @@
    "appliesVia": "set_internal_fx_param",
    "durability": "valuetree",
    "engine": "drum_synth",
-   "paramCount": 51
+   "paramCount": 67
   }
  ],
  "excludedStages": [

@@ -139,13 +139,66 @@ inline float baseDecaySeconds(int inst) noexcept
 
 void DrumSynthEngine::prepare(double sampleRate, int maxBlockSize)
 {
-    (void) maxBlockSize;   // fully per-sample; no block-sized scratch needed
-
     sampleRate_ = (sampleRate > 0.0) ? sampleRate : 44100.0;
     srF_ = static_cast<float>(sampleRate_);
     tailSamples_ = std::max(1, static_cast<int>(0.002 * sampleRate_));      // 2 ms
     attackSamples_ = std::max(1.0f, static_cast<float>(0.001 * sampleRate_)); // 1 ms
     hpCoef_ = static_cast<float>(1.0 - std::exp(-2.0 * 3.14159265358979323846 * 1200.0 / sampleRate_));
+
+    // ── Send-bus scratch. Sized HERE and only here — render() never resizes.
+    //    This function is ALSO reached from the audio thread: Track::
+    //    processBlock services a deferred reset by calling prepare(sr, 0), so
+    //    every step below must stay allocation-free whenever the sizes are
+    //    already right. The delay-line fill and the reverb reset are both
+    //    skipped while wetActive_ is false: nothing has ever been fed, so the
+    //    line and the reverb are provably all-zero already. ──
+    if (maxBlockSize > 0)
+        maxBlockSize_ = std::max(maxBlockSize_, maxBlockSize);
+    if (maxBlockSize_ <= 0)
+        maxBlockSize_ = kDefaultBlockSize;   // prepare(sr, 0) before any real block size
+
+    if (sendScratch_.getNumSamples() != maxBlockSize_)
+    {
+        sendScratch_.setSize(1, maxBlockSize_);
+        delayScratch_.setSize(1, maxBlockSize_);
+        reverbScratch_.setSize(1, maxBlockSize_);
+    }
+    sendScratch_.clear();
+    delayScratch_.clear();
+    reverbScratch_.clear();
+
+    // 2 s of line. Send Delay Time reaches 4.0 beats, so at a low tempo the
+    // requested time can exceed the line: the read is clamped to lineLen - 1.
+    const int lineLen = std::max(2, static_cast<int>(kMaxSendDelaySeconds * sampleRate_) + 2);
+    if (static_cast<int>(delayLine_.size()) != lineLen)
+        delayLine_.assign(static_cast<size_t>(lineLen), 0.0f);   // once per sample rate
+    else if (wetActive_)
+        std::fill(delayLine_.begin(), delayLine_.end(), 0.0f);
+    delayWritePos_ = 0;
+
+    // Params BEFORE prepare(): juce::Reverb::setSampleRate snaps its smoothed
+    // gain values onto their current targets, so setting them first means the
+    // reverb starts settled on the snapshot's settings instead of ramping in
+    // from JUCE's built-in defaults.
+    reverb_.setParameters(sendReverbParams(sendReverbSize_.load(std::memory_order_relaxed)));
+    {
+        juce::dsp::ProcessSpec spec;
+        spec.sampleRate       = sampleRate_;
+        spec.maximumBlockSize = static_cast<juce::uint32>(maxBlockSize_);
+        spec.numChannels      = 1;
+        // juce::Reverb::setSampleRate only reallocates its comb lines when the
+        // rate actually changed, and always clears them, so this is
+        // allocation-free on the reset path and flushes the reverb tail.
+        reverb_.prepare(spec);
+    }
+    // NOTE: juce::Reverb::reset() zeroes the comb buffers but leaves each
+    // comb's read index where it was, so after a reset the reverb's internal
+    // phase differs from a freshly constructed instance. Only the tail's fine
+    // structure is affected — the state itself is all-zero either way — and
+    // the delay line, which is ours, resets exactly.
+    if (wetActive_)
+        reverb_.reset();
+    wetActive_ = false;
 
     resetVoices();
 }
@@ -225,6 +278,47 @@ void DrumSynthEngine::setInstrumentTone(int inst, float v) noexcept
     instTone_[(size_t) inst].store(clampUnit(v), std::memory_order_relaxed);
 }
 
+// ── Per-voice send bus (params 51..66) ───────────────────────────────────────
+
+void DrumSynthEngine::setInstrumentSend(int inst, float v) noexcept
+{
+    if (inst < 0 || inst >= kNumInstruments)
+        return;
+    instSend_[(size_t) inst].store(clampUnit(v), std::memory_order_relaxed);
+}
+
+void DrumSynthEngine::setSendDelayTimeBeats(float beats) noexcept
+{
+    sendDelayTimeBeats_.store(std::clamp(beats, 0.01f, 4.0f), std::memory_order_relaxed);
+}
+
+void DrumSynthEngine::setSendDelayFeedback(float v) noexcept
+{
+    sendDelayFeedback_.store(std::clamp(v, 0.0f, 0.95f), std::memory_order_relaxed);
+}
+
+void DrumSynthEngine::setSendDelayMix(float v) noexcept
+{
+    sendDelayMix_.store(clampUnit(v), std::memory_order_relaxed);
+}
+
+void DrumSynthEngine::setSendReverbSize(float seconds) noexcept
+{
+    sendReverbSize_.store(std::clamp(seconds, 0.1f, 10.0f), std::memory_order_relaxed);
+}
+
+void DrumSynthEngine::setSendReverbMix(float v) noexcept
+{
+    sendReverbMix_.store(clampUnit(v), std::memory_order_relaxed);
+}
+
+void DrumSynthEngine::setTempo(double bpm) noexcept
+{
+    // Clamped so the beats -> seconds conversion can never divide by zero or
+    // produce a non-finite delay time.
+    bpm_ = std::clamp(bpm, 1.0, 1000.0);
+}
+
 // ── Inspection / pure helpers ────────────────────────────────────────────────
 
 int DrumSynthEngine::activeVoiceCount() const noexcept
@@ -291,7 +385,14 @@ void DrumSynthEngine::buildSnapshot(ParamSnapshot& p) const noexcept
         p.tune[(size_t) i] = instTune_[(size_t) i].load(std::memory_order_relaxed);
         p.decay[(size_t) i] = instDecay_[(size_t) i].load(std::memory_order_relaxed);
         p.tone[(size_t) i] = instTone_[(size_t) i].load(std::memory_order_relaxed);
+        p.send[(size_t) i] = instSend_[(size_t) i].load(std::memory_order_relaxed);
     }
+
+    p.sendDelayTimeBeats = sendDelayTimeBeats_.load(std::memory_order_relaxed);
+    p.sendDelayFeedback  = sendDelayFeedback_.load(std::memory_order_relaxed);
+    p.sendDelayMix       = sendDelayMix_.load(std::memory_order_relaxed);
+    p.sendReverbSize     = sendReverbSize_.load(std::memory_order_relaxed);
+    p.sendReverbMix      = sendReverbMix_.load(std::memory_order_relaxed);
 }
 
 void DrumSynthEngine::chokeOpenHat() noexcept
@@ -306,6 +407,18 @@ void DrumSynthEngine::chokeOpenHat() noexcept
             v.releaseRemaining = tailSamples_;
         }
     }
+}
+
+juce::dsp::Reverb::Parameters DrumSynthEngine::sendReverbParams(float sizeSeconds) noexcept
+{
+    juce::dsp::Reverb::Parameters rp;
+    rp.roomSize   = std::clamp(sizeSeconds * 0.1f, 0.0f, 1.0f);   // seconds -> 0..1
+    rp.damping    = 0.5f;
+    rp.wetLevel   = 1.0f;    // the wet is mixed by Send Reverb Mix, not here
+    rp.dryLevel   = 0.0f;
+    rp.width      = 1.0f;
+    rp.freezeMode = 0.0f;
+    return rp;
 }
 
 void DrumSynthEngine::allVoicesOff() noexcept
@@ -631,9 +744,10 @@ float DrumSynthEngine::renderVoice(int inst, Voice& v) noexcept
     return s;
 }
 
-float DrumSynthEngine::renderSample(const ParamSnapshot& p) noexcept
+float DrumSynthEngine::renderSample(const ParamSnapshot& p, float& sendOut) noexcept
 {
     float sum = 0.0f;
+    float send = 0.0f;
 
     for (int inst = 0; inst < kNumInstruments; ++inst)
     {
@@ -649,9 +763,14 @@ float DrumSynthEngine::renderSample(const ParamSnapshot& p) noexcept
         if (b)
             s += renderVoice(inst, slots[1]);
 
-        sum += p.level[(size_t) inst] * s;
+        const float lvl = p.level[(size_t) inst];
+        sum += lvl * s;
+        // Post instrument level, pre kit ceiling: the send taps the voice the
+        // way the fader hears it, so the wet never depends on the dry ceiling.
+        send += p.send[(size_t) inst] * lvl * s;
     }
 
+    sendOut += send;
     return kitCeiling(sum) * p.outputLevel;
 }
 
@@ -661,11 +780,22 @@ void DrumSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const int numSamples = buffer.getNumSamples();
+    const int bufferSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
     buffer.clear();
 
-    if (numSamples <= 0 || numChannels <= 0)
+    if (bufferSamples <= 0 || numChannels <= 0)
+    {
+        midi.clear();
+        return;
+    }
+
+    // Realtime guard: the wet scratch is sized ONCE in prepare(), so a block
+    // larger than the prepared maximum is CLAMPED rather than resized. prepare()
+    // sizes for the host's real block size, so this only bites on a violated
+    // host contract; the excess samples stay silent (cleared above).
+    const int numSamples = std::min(bufferSamples, maxBlockSize_);
+    if (numSamples <= 0)
     {
         midi.clear();
         return;
@@ -674,6 +804,8 @@ void DrumSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     ParamSnapshot p;
     buildSnapshot(p);
 
+    float* const send = sendScratch_.getWritePointer(0);
+
     int samplePos = 0;
     for (const auto metadata : midi)
     {
@@ -681,9 +813,11 @@ void DrumSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
 
         for (int i = samplePos; i < eventSample; ++i)
         {
-            const float s = renderSample(p);
+            float s = 0.0f;
+            const float dry = renderSample(p, s);
+            send[i] = s;
             for (int ch = 0; ch < numChannels; ++ch)
-                buffer.setSample(ch, i, s);
+                buffer.setSample(ch, i, dry);
         }
 
         const auto message = metadata.getMessage();
@@ -704,10 +838,89 @@ void DrumSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
 
     for (int i = samplePos; i < numSamples; ++i)
     {
-        const float s = renderSample(p);
+        float s = 0.0f;
+        const float dry = renderSample(p, s);
+        send[i] = s;
         for (int ch = 0; ch < numChannels; ++ch)
-            buffer.setSample(ch, i, s);
+            buffer.setSample(ch, i, dry);
     }
 
     midi.clear();
+
+    // ── Send bus: block-level wet, sample-level dry ─────────────────────────
+    //    delayIn   = sendScratch
+    //    delayOut  = feedback delay(delayIn)      (in-place, preallocated line)
+    //    reverbIn  = sendScratch + delayOut
+    //    reverbOut = reverb(reverbIn)             (in-place, mono)
+    //    dry      += delayOut * Send Delay Mix + reverbOut * Send Reverb Mix
+    //
+    // The wet stage is entered only once a send has actually been non-zero:
+    // while wetActive_ is false nothing was ever fed to the line or the reverb,
+    // so their state is exactly zero and skipping them is exact (it also keeps
+    // a default, send-less drum_synth slot at its pre-send-bus cost).
+    if (sendScratch_.getMagnitude(0, 0, numSamples) > 0.0f)
+        wetActive_ = true;
+
+    if (wetActive_)
+    {
+        float* const delayWet  = delayScratch_.getWritePointer(0);
+        float* const reverbWet = reverbScratch_.getWritePointer(0);
+
+        const float feedback = p.sendDelayFeedback;
+        const int lineLen = static_cast<int>(delayLine_.size());
+        const float delaySamples = std::clamp(
+            static_cast<float>(static_cast<double>(p.sendDelayTimeBeats) * 60.0
+                                   / bpm_ * sampleRate_),
+            1.0f, static_cast<float>(lineLen - 1));
+
+        float* const line = delayLine_.data();
+        int writePos = delayWritePos_;
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float in = send[i];
+
+            // Fractional read: linear interpolation, wrapped to the line.
+            float readPos = static_cast<float>(writePos) - delaySamples;
+            if (readPos < 0.0f)
+                readPos += static_cast<float>(lineLen);
+            const int i0 = static_cast<int>(readPos);
+            const int i1 = (i0 + 1 < lineLen) ? (i0 + 1) : 0;
+            const float frac = readPos - static_cast<float>(i0);
+            const float delayed = line[i0] + frac * (line[i1] - line[i0]);
+
+            line[writePos] = in + delayed * feedback;   // feedback is 0 .. 0.95
+            delayWet[i] = delayed;
+            reverbWet[i] = in + delayed;
+
+            if (++writePos >= lineLen)
+                writePos = 0;
+        }
+        delayWritePos_ = writePos;
+
+        // The params are cheap to set, so they follow the snapshot every block.
+        reverb_.setParameters(sendReverbParams(p.sendReverbSize));
+
+        auto block = juce::dsp::AudioBlock<float>(reverbScratch_)
+                         .getSubBlock(0, static_cast<size_t>(numSamples));
+        juce::dsp::ProcessContextReplacing<float> context(block);
+        reverb_.process(context);
+
+        // Silent-wet guard: mix the wet in only when its contribution is
+        // genuinely non-zero. Adding an exact +/-0.0f would flip a -0.0f dry
+        // sample to +0.0f and break the bit-identical no-send output.
+        const float delayMix = p.sendDelayMix;
+        const float reverbMix = p.sendReverbMix;
+        float wetPeak = 0.0f;
+        for (int i = 0; i < numSamples; ++i)
+            wetPeak = std::max(wetPeak,
+                               std::abs(delayWet[i] * delayMix + reverbWet[i] * reverbMix));
+
+        if (wetPeak > 0.0f)
+        {
+            for (int ch = 0; ch < numChannels; ++ch)
+                for (int i = 0; i < numSamples; ++i)
+                    buffer.addSample(ch, i, delayWet[i] * delayMix + reverbWet[i] * reverbMix);
+        }
+    }
 }
