@@ -335,13 +335,13 @@ accepted silently and then presents as "the plugin/engine is broken". It cost re
       `ValidNameOpensOrRollsBackNeverSilent` covers the real-device route).
 - [x] **P6-c** a valid name behaves exactly as today (opens, and `get_audio_current_setup.output`
       reports it).
-      LANDED: success path unchanged (open + QSettings persist); verified openable-device box.
+      LANDED: success path unchanged (open + QSettings persist); verified openable-device run.
 - [x] **P6-d** a test covers: unknown name refused; valid name accepted; failed set is
       non-destructive; and `""` (if it is the intended "close" spelling) is distinguished from an
       unknown name — document which spelling closes the device.
       LANDED: 6 gtests in `tests/unit/frontend/audio_output_device_rpc_test.cpp`
-      (`AudioOutputDeviceRefusalTest.*`), run green on BOTH an openable-device box and a
-      broken-driver box (listed-but-unopenable device exercises the rollback branch). Empty `""`
+      (`AudioOutputDeviceRefusalTest.*`), green across openable-device and listed-but-unopenable
+      runs on this box (the latter exercises the rollback branch). Empty `""`
       is the documented close spelling — allowed through, never refused as unknown
       (`EmptyNameIsAllowedThroughNeverUnknownNameRefused`); tool description states both.
 - [x] **P6-e** `dsh-build-fast.bat test` rc 0; affected suites green.

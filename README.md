@@ -33,7 +33,8 @@ never builds it.
   unknown name with the requested + available device list, identical on both surfaces via the one
   shared helper (`src/common/AudioDeviceNameApply.h`); `""` is the documented close spelling; a
   known name that fails to open rolls back to the snapshotted setup (rollback failure is loud);
-  QSettings skipped on every failure. 6 gtests, green on openable- and broken-driver boxes.
+  QSettings skipped on every failure. 6 gtests, green across openable-device and
+  listed-but-unopenable runs on this box (the latter exercises the rollback branch).
   (`set_audio_input_device` has the same defect — open follow-up.)
 - **`list_device_params` covers all 15 internal fxTypes** (191 params: fm_synth 26, sub_synth 33,
   psy_fm 33, growl_bass 26, psyarp 21, sampler 10, + the core FX). Generated deterministically by

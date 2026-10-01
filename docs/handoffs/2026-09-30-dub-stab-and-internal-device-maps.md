@@ -13,8 +13,8 @@ place; both surfaces (`McpTools_Settings.cpp`, `Router_Audio.cpp`) call it, so r
 identical by construction. Unknown name → `unknown output device "X" — available: "A", "B"`;
 empty `""` is the documented close spelling; open failure rolls back to the snapshotted setup
 (rollback failure is loud). QSettings skipped on every failure. 6 gtests
-(`AudioOutputDeviceRefusalTest.*`), green on both an openable-device box and a
-listed-but-unopenable box (the latter exercises the rollback branch). Plan Phase 6 gates ticked
+(`AudioOutputDeviceRefusalTest.*`), green across openable-device and listed-but-unopenable
+runs on this box (the latter exercises the rollback branch). Plan Phase 6 gates ticked
 in `docs/plans/2026-09-30-bug-fixes-from-ion-rift-session.md`.
 **Same defect remains in `set_audio_input_device` / `audio.setInputDevice` — open follow-up.**
 
@@ -37,8 +37,10 @@ build command's mode name); second restart picked it up.
 ## 3. `dub_stab_122` — dub techno composition (user's spec, delivered)
 
 `compositions/dub_stab_122/dub_stab_122.hdaw` + `_v7.wav`. Am7 stabs + first inversion, 3/16
-piano chops (DESMOS C4 one-shot on a sampler — the FM engine seeds full-sustain operators,
-`FmSynthEngine.cpp:44-58`, so it cannot do piano decay), per-onset delay automation (230 onsets,
+piano chops (DESMOS C4 one-shot on a sampler — the FM engine's DEFAULT seeded patch is
+full-sustain (`FmSynthEngine.cpp:44-58`) and no DX7 bank was at hand, so no suitable
+decaying patch was available; loaded DX7 patches can carry decay envelopes), per-onset
+delay automation (230 onsets,
 mix/fb cycling, deduped timestamps, Division 4 = dotted-1/8), descending A-G-F-E bass, periodic
 sub, sparse percussion. **`mix_verdict ok:true`** (audible/clipping/introBlast/modulation all
 green; peak 0.665, ceilingHit 0, master limiter threshold 0 dB ceiling 0.95, master gain 0.70).
@@ -64,5 +66,4 @@ engine relaunch.
   rewritten to `.` by `update --force` and manually restored to the absolute path (documented gotcha).
 - `report_issue` filed: the `save_project` silent no-op above.
 - Scratch: `.tmp_compose/` (delay-automation payloads), superseded renders `_v2..v6.wav` kept as
-  clipping/gain-anomaly diagnostics. `set_audio_input_device` fix + `mix_verdict` output noise
-  floor are the natural next small items.
+  clipping/gain-anomaly diagnostics. `set_audio_input_device` fix is the natural next small item.

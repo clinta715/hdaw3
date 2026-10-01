@@ -218,11 +218,19 @@ build\hdaw_tests.exe --gtest_filter=DeviceParamsTest.*:DeviceParamsRpcTest.*
   `build_device_map.py` parses `TrackFXSlot.h::getParamDefsForType` (13 tables) plus
   `InternalDelay.h` / `InternalFilter.h` `paramDefs()` (with constexpr token
   resolution), emits verbatim default/min/max + per-param `source` file:line citations
-  + documented enums; 802 params across 20 engines, `unclassified == 0` everywhere.
+  + documented enums; **191 NEW internal params / 802 combined across 20 engines**,
+  `unclassified == 0` everywhere.
   VA maps byte-unchanged vs HEAD (hard gate); `--check` determinism clean. The shared
   loader (`DeviceParamMap.cpp`) projects the new fields (`source`, `default`, `min`,
   `max`, `enum`) when present — no route changes, parity ledger byte-unchanged. Tests:
-  `DeviceParamsInternalTest.*` (5, real corpus) + existing 7 fixture MCP + 4 RPC — all
-  green. Live check: `list_device_params` index mode lists all 20 engines; engine mode
-  filters (`sub_synth` + intent `filter-sweep` → Cutoff/Filter Env Amount/LFO Cutoff Amt).
+  `DeviceParamsInternalTest.*` (**7** after the review reopen — adds
+  `InternalMapsCarryInternalRoute` + `WireProjectionKeepsTableFields`; 14 focused tests
+  total with the fixture suites) — all
+  green. Review fix: delay `Feedback` intent `riser` → `delay-throw` (per-engine
+  override + regression pin; zero `riser` intents remain in internal maps). Live check:
+  `list_device_params` index mode lists all 20 engines; engine mode filters
+  (`sub_synth` + intent `filter-sweep` → Cutoff/Filter Env Amount/LFO Cutoff Amt);
+  **end-to-end re-verified on the REBUILT binary** (first `engine_restart` served the
+  stale 12:32 copy; the second carried the new wire fields — `delay` Division enum +
+  `source` citations live).
 
