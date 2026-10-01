@@ -212,6 +212,7 @@ hdaw_test_exe(hdaw_tests_mcp SOURCES
 # frontend: 22 TUs — JSON-RPC router surface + parity ratchets.
 hdaw_test_exe(hdaw_tests_frontend SOURCES
     unit/frontend/frontend_server_test.cpp
+    unit/frontend/audio_output_device_rpc_test.cpp
     unit/frontend/ghost_clips_rpc_test.cpp
     unit/frontend/envelope_generation_rpc_test.cpp
     unit/frontend/loop_align_rpc_test.cpp

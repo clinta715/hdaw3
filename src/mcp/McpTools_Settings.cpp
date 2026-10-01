@@ -7,6 +7,8 @@
 #include "../engine/MainAudioProcessor.h"
 #include "../engine/TrackFXSlot.h"
 #include "../common/SettingsKeys.h"
+#include "../common/AudioDeviceNameApply.h"
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -126,15 +128,15 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"set_audio_output_device",
-        "Switch the audio output device.",
+        "Switch the audio output device. An unknown device name is refused (error names the available devices); the current device is left untouched on refusal. An empty \"\" name closes the output device (JUCE default-device semantics).",
         objSchema({{"name", QJsonObject{{"type","string"}}}}, {"name"}),
         "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& dm = e->getDeviceManager();
             std::string name = a.value("name").toString().toStdString();
-            auto setup = dm.getAudioDeviceSetup();
-            setup.outputDeviceName = juce::String(name);
-            dm.setAudioDeviceSetup(setup, true);
+            const auto err = HDAW::applyOutputDeviceName(dm, juce::String(name));
+            if (err.isNotEmpty())
+                return McpToolResult::text(QString::fromUtf8(err.toRawUTF8()), true);
             QSettings st;
             st.setValue(SettingsKeys::kKeyAudioOutputDevice, QString::fromStdString(name));
             return McpToolResult::text("ok");

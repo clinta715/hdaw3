@@ -318,15 +318,35 @@ accepted silently and then presents as "the plugin/engine is broken". It cost re
 
 ## Success gates
 
-- [ ] **P6-a** an unknown device name is **refused** with an error naming the requested name and the
+- [x] **P6-a** an unknown device name is **refused** with an error naming the requested name and the
       available devices (`set_audio_output_device {"name":"X"}` → error, not `ok`).
-- [ ] **P6-b** a failed set leaves the previously open device **untouched** (no silent drop).
-- [ ] **P6-c** a valid name behaves exactly as today (opens, and `get_audio_current_setup.output`
+      LANDED 2026-09-30: `unknown output device "X" — available: "A", "B"` — byte-identical on
+      `set_audio_output_device` (MCP) and `audio.setOutputDevice` (RPC) via the ONE shared helper
+      `src/common/AudioDeviceNameApply.h`; distinct text when no driver type is active (enumeration
+      failure is never reported as a bad name).
+- [x] **P6-b** a failed set leaves the previously open device **untouched** (no silent drop).
+      LANDED: the unknown-name refusal never reaches the device manager; a KNOWN name that fails
+      to open snapshots `getAudioDeviceSetup()` first and ROLLS BACK on failure (rollback failure
+      itself is surfaced loudly: `…; rollback to previous device also failed: …`); QSettings is
+      skipped on every failure path. JUCE v9 rejects an unknown name BEFORE
+      `deleteCurrentDevice()`, so the refusal path was already non-destructive — the rollback
+      covers the rarer open-failure path (`AudioOutputDeviceRefusalTest.RollbackRestoresSnapshotWhenApplyFailsOnce`
+      forces it via the injectable apply seam; the hardware-conditional
+      `ValidNameOpensOrRollsBackNeverSilent` covers the real-device route).
+- [x] **P6-c** a valid name behaves exactly as today (opens, and `get_audio_current_setup.output`
       reports it).
-- [ ] **P6-d** a test covers: unknown name refused; valid name accepted; failed set is
+      LANDED: success path unchanged (open + QSettings persist); verified openable-device box.
+- [x] **P6-d** a test covers: unknown name refused; valid name accepted; failed set is
       non-destructive; and `""` (if it is the intended "close" spelling) is distinguished from an
       unknown name — document which spelling closes the device.
-- [ ] **P6-e** `dsh-build-fast.bat test` rc 0; affected suites green.
+      LANDED: 6 gtests in `tests/unit/frontend/audio_output_device_rpc_test.cpp`
+      (`AudioOutputDeviceRefusalTest.*`), run green on BOTH an openable-device box and a
+      broken-driver box (listed-but-unopenable device exercises the rollback branch). Empty `""`
+      is the documented close spelling — allowed through, never refused as unknown
+      (`EmptyNameIsAllowedThroughNeverUnknownNameRefused`); tool description states both.
+- [x] **P6-e** `dsh-build-fast.bat test` rc 0; affected suites green.
+      LANDED: rc 0; `AudioOutputDeviceRefusalTest.*` 6/6; `node tools/rpc_parity_map.mjs` ledger
+      byte-unchanged (error-text-only change).
 
 ## Pitfall gates
 

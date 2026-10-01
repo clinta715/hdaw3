@@ -15,6 +15,8 @@
 #include "../../engine/SongStructureAudit.h"
 #include "../../common/FxCaptureStatus.h"
 #include "../../common/SettingsKeys.h"
+#include "../../common/AudioDeviceNameApply.h"
+
 #include "../../common/FmPatchLoad.h"
 #include "../../common/PresetApply.h"
 
@@ -286,9 +288,9 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         std::string name;
         if (!requireString(o, "name", name, nullptr))
             return makeError(-32602, "name required");
-        auto setup = dm.getAudioDeviceSetup();
-        setup.outputDeviceName = juce::String(name);
-        dm.setAudioDeviceSetup(setup, true);
+        const auto err = HDAW::applyOutputDeviceName(dm, juce::String(name));
+        if (err.isNotEmpty())
+            return makeError(-32602, QString::fromUtf8(err.toRawUTF8()));
         QSettings s;
         s.setValue(SettingsKeys::kKeyAudioOutputDevice, QString::fromStdString(name));
         return { false, QJsonValue::Null };
