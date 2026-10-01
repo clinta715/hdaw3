@@ -41,6 +41,27 @@ struct RoleCtx {
 
 } // namespace
 
+// The accepted section-kind vocabulary, in ONE place: kindFromName() resolves
+// against this table and sectionKindNameList() names the canonical spellings
+// from it, so the parse chain and every refusal text cannot drift.
+namespace {
+struct SectionKindAlias { const char* name; PsytranceSectionKind kind; };
+const SectionKindAlias kSectionKindAliases[] = {
+    { "intro",         PsytranceSectionKind::Intro },
+    { "build",         PsytranceSectionKind::Build },
+    { "buildup",       PsytranceSectionKind::Build },
+    { "maina",         PsytranceSectionKind::MainA },
+    { "main",          PsytranceSectionKind::MainA },
+    { "mini",          PsytranceSectionKind::Mini },
+    { "minibreak",     PsytranceSectionKind::Mini },
+    { "mainb",         PsytranceSectionKind::MainB },
+    { "breakdown",     PsytranceSectionKind::Breakdown },
+    { "truebreakdown", PsytranceSectionKind::Breakdown },
+    { "finale",        PsytranceSectionKind::Finale },
+    { "outro",         PsytranceSectionKind::Finale },
+};
+} // namespace
+
 PsytranceSectionKind PsytranceGenerator::kindFromName(const std::string& name)
 {
     std::string n;
@@ -52,14 +73,29 @@ PsytranceSectionKind PsytranceGenerator::kindFromName(const std::string& name)
             continue;                                  // tolerant: "main a", "mini-break"
         n.push_back(lower);
     }
-    if (n == "intro")               return PsytranceSectionKind::Intro;
-    if (n == "build" || n == "buildup") return PsytranceSectionKind::Build;
-    if (n == "maina" || n == "main") return PsytranceSectionKind::MainA;
-    if (n == "mini" || n == "minibreak") return PsytranceSectionKind::Mini;
-    if (n == "mainb")               return PsytranceSectionKind::MainB;
-    if (n == "breakdown" || n == "truebreakdown") return PsytranceSectionKind::Breakdown;
-    if (n == "finale" || n == "outro") return PsytranceSectionKind::Finale;
+    for (const auto& a : kSectionKindAliases)
+        if (n == a.name) return a.kind;
     return PsytranceSectionKind::Other;                 // full stack, like MainA
+}
+
+// "intro, build, maina, mini, mainb, breakdown, finale, other" — one canonical
+// spelling per kind (the FIRST alias in the table above), plus the literal
+// "other" escape hatch knownSectionKind accepts.
+std::string PsytranceGenerator::sectionKindNameList()
+{
+    std::string out;
+    bool seen[8] = { false };
+    for (const auto& a : kSectionKindAliases)
+    {
+        const int k = static_cast<int>(a.kind);
+        if (k < 0 || k >= 8 || seen[k]) continue;
+        seen[k] = true;
+        if (!out.empty()) out += ", ";
+        out += a.name;
+    }
+    if (!out.empty()) out += ", ";
+    out += "other";
+    return out;
 }
 
 PsytranceScore PsytranceGenerator::generate(const PsytranceParams& p)

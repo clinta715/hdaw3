@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -47,6 +48,18 @@ public:
     };
 
     static const char* shapeName(Shape s);
+
+    // ONE refusal for an unknown shape spelling — value + valid set, matching
+    // the spellings both surface parsers accept (ramp/adsr/sine/triangle/saw/
+    // square/pulse/staircase/sCurve/randomWalk/noise). The MCP tool and the RPC
+    // twin answer these exact bytes.
+    static std::string unknownShapeError(const std::string& name)
+    {
+        return "unknown shape: " + name +
+               " (valid: ramp, adsr, sine, triangle, saw, square, pulse, staircase, "
+               "sCurve, randomWalk, noise; case-sensitive)";
+    }
+
     static std::vector<std::pair<double, double>> generate(const Params& params);
     static std::vector<std::pair<double, double>> smooth(const std::vector<std::pair<double, double>>& points, double amount);
     static std::vector<std::pair<double, double>> clampDensity(const std::vector<std::pair<double, double>>& points, double maxPerSec, size_t maxPoints);

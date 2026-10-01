@@ -62,8 +62,17 @@ void registerModulationTools(McpServer& s, AudioEngine* e)
                 "phaseOffset", "targetParamID", "enabled" };
             std::string param = a.value("param").toString().toStdString();
             if (kParams.find(param) == kParams.end())
+            {
+                QString allowed;
+                for (const auto& p : kParams)
+                {
+                    if (!allowed.isEmpty()) allowed += ", ";
+                    allowed += QString::fromStdString(p);
+                }
                 return McpToolResult::text(
-                    QString("unknown param '%1'").arg(a.value("param").toString()), true);
+                    QString("unknown param '%1' (valid: %2)")
+                        .arg(a.value("param").toString(), allowed), true);
+            }
             e->getProjectCommands().setLfoParam(trackId, lfoIndex, param,
                                                 a.value("value").toDouble());
             return McpToolResult::text("ok");

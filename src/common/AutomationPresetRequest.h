@@ -95,7 +95,7 @@ inline bool parseAutomationPresetRequest(const QJsonObject& args,
             const auto p = AutomationPreset::presetFromName(pName.toStdString());
             if (! p)
             {
-                error = "unknown preset: " + pName.toStdString();
+                error = AutomationPreset::unknownPresetError(pName.toStdString());
                 return false;
             }
             w.preset = *p;
@@ -142,7 +142,7 @@ inline bool parseAutomationPresetRequest(const QJsonObject& args,
         const auto p = AutomationPreset::presetFromName(pName.toStdString());
         if (! p)
         {
-            error = "unknown preset: " + pName.toStdString();
+            error = AutomationPreset::unknownPresetError(pName.toStdString());
             return false;
         }
         if (! args.contains("start") || ! args.contains("end"))

@@ -525,7 +525,7 @@ so the render inputs cannot drift between surfaces.
     missing required argument fails with the MCP validator's exact bytes on both
     surfaces (`src/common/RenderToolArgs.h` is the single arg parser).
   - The expectation object is **STRICT**: an unknown key is refused with
-    `unknown expectation key <key>` (-32602) on both surfaces BEFORE any render.
+    `unknown expectation key <key> (valid: <the accepted keys>)` (-32602) on both surfaces BEFORE any render.
     Accepted keys and units: `rmsMin` (LINEAR RMS floor — the SAME units as the
     report's root `rms` and as `masterRms` — at least), `masterRms` (linear
     mono-downmix, within 5%), `ceilingHitPctMax` (percent of frames with any

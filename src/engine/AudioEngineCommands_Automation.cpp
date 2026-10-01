@@ -461,7 +461,7 @@ AudioEngineCommands::MovementPlanResult AudioEngineCommands::applyMovementPlan(
         const auto preset = HDAW::AutomationPreset::presetFromName(ev.preset);
         if (!preset)
         {
-            fail("unknown preset: " + ev.preset);
+            fail(HDAW::AutomationPreset::unknownPresetError(ev.preset));
             result.events.push_back(res); ++result.failCount;
             continue;
         }

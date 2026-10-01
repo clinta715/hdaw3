@@ -125,6 +125,25 @@ const char* PhraseGenerator::styleName(Style s)
     }
 }
 
+// Built from styleName() itself, so the refusal vocabulary cannot drift from
+// the table the (case-insensitive, separator-tolerant) parser matches against.
+std::string PhraseGenerator::styleNameList()
+{
+    std::string out;
+    for (int i = 0; i < (int) NumStyles; ++i)
+    {
+        if (!out.empty()) out += ", ";
+        out += styleName((Style) i);
+    }
+    return out;
+}
+
+std::string PhraseGenerator::unknownStyleError(const std::string& name)
+{
+    return "unknown style: " + name + " (valid: " + styleNameList()
+         + "; case-insensitive, spaces/hyphens optional)";
+}
+
 // ── Chord types ──
 
 const std::vector<PhraseGenerator::ChordType>& PhraseGenerator::getChordTypes()

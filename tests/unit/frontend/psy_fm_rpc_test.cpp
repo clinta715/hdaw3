@@ -160,4 +160,42 @@ TEST_F(PsyFmRpcTest, ErrorPaths)
                     .contains("not a psy_fm synth"));
 }
 
+// DEFECT-2 guard: an unknown preset is refused with the offending value AND the
+// allowed set on BOTH surfaces. The set is read from PsyFmState's own preset
+// table — the RPC handler reports unknownPresetError() and the MCP enum is built
+// from the same table, so the schema refusal names the same names.
+TEST_F(PsyFmRpcTest, UnknownPresetRefusalNamesValueAndSetOnBothSurfaces)
+{
+    const auto viaRpc = callRaw("psy_fm.loadPreset",
+                                QJsonObject{ { "trackIndex", 0 }, { "slotIndex", 0 },
+                                             { "preset", "bogus" } });
+    ASSERT_TRUE(viaRpc.isError);
+    EXPECT_EQ(viaRpc.payload.toObject().value("message").toString(),
+              "unknown preset: bogus (valid: growlBass, acidLead, metallicPluck, riser)");
+    EXPECT_EQ(viaRpc.payload.toObject().value("code").toInt(), -32602);
+
+    const auto mcp = server.handleRequestOnTestThread(
+        1, "tools/call",
+        QJsonObject{ { "name", "psy_fm_load_preset" },
+                     { "arguments", QJsonObject{ { "trackId", 0 }, { "slotIndex", 0 },
+                                                 { "preset", "bogus" } } } }).toObject();
+    ASSERT_TRUE(mcp.value("isError").toBool());
+    const QString mcpText = mcp.value("content").toArray().at(0).toObject()
+                                .value("text").toString();
+    EXPECT_TRUE(mcpText.contains("\"bogus\"")) << mcpText.toStdString();
+    for (const char* name : { "growlBass", "acidLead", "metallicPluck", "riser" })
+        EXPECT_TRUE(mcpText.contains(name)) << name << ": " << mcpText.toStdString();
+
+    // A known preset still loads on both surfaces — the refusal is not blanket.
+    EXPECT_FALSE(callRaw("psy_fm.loadPreset",
+                         QJsonObject{ { "trackIndex", 0 }, { "slotIndex", 0 },
+                                      { "preset", "acidLead" } }).isError);
+    const auto okMcp = server.handleRequestOnTestThread(
+        1, "tools/call",
+        QJsonObject{ { "name", "psy_fm_load_preset" },
+                     { "arguments", QJsonObject{ { "trackId", 0 }, { "slotIndex", 0 },
+                                                 { "preset", "acidLead" } } } }).toObject();
+    EXPECT_FALSE(okMcp.value("isError").toBool());
+}
+
 } // namespace

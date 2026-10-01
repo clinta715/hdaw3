@@ -7,19 +7,22 @@
 // live inline in the MCP lambda; it is moved here verbatim so a twin route
 // cannot drift, including the three exact error strings:
 //   "rootMidi must be in 0..127"
-//   "unknown scale: " + <name>
+//   "unknown scale: " + <name> + " (valid: " + <the mode names> + ")"
 //   "degree out of range: computed pitch falls outside 0..127"
 //
 // The scale-NAME parser is NOT re-implemented: HDAW::resolveScaleModeIndex()
 // (src/common/KeyConflict.h) is the one resolver — it accepts the canonical
 // name ("Minor (Aeolian)"), the short form ("minor"), and the parenthetical
-// mode alias ("aeolian"), case-insensitively.
+// mode alias ("aeolian"), case-insensitively. The allowed set in the refusal
+// text is read from the SAME table that resolver walks
+// (PhraseGenerator::getScaleModes) via HDAW::scaleNameList()
+// (src/common/KeyConflict.h), so the two cannot drift.
 
 #include <QJsonObject>
 #include <QString>
 
 #include "../engine/PhraseGenerator.h"
-#include "KeyConflict.h"   // HDAW::resolveScaleModeIndex
+#include "KeyConflict.h"   // HDAW::resolveScaleModeIndex / HDAW::scaleNameList
 
 #include <string>
 
@@ -45,7 +48,8 @@ inline ScaleNoteResult resolveScaleNote(int rootMidi, const QString& scaleName,
 
     const int scaleIdx = resolveScaleModeIndex(scaleName.toStdString());
     if (scaleIdx < 0) {
-        r.error = "unknown scale: " + scaleName.toStdString();
+        r.error = "unknown scale: " + scaleName.toStdString()
+                  + " (valid: " + scaleNameList() + ")";
         return r;
     }
 

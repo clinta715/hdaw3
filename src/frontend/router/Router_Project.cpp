@@ -544,12 +544,30 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         // the FX-type string. Accept either `position` (canonical) or
         // `slotIndex` (frontend spelling) for the insertion index; default
         // -1 = append. Both spellings are tolerated silently.
-        if (o.contains("type") && o.value("type").isString())
+        // Twin of the MCP add_fx handler: the internal enum spellings, OR
+        // `pluginId` ALONE (the plugin route — mirror of the handler's
+        // `if (type.empty() && a.contains("pluginId")) type = "plugin";`).
+        // An EXPLICIT type/fxType of "plugin" is refused regardless of
+        // pluginId: fxType enumerates the INTERNAL types only, so
+        // fxType:"plugin" with an empty pluginId would otherwise create an
+        // inert placeholder slot silently (MCP refuses the same spelling at
+        // the schema enum gate).
+        bool explicitPluginType = false;
+        if (o.contains("type") && o.value("type").isString()) {
             type = o.value("type").toString().toStdString();
-        else if (o.contains("fxType") && o.value("fxType").isString())
+            explicitPluginType = (type == "plugin");
+        } else if (o.contains("fxType") && o.value("fxType").isString()) {
             type = o.value("fxType").toString().toStdString();
-        else
+            explicitPluginType = (type == "plugin");
+        } else if (o.contains("pluginId") && o.value("pluginId").isString()) {
+            type = "plugin";
+        } else {
             return makeError(-32602, "type (or fxType) required");
+        }
+        if (explicitPluginType)
+            return makeError(-32602,
+                "fxType \"plugin\" is not accepted: pass pluginId for a VST3/CLAP plugin "
+                "(fxType enumerates the internal types only)");
         if (o.contains("position") && o.value("position").isDouble())
             pos = static_cast<int>(o.value("position").toDouble());
         else if (o.contains("slotIndex") && o.value("slotIndex").isDouble())
@@ -1007,7 +1025,8 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
             return makeError(-32602, "shape required");
 
         auto shape = parseShape(shapeStr);
-        if (!shape) return makeError(-32602, QString::fromStdString("unknown shape: " + shapeStr));
+        if (!shape) return makeError(-32602, QString::fromStdString(
+            HDAW::EnvelopeGenerator::unknownShapeError(shapeStr)));
 
         HDAW::EnvelopeGenerator::Params params;
         params.shape = *shape;
@@ -1035,7 +1054,8 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
             return makeError(-32602, "shape required");
 
         auto shape = parseShape(shapeStr);
-        if (!shape) return makeError(-32602, QString::fromStdString("unknown shape: " + shapeStr));
+        if (!shape) return makeError(-32602, QString::fromStdString(
+            HDAW::EnvelopeGenerator::unknownShapeError(shapeStr)));
 
         HDAW::EnvelopeGenerator::Params params;
         params.shape = *shape;
@@ -1065,7 +1085,8 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
             return makeError(-32602, "shape required");
 
         auto shape = parseShape(shapeStr);
-        if (!shape) return makeError(-32602, QString::fromStdString("unknown shape: " + shapeStr));
+        if (!shape) return makeError(-32602, QString::fromStdString(
+            HDAW::EnvelopeGenerator::unknownShapeError(shapeStr)));
 
         HDAW::EnvelopeGenerator::Params params;
         params.shape = *shape;

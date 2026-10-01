@@ -56,39 +56,56 @@ public:
         std::vector<EnvelopeGenerator::Params> segments;
     };
 
+    // The preset-name vocabulary, in ONE place: presetName() / presetFromName()
+    // / presetNameList() all read this table, so the parser and every refusal
+    // text name the same set.
+    struct PresetNameEntry { Preset preset; const char* name; };
+    inline static const PresetNameEntry kPresetNames[] = {
+        { Preset::Pump,       "pump" },
+        { Preset::Macro,      "macro" },
+        { Preset::OpenClose,  "openClose" },
+        { Preset::Riser,      "riser" },
+        { Preset::Sine,       "sine" },
+        { Preset::Square,     "square" },
+        { Preset::SubtleLife, "subtleLife" },
+        { Preset::RandomDrift,"randomDrift" },
+        { Preset::SteppedGate,"steppedGate" },
+        { Preset::PhaseSweep, "phaseSweep" },
+        { Preset::DelayThrow, "delayThrow" }
+    };
+    inline static constexpr std::size_t kPresetNameCount =
+        sizeof(kPresetNames) / sizeof(kPresetNames[0]);
+
     static const char* presetName(Preset p)
     {
-        switch (p)
-        {
-            case Preset::Pump:      return "pump";
-            case Preset::Macro:     return "macro";
-            case Preset::OpenClose: return "openClose";
-            case Preset::Riser:     return "riser";
-            case Preset::Sine:        return "sine";
-            case Preset::Square:      return "square";
-            case Preset::SubtleLife:  return "subtleLife";
-            case Preset::RandomDrift: return "randomDrift";
-            case Preset::SteppedGate: return "steppedGate";
-            case Preset::PhaseSweep:  return "phaseSweep";
-            case Preset::DelayThrow:  return "delayThrow";
-            default:                  return "pump";
-        }
+        for (std::size_t i = 0; i < kPresetNameCount; ++i)
+            if (kPresetNames[i].preset == p) return kPresetNames[i].name;
+        return kPresetNames[0].name;   // out-of-range enum → the default recipe
     }
 
     static std::optional<Preset> presetFromName(const std::string& name)
     {
-        if (name == "pump")      return Preset::Pump;
-        if (name == "macro")     return Preset::Macro;
-        if (name == "openClose") return Preset::OpenClose;
-        if (name == "riser")     return Preset::Riser;
-        if (name == "sine")        return Preset::Sine;
-        if (name == "square")      return Preset::Square;
-        if (name == "subtleLife")  return Preset::SubtleLife;
-        if (name == "randomDrift") return Preset::RandomDrift;
-        if (name == "steppedGate") return Preset::SteppedGate;
-        if (name == "phaseSweep")  return Preset::PhaseSweep;
-        if (name == "delayThrow")  return Preset::DelayThrow;
+        for (std::size_t i = 0; i < kPresetNameCount; ++i)
+            if (name == kPresetNames[i].name) return kPresetNames[i].preset;
         return std::nullopt;
+    }
+
+    // "pump, macro, openClose, ..." — built from kPresetNames so it cannot drift.
+    static std::string presetNameList()
+    {
+        std::string out;
+        for (std::size_t i = 0; i < kPresetNameCount; ++i)
+        {
+            if (!out.empty()) out += ", ";
+            out += kPresetNames[i].name;
+        }
+        return out;
+    }
+
+    // ONE refusal text for an unknown preset name (value + the allowed set).
+    static std::string unknownPresetError(const std::string& name)
+    {
+        return "unknown preset: " + name + " (valid: " + presetNameList() + ")";
     }
 
     struct PresetDoc

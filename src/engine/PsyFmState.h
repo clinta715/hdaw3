@@ -141,7 +141,9 @@ struct PresetDef
     const char* matrix;   // encoded routes
 };
 
-inline const PresetDef* findPreset (const std::string& name)
+// The preset table — ONE place. findPreset(), presetNames() and the refusal
+// text below all read it, so a preset can never be loadable but unnameable.
+inline const PresetDef* presetTable (std::size_t& count)
 {
     static const PresetDef presets[] = {
         { "growlBass",
@@ -186,9 +188,49 @@ inline const PresetDef* findPreset (const std::string& name)
           "barClock:ratioSweepRate:1;ratioSweepLFO:op4Ratio:0.3" },
     };
 
-    for (const auto& p : presets)
-        if (name == p.name) return &p;
+    count = sizeof(presets) / sizeof(presets[0]);
+    return presets;
+}
+
+inline const PresetDef* findPreset (const std::string& name)
+{
+    std::size_t count = 0;
+    const PresetDef* presets = presetTable (count);
+    for (std::size_t i = 0; i < count; ++i)
+        if (name == presets[i].name) return &presets[i];
     return nullptr;
+}
+
+/// The preset vocabulary, in table order (names only).
+inline std::vector<const char*> presetNames()
+{
+    std::size_t count = 0;
+    const PresetDef* presets = presetTable (count);
+    std::vector<const char*> names;
+    names.reserve (count);
+    for (std::size_t i = 0; i < count; ++i) names.push_back (presets[i].name);
+    return names;
+}
+
+/// "growlBass, acidLead, metallicPluck, riser" — built from the table so it
+/// cannot drift from what findPreset() actually loads.
+inline std::string presetNameList()
+{
+    std::size_t count = 0;
+    const PresetDef* presets = presetTable (count);
+    std::string out;
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        if (!out.empty()) out += ", ";
+        out += presets[i].name;
+    }
+    return out;
+}
+
+/// ONE refusal text for an unknown preset name (value + the allowed set).
+inline std::string unknownPresetError (const std::string& name)
+{
+    return "unknown preset: " + name + " (valid: " + presetNameList() + ")";
 }
 
 /// True if `name` is one of the four known presets.

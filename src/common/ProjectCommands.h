@@ -1119,6 +1119,14 @@ public:
         int data1 = 0;     // PC: program 0..127; CC: controller; note: pitch
         int data2 = 0;     // CC value / note velocity (0..127)
         std::vector<uint8_t> sysex;  // Kind::SysEx only: raw bytes incl. F0..F7 (1..32768)
+
+        // ONE refusal for an unknown message/event kind — value + valid set.
+        // The MCP send_fx_midi tool and the RPC twin answer these exact bytes.
+        static std::string unknownKindError(const std::string& kind)
+        {
+            return "unknown message kind: " + kind +
+                   " (valid: programChange, controlChange, noteOn, noteOff, sysEx)";
+        }
     };
     struct FxMidiParams {
         int trackIndex = -1;

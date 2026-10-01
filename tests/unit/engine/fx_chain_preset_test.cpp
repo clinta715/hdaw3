@@ -355,14 +355,19 @@ TEST(FxChainPreset, ApplyErrorPathsLeaveChainUnchanged)
     EXPECT_FALSE(commands.applyFxChain(999, valid, &error));
     EXPECT_EQ(treeFxSlotCount(engine, 0), 0);
 
-    // Unknown fxType.
+    // Unknown fxType: the refusal names the offending value AND the accepted
+    // set, read from the ONE name list beside the getParamDefsForType if-chain
+    // (plus the separately-handled plugin/none).
     HDAW::ChainPreset badType;
     HDAW::ChainPreset::Slot n;
     n.fxType = "not_a_real_fx";
     badType.slots = { n };
     error.clear();
     EXPECT_FALSE(commands.applyFxChain(0, badType, &error));
-    EXPECT_FALSE(error.isEmpty());
+    EXPECT_EQ(error,
+              "applyFxChain: slot 0: unknown fxType 'not_a_real_fx' (valid: reverb, "
+              "compressor, eq, delay, chorus, flanger, phaser, filter, saturator, sampler, "
+              "fm_synth, growl_bass, psyarp, psy_fm, sub_synth, plugin, none)");
     EXPECT_EQ(treeFxSlotCount(engine, 0), 0);
 
     // Param index beyond the def count for compressor.
@@ -381,4 +386,21 @@ TEST(FxChainPreset, ApplyErrorPathsLeaveChainUnchanged)
     auto* track = engine.getMainProcessor()->getTrack(0);
     ASSERT_NE(track, nullptr);
     EXPECT_EQ(track->getFXChain().size(), 0u);
+}
+
+// The vocabulary applyFxChain's unknown-fxType refusal names comes from
+// TrackFXSlot::internalFxTypeNames(), which sits beside the getParamDefsForType
+// if-chain it describes. Pin the correspondence: every listed name must have
+// real param defs, and the two separately-handled names must not (the caller
+// accepts them without defs, so they must stay out of the list).
+TEST(FxChainPreset, InternalFxTypeNameListMatchesParamDefs)
+{
+    const auto names = HDAW::TrackFXSlot::internalFxTypeNames();
+    ASSERT_EQ(names.size(), 15u);   // reverb..sub_synth; the if-chain's types
+    for (const auto& n : names)
+        EXPECT_FALSE(HDAW::TrackFXSlot::getParamDefsForType(n).empty()) << n.toStdString();
+
+    EXPECT_TRUE(HDAW::TrackFXSlot::getParamDefsForType("plugin").empty());
+    EXPECT_TRUE(HDAW::TrackFXSlot::getParamDefsForType("none").empty());
+    EXPECT_TRUE(HDAW::TrackFXSlot::getParamDefsForType("not_a_real_fx").empty());
 }

@@ -82,6 +82,11 @@ class PsytranceGenerator
 public:
     static PsytranceSectionKind kindFromName(const std::string& name);
 
+    // The accepted kind spellings, built from the SAME alias table kindFromName
+    // resolves against (one canonical spelling per kind, plus the literal
+    // "other") — the refusal text reads this so the set cannot drift.
+    static std::string sectionKindNameList();
+
     // Pure function: params → per-role note vectors. Deterministic for a
     // given seed; rng is consumed in a fixed section/bar/beat order so the
     // same seed + params reproduce the exact same score. On invalid params it

@@ -382,7 +382,8 @@ TEST_F(VerifyWindowParity, UnknownExpectationKeyIsRefusedBeforeAnyRender) {
                            {"outputPath", wav}};
     expectSameFailure("verify_window", "composition.verifyWindow", args);
     EXPECT_EQ(mcpText("verify_window", args),
-              QString("unknown expectation key totallyBogusKey"));
+              QString("unknown expectation key totallyBogusKey (valid: rmsMin, masterRms, "
+                      "ceilingHitPctMax, kickProminenceMin, targetDurationSeconds)"));
     EXPECT_FALSE(QFileInfo::exists(wav))
         << "the strict-key refusal must happen BEFORE the render (no WAV written)";
 
@@ -394,7 +395,8 @@ TEST_F(VerifyWindowParity, UnknownExpectationKeyIsRefusedBeforeAnyRender) {
                              {"outputPath", dbWav}};
     expectSameFailure("verify_window", "composition.verifyWindow", dbArgs);
     EXPECT_EQ(mcpText("verify_window", dbArgs),
-              QString("unknown expectation key rmsMinDb"));
+              QString("unknown expectation key rmsMinDb (valid: rmsMin, masterRms, "
+                      "ceilingHitPctMax, kickProminenceMin, targetDurationSeconds)"));
     EXPECT_FALSE(QFileInfo::exists(dbWav))
         << "the rmsMinDb refusal must happen BEFORE the render (no WAV written)";
 

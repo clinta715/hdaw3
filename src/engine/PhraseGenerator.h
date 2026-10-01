@@ -80,6 +80,15 @@ public:
     };
     static const char* styleName(Style s);
 
+    // ONE refusal for an unknown style name for the case-insensitive,
+    // separator-tolerant parser (AudioEngineCommands_Song.cpp
+    // phraseStyleFromName): value + the full vocabulary, built by walking
+    // styleName() itself so it cannot drift. NOT the same set as the
+    // case-sensitive API parser in AudioEngineCommands_Composition.cpp, which
+    // owns its own (10-name) refusal.
+    static std::string styleNameList();                       // styleName(i) for i in [0, NumStyles)
+    static std::string unknownStyleError(const std::string& name);
+
     // ── Shared params ──
     struct BaseParams {
         int scaleRoot = 0;

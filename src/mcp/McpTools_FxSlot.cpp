@@ -137,7 +137,7 @@ void registerFxSlotTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"add_fx",
-        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, OR a pluginId. " +
+        "Add an FX slot. fxType enumerates the INTERNAL types only: {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}. For a VST3/CLAP plugin pass pluginId INSTEAD of fxType — fxType:\"plugin\" is NOT accepted (\"plugin\" is read-only output of list_fx, never an input). " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
                   {"trackID",  QJsonObject{{"type","integer"}}},
@@ -590,7 +590,8 @@ s.registerTool({"send_fx_midi",
                 for (const auto& b : byteArr)
                     ev.sysex.push_back(static_cast<uint8_t>(b.toInt()));
             }
-            else return McpToolResult::text("unknown message kind: " + QString::fromStdString(kind), true);
+            else return McpToolResult::text(QString::fromStdString(
+                ProjectCommands::FxMidiEvent::unknownKindError(kind)), true);
             p.events.push_back(ev);
         }
         auto r = e->getProjectCommands().sendFxMidi(p);

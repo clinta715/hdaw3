@@ -167,6 +167,67 @@ TEST_F(SongPlanRpcTest, BatchSetCellRecipesPartialFailureMatchesMcp) {
     EXPECT_FALSE(viaRpc.toObject().value("ok").toBool());
 }
 
+// G2 (P4-c): a swept engine-layer enum refusal names the offending value AND
+// the allowed set — byte-identically on BOTH surfaces, because the text comes
+// from the ONE helper that owns the set_cell vocabulary:
+// PhraseGenerator::unknownStyleError, built by walking PhraseGenerator's own
+// styleName() table. That vocabulary is NOT the case-sensitive 10-name API list
+// generatePhrase/auditionPlugin accept (see the acceptance test below). A wrong
+// STRING style on a phrase cell is the case a schema enum cannot catch (params
+// is a free object), so the handler refusal is the whole contract here.
+TEST_F(SongPlanRpcTest, PhraseStyleRefusalNamesValueAndSetOnBothSurfaces) {
+    setPlan();
+    const QJsonObject args {
+        { "section", "intro" }, { "role", "bass" }, { "trackId", 1 },
+        { "source", "phrase" }, { "params", QJsonObject{ { "style", "bogusStyle" } } } };
+
+    const QString expected =
+        "unknown style: bogusStyle (valid: Standard, Arpeggio, Bass Line, Chord Stab, Pad, "
+        "Lead, Random Walk, Buildup, Euclidean, Percussion, Trap Hi-Hat, Drill Bass, "
+        "Counterpoint, Walking Bass, Swing Comping, Markov Melody, Evolving Texture, "
+        "Aleatoric, Scalar Run, Chord Tone Seq, Call & Response, Phase Shift, "
+        "Additive Rhythm, Minimalist Loop, Layered, Motif Stitch; case-insensitive, "
+        "spaces/hyphens optional)";
+
+    const QString viaMcp = mcpText("set_cell", args);
+    EXPECT_EQ(viaMcp, expected);
+    EXPECT_TRUE(mcpResult("set_cell", args).value("isError").toBool());
+
+    const auto viaRpc = rpcError("composition.setCellRecipe", args);
+    EXPECT_EQ(viaRpc.value("message").toString(), expected);
+    EXPECT_EQ(viaRpc.value("code").toInt(), -32602);
+
+    // Nothing was written for the refused cell.
+    EXPECT_TRUE(engine->getProjectCommands().getCells().empty());
+}
+
+// G1 (the conflation guard): a style the set_cell parser ACCEPTS but that is
+// absent from the 10-name case-sensitive API list generatePhrase/auditionPlugin
+// use — "TrapHiHat", plus a case/separator-tolerant variant — must be accepted
+// by set_cell on both surfaces. Before the fix the set_cell refusal reused that
+// narrower list and wrongly refused these exact inputs.
+TEST_F(SongPlanRpcTest, PhraseStyleAcceptsPhraseGeneratorOnlyStylesOnBothSurfaces) {
+    setPlan();
+    for (const char* style : { "TrapHiHat", "trap hi-hat" }) {
+        const QJsonObject args {
+            { "section", "intro" }, { "role", "lead" }, { "trackId", 1 },
+            { "source", "phrase" },
+            { "params", QJsonObject{ { "style", style } } } };
+
+        const QJsonObject mcp = mcpResult("set_cell", args);
+        EXPECT_FALSE(mcp.value("isError").toBool())
+            << "set_cell refused style '" << style << "': "
+            << mcp.value("content").toArray().at(0).toObject().value("text")
+                   .toString().toStdString();
+        EXPECT_TRUE(mcpText("set_cell", args).startsWith("ok: cell intro/lead"));
+
+        const QJsonValue viaRpc = rpcPayload("composition.setCellRecipe", args);
+        EXPECT_TRUE(viaRpc.toObject().value("ok").toBool()) << style;
+
+        EXPECT_EQ(engine->getProjectCommands().getCells().size(), 1u) << style;
+    }
+}
+
 // G2: the arrangement-variety audit payload is identical across surfaces, both with
 // and without a plan.
 TEST_F(SongPlanRpcTest, AuditSongStructureMatchesMcp) {
@@ -695,6 +756,84 @@ TEST_F(KeyCheckTest, McpRpcParity)
             << QJsonDocument(args).toJson(QJsonDocument::Compact).constData();
         EXPECT_EQ(err.value("code").toInt(), -32602);
     }
+}
+
+// ── P4-a (2026-09-30): `brief` accepts object OR JSON string on BOTH surfaces.
+// The MCP schema used to declare {"type":"object"} while the handler (and the
+// RPC twin) accepted a JSON string too, so the advertised string form was
+// schema-refused before the handler ran. The validator now supports the
+// standard JSON-Schema type array and the schema declares both — so a string
+// brief must apply EXACTLY the plan the equivalent object brief applies.
+TEST_F(SongPlanRpcTest, StringBriefAppliesTheSamePlanAsObjectBrief)
+{
+    const QJsonObject brief {
+        { "bpm", 140.0 }, { "keyRoot", 5 }, { "scaleMode", 7 },
+        { "style", "full-on" }, { "seed", 42.0 }, { "totalBars", 16 },
+        { "sections", QJsonArray {
+            QJsonObject{ { "name", "intro" }, { "type", "intro" }, { "bars", 8 } },
+            QJsonObject{ { "name", "drop" }, { "type", "drop" }, { "bars", 8 } } } } };
+
+    const QString briefJson = QString::fromUtf8(QJsonDocument(brief).toJson(QJsonDocument::Compact));
+
+    const QJsonValue viaString = mcpValue("apply_song_brief",
+        QJsonObject{ { "brief", briefJson } });
+    ASSERT_FALSE(viaString.toObject().isEmpty())
+        << mcpResult("apply_song_brief", QJsonObject{ { "brief", briefJson } })
+               .value("content").toArray().at(0).toObject().value("text").toString().toStdString();
+    EXPECT_EQ(viaString.toObject().value("bpm").toDouble(), 140.0);
+    EXPECT_EQ(viaString.toObject().value("totalBars").toInt(), 16);
+    EXPECT_EQ(viaString.toObject().value("sections").toArray().size(), 2);
+
+    const QJsonValue viaObject = mcpValue("apply_song_brief", QJsonObject{ { "brief", brief } });
+    // Compare the PLAN, not the payload: `apply_song_brief` echoes per-call
+    // bookkeeping (regionsCreated vs regionsUpdated), and the second apply on
+    // the same engine legitimately reports different counters — so whole-payload
+    // equality can never hold. The plan itself must be identical.
+    const auto planFields = [](const QJsonValue& v) {
+        const QJsonObject o = v.toObject();
+        QJsonArray secs;
+        for (const auto& sv : o.value("sections").toArray()) {
+            const QJsonObject s = sv.toObject();
+            secs.append(QJsonObject{ { "name", s.value("name") },
+                                     { "kind", s.value("kind") },
+                                     { "startBeat", s.value("startBeat") },
+                                     { "endBeat", s.value("endBeat") },
+                                     { "bars", s.value("bars") } });
+        }
+        return QJsonObject{ { "bpm", o.value("bpm") },
+                            { "keyRoot", o.value("keyRoot") },
+                            { "scaleMode", o.value("scaleMode") },
+                            { "seed", o.value("seed") },
+                            { "style", o.value("style") },
+                            { "totalBars", o.value("totalBars") },
+                            { "sections", secs } };
+    };
+    EXPECT_EQ(planFields(viaObject), planFields(viaString))
+        << "string and object briefs must apply the identical plan";
+
+    // The RPC twin keeps accepting both spellings too.
+    const auto rpcStr = rpc("composition.applySongBrief",
+        QJsonObject{ { "brief", briefJson } });
+    ASSERT_FALSE(rpcStr.isError)
+        << rpcStr.payload.toObject().value("message").toString().toStdString();
+    const auto rpcObj = rpc("composition.applySongBrief", QJsonObject{ { "brief", brief } });
+    ASSERT_FALSE(rpcObj.isError)
+        << rpcObj.payload.toObject().value("message").toString().toStdString();
+}
+
+// The advertised contract is now IN the schema: brief.type is the standard
+// JSON-Schema type array ["object","string"].
+TEST_F(SongPlanRpcTest, BriefSchemaDeclaresObjectAndString)
+{
+    const auto def = server->tools().value("apply_song_brief");
+    ASSERT_FALSE(def.name.isEmpty());
+    const auto t = def.inputSchema.value("properties").toObject()
+                       .value("brief").toObject().value("type");
+    ASSERT_TRUE(t.isArray());
+    const QJsonArray types = t.toArray();
+    ASSERT_EQ(types.size(), 2);
+    EXPECT_EQ(types.at(0).toString(), "object");
+    EXPECT_EQ(types.at(1).toString(), "string");
 }
 
 } // namespace

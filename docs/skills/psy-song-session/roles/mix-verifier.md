@@ -104,7 +104,7 @@ Two costs/rules bind it:
 The expectation keys are STRICT — `rmsMin` (LINEAR RMS floor, the same units as
 the report's `rms`), `masterRms` (within 5%), `ceilingHitPctMax`,
 `kickProminenceMin` (0..1), `targetDurationSeconds` — and any other key is
-refused `unknown expectation key <key>` BEFORE any render (`expect` is an
+refused `unknown expectation key <key> (valid: <the accepted keys>)` BEFORE any render (`expect` is an
 accepted alias of `targets`). The rendered WAV is KEPT for A/B and is YOURS to
 delete.
 `render_and_verify {outputPath, targets?, timeoutMs?, fromPlan?, dropBuildRatio?,

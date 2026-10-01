@@ -345,3 +345,28 @@ TEST(PhraseGeneratorNewStyles, AdditiveRhythm_AlternativeGrouping)
     ASSERT_FALSE(notes.empty());
     EXPECT_EQ(notes.size(), 8u);
 }
+
+// The refusal vocabulary the case-insensitive, separator-tolerant parser
+// (set_cell / phraseStyleFromName) reports is built by walking styleName()
+// itself, so it covers EVERY style — including the ones the narrower
+// case-sensitive API list (generatePhrase/auditionPlugin) does not accept.
+TEST(PhraseGeneratorNewStyles, UnknownStyleRefusalNamesEveryStyleFromTheTable)
+{
+    const std::string list = PhraseGenerator::styleNameList();
+
+    int names = list.empty() ? 0 : 1;
+    for (char c : list) if (c == ',') ++names;
+    EXPECT_EQ(names, (int) PhraseGenerator::NumStyles);
+
+    for (int i = 0; i < (int) PhraseGenerator::NumStyles; ++i)
+        EXPECT_NE(list.find(PhraseGenerator::styleName((PhraseGenerator::Style) i)),
+                  std::string::npos)
+            << "style index " << i << " missing from: " << list;
+
+    EXPECT_NE(list.find("Trap Hi-Hat"), std::string::npos) << list;
+    EXPECT_NE(list.find("Motif Stitch"), std::string::npos) << list;
+
+    EXPECT_EQ(PhraseGenerator::unknownStyleError("bogusStyle"),
+              "unknown style: bogusStyle (valid: " + list
+                  + "; case-insensitive, spaces/hyphens optional)");
+}

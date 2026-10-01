@@ -1,5 +1,6 @@
 #include "McpSchema.h"
 #include <QJsonArray>
+#include <QStringList>
 
 namespace mcp {
 
@@ -14,11 +15,35 @@ static bool typeMatches(const QJsonValue& v, const QString& t) {
     return true;
 }
 
+// The offending scalar rendered for refusal text: strings quoted, the rest bare.
+static QString enumValueText(const QJsonValue& v) {
+    if (v.isString()) return "\"" + v.toString() + "\"";
+    if (v.isBool())   return v.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+    if (v.isDouble()) return QString::number(v.toDouble());
+    if (v.isNull())   return QStringLiteral("null");
+    if (v.isArray())  return QStringLiteral("[array]");
+    if (v.isObject()) return QStringLiteral("[object]");
+    return QStringLiteral("undefined");
+}
+
 static std::optional<SchemaError> validateInner(const QJsonValue& v, const QJsonObject& s,
                                                 const QString& path) {
     if (s.contains("type")) {
-        auto t = s.value("type").toString();
-        if (!typeMatches(v, t)) return SchemaError{path, "expected " + t};
+        const auto tv = s.value("type");
+        if (tv.isArray()) {
+            // Standard JSON-Schema union: "type": ["object", "string"].
+            QStringList names, hits;
+            for (const auto& t : tv.toArray()) {
+                const QString name = t.toString();
+                names << name;
+                if (typeMatches(v, name)) hits << name;
+            }
+            if (hits.isEmpty())
+                return SchemaError{path, "expected one of " + names.join(", ")};
+        } else {
+            auto t = tv.toString();
+            if (!typeMatches(v, t)) return SchemaError{path, "expected " + t};
+        }
     }
     if (s.contains("enum")) {
         auto e = s.value("enum").toArray();
@@ -26,7 +51,18 @@ static std::optional<SchemaError> validateInner(const QJsonValue& v, const QJson
         for (const auto& ev : e) {
             if (ev == v) { found = true; break; }
         }
-        if (!found) return SchemaError{path, "value not in enum"};
+        if (!found) {
+            // The refusal names the offending value AND the allowed set — the
+            // set comes from THIS schema (the one source of truth the caller
+            // passed), never a hand-copied list.
+            QString allowed;
+            for (const auto& ev : e) {
+                if (!allowed.isEmpty()) allowed += ", ";
+                allowed += enumValueText(ev);
+            }
+            return SchemaError{path, "value " + enumValueText(v)
+                                     + " not in enum (allowed: " + allowed + ")"};
+        }
     }
     if (v.isDouble() && (s.contains("minimum") || s.contains("maximum"))) {
         double d = v.toDouble();

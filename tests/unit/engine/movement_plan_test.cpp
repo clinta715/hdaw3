@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "engine/AudioEngine.h"
+#include "engine/AutomationPreset.h"
 #include "common/ProjectCommands.h"
 #include "model/ProjectModel.h"
 
@@ -176,7 +177,13 @@ TEST(MovementPlan, UnknownPresetAndBadWindowRejected)
     auto r1 = cmds.applyMovementPlan({ makeEv(0, "wobble", 0.0, 8.0) });
     EXPECT_EQ(r1.failCount, 1);
     EXPECT_EQ(r1.okCount, 0);
-    EXPECT_EQ(r1.events[0].error, "unknown preset: wobble");
+    // P4-c: the refusal names the offending value AND the allowed set, built
+    // from AutomationPreset's own name table.
+    EXPECT_EQ(r1.events[0].error,
+              HDAW::AutomationPreset::unknownPresetError("wobble"));
+    EXPECT_EQ(r1.events[0].error,
+              "unknown preset: wobble (valid: pump, macro, openClose, riser, sine, square, "
+              "subtleLife, randomDrift, steppedGate, phaseSweep, delayThrow)");
 
     auto r2 = cmds.applyMovementPlan({ makeEv(0, "pump", 8.0, 8.0) });
     EXPECT_EQ(r2.failCount, 1);

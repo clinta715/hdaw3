@@ -189,7 +189,7 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
         "Returns the resolved plan {ok, briefApplied, bpm, keyRoot, scaleMode, seed, style, totalBars, "
         "regionsCreated, regionsUpdated, warnings[], sections:[{name, kind, startBeat, endBeat, bars}]}. "
         "One atomic undoable step.",
-        objSchema({ { "brief", QJsonObject{ { "type", "object" } } } }, { "brief" }),
+        objSchema({ { "brief", QJsonObject{ { "type", QJsonArray{ "object", "string" } } } } }, { "brief" }),
         "composition",
         [e](const QJsonObject& a) -> McpToolResult {
             const auto bv = a.value("brief");

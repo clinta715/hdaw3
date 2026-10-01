@@ -254,6 +254,6 @@ not silently dropped (lesson 34).
 `rmsMin` (LINEAR RMS floor, same units as the report's `rms`), `masterRms`
 (within 5%), `ceilingHitPctMax`, `kickProminenceMin` (0..1), and
 `targetDurationSeconds`; any other key is refused `unknown expectation key
-<key>` BEFORE any render.
+<key> (valid: <the accepted keys>)` BEFORE any render.
 Evidence: `docs/plans/2026-09-28-agent-mechanization.md` §1–§7;
 `docs/handoffs/2026-09-28-agent-mechanization-shipped.md` §2–§3.

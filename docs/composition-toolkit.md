@@ -306,7 +306,8 @@ ceilingHitFrames`) to the payload ROOT, so `targets` gates the window and not th
 song; payload `{ok, wavPath, window:{startBeat,endBeat,startSec,endSec,durationSec},
 report, targetChecks, targetsOk}`. Its expectation keys are **STRICT** — `targets`/`expect`
 accept ONLY `rmsMin`, `masterRms`, `ceilingHitPctMax`, `kickProminenceMin`,
-`targetDurationSeconds`; an unknown key is refused (`unknown expectation key <key>`,
+`targetDurationSeconds`; an unknown key is refused (`unknown expectation key <key> (valid: <the
+accepted keys>)`,
 −32602 on BOTH surfaces) BEFORE any render (`src/common/RenderToolArgs.h`). `rmsMin` is a
 LINEAR RMS floor in the SAME units as the report's root `rms` and as `masterRms`;
 `masterRms` is the linear mono-downmix RMS within 5%; `ceilingHitPctMax` a percent of

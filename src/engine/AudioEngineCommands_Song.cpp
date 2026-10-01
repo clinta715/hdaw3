@@ -145,7 +145,9 @@ juce::String validatePlan(const ProjectCommands::SongPlanData& plan)
         if (s.bars <= 0)
             return "section '" + juce::String(s.name) + "' has non-positive bars";
         if (!knownSectionKind(s.kind))
-            return "unknown section kind '" + juce::String(s.name) + ":" + juce::String(s.kind) + "'";
+            return "unknown section kind '" + juce::String(s.name) + ":" + juce::String(s.kind)
+                   + "' (valid: "
+                   + juce::String(HDAW::PsytranceGenerator::sectionKindNameList()) + ")";
         barSum += s.bars;
     }
     if (barSum != plan.totalBars)
@@ -581,10 +583,28 @@ HDAW::PatternLibrary& cellPatternLib()
     return lib;
 }
 
+// The sourceKind vocabulary, in ONE place: knownSourceKind() resolves against
+// this table and unknownSourceKindError() names the same set, so the parser and
+// the refusal text cannot drift.
+const char* const kSourceKindNames[] = { "phrase", "rhythm", "break", "pattern", "harvest" };
+constexpr int kSourceKindCount =
+    static_cast<int>(sizeof(kSourceKindNames) / sizeof(kSourceKindNames[0]));
+
 bool knownSourceKind(const std::string& kind)
 {
-    static const std::vector<std::string> kSources = { "phrase", "rhythm", "break", "pattern", "harvest" };
-    return std::find(kSources.begin(), kSources.end(), kind) != kSources.end();
+    for (int i = 0; i < kSourceKindCount; ++i)
+        if (kind == kSourceKindNames[i]) return true;
+    return false;
+}
+
+// "unknown sourceKind 'x' (phrase|rhythm|break|pattern|harvest)" — built from
+// kSourceKindNames so both set_cell validation sites answer the same text.
+std::string unknownSourceKindError(const std::string& kind)
+{
+    std::string out = "unknown sourceKind '" + kind + "' (";
+    for (int i = 0; i < kSourceKindCount; ++i) { if (i) out += "|"; out += kSourceKindNames[i]; }
+    out += ")";
+    return out;
 }
 
 } // namespace
@@ -614,8 +634,7 @@ bool AudioEngineCommands::setCellRecipeImpl(const CellRecipe& recipe, std::strin
     if (recipe.trackId < 0)
         return fail("trackId required");
     if (!knownSourceKind(recipe.sourceKind))
-        return fail("unknown sourceKind '" + juce::String(recipe.sourceKind)
-                    + "' (phrase|rhythm|break|pattern|harvest)");
+        return fail(unknownSourceKindError(recipe.sourceKind));
 
     juce::var params;
     if (!recipe.paramsJson.empty())
@@ -628,13 +647,15 @@ bool AudioEngineCommands::setCellRecipeImpl(const CellRecipe& recipe, std::strin
     {
         PhraseGenerator::Style st;
         if (!phraseStyleFromName(params.getProperty("style", "").toString(), st))
-            return fail("unknown phrase style '" + params.getProperty("style", "").toString() + "'");
+            return fail(PhraseGenerator::unknownStyleError(
+                params.getProperty("style", "").toString().toStdString()));
     }
     if (recipe.sourceKind == "break" && params.isObject() && params.hasProperty("style"))
     {
         BreakPatternGenerator::Style bs;
         if (!BreakPatternGenerator::styleFromName(params.getProperty("style", "").toString().toStdString(), bs))
-            return fail("unknown break style '" + params.getProperty("style", "").toString() + "'");
+            return fail(BreakPatternGenerator::unknownStyleError(
+                params.getProperty("style", "").toString().toStdString()));
     }
     if (recipe.sourceKind == "pattern" && (!params.isObject() || !params.hasProperty("patternId")))
         return fail("pattern cell requires params.patternId");
@@ -1001,7 +1022,11 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
         if (params.isObject() && params.hasProperty("style"))
         {
             if (!BreakPatternGenerator::styleFromName(paramS(params, "style", "amen").toStdString(), bs))
-            { res.error = "unknown break style"; return res; }
+            {
+                res.error = BreakPatternGenerator::unknownStyleError(
+                    paramS(params, "style", "amen").toStdString());
+                return res;
+            }
         }
         else
         {
@@ -1034,7 +1059,7 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
     }
     else
     {
-        res.error = "unknown sourceKind '" + cell.sourceKind + "'";
+        res.error = unknownSourceKindError(cell.sourceKind);
         return res;
     }
 

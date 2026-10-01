@@ -137,6 +137,20 @@ inline int resolveScaleModeIndex(const std::string& name)
     return -1;
 }
 
+// The canonical mode names ("Major (Ionian), Minor (Aeolian), ...") from the
+// ONE scale table (PhraseGenerator::getScaleModes) — every scale-name refusal
+// reads this, so the allowed set cannot drift from the resolver above.
+inline std::string scaleNameList()
+{
+    std::string out;
+    for (const auto& m : PhraseGenerator::getScaleModes())
+    {
+        if (!out.empty()) out += ", ";
+        out += m.name;
+    }
+    return out;
+}
+
 // Pitch class for a note-name token, case-insensitive: naturals/sharps (the
 // spelling analyze_midi_file emits via getMidiNoteName(sharps=true)) plus the
 // common flat spellings a human types. -1 when unrecognized.
@@ -318,7 +332,8 @@ inline CandidateKey resolveCandidateKey(const QJsonObject& args,
                         "\"F minor\", or pass scaleMode/scaleType/scale");
         const int mode = resolveScaleModeIndex(rest);
         if (mode < 0)
-            return fail("unknown scale mode \"" + rest + "\" in \"" + s + "\"");
+            return fail("unknown scale mode \"" + rest + "\" in \"" + s
+                        + "\" (valid: " + scaleNameList() + ")");
         c.ok = true;
         c.root = root;
         c.mode = mode;
@@ -352,7 +367,7 @@ inline CandidateKey resolveCandidateKey(const QJsonObject& args,
         const std::string s = args.value("scale").toString().toStdString();
         const int mode = resolveScaleModeIndex(s);
         if (mode < 0)
-            return fail("unknown scale \"" + s + "\"");
+            return fail("unknown scale \"" + s + "\" (valid: " + scaleNameList() + ")");
         c.mode = mode;
     }
 

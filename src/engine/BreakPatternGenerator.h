@@ -79,6 +79,17 @@ public:
         return false;
     }
 
+    // ONE refusal text for an unknown style name (same convention as the
+    // PhraseGenerator unknownStyleError): value + valid set, sourced from the
+    // styleFromName chain above so they cannot drift. The MCP tool and the RPC
+    // twin both answer these exact bytes.
+    static constexpr const char* kStyleNameList =
+        "amen, twoStep, halftime, jungleEdit, random";
+    static inline std::string unknownStyleError (const std::string& name)
+    {
+        return "unknown break style: " + name + " (valid: " + kStyleNameList + ")";
+    }
+
     struct Params
     {
         int sliceCount   = 8;      // detected slices (slicePoints.size()-1)

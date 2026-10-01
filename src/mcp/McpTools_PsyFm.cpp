@@ -21,19 +21,32 @@
 
 namespace mcp {
 
+namespace {
+// The psy_fm preset enum, built from PsyFmState's own table — ONE source, so
+// the schema, the tool description and the refusal below cannot name different
+// sets than findPreset() actually loads.
+QJsonArray psyFmPresetEnum()
+{
+    QJsonArray a;
+    for (const char* n : HDAW::PsyFmState::presetNames()) a.append(QString::fromUtf8(n));
+    return a;
+}
+} // namespace
+
 void registerPsyFmTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"psy_fm_load_preset",
-        "Load a psytrance FM preset routing (growlBass, acidLead, metallicPluck, riser) into a psy_fm FX slot. "
-        "Sets algorithm, modulation matrix, and default ratios/feedback/envelopes. " +
-        mcp::stableRefRuleText("trackID", "trackId"),
+        QString::fromStdString(std::string("Load a psytrance FM preset routing (")
+            + HDAW::PsyFmState::presetNameList()
+            + ") into a psy_fm FX slot. "
+              "Sets algorithm, modulation matrix, and default ratios/feedback/envelopes. ")
+            + mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({
             {"trackId",  QJsonObject{{"type","integer"}}},
             {"trackID",  QJsonObject{{"type","integer"}}},
             {"slotIndex", QJsonObject{{"type","integer"}}},
-            {"preset",   QJsonObject{{"type","string"},
-                {"enum", QJsonArray{"growlBass","acidLead","metallicPluck","riser"}}}}
+            {"preset",   QJsonObject{{"type","string"}, {"enum", psyFmPresetEnum()}}}
         }, {"slotIndex","preset"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
@@ -50,7 +63,8 @@ s.registerTool({"psy_fm_load_preset",
             QString preset = a.value("preset").toString();
             bool ok = e->getAudioEngineCommands().setFxSlotPsyFmPreset(ti, si, preset.toStdString());
             return ok ? McpToolResult::text("loaded preset: " + preset)
-                      : McpToolResult::text("unknown preset: " + preset, true);
+                      : McpToolResult::text(QString::fromStdString(
+                            HDAW::PsyFmState::unknownPresetError(preset.toStdString())), true);
         }});
 
 s.registerTool({"psy_fm_get_analysis",

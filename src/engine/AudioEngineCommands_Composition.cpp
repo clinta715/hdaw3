@@ -55,11 +55,12 @@ bool styleFromName(const std::string& name, PhraseGenerator::Style& out)
     return false;
 }
 
-// The vocabulary `styleFromName` accepts, in ONE place. The refusal names it, so a
-// caller that guesses the casing ("lead" for "Lead" — the ion_rift session's
-// audition trap, 2026-09-30) is told the valid spellings instead of having to
-// guess again. Every caller that rejects a style (generate + audition) uses this,
-// which is why the list lives next to the parser rather than in two messages.
+// The vocabulary `styleFromName` accepts, in ONE place beside the parser that
+// matches it: the refusal below reads this list. Each style parser owns its
+// refusal, sourced from the table it switches on — the set_cell validator uses
+// the DIFFERENT, wider PhraseGenerator vocabulary
+// (PhraseGenerator::unknownStyleError), because phraseStyleFromName matches all
+// NumStyles case-insensitively with separators stripped.
 constexpr const char* kPhraseStyleNames =
     "Standard, Arpeggio, BassLine, ChordStab, Pad, Lead, RandomWalk, Buildup, "
     "Euclidean, Percussion";
@@ -124,6 +125,7 @@ void upsertAutomationPoint(juce::ValueTree pointList, double timeSec, double val
 // bit is NOT set receives its role default; explicit values always win.
 struct RoleDefaults
 {
+    const char* role;      // the accepted role spelling (roleIndex matches this)
     const char* style;
     int lowNote;
     int highNote;
@@ -135,12 +137,14 @@ struct RoleDefaults
     bool allowGlobalScale;
 };
 
+// The role vocabulary, in ONE place: roleIndex() resolves against this table and
+// the refusal text below names its roles, so the two cannot drift.
 const RoleDefaults kRoleDefaults[] = {
-    //        style       low high den dur   min max rms     scale
-    { "BassLine",  36,  48, 10, 0.5,  70, 110, 0.126f, true  }, // bass
-    { "Lead",      60,  76,  6, 0.25, 70, 110, 0.0f,   false }, // lead
-    { "ChordStab", 48,  72,  5, 2.0,  60, 100, 0.0f,   false }, // chords
-    { "Euclidean", 36,  60, 12, 0.25, 90, 120, 0.0f,   false }, // drums
+    //        role     style       low high den dur   min max rms     scale
+    { "bass",   "BassLine",  36,  48, 10, 0.5,  70, 110, 0.126f, true  },
+    { "lead",   "Lead",      60,  76,  6, 0.25, 70, 110, 0.0f,   false },
+    { "chords", "ChordStab", 48,  72,  5, 2.0,  60, 100, 0.0f,   false },
+    { "drums",  "Euclidean", 36,  60, 12, 0.25, 90, 120, 0.0f,   false },
     // NOTE: FM synth role presets are deliberately deferred. The DX7 init
     // patch (all-99 EG, full output level) is velocity-insensitive — velocity
     // ranges in the role defaults above affect note velocity but the synth
@@ -148,13 +152,25 @@ const RoleDefaults kRoleDefaults[] = {
     // would produce unreliable results. See handoff #5, item 3.
 };
 
+constexpr int kRoleDefaultsCount = static_cast<int>(sizeof(kRoleDefaults) / sizeof(kRoleDefaults[0]));
+
 int roleIndex(const std::string& role)
 {
-    if      (role == "bass")   return 0;
-    else if (role == "lead")   return 1;
-    else if (role == "chords") return 2;
-    else if (role == "drums")  return 3;
+    for (int i = 0; i < kRoleDefaultsCount; ++i)
+        if (role == kRoleDefaults[i].role) return i;
     return -1;
+}
+
+// "bass, lead, chords, drums" — built from kRoleDefaults so it cannot drift.
+std::string roleNameList()
+{
+    std::string out;
+    for (int i = 0; i < kRoleDefaultsCount; ++i)
+    {
+        if (!out.empty()) out += ", ";
+        out += kRoleDefaults[i].role;
+    }
+    return out;
 }
 
 // Spectral band presence for verifyPart (low/mid/high energy fractions).
@@ -752,7 +768,7 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
         const int idx = roleIndex(toLowerAscii(p.role));
         if (idx < 0)
         {
-            result.error = "unknown role: " + p.role;
+            result.error = "unknown role: " + p.role + " (valid: " + roleNameList() + ")";
             return result;
         }
         const RoleDefaults& d = kRoleDefaults[idx];

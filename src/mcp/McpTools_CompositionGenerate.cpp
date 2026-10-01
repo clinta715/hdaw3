@@ -379,7 +379,8 @@ s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pa
             std::string styleName = a.value("style").toString("amen").toStdString();
             BreakPatternGenerator::Style style;
             if (!BreakPatternGenerator::styleFromName(styleName, style))
-                return McpToolResult::text("unknown style: " + QString::fromStdString(styleName), true);
+                return McpToolResult::text(
+                    QString::fromStdString(BreakPatternGenerator::unknownStyleError(styleName)), true);
             p.style = style;
             p.bars        = a.value("bars").toInt(8);
             p.grid        = a.value("grid").toInt(4);

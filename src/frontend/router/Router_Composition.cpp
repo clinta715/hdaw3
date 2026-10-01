@@ -308,8 +308,10 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         bp.clipId = clipId;
         if (!optInt(o, "slotIndex", bp.slotIndex, 0, &intErr)) return intErr;
         BreakPatternGenerator::Style style;
-        if (!BreakPatternGenerator::styleFromName(o.value("style").toString("amen").toStdString(), style))
-            return makeError(-32602, "unknown break style");
+        const std::string styleName = o.value("style").toString("amen").toStdString();
+        if (!BreakPatternGenerator::styleFromName(styleName, style))
+            return makeError(-32602, QString::fromStdString(
+                BreakPatternGenerator::unknownStyleError(styleName)));
         bp.style = style;
         if (!optInt(o, "bars", bp.bars, 8, &intErr)) return intErr;
         if (!optInt(o, "grid", bp.grid, 4, &intErr)) return intErr;
@@ -1092,7 +1094,8 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
                 for (const auto& b : byteArr)
                     e.sysex.push_back(static_cast<uint8_t>(b.toInt()));
             } else {
-                return makeError(-32602, QString::fromStdString("unknown event kind: " + kind));
+                return makeError(-32602, QString::fromStdString(
+                    ProjectCommands::FxMidiEvent::unknownKindError(kind)));
             }
             p.events.push_back(e);
         }

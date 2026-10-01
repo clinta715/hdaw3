@@ -256,12 +256,32 @@ TEST_F(AddFxParityTest, ResolvablePluginIdStillSucceedsOnBothSurfaces) {
     EXPECT_TRUE(text.startsWith("slot=")) << text.toStdString();
 
     // RPC: the route requires a type/fxType key (frontend spelling), the gate
-    // passes the id through, and the route reports Null on success.
-    const QJsonObject rpcArgs{ { "trackIndex", 0 }, { "fxType", "plugin" },
-                               { "pluginId", id } };
+    // passes the id through, and the route reports Null on success. P4-b
+    // (2026-09-30): fxType "plugin" is NO input on either surface — pluginId
+    // alone is the plugin route, exactly like the MCP call above.
+    const QJsonObject rpcArgs{ { "trackIndex", 0 }, { "pluginId", id } };
     const auto rpcR = rpc("project.addFxSlot", rpcArgs);
     EXPECT_FALSE(rpcR.isError)
         << rpcR.payload.toObject().value("message").toString().toStdString();
+}
+
+// P4-b twin: fxType "plugin" is refused on BOTH surfaces (MCP: schema enum;
+// RPC: the route's explicit gate). Code parity — both -32602/tool-error —
+// while the texts differ (the schema gate wraps its refusal, the route's is
+// bare), the same measured schema-gate class fm_library_parity_test pins.
+TEST_F(AddFxParityTest, PluginFxTypeIsRefusedOnBothSurfaces) {
+    const QJsonObject mcpArgs{ { "trackId", 0 }, { "fxType", "plugin" } };
+    const auto r = mcpResult("add_fx", mcpArgs);
+    EXPECT_TRUE(r.value("isError").toBool());
+    EXPECT_TRUE(mcpText("add_fx", mcpArgs).contains("value \"plugin\" not in enum"))
+        << mcpText("add_fx", mcpArgs).toStdString();
+
+    const auto rpcR = rpc("project.addFxSlot",
+                          QJsonObject{ { "trackIndex", 0 }, { "fxType", "plugin" } });
+    EXPECT_TRUE(rpcR.isError);
+    const QString msg = rpcR.payload.toObject().value("message").toString();
+    EXPECT_TRUE(msg.contains("plugin")) << msg.toStdString();
+    expectNoFxSlot();
 }
 
 // ─── add_track_with_fx: the composite tool takes the SAME pluginId gate ────

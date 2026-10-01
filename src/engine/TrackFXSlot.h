@@ -88,6 +88,32 @@ public:
         float maxValue;
     };
 
+    // The internal (non-plugin) fxType vocabulary, in ONE place right beside
+    // the if-chain in getParamDefsForType() that implements it: applyFxChain's
+    // unknown-fxType refusal names this list, so the accepted set is read from
+    // the same file/table the chain matches (keep the two in step — the
+    // FxChainPreset suite pins every name here to non-empty param defs).
+    // `plugin`/`none` carry no param defs and are handled separately by that
+    // caller, which appends them from the same literals its own acceptance test
+    // uses.
+    static std::vector<juce::String> internalFxTypeNames()
+    {
+        return { "reverb", "compressor", "eq", "delay", "chorus", "flanger",
+                 "phaser", "filter", "saturator", "sampler", "fm_synth",
+                 "growl_bass", "psyarp", "psy_fm", "sub_synth" };
+    }
+
+    static juce::String internalFxTypeNamesText()
+    {
+        juce::String out;
+        for (const auto& n : internalFxTypeNames())
+        {
+            if (!out.isEmpty()) out += ", ";
+            out += n;
+        }
+        return out;
+    }
+
     static std::vector<InternalParamDef> getParamDefsForType(const juce::String& type)
     {
         if (type == "reverb")

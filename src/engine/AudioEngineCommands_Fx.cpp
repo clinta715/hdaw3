@@ -1465,7 +1465,8 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
         auto defs = HDAW::TrackFXSlot::getParamDefsForType(s.fxType);
 
         if (defs.empty() && !isPlugin && !isNone)
-            return fail(where + ": unknown fxType '" + s.fxType + "'");
+            return fail(where + ": unknown fxType '" + s.fxType + "' (valid: "
+                        + HDAW::TrackFXSlot::internalFxTypeNamesText() + ", plugin, none)");
 
         if (isPlugin || isNone)
         {

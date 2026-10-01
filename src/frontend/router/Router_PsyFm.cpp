@@ -75,7 +75,8 @@ DispatchResult dispatchPsyFm(AudioEngine& engine, const QString& m, const QJsonV
 
         bool ok = engine.getAudioEngineCommands().setFxSlotPsyFmPreset(ti, si, preset);
         if (!ok)
-            return makeError(-32602, "unknown preset: " + QString::fromStdString(preset));
+            return makeError(-32602, QString::fromStdString(
+                HDAW::PsyFmState::unknownPresetError(preset)));
         return { false, QJsonValue::Null };
     }
 

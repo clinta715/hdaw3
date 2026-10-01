@@ -774,3 +774,45 @@ TEST(ToolRegistry, SchemaUnitsAreProvenClassified) {
     }
     EXPECT_EQ(missing, 0);
 }
+
+// ---------------------------------------------------------------------------
+// P4-c (2026-09-30): an enum refusal names the offending value AND the allowed
+// set, and the allowed set is byte-sourced from the SAME schema the validator
+// used — a handler-copied list cannot drift.
+// ---------------------------------------------------------------------------
+namespace {
+
+QString enumRefusalText(const QJsonObject& args) {
+    FullRegistry fx;
+    const auto r = fx.server->handleRequestOnTestThread(
+        1, "tools/call", QJsonObject{ { "name", "set_cell" }, { "arguments", args } });
+    return r.toObject().value("content").toArray().at(0).toObject().value("text").toString();
+}
+
+} // namespace
+
+TEST(ToolRegistry, EnumRefusalNamesValueAndAllowedSet) {
+    const QString text = enumRefusalText(QJsonObject{
+        { "section", "intro" }, { "role", "bass" }, { "trackId", 0 }, { "source", "bogus" } });
+    EXPECT_EQ(text,
+        QString("invalid params: source: value \"bogus\" not in enum "
+                "(allowed: \"phrase\", \"rhythm\", \"break\", \"pattern\", \"harvest\")"))
+        << text.toStdString();
+}
+
+TEST(ToolRegistry, EnumRefusalAllowedSetMatchesSchemaExactly) {
+    FullRegistry fx;
+    const auto schemaEnum = fx.server->tools().value("set_cell").inputSchema
+        .value("properties").toObject().value("source").toObject().value("enum").toArray();
+    ASSERT_GT(schemaEnum.size(), 0);
+
+    QString allowed;
+    for (const auto& ev : schemaEnum) {
+        if (!allowed.isEmpty()) allowed += ", ";
+        allowed += "\"" + ev.toString() + "\"";
+    }
+    const QString text = enumRefusalText(QJsonObject{
+        { "section", "intro" }, { "role", "bass" }, { "trackId", 0 }, { "source", "bogus2" } });
+    EXPECT_TRUE(text.contains("value \"bogus2\" not in enum (allowed: " + allowed + ")"))
+        << text.toStdString();
+}

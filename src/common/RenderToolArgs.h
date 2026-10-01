@@ -74,7 +74,8 @@ struct VerifyWindowArgs
 // verify_window {startBeat, endBeat, targets|expect?, outputPath?, timeoutMs?}
 // The expectation object is STRICT: its keys must be one of rmsMin, masterRms,
 // ceilingHitPctMax, kickProminenceMin, targetDurationSeconds — an unknown key is
-// refused ("unknown expectation key <key>") BEFORE the render, on both surfaces.
+// refused ("unknown expectation key <key> (valid: <the accepted keys>)") BEFORE
+// the render, on both surfaces.
 // `rmsMin` is a LINEAR RMS floor, in the SAME units as the report's root `rms`
 // and as `masterRms` (a silent window reports rms 0 and fails any positive floor).
 inline bool parseVerifyWindowArgs(const QJsonObject& o, VerifyWindowArgs& out, QString& error)
@@ -98,6 +99,12 @@ inline bool parseVerifyWindowArgs(const QJsonObject& o, VerifyWindowArgs& out, Q
     static const char* const kAccepted[] = {
         "rmsMin", "masterRms", "ceilingHitPctMax",
         "kickProminenceMin", "targetDurationSeconds" };
+    QString acceptedList;
+    for (const char* a : kAccepted)
+    {
+        if (!acceptedList.isEmpty()) acceptedList += ", ";
+        acceptedList += QLatin1String(a);
+    }
     for (const char* key : { "targets", "expect" })
     {
         if (!o.contains(key) || !o.value(key).isObject())
@@ -110,7 +117,8 @@ inline bool parseVerifyWindowArgs(const QJsonObject& o, VerifyWindowArgs& out, Q
                 if (it.key() == QLatin1String(a)) { known = true; break; }
             if (!known)
             {
-                error = QStringLiteral("unknown expectation key %1").arg(it.key());
+                error = QStringLiteral("unknown expectation key %1 (valid: %2)")
+                            .arg(it.key(), acceptedList);
                 return false;
             }
         }

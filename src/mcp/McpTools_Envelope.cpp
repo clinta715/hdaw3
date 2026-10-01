@@ -96,7 +96,8 @@ void registerEnvelopeTools(McpServer& s, AudioEngine* e)
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
             QString shapeStr = a.value("shape").toString();
             auto shape = parseEnvelopeShape(shapeStr);
-            if (!shape) return McpToolResult::text("unknown shape: " + shapeStr, true);
+            if (!shape) return McpToolResult::text(QString::fromStdString(
+                HDAW::EnvelopeGenerator::unknownShapeError(shapeStr.toStdString())), true);
             std::string laneName = lane.getProperty(IDs::name, "").toString().toStdString();
 
             HDAW::EnvelopeGenerator::Params params;
@@ -138,7 +139,8 @@ void registerEnvelopeTools(McpServer& s, AudioEngine* e)
             if (!clip.isValid()) return McpToolResult::text("clip not found", true);
             QString shapeStr = a.value("shape").toString();
             auto shape = parseEnvelopeShape(shapeStr);
-            if (!shape) return McpToolResult::text("unknown shape: " + shapeStr, true);
+            if (!shape) return McpToolResult::text(QString::fromStdString(
+                HDAW::EnvelopeGenerator::unknownShapeError(shapeStr.toStdString())), true);
 
             HDAW::EnvelopeGenerator::Params params;
             params.shape = *shape;
@@ -183,7 +185,8 @@ void registerEnvelopeTools(McpServer& s, AudioEngine* e)
                 return McpToolResult::text("controllerNumber must be 0-127", true);
             QString shapeStr = a.value("shape").toString();
             auto shape = parseEnvelopeShape(shapeStr);
-            if (!shape) return McpToolResult::text("unknown shape: " + shapeStr, true);
+            if (!shape) return McpToolResult::text(QString::fromStdString(
+                HDAW::EnvelopeGenerator::unknownShapeError(shapeStr.toStdString())), true);
 
             HDAW::EnvelopeGenerator::Params params;
             params.shape = *shape;
