@@ -184,28 +184,18 @@ byte-unchanged. The tree is UNCOMMITTED (HEAD `e342a3d`).
 Four items the `ion_rift_remix` session reported but deliberately did not fix. All are
 discoverability/contract gaps on the agent surface, not engine defects. Locations verified.
 
-## Success gates
+## Success gates — ALL LANDED 2026-10-01 (commit `9d78d4c`; P4-d in `6ca1519`)
 
 - [x] **P4-a `apply_song_brief`'s `brief` type.** LANDED 2026-10-01: the MCP validator now
       honours a standard JSON-Schema `type` ARRAY (it was single-type-only, so a string form was
       refused before the handler ran) and the schema declares `["object","string"]`. A string brief
       and the equivalent object brief apply the identical PLAN on both surfaces (test-pinned; the
       payload's per-call `regionsCreated`/`regionsUpdated` counters are not part of the plan).
-      Original text: `McpTools_SongPlan.cpp:192` declares
-      `{"type":"object"}` while the handler accepts an OBJECT **or** a JSON STRING
-      (`bv.isObject() || bv.isString()`). The schema must express both, or the string form must be
-      dropped — decide which and make the description agree. If the MCP validator cannot express a
-      union type, say so and take the documented alternative rather than inventing a schema dialect.
 - [x] **P4-b `add_fx` and the plugin path.** LANDED 2026-10-01: `fxType:"plugin"` is NOT an input
       on either surface (the MCP schema enum excludes it; the RPC route refuses an explicit
       `type`/`fxType` of `"plugin"`), and `pluginId` alone IS the plugin route on BOTH — the RPC
       route previously required a type key, so pluginId-only had no path. The description now says
-      so. Twin-tested. Original text: The schema's `fxType` enum omits `plugin` while the
-      tool's OWN description says "fxType in {…}, **OR a pluginId**" — and `add_fx {trackId,
-      pluginId}` demonstrably works. Either `fxType:"plugin"` is a supported spelling (then add it to
-      the enum) or it is not (then the schema/description must make the pluginId-only path
-      unambiguous). Check the RPC twin `project.addFx` for the same gap. Do not "fix" this by adding
-      an enum value the handler does not accept.
+      so. Twin-tested.
 - [x] **P4-c enum refusals must list the allowed values.** LANDED 2026-10-01: the generic validator
       refusal names the offending value AND the allowed set, taken from the schema it validated
       against; every hand-rolled enum refusal found by the sweep was routed through ONE helper per
@@ -218,27 +208,20 @@ discoverability/contract gaps on the agent surface, not engine defects. Location
       identifiers case-SENSITIVELY; each names its own set (the conflation was caught in review and
       is regression-tested by an acceptance case for a style absent from the 10-name list).
       Remaining hits classified justified (dynamic sets, entity lookups, numeric indices,
-      already-compliant). Original text: The generic validator refusal is
-      `McpSchema.cpp:29` → `"value not in enum"`, which names neither the offending value nor the
-      allowed set; `McpTools_CompositionGenerate.cpp:382` hand-rolls its own `"unknown style: …"`.
-      Make the refusal carry the offending value AND the allowed list, sourced from the SAME schema
-      the validator used (one source of truth — the `audition_plugin` `style` fix is the precedent),
-      and route the hand-rolled sites through it. Highest-value item: it improves every
-      enum-bearing tool on both surfaces.
+      already-compliant).
 - [x] **P4-d `scripts/hdaw_mcp_http.py` truncation.** LANDED earlier 2026-10-01 (commit `6ca1519`):
       `call` prints the full payload by default, truncation is opt-in via `--brief` with the notice
       on stderr so stdout stays parseable; `whoami`/`run` keep their documented contract with notices
-      moved to stderr. Original text: `call` truncates at ~4000 chars unless
-      `--full`. Keep the guard against flooding, but make the limit explicit and adjustable (an env
-      override) and make the truncation notice say how to get the rest; consider not truncating
-      `run` output, which is the multi-step evidence path.
+      moved to stderr.
 - [x] **P4-e** LANDED 2026-10-01: `dsh-build-fast.bat test` rc 0; new/extended tests cover
       P4-a..P4-c on both surfaces (engine 75 / frontend 54 / mcp 187 green in the independent run);
       `node tools/rpc_parity_map.mjs` rc 0 with `rpc_parity_map.inc` BYTE-UNCHANGED (no route moved);
       `git status` shows only the P4 files (plus the pre-existing `.pi/*` + `scripts/.pi/` strays).
-      Original text: `dsh-build-fast.bat test` builds; new/extended tests cover P4-a..P4-c; `node
-      tools/rpc_parity_map.mjs` ledger line unchanged unless a route moved; `git status` shows only
-      intended files.
+      Graphify refreshed explicitly (`python -m graphify update . --force`; `built_at_commit == HEAD`;
+      new helpers resolved by `graphify explain` — `styleNameList`, `internalFxTypeNames()`,
+      `sectionKindNameList`, `unknownPresetError()`; absolute `.graphify_root` marker re-applied).
+      Live MCP smoke: string brief applied; `set_cell` style refusal names the 26-style set and
+      `"trap hi-hat"` is accepted; `add_fx` / `set_cell` / `psy_fm_load_preset` schema enums truthful.
 
 ## Dependency map
 
