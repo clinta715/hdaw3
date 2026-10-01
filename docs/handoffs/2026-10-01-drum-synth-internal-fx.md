@@ -145,7 +145,7 @@ can evidence, which is why every provenance comment in `DrumSynthEngine.{h,cpp}`
 
 ## 4. Traps encountered
 
-Four traps hit this session became **lessons 44–47** (narratives by the sibling agent in
+Five traps hit this session became **lessons 44–48** (narratives by the sibling agent in
 `docs/lessons-learned.md`). Pointers, with the concrete evidence from this session:
 
 - **Lesson 44 — a clamped WAV export hides the true float peak; size headroom from the
@@ -158,14 +158,23 @@ Four traps hit this session became **lessons 44–47** (narratives by the siblin
   Evidence here: the 3.558× vs 0.79 arithmetic in §1.5, resolved with the memoryless soft ceiling
   on the **voice sum**, placed above the 1–2 voice range and **before** the output-level param.
 - **Lesson 46 — the MCP engine answering your calls is a COPY in `%TEMP%`, and its image name
-  differs, so `taskkill /IM HDAW_headless.exe` misses it.** Hit while verifying this feature; the
-  running engine was resolved via `whoami` (`runningBinaryPath` / `runningMtime` vs the built
-  exe) instead of by image name.
+  differs, so `taskkill /IM HDAW_headless.exe` misses it.** Hit while verifying this feature. The
+  identity fields (`whoami.runningBinaryPath` / `runningMtime`, `engine_info.stale`) are
+  **trustworthy**: the `--mcp-http` spawn of `build\HDAW_headless.exe` could not bind 18765 (the
+  launcher's `%TEMP%` copy held it) and **kept running mute**, so `engine_info` correctly reported
+  that copy and correctly said `stale: true` (the earlier "false positive" reading was a
+  misdiagnosis — see §5).
 - **Lesson 47 — a windowed offline render never delivers a note-on that falls BEFORE the window
   start.** Evidence here: the drum part's kick lands at beat 0 (`diaRoot(keyRoot, 2)`), so the
   focused verification had to start its window **at/after** the first hit — `verify_part`
   rejects `startBeat = 0` (the pre-existing O7 wart), and a zero `soloPeak` on an audible part is
   a windowing artifact first.
+- **Lesson 48 — a CLI value round-tripped through a settings store that cannot be written is
+  silently dropped.** Evidence here: chasing the mute spawn above showed `--mcp-http-port 18841`
+  had no effect at all — both entry points wrote `mcp/http*` into `QSettings` and
+  `syncMcpHttpFromSettings()` read the persisted value back; on this box that store is unwritable
+  (`winreg` → `WinError 5`), so the registry kept 18765 while the process ran. Fixed by applying the
+  CLI value **directly** via `setMcpHttpConfig` with a verified fail-fast; see §5 and lesson 48.
 
 ## 5. Open items
 
@@ -173,12 +182,37 @@ Four traps hit this session became **lessons 44–47** (narratives by the siblin
   (export peak, band energies, `kickProminence`); nobody has judged how the kit *sounds*.
 - **Committed:** the feature and its docs landed in `3e0fad0` (feature) and `5b46bce` (docs); the
   per-voice send bus in §7 follows in its own commit. The main agent commits.
-- **Engine-identity defect (NOT fixed).** `engine_info.stale` is a **false positive**:
-  `src/mcp/McpTools_Engine.cpp:83` sources `runningBinaryPath` from
-  `QCoreApplication::applicationFilePath()`, so a genuinely fresh process can report the `%TEMP%`
-  copy's path/mtime and be flagged `stale: true` (measured 2026-10-01). Filed via `report_issue`.
-  Do not trust `engine_info.stale`, `whoami.runningBinaryPath` or `whoami.runningMtime` — verify
-  the answering binary by content or by OS process identity (lesson 46).
+- **`--mcp-http-port` / `--mcp-http-host` were silently dropped (FIXED).** While verifying this
+  feature, a `build\HDAW_headless.exe --mcp-http --mcp-http-port 18841 --port 18843` spawn bound
+  the **persisted 18765** and logged `MCP HTTP start failed: failed to listen on 127.0.0.1:18765`
+  (already held by the launcher's `%TEMP%\HDAW_headless_mcp.exe`) — yet **kept running**, so it
+  looked healthy while the OLDER engine answered every call. Root cause: the design **round-tripped
+  the CLI value through a settings store, and that store is not writable on this box**.
+  `main_headless.cpp`/`main.cpp` wrote `mcp/httpEnabled|httpHost|httpPort` into `QSettings`, and
+  `AudioEngine::initialize()` → `syncMcpHttpFromSettings()` (`AudioEngine.cpp:388`) read the
+  persisted values BACK and bound those. Proven three ways: a standalone Qt6 probe wrote
+  `httpPort=18899` and read back **18765**; a direct Python `winreg` write to
+  `HKCU\Software\HDAW\HDAW` returns **`PermissionError [WinError 5] Access is denied`** (restricted
+  token); and after a headless run that logged `MCP HTTP listening on 127.0.0.1:18871`, `reg query`
+  still showed `httpPort=0x494d` (18765). Fix: the command line is now **authoritative** —
+  `main_headless.cpp` calls `engine.setMcpHttpConfig(true, mcpHttpHost, mcpHttpPort, &mcpErr)`
+  **directly** after `initialize()` and **verifies** the outcome, returning non-zero (**fail-fast**)
+  when the requested port is not actually served; the `QSettings` round-trip block was deleted from
+  `main_headless.cpp` (the GUI's `main.cpp` constructs
+  `QSettings(QStringLiteral("HDAW"), QStringLiteral("HDAW"))` with explicit names, no fail-fast);
+  and `AudioEngine::getMcpHttpConfig()` now reports the **LIVE** `host`/`port`/`enabled` while a
+  server runs, falling back to the persisted snapshot only when stopped. Pinned by the new
+  integration tests `HeadlessMcpHttpPort.ServesOnTheCliPort` and
+  `HeadlessMcpHttpPort.ExitsNonZeroWhenTheCliPortIsTaken`
+  (`tests/integration/mcp/headless_mcp_http_port_test.cpp`). This is **lesson 48**.
+- **RETRACTED: the earlier `engine_info`/`whoami` "identity false positive" was a MISDIAGNOSIS.**
+  `whoami.runningBinaryPath` / `whoami.runningMtime` and `engine_info.stale` are **correct**: the
+  process answering on 18765 really WAS the launcher's `%TEMP%\HDAW_headless_mcp.exe`, so
+  `stale: true` against the newer build was true. The true explanation is the mute spawn above — the
+  `--mcp-http` spawn could not take its private port (its CLI value was silently dropped, lesson 48)
+  and kept running while a **genuinely older** engine answered every call. The `report_issue` filed
+  against `src/mcp/McpTools_Engine.cpp:83` has been **retracted** — no change to that file. See the
+  corrected lesson 46.
 
 ## 6. Files changed
 
@@ -203,6 +237,10 @@ Four traps hit this session became **lessons 44–47** (narratives by the siblin
 | docs | `docs/core-synths-agentic-guide.md` | `drum_synth` row |
 | docs | `docs/handoffs/2026-10-01-drum-synth-internal-fx.md` **(new)** | this handoff |
 | docs | `docs/handoffs/INDEX.md` | new row + `dub-stab-and-internal-device-maps.md` → historical |
+| fix | `src/main_headless.cpp` | explicit-name `QSettings("HDAW","HDAW")` for the `--mcp-http` write + fail-fast when the requested MCP HTTP port is not served (lesson 48) |
+| fix | `src/main.cpp` | explicit-name `QSettings("HDAW","HDAW")` for the `--mcp-http` write (GUI keeps opening — no fail-fast) |
+| tests | `tests/integration/mcp/headless_mcp_http_port_test.cpp` **(new)** | `HeadlessMcpHttpPort.ServesOnTheCliPort` / `.ExitsNonZeroWhenTheCliPortIsTaken` |
+| tests | `tests/CMakeLists.txt` | register `headless_mcp_http_port_test.cpp` |
 | device map | `timbre-lib/build_device_map.py` | `drum_synth` source-table entry |
 | device map | `timbre-lib/device_map/drum_synth.params.json` **(new)** | 51 params, 0 trap / 0 unclassified |
 | device map | `timbre-lib/device_map/index.json` | `drum_synth` (51) added; param count 242 |

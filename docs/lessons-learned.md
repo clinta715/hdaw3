@@ -796,33 +796,35 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     kick linear under a halving check).
 
 46. **The MCP engine answering your calls is a COPY in `%TEMP%`, and its image name differs — so
-    `taskkill /IM HDAW_headless.exe` misses it.** `mcp-launch.bat` (and the launcher) copy
-    `build/HDAW_headless.exe` to `%TEMP%\HDAW_headless_mcp.exe` and run THAT, so
-    `taskkill /F /IM HDAW_headless.exe` does not kill it; and a `--mcp-http` spawn of
-    `build\HDAW_headless.exe` on the default port exits on a bind failure, after which every
-    subsequent `hdaw_mcp_http.py` call is answered by the stale copy. The original evidence was a
-    **content** mismatch: `tool_help add_track_with_fx` returned the OLD description while `findstr`
-    proved the NEW string WAS in the built exe. **The identity fields are UNRELIABLE** — measured
-    2026-10-01, a process whose real `ExecutablePath` was `...\build\HDAW_headless.exe` (confirmed
-    twice via `Get-CimInstance Win32_Process -Filter "Name like 'HDAW%'" | Select
-    ProcessId,Name,ExecutablePath`) reported
-    `whoami.runningBinaryPath = C:/Users/hapbt/AppData/Local/Temp/HDAW_headless_mcp.exe` with
-    `runningMtime = 1790868747` (from that copy) while the freshly built exe's mtime was
-    `1790876618`; consequently `engine_info {buildBinaryPath: ".../build/HDAW_headless.exe"}`
-    returned **`stale: true` for a process that WAS the freshly built binary** — a false positive
-    (`src/mcp/McpTools_Engine.cpp:83` sources the field from
-    `QCoreApplication::applicationFilePath()`; filed via `report_issue`). **Rules:** (a) verify the
-    answering binary by **content** — call a tool whose output you know changed in the new build
-    (`tool_help <name>` for a changed description, or `list_fx_params` for a changed param count)
-    and compare against the source/binary; (b) or check **OS process identity** with
+    `taskkill /IM HDAW_headless.exe` misses it; and the identity fields are CORRECT, so
+    `engine_info`'s `stale: true` is real, not a false positive.** `mcp-launch.bat` (and the
+    launcher) copy `build/HDAW_headless.exe` to `%TEMP%\HDAW_headless_mcp.exe` and run THAT, so
+    `taskkill /F /IM HDAW_headless.exe` does not kill it (and the launcher copy is another
+    session's backend — do not kill it blindly). The designed staleness check is
+    `engine_info {buildBinaryPath: "<your build>"}`: it reports the path/mtime of the process
+    ACTUALLY answering and sets `stale: true` when that process is older than your build — **trust
+    it**. Measured 2026-10-01: a `--mcp-http` spawn of `build\HDAW_headless.exe` could not bind the
+    port (the launcher's `%TEMP%` copy already held it) and **kept running mute**; `engine_info`
+    therefore correctly reported the `%TEMP%` copy's path/mtime and correctly said `stale: true` —
+    that is exactly what it means, and the earlier claim that the identity fields were unreliable
+    was a **misdiagnosis (retracted)**. **The one-step diagnostic that settles it:** if a spawn's
+    OWN log says `MCP HTTP start failed: failed to listen on ...` (already in use), then YOUR
+    process is not serving and another engine is answering every call — and the reason such a
+    spawn could not take a private port in the first place is **lesson 48** (its `--mcp-http-port`
+    was silently dropped, so it re-tried the persisted 18765 rather than the private port).
+    **Rules:** (a) trust
+    `whoami.runningBinaryPath`, `whoami.runningMtime` and `engine_info.stale`; (b) **confirm** by
+    content when you want a second signal — call a tool whose output you know changed in the new
+    build (`tool_help <name>` for a changed description, or `list_fx_params` for a changed param
+    count) and compare against the source/binary; (c) or check **OS process identity** with
     `Get-CimInstance Win32_Process -Filter "Name like 'HDAW%'" | Select ProcessId,Name,ExecutablePath`;
-    (c) do NOT trust `whoami.runningBinaryPath`, `whoami.runningMtime`, or `engine_info.stale`;
-    (d) `taskkill /F /IM HDAW_headless.exe` does NOT kill `HDAW_headless_mcp.exe` (and the launcher
-    copy is another session's backend — do not kill it blindly); (e) for an isolated fresh-binary
-    smoke use `python scripts/mcp_call.py run <steps.json>`, which spawns
+    (d) `taskkill /F /IM HDAW_headless.exe` does NOT kill `HDAW_headless_mcp.exe`; (e) for an
+    isolated fresh-binary smoke use `python scripts/mcp_call.py run <steps.json>`, which spawns
     `build/HDAW_headless.exe` over stdio with no port — the only path guaranteed to exercise the
-    build you just made; (f) a private `--mcp-http-port` is not sufficient on its own: the headless
-    frontend WS port must also be free (`--port`) or the engine exits 1.
+    build you just made; (f) a private `--mcp-http-port` alone is not sufficient: the headless
+    frontend WS port must also be free (`--port`) or the engine exits 1 — and since 2026-10-01 an
+    explicit `--mcp-http` **fails fast** (non-zero exit) when the requested port is not actually
+    served (lesson 48), so a mute spawn can no longer masquerade as healthy.
 
 47. **A windowed offline render never delivers a note-on that falls BEFORE the window start** — so
     a one-shot/percussive part whose only hits precede the window reports silence. A `drum_synth`
@@ -833,3 +835,37 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     place the notes a hair after beat 0 rather than trying `startBeat: 0`; (c) a zero `soloPeak` on
     a part you can hear in the full export is a windowing artifact first and an engine bug second —
     check the window before the DSP.
+
+48. **A CLI value round-tripped through a settings store you cannot write is silently DROPPED — so
+    the flag is accepted and has no effect.** `main_headless.cpp`/`main.cpp` parsed
+    `--mcp-http-port` / `--mcp-http-host` correctly, wrote them into `QSettings`
+    (`mcp/httpEnabled|httpHost|httpPort`), and `AudioEngine::initialize()` →
+    `syncMcpHttpFromSettings()` (`AudioEngine.cpp:388`) then read the persisted values BACK and
+    bound those — the command line was routed **through a store** instead of being applied
+    directly. On this box that store is **not writable**: a standalone Qt6 probe wrote
+    `mcp/httpPort=18899` into `HKCU\Software\HDAW\HDAW`, called `sync()`, and read back the OLD
+    `18765` (`fileName=\HKEY_CURRENT_USER\Software\HDAW\HDAW`, `format=NativeFormat`); a direct
+    Python `winreg` write to that key returns **`PermissionError [WinError 5] Access is denied`**
+    (the sandbox's restricted token). So the write never landed. Measured 2026-10-01:
+    `build\HDAW_headless.exe --mcp-http --mcp-http-port 18841 --port 18843` bound the **persisted
+    18765**, not 18841; a headless run logged `MCP HTTP listening on 127.0.0.1:18871`; and the
+    registry value `HKCU\Software\HDAW\HDAW\mcp\httpPort` stayed `0x494d` (18765) *while the process
+    ran*. The engine **stayed alive anyway** (it logged the bind failure only), so a mute spawn
+    looked healthy — which is what produced the earlier misdiagnoses. **Rules:** (a) **pass
+    CLI/API-supplied values to the API directly — never round-trip them through a store you cannot
+    prove is writable**; the command line is authoritative (`engine.setMcpHttpConfig(true, host,
+    port, &err)` after `initialize()`, then verified against `getMcpHttpConfig()`); (b) a value
+    accepted with no effect is the **lesson-38 silent-acceptance class** — assert the *observable*
+    effect (which port the engine actually serves), never just the parse; (c) an explicit
+    `--mcp-http` now **fails fast** (non-zero exit) when the requested port is not actually served,
+    so a mute spawn can no longer masquerade as healthy; (d) a config query must report **LIVE**
+    state for a running server, not a persisted snapshot — `AudioEngine::getMcpHttpConfig()`
+    returns the live `host`/`port`/`enabled` while a server runs, falling back to the persisted
+    snapshot only when stopped. Pinned by `HeadlessMcpHttpPort.ServesOnTheCliPort` and
+    `HeadlessMcpHttpPort.ExitsNonZeroWhenTheCliPortIsTaken`
+    (`tests/integration/mcp/headless_mcp_http_port_test.cpp`). **SECONDARY (NOT the cause here):**
+    Qt's default-constructed `QSettings` needs a `QCoreApplication` **INSTANCE** for the default
+    `organizationName()`/`applicationName()` to resolve, so construct `QSettings(org, app)` with
+    explicit names when an instance is not guaranteed — the entry points now do
+    (`QSettings(QStringLiteral("HDAW"), QStringLiteral("HDAW"))`). That is a correctness habit, not
+    the root cause of this drop: the store was unwritable regardless of the names.

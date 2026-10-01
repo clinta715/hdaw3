@@ -158,25 +158,29 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
 - **The MCP engine answering your calls may be a STALE COPY in `%TEMP%`, with a DIFFERENT image
   name (measured 2026-10-01; lesson 46).** `mcp-launch.bat` (and the launcher) copy
   `build/HDAW_headless.exe` to `%TEMP%\HDAW_headless_mcp.exe` and run THAT, so
-  `taskkill /F /IM HDAW_headless.exe` does **not** kill it, and a `--mcp-http` spawn of
-  `build\HDAW_headless.exe` on the default port exits on a bind failure — every subsequent
-  `hdaw_mcp_http.py` call is then answered by the stale copy. The original evidence was a
-  **content** mismatch (`tool_help add_track_with_fx` returned the OLD description while `findstr`
-  proved the NEW string WAS in the built exe). **The identity fields are UNRELIABLE — verify by
-  content, not by path.** Measured 2026-10-01: a process whose real `ExecutablePath` was
-  `...\build\HDAW_headless.exe` (confirmed via
-  `Get-CimInstance Win32_Process -Filter "Name like 'HDAW%'" | Select ProcessId,Name,ExecutablePath`)
-  reported `whoami.runningBinaryPath = C:/Users/hapbt/AppData/Local/Temp/HDAW_headless_mcp.exe` with
-  a `%TEMP%` mtime, so `engine_info {buildBinaryPath: ".../build/HDAW_headless.exe"}` returned
-  **`stale: true` for a freshly built binary** — a false positive. **Before trusting any MCP smoke,
-  probe CONTENT** (`tool_help <name>` for a changed description, or `list_fx_params` for a changed
-  param count) and compare against the source/binary, or check OS process identity via the
-  `Win32_Process` `ExecutablePath` query — do NOT trust `whoami.runningBinaryPath`/`runningMtime` or
-  `engine_info.stale`. Do NOT kill the launcher copy blindly: it is another session's backend.
-  For an isolated fresh-binary smoke use `python scripts/mcp_call.py run <steps.json>`, which spawns
+  `taskkill /F /IM HDAW_headless.exe` does **not** kill it. A `--mcp-http` spawn of
+  `build\HDAW_headless.exe` that cannot bind the port (the `%TEMP%` copy already holds it) **keeps
+  running mute**, so every subsequent `hdaw_mcp_http.py` call is answered by the stale copy.
+  **The identity fields are TRUSTWORTHY** — `whoami.runningBinaryPath`/`runningMtime` report the
+  process actually answering, and `engine_info {buildBinaryPath: ".../build/HDAW_headless.exe"}`
+  returns **`stale: true`** when that process is older than your build. That `stale: true` is
+  **real, not a false positive** (an earlier note here claiming the fields were unreliable was a
+  **misdiagnosis, retracted**). **The one-step diagnostic:** if a spawn's OWN log says
+  `MCP HTTP start failed: failed to listen on ...` (already in use), YOUR process is not serving
+  and another engine is answering. **Confirm** the answering binary by CONTENT — `tool_help <name>`
+  for a changed description, or `list_fx_params` for a changed param count — and compare against
+  the source/binary, or check OS process identity via the `Win32_Process` `ExecutablePath` query
+  (`Get-CimInstance Win32_Process -Filter "Name like 'HDAW%'" | Select ProcessId,Name,ExecutablePath`).
+  Do NOT kill the launcher copy blindly: it is another session's backend. For an isolated
+  fresh-binary smoke use `python scripts/mcp_call.py run <steps.json>`, which spawns
   `build/HDAW_headless.exe` over stdio with no port — the only path guaranteed to exercise the build
   you just made. A private `--mcp-http-port` is not sufficient on its own: the headless frontend WS
-  port must also be free (`--port`) or the engine exits 1. See `docs/lessons-learned.md` lesson 46.
+  port must also be free (`--port`) or the engine exits 1; and since 2026-10-01 an explicit
+  `--mcp-http` **fails fast** (non-zero exit) when the requested port is not actually served
+  (lesson 48). **On this box the settings store `HKCU\Software\HDAW\HDAW` is NOT writable** — a
+  direct `winreg` write returns **`WinError 5 Access is denied`** — so any persisted-setting
+  round-trip is frozen at its stored value, and a CLI flag that is supposed to change a setting may
+  have **no effect at all** (lesson 48). See `docs/lessons-learned.md` lesson 46.
 - **Clean reference baseline (2026-09-24, post ledger-close): 1971 tests / 285 suites —
   1952 passed, 39 skipped, 11 failures, all environmental** (exact failure list in the
   bullet above; `docs/build-and-testing.md` defers its baseline counts here). Compare any
