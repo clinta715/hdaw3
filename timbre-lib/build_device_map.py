@@ -32,6 +32,43 @@ MP = REPO / "timbre-lib" / "matrix_presets"
 OUT = REPO / "timbre-lib" / "device_map"
 
 ENGINES = ["je8086", "nodalred2x", "xenia", "virus", "vavra"]
+
+# The 15 internal fxTypes. Their parameter surface is STATIC C++ TABLES, a
+# stronger single source of truth than the VA corpus route: the DSP that
+# consumes the values owns the names/ranges, so the advertised def and the
+# clamp cannot drift. 13 of the tables live as `{ idx, "Name", def, min, max }`
+# literal rows inside TrackFXSlot.h's getParamDefsForType(); delay and filter
+# delegate to their own headers (paramDefs() rows have no explicit index).
+INTERNAL_ENGINES = {
+    "eq":         {"file": "src/engine/TrackFXSlot.h",    "table": "eq"},
+    "compressor": {"file": "src/engine/TrackFXSlot.h",    "table": "compressor"},
+    "reverb":     {"file": "src/engine/TrackFXSlot.h",    "table": "reverb"},
+    "delay":      {"file": "src/engine/InternalDelay.h",  "table": None},
+    "chorus":     {"file": "src/engine/TrackFXSlot.h",    "table": "chorus"},
+    "flanger":    {"file": "src/engine/TrackFXSlot.h",    "table": "flanger"},
+    "phaser":     {"file": "src/engine/TrackFXSlot.h",    "table": "phaser"},
+    "filter":     {"file": "src/engine/InternalFilter.h", "table": None},
+    "saturator":  {"file": "src/engine/TrackFXSlot.h",    "table": "saturator"},
+    "sampler":    {"file": "src/engine/TrackFXSlot.h",    "table": "sampler"},
+    "fm_synth":   {"file": "src/engine/TrackFXSlot.h",    "table": "fm_synth"},
+    "growl_bass": {"file": "src/engine/TrackFXSlot.h",    "table": "growl_bass"},
+    "psyarp":     {"file": "src/engine/TrackFXSlot.h",    "table": "psyarp"},
+    "psy_fm":     {"file": "src/engine/TrackFXSlot.h",    "table": "psy_fm"},
+    "sub_synth":  {"file": "src/engine/TrackFXSlot.h",    "table": "sub_synth"},
+}
+
+_NUM = r"-?\d+(?:\.\d+)?f?"
+# A literal def row, e.g. { 12, "OP1 Coarse", 0.0f, 0.0f, 31.0f },
+_ROW_IDX = re.compile(
+    r'^\s*\{\s*(\d+),\s*"([^"]+)",\s*(' + _NUM + r'),\s*(' + _NUM + r'),\s*(' + _NUM + r')\s*\}')
+_TOKEN = r"(?:[A-Za-z_]\w*|-?\d+(?:\.\d+)?f?)"
+# Header-table row without an index: { "Cutoff", 1000.0f, 20.0f, 20000.0f },
+# or with constexpr tokens: { "Delay Time", 0.5f, kMinDelaySeconds, kMaxDelaySeconds },
+_ROW_NONAME_IDX = re.compile(
+    r'^\s*\{\s*"([^"]+)",\s*(' + _TOKEN + r'),\s*(' + _TOKEN + r'),\s*(' + _TOKEN + r')\s*\}')
+_SECTION_START = re.compile(r'if \(type == "([a-z0-9_]+)"\)')
+_ARRAY_TABLE = re.compile(r'defs = \{ \{')
+_F = lambda s: float(s.rstrip("f"))
 MAP_SCHEMA = "hdaw.device.param.map.v1"
 INDEX_SCHEMA = "hdaw.device.index.v1"
 
@@ -110,6 +147,76 @@ def load_offset_map(engine: str):
                     out[k] = off
         return out
     return {}
+
+
+def parse_track_fx_slot_tables():
+    """Parse getParamDefsForType's literal `{ idx, "Name", def, min, max }`
+    tables out of src/engine/TrackFXSlot.h. Returns {typeName: [row,...]} where
+    row = (index, name, default, min, max, line). The caller FAILS LOUDLY on a
+    missing or zero-row table (it names the engines it expects)."""
+    path = REPO / "src" / "engine" / "TrackFXSlot.h"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    tables: dict = {}
+    current = None
+    for i, line in enumerate(lines, start=1):
+        m = _SECTION_START.search(line)
+        if m:
+            current = m.group(1)
+            tables.setdefault(current, [])
+            continue
+        if current is None:
+            continue
+        row = _ROW_IDX.match(line)
+        if row:
+            tables[current].append((int(row.group(1)), row.group(2),
+                                    _F(row.group(3)), _F(row.group(4)),
+                                    _F(row.group(5)), i))
+        elif line.strip() == "return {};":
+            current = None
+    return tables
+
+
+def parse_header_param_defs(relpath: str):
+    """Parse a `defs = { { ... } };` ParamDef table from an internal engine
+    header (rows carry no index; indices are assigned in order). Rows may use
+    the header's own `static constexpr float` tokens (e.g. kMaxFeedback) —
+    resolved from the same file, still in-source evidence.
+    Returns [(index, name, default, min, max, line), ...]."""
+    path = REPO / relpath
+    text = path.read_text(encoding="utf-8")
+    consts = {m.group(1): float(m.group(2).rstrip("f")) for m in
+              re.finditer(r'static constexpr float (\w+) = (-?\d+(?:\.\d+)?)f?;', text)}
+    lines = text.splitlines()
+    rows = []
+    inside = False
+    for i, line in enumerate(lines, start=1):
+        if not inside:
+            if _ARRAY_TABLE.search(line):
+                inside = True
+            continue
+        if line.strip().startswith("} };"):
+            break
+        row = _ROW_NONAME_IDX.match(line)
+        if row:
+            def val(tok):
+                return consts[tok] if tok in consts else float(tok.rstrip("f"))
+            rows.append((len(rows), row.group(1), val(row.group(2)),
+                         val(row.group(3)), val(row.group(4)), i))
+    return rows
+
+
+def parse_internal_table(engine: str, spec: dict, slot_tables: dict):
+    if spec["table"] is None:
+        rows = parse_header_param_defs(spec["file"])
+    else:
+        if spec["table"] not in slot_tables:
+            raise SystemExit(f"source table vanished: {spec['file']} has no"
+                             f" `if (type == \"{spec['table']}\")` section")
+        rows = slot_tables[spec["table"]]
+    if not rows:
+        raise SystemExit(f"source table parsed to ZERO rows: {engine}"
+                         f" ({spec['file']}) — refusing to emit an empty map")
+    return rows
 
 
 def classify(name: str, cat_rules, intent_rules, category_defaults):
@@ -244,6 +351,74 @@ def build_engine(engine: str, intent_cfg: dict):
     return doc
 
 
+def build_internal_engine(engine: str, spec: dict, slot_tables: dict,
+                          intent_cfg: dict, tables_cfg: dict):
+    cfg = tables_cfg["engines"][engine]
+    cat_rules = cfg.get("categoryRules") or []
+    intent_rules = cfg.get("intentRules") or []
+    category_defaults = cfg.get("categoryDefaults") or {}
+    param_notes = cfg.get("paramNotes") or {}
+
+    rows = parse_internal_table(engine, spec, slot_tables)
+    entries = []
+    for index, name, default, vmin, vmax, line_no in rows:
+        category, intents, tier, matched = classify(
+            name, cat_rules, intent_rules, category_defaults)
+        if tier is None:
+            # Every entry must classify; an unclassified param is reported,
+            # never hidden (same honesty rule as the VA route).
+            tier = "trap"
+            category = category or "unclassified"
+            matched = matched + ["unclassified"]
+        entry = {
+            "name": name,
+            "index": index,
+            "offset": None,
+            "category": category,
+            "tier": tier,
+            "intents": intents,
+            "stages": STAGE_BY_TIER[tier],
+            "roles": [],
+            "sources": [f"{spec['file']}:{line_no}"],
+            "source": f"{spec['file']}:{line_no}",
+            "trapReason": None,
+            "note": (param_notes.get(name) or {}).get("note"),
+            "default": default,
+            "min": vmin,
+            "max": vmax,
+        }
+        enum = (param_notes.get(name) or {}).get("enum")
+        if enum:
+            entry["enum"] = enum
+        if entry["trapReason"] is None and not entry["note"]:
+            del entry["note"]
+        entries.append(entry)
+
+    counts = {
+        "total": len(entries),
+        "movement": sum(1 for e in entries if e["tier"] == "movement"),
+        "identity": sum(1 for e in entries if e["tier"] == "identity"),
+        "trap": sum(1 for e in entries if e["tier"] == "trap"),
+        "unclassified": sum(1 for e in entries if e["category"] == "unclassified"),
+        "indexMapped": len(entries),
+        "offsetMapped": 0,
+    }
+    return {
+        "schema": MAP_SCHEMA,
+        "engine": engine,
+        "verifiedOn": tables_cfg.get("verifiedOn"),
+        "appliesVia": cfg.get("appliesVia"),
+        "durability": cfg.get("durability"),
+        "durabilityNote": cfg.get("durabilityNote"),
+        "source": {
+            "tables": spec["file"],
+            "evidence": "in-source static param table (see per-param sources)",
+        },
+        "counts": counts,
+        "params": entries,
+    }
+
+
 def build_index(docs, intent_cfg):
     stages = []
     for it in intent_cfg["intents"]:
@@ -283,6 +458,9 @@ def validate(doc):
             errs.append(f"{e['name']}: stages not a list")
         if not e["sources"]:
             errs.append(f"{e['name']}: no sources")
+        if "default" in e and not (e["min"] <= e["default"] <= e["max"]):
+            errs.append(f"{e['name']}: default {e['default']} outside"
+                        f" [{e['min']}, {e['max']}]")
     return errs
 
 
@@ -300,6 +478,14 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
 
     docs = [build_engine(e, intent_cfg) for e in ENGINES]
+    tables_cfg = intent_cfg.get("internalEngines") or {}
+    missing = sorted(set(INTERNAL_ENGINES) - set(tables_cfg.get("engines") or {}))
+    if missing:
+        raise SystemExit(f"intents.json internalEngines missing: {', '.join(missing)}")
+    slot_tables = parse_track_fx_slot_tables()
+    for engine, spec in INTERNAL_ENGINES.items():
+        docs.append(build_internal_engine(engine, spec, slot_tables,
+                                          intent_cfg, tables_cfg))
     for d in docs:
         errs = validate(d)
         if errs:

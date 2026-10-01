@@ -1,0 +1,508 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 10,
+  "indexMapped": 21,
+  "movement": 11,
+  "offsetMapped": 0,
+  "total": 21,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "psyarp",
+ "params": [
+  {
+   "category": "psyarp",
+   "default": 0.0,
+   "enum": {
+    "0": "Saw",
+    "1": "Square",
+    "2": "SuperSaw"
+   },
+   "index": 0,
+   "intents": [
+    "osc-wave"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Osc Shape",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:268",
+   "sources": [
+    "src/engine/TrackFXSlot.h:268"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 2.0,
+   "index": 1,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 4.0,
+   "min": 1.0,
+   "name": "Unison Voices",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:269",
+   "sources": [
+    "src/engine/TrackFXSlot.h:269"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 8.0,
+   "index": 2,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 50.0,
+   "min": 0.0,
+   "name": "Unison Detune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:270",
+   "sources": [
+    "src/engine/TrackFXSlot.h:270"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 1.0,
+   "enum": {
+    "0": "UpDown",
+    "1": "Asym332",
+    "2": "Random"
+   },
+   "index": 3,
+   "intents": [
+    "arp-pattern"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Pattern Shape",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:271",
+   "sources": [
+    "src/engine/TrackFXSlot.h:271"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 3.0,
+   "index": 4,
+   "intents": [
+    "arp-pattern"
+   ],
+   "max": 4.0,
+   "min": 1.0,
+   "name": "Octave Range",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:272",
+   "sources": [
+    "src/engine/TrackFXSlot.h:272"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 2.0,
+   "index": 5,
+   "intents": [
+    "arp-pattern"
+   ],
+   "max": 8.0,
+   "min": 0.5,
+   "name": "Bars Per Motif",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:273",
+   "sources": [
+    "src/engine/TrackFXSlot.h:273"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 600.0,
+   "index": 6,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 20000.0,
+   "min": 20.0,
+   "name": "Filter Cutoff",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:274",
+   "sources": [
+    "src/engine/TrackFXSlot.h:274"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 7.0,
+   "index": 7,
+   "intents": [
+    "resonance"
+   ],
+   "max": 20.0,
+   "min": 0.1,
+   "name": "Filter Resonance",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:275",
+   "sources": [
+    "src/engine/TrackFXSlot.h:275"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 4.0,
+   "index": 8,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 16.0,
+   "min": 0.5,
+   "name": "Filter Sweep Bars",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:276",
+   "sources": [
+    "src/engine/TrackFXSlot.h:276"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.375,
+   "index": 9,
+   "intents": [
+    "delay-throw"
+   ],
+   "max": 2.0,
+   "min": 0.01,
+   "name": "Delay Time (beats)",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:277",
+   "sources": [
+    "src/engine/TrackFXSlot.h:277"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.55,
+   "index": 10,
+   "intents": [
+    "delay-throw"
+   ],
+   "max": 0.95,
+   "min": 0.0,
+   "name": "Delay Feedback",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:278",
+   "sources": [
+    "src/engine/TrackFXSlot.h:278"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 1.0,
+   "enum": {
+    "0": "off",
+    "1": "on"
+   },
+   "index": 11,
+   "intents": [
+    "fx-type"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Delay Ping-Pong",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:279",
+   "sources": [
+    "src/engine/TrackFXSlot.h:279"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.4,
+   "index": 12,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Delay Wet",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:280",
+   "sources": [
+    "src/engine/TrackFXSlot.h:280"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 3.5,
+   "index": 13,
+   "intents": [
+    "reverb-space"
+   ],
+   "max": 10.0,
+   "min": 0.1,
+   "name": "Reverb Size",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:281",
+   "sources": [
+    "src/engine/TrackFXSlot.h:281"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.1,
+   "index": 14,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Reverb Wet on Dry",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:282",
+   "sources": [
+    "src/engine/TrackFXSlot.h:282"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.6,
+   "index": 15,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Reverb Wet on Delay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:283",
+   "sources": [
+    "src/engine/TrackFXSlot.h:283"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 1.0,
+   "enum": {
+    "0": "off",
+    "1": "on"
+   },
+   "index": 16,
+   "intents": [
+    "fx-type"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Phaser Enable",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:284",
+   "sources": [
+    "src/engine/TrackFXSlot.h:284"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.15,
+   "index": 17,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "max": 5.0,
+   "min": 0.01,
+   "name": "Phaser Rate",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:285",
+   "sources": [
+    "src/engine/TrackFXSlot.h:285"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.3,
+   "index": 18,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Phaser Depth",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:286",
+   "sources": [
+    "src/engine/TrackFXSlot.h:286"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.4,
+   "index": 19,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Output Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:287",
+   "sources": [
+    "src/engine/TrackFXSlot.h:287"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "psyarp",
+   "default": 0.0,
+   "enum": {
+    "0": "1/16",
+    "1": "1/8",
+    "2": "1/4"
+   },
+   "index": 20,
+   "intents": [
+    "fx-type"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Step Rate",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:288",
+   "sources": [
+    "src/engine/TrackFXSlot.h:288"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

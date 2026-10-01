@@ -152,6 +152,14 @@ QJsonArray filterDeviceParams(const QJsonObject& map,
         if (!p.value("offset").isNull())     o["offset"] = p.value("offset");
         if (!p.value("trapReason").isNull()) o["trapReason"] = p.value("trapReason");
         if (!p.value("note").isNull())       o["note"] = p.value("note");
+        // Internal-engine source-table extras (hdaw.device.param.map.v1 map
+        // fields the VA route leaves null/absent). Present only when the map
+        // carries them, so existing engine payloads are byte-compatible.
+        if (p.contains("source"))            o["source"] = p.value("source");
+        if (p.contains("default"))           o["default"] = p.value("default");
+        if (p.contains("min"))               o["min"] = p.value("min");
+        if (p.contains("max"))               o["max"] = p.value("max");
+        if (p.contains("enum"))              o["enum"] = p.value("enum");
         out.append(o);
     }
     return out;

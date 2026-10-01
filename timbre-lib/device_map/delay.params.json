@@ -1,0 +1,171 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 2,
+  "indexMapped": 6,
+  "movement": 4,
+  "offsetMapped": 0,
+  "total": 6,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render. Table comes from InternalDelay::paramDefs() (TrackFXSlot derives its advertised defs from it).",
+ "engine": "delay",
+ "params": [
+  {
+   "category": "delay",
+   "default": 0.5,
+   "index": 0,
+   "intents": [
+    "delay-throw"
+   ],
+   "max": 5.0,
+   "min": 0.01,
+   "name": "Delay Time",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalDelay.h:67",
+   "sources": [
+    "src/engine/InternalDelay.h:67"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "delay",
+   "default": 0.3,
+   "index": 1,
+   "intents": [
+    "delay-throw"
+   ],
+   "max": 0.99,
+   "min": 0.0,
+   "name": "Feedback",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalDelay.h:68",
+   "sources": [
+    "src/engine/InternalDelay.h:68"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "delay",
+   "default": 0.5,
+   "index": 2,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Mix",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalDelay.h:69",
+   "sources": [
+    "src/engine/InternalDelay.h:69"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "delay",
+   "default": 0.0,
+   "enum": {
+    "0": "off (manual Delay Time)",
+    "1": "on (Delay Time derived from Division + BPM)"
+   },
+   "index": 3,
+   "intents": [
+    "fx-type"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "SyncToTempo",
+   "note": "Sync on: seconds = divisionBeatFraction * 60 / bpm, clamped 0.01..5 s (InternalDelay.h).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalDelay.h:70",
+   "sources": [
+    "src/engine/InternalDelay.h:70"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "delay",
+   "default": 0.0,
+   "enum": {
+    "0": "1/8",
+    "1": "1/16",
+    "2": "1/32",
+    "3": "triplet-1/8",
+    "4": "dotted-1/8",
+    "5": "dotted-1/16",
+    "6": "1/4"
+   },
+   "index": 4,
+   "intents": [
+    "fx-type"
+   ],
+   "max": 6.0,
+   "min": 0.0,
+   "name": "Division",
+   "note": "kDelayDivisionBeats (InternalDelay.h:49-52).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalDelay.h:71",
+   "sources": [
+    "src/engine/InternalDelay.h:71"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "delay",
+   "default": 0.0,
+   "index": 5,
+   "intents": [
+    "delay-throw"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Damping",
+   "note": "One-pole lowpass INSIDE the feedback loop (dub); 0 = hard bypass.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalDelay.h:72",
+   "sources": [
+    "src/engine/InternalDelay.h:72"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/InternalDelay.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

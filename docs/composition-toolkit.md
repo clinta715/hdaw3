@@ -106,6 +106,16 @@ product pillar and should be reached for wherever it fits:
   risk). Device matrix, per-device FX recipes and caveats:
   `docs/hardware-va-suite.md`.
 
+- **Device parameter maps (2026-09-30)** — `list_device_params` now serves ALL
+  20 engines: the 5 VA CLAPs (corpus route) AND the 15 internal fxTypes
+  (`eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator,
+  sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth`), whose maps are
+  generated straight from the in-source static C++ def tables (verbatim
+  default/min/max + per-param `source` file:line citation + documented enums;
+  `appliesVia: set_internal_fx_param`, `durability: valuetree`). Regenerate with
+  `python timbre-lib/build_device_map.py` (`--check` pins determinism); never
+  write blind `paramIndex` values — query the map first.
+
 **Bus/send architecture — reachable since 2026-09-22** (this section previously
 documented a capability gap; it is now closed). `add_bus {busType:"fx"|"group", name,
 fxType, busTarget}` creates a bus and returns its `busID`; `add_send {trackId, busTarget,

@@ -211,3 +211,18 @@ build\hdaw_tests.exe --gtest_filter=DeviceParamsTest.*:DeviceParamsRpcTest.*
   about renders. So there is **no live-path gap** — the earlier reading was a measurement artifact, not a
   regression from slice 1, and not an engine change.
 
+- **Internal-engine coverage (slice 2) — DONE 2026-09-30.** The 15 internal fxTypes
+  (`eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler,
+  fm_synth, growl_bass, psyarp, psy_fm, sub_synth`) now have device maps generated from
+  the in-source STATIC C++ def tables (stronger provenance than the VA corpus route):
+  `build_device_map.py` parses `TrackFXSlot.h::getParamDefsForType` (13 tables) plus
+  `InternalDelay.h` / `InternalFilter.h` `paramDefs()` (with constexpr token
+  resolution), emits verbatim default/min/max + per-param `source` file:line citations
+  + documented enums; 802 params across 20 engines, `unclassified == 0` everywhere.
+  VA maps byte-unchanged vs HEAD (hard gate); `--check` determinism clean. The shared
+  loader (`DeviceParamMap.cpp`) projects the new fields (`source`, `default`, `min`,
+  `max`, `enum`) when present — no route changes, parity ledger byte-unchanged. Tests:
+  `DeviceParamsInternalTest.*` (5, real corpus) + existing 7 fixture MCP + 4 RPC — all
+  green. Live check: `list_device_params` index mode lists all 20 engines; engine mode
+  filters (`sub_synth` + intent `filter-sweep` → Cutoff/Filter Env Amount/LFO Cutoff Amt).
+

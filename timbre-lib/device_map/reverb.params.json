@@ -1,0 +1,133 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 0,
+  "indexMapped": 5,
+  "movement": 5,
+  "offsetMapped": 0,
+  "total": 5,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "reverb",
+ "params": [
+  {
+   "category": "reverb",
+   "default": 0.5,
+   "index": 0,
+   "intents": [
+    "reverb-space"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Room Size",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:95",
+   "sources": [
+    "src/engine/TrackFXSlot.h:95"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "reverb",
+   "default": 0.5,
+   "index": 1,
+   "intents": [
+    "reverb-space"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Damping",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:96",
+   "sources": [
+    "src/engine/TrackFXSlot.h:96"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "reverb",
+   "default": 0.3,
+   "index": 2,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Wet Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:97",
+   "sources": [
+    "src/engine/TrackFXSlot.h:97"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "reverb",
+   "default": 0.7,
+   "index": 3,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Dry Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:98",
+   "sources": [
+    "src/engine/TrackFXSlot.h:98"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "reverb",
+   "default": 1.0,
+   "index": 4,
+   "intents": [
+    "reverb-space"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Width",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:99",
+   "sources": [
+    "src/engine/TrackFXSlot.h:99"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

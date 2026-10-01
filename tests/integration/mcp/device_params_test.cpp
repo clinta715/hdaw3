@@ -16,6 +16,7 @@
 #include "mcp/McpJsonRpc.h"
 
 #include <QDir>
+#include <QCoreApplication>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -316,6 +317,242 @@ TEST_F(DeviceParamsTest, ErrorPaths)
     const QJsonObject badSchema { { "engine", "badschema" } };
     EXPECT_TRUE(isError(call("list_device_params", badSchema)));
     EXPECT_TRUE(callText("list_device_params", badSchema).contains("unsupported schema"));
+}
+
+// ---------------------------------------------------------------------------
+// Internal-engine source-table maps (generated from the static C++ def
+// tables; docs/plans/2026-09-21-device-param-map.md slice 2, 2026-09-30).
+// These run against the REAL committed corpus in timbre-lib/device_map —
+// the same artifact the generator's --check gate pins.
+// ---------------------------------------------------------------------------
+
+class DeviceParamsInternalTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        // Walk up from cwd (and the exe dir) until timbre-lib/device_map is
+        // found — the tests may run from any build subdirectory.
+        QStringList roots { QDir::currentPath() };
+        roots << QCoreApplication::applicationDirPath();
+        QString found;
+        for (const QString& root : roots)
+        {
+            QDir dir(root);
+            for (int i = 0; i < 8 && dir.exists(); ++i)
+            {
+                const QString candidate = dir.filePath("timbre-lib/device_map");
+                if (QFile::exists(candidate + "/intents.json")) { found = candidate; break; }
+                if (!dir.cdUp()) break;
+            }
+            if (!found.isEmpty()) break;
+        }
+        ASSERT_FALSE(found.isEmpty())
+            << "real corpus not found: timbre-lib/device_map (walked up from "
+            << QDir::currentPath().toStdString() << ")";
+        qputenv("HDAW_DEVICE_MAP_DIR", QDir::cleanPath(found).toUtf8());
+        engine = std::make_unique<AudioEngine>();
+        engine->initialize();
+        server = std::make_unique<mcp::McpServer>();
+        server->setEngine(engine.get());
+        mcp::registerAllTools(*server);
+        loopback = std::make_unique<mcp::TransportLoopback>();
+        server->setTransport(loopback.get());
+        server->start();
+    }
+
+    void TearDown() override
+    {
+        server->stop();
+        server->setTransport(nullptr);
+        loopback.reset();
+        server.reset();
+        engine.reset();
+        qunsetenv("HDAW_DEVICE_MAP_DIR");
+    }
+
+    QJsonObject callJson(const char* method, const QJsonObject& args = {})
+    {
+        QJsonObject req;
+        req["jsonrpc"] = "2.0";
+        req["id"] = 1;
+        req["method"] = "tools/call";
+        req["params"] = QJsonObject{ { "name", method }, { "arguments", args } };
+        loopback->drainOutgoing();
+        loopback->pumpIncoming(QJsonDocument(req).toJson(QJsonDocument::Compact));
+        QByteArray out;
+        if (!loopback->waitForOutgoing(500, &out)) return {};
+        const int nl = out.indexOf('\n');
+        const auto r = QJsonDocument::fromJson(out.left(nl < 0 ? out.size() : nl)).object()
+                           .value("result").toObject();
+        const auto content = r.value("content").toArray();
+        if (content.isEmpty()) return {};
+        return QJsonDocument::fromJson(
+            content[0].toObject().value("text").toString().toUtf8()).object();
+    }
+
+    static QJsonObject findParam(const QJsonObject& map, const QString& name)
+    {
+        for (const auto& pv : map.value("params").toArray())
+            if (pv.toObject().value("name").toString() == name)
+                return pv.toObject();
+        return {};
+    }
+
+    std::unique_ptr<AudioEngine> engine;
+    std::unique_ptr<mcp::McpServer> server;
+    std::unique_ptr<mcp::TransportLoopback> loopback;
+};
+
+// Index mode lists all 15 internal engines alongside the 5 VA ones.
+TEST_F(DeviceParamsInternalTest, IndexModeListsInternalEngines)
+{
+    const auto o = callJson("list_device_params");
+    ASSERT_FALSE(o.isEmpty());
+    QStringList engines;
+    for (const auto& e : o.value("engines").toArray())
+        engines << e.toObject().value("engine").toString();
+    for (const char* id : { "eq", "compressor", "reverb", "delay", "chorus",
+                            "flanger", "phaser", "filter", "saturator",
+                            "sampler", "fm_synth", "growl_bass", "psyarp",
+                            "psy_fm", "sub_synth" })
+        EXPECT_TRUE(engines.contains(QString::fromLatin1(id))) << id;
+}
+
+// fm_synth: table-served surface with movement intents on the FM core params.
+TEST_F(DeviceParamsInternalTest, FmSynthServesSourceTable)
+{
+    const auto o = callJson("list_device_params", { { "engine", "fm_synth" } });
+    ASSERT_FALSE(o.isEmpty());
+    EXPECT_EQ(o.value("engine").toString(), QString("fm_synth"));
+    EXPECT_EQ(o.value("appliesVia").toString(), QString("set_internal_fx_param"));
+    EXPECT_EQ(o.value("matched").toInt(), 26);
+
+    const auto alg = findParam(o, "Algorithm");
+    EXPECT_FALSE(alg.isEmpty());
+    EXPECT_EQ(alg.value("tier").toString(), QString("movement"));
+    const auto algIntents = alg.value("intents").toArray();
+    bool hasFmMetal = false;
+    for (const auto& v : algIntents)
+        if (v.toString() == "fm-metal") hasFmMetal = true;
+    EXPECT_TRUE(hasFmMetal);
+    EXPECT_TRUE(alg.value("source").toString().startsWith("src/engine/TrackFXSlot.h:"));
+    EXPECT_DOUBLE_EQ(alg.value("max").toDouble(), 31.0);
+
+    const auto fb = findParam(o, "Feedback");
+    EXPECT_FALSE(fb.isEmpty());
+    EXPECT_EQ(fb.value("tier").toString(), QString("movement"));
+    EXPECT_DOUBLE_EQ(fb.value("default").toDouble(), 5.0);
+}
+
+// sub_synth: the Cutoff range must come verbatim from the def table.
+TEST_F(DeviceParamsInternalTest, SubSynthCutoffRangeFromTable)
+{
+    const auto o = callJson("list_device_params", { { "engine", "sub_synth" } });
+    ASSERT_FALSE(o.isEmpty());
+    const auto cutoff = findParam(o, "Cutoff");
+    EXPECT_FALSE(cutoff.isEmpty());
+    EXPECT_EQ(cutoff.value("category").toString(), QString("sub-synth"));
+    EXPECT_EQ(cutoff.value("tier").toString(), QString("movement"));
+    EXPECT_DOUBLE_EQ(cutoff.value("default").toDouble(), 1800.0);
+    EXPECT_DOUBLE_EQ(cutoff.value("min").toDouble(), 20.0);
+    EXPECT_DOUBLE_EQ(cutoff.value("max").toDouble(), 20000.0);
+    EXPECT_TRUE(cutoff.value("source").toString().contains("TrackFXSlot.h:"));
+}
+
+// delay: Division carries the enum documentation from InternalDelay.
+TEST_F(DeviceParamsInternalTest, DelayDivisionCarriesEnumDoc)
+{
+    const auto o = callJson("list_device_params", { { "engine", "delay" } });
+    ASSERT_FALSE(o.isEmpty());
+    EXPECT_EQ(o.value("matched").toInt(), 6);
+    const auto division = findParam(o, "Division");
+    EXPECT_FALSE(division.isEmpty());
+    const auto en = division.value("enum").toObject();
+    EXPECT_EQ(en.value("0").toString(), QString("1/8"));
+    EXPECT_EQ(en.value("5").toString(), QString("dotted-1/16"));
+    EXPECT_EQ(en.value("6").toString(), QString("1/4"));
+    EXPECT_TRUE(division.value("source").toString().contains("InternalDelay.h:"));
+
+    // Feedback: a delay's feedback is delay-throw movement (NOT the generic
+    // grammar's `riser` mis-fire), with the runaway-guard max (kMaxFeedback)
+    // resolved from the header and the full table row projected.
+    const auto fb = findParam(o, "Feedback");
+    EXPECT_FALSE(fb.isEmpty());
+    const auto fbIntents = fb.value("intents").toArray();
+    bool fbDelayThrow = false;
+    for (const auto& v : fbIntents)
+        if (v.toString() == "delay-throw") fbDelayThrow = true;
+    EXPECT_TRUE(fbDelayThrow) << "delay Feedback must carry delay-throw";
+    EXPECT_DOUBLE_EQ(fb.value("default").toDouble(), 0.3);
+    EXPECT_DOUBLE_EQ(fb.value("min").toDouble(), 0.0);
+    EXPECT_DOUBLE_EQ(fb.value("max").toDouble(), 0.99);
+    EXPECT_EQ(fb.value("index").toInt(), 1);
+}
+
+// Root metadata on ALL 15 internal maps: they must carry the internal route
+// (set_internal_fx_param + valuetree), never the VA plugin routes.
+TEST_F(DeviceParamsInternalTest, InternalMapsCarryInternalRoute)
+{
+    for (const char* id : { "eq", "compressor", "reverb", "delay", "chorus",
+                            "flanger", "phaser", "filter", "saturator",
+                            "sampler", "fm_synth", "growl_bass", "psyarp",
+                            "psy_fm", "sub_synth" })
+    {
+        const auto o = callJson("list_device_params",
+                                { { "engine", QString::fromLatin1(id) } });
+        ASSERT_FALSE(o.isEmpty()) << id;
+        EXPECT_EQ(o.value("appliesVia").toString(),
+                  QString("set_internal_fx_param")) << id;
+        EXPECT_EQ(o.value("durability").toString(),
+                  QString("valuetree")) << id;
+    }
+}
+
+// The wire projection must NOT be lossy for internal maps: every param keeps
+// its table index + default/min/max (feeds a later common-range layer).
+TEST_F(DeviceParamsInternalTest, WireProjectionKeepsTableFields)
+{
+    for (const char* id : { "delay", "sub_synth", "fm_synth", "psyarp" })
+    {
+        const auto o = callJson("list_device_params",
+                                { { "engine", QString::fromLatin1(id) } });
+        ASSERT_FALSE(o.isEmpty()) << id;
+        for (const auto& pv : o.value("params").toArray())
+        {
+            const auto p = pv.toObject();
+            EXPECT_TRUE(p.contains("index")) << id << " " << p.value("name").toString().toStdString();
+            EXPECT_TRUE(p.contains("default")) << id << " " << p.value("name").toString().toStdString();
+            EXPECT_TRUE(p.contains("min")) << id << " " << p.value("name").toString().toStdString();
+            EXPECT_TRUE(p.contains("max")) << id << " " << p.value("name").toString().toStdString();
+            EXPECT_TRUE(p.contains("source")) << id << " " << p.value("name").toString().toStdString();
+        }
+    }
+}
+
+// An unknown engine still refuses with the existing error shape, now listing
+// the internal engines too.
+TEST_F(DeviceParamsInternalTest, UnknownEngineRefusesListingInternal)
+{
+    const QJsonObject unknown { { "engine", "nope" } };
+    QJsonObject req;
+    req["jsonrpc"] = "2.0";
+    req["id"] = 1;
+    req["method"] = "tools/call";
+    req["params"] = QJsonObject{ { "name", "list_device_params" },
+                                 { "arguments", unknown } };
+    loopback->drainOutgoing();
+    loopback->pumpIncoming(QJsonDocument(req).toJson(QJsonDocument::Compact));
+    QByteArray out;
+    ASSERT_TRUE(loopback->waitForOutgoing(500, &out));
+    const int nl = out.indexOf('\n');
+    const auto r = QJsonDocument::fromJson(out.left(nl < 0 ? out.size() : nl)).object()
+                       .value("result").toObject();
+    EXPECT_TRUE(r.value("isError").toBool(false));
+    const auto content = r.value("content").toArray();
+    ASSERT_FALSE(content.isEmpty());
+    const QString text = content[0].toObject().value("text").toString();
+    EXPECT_TRUE(text.contains("fm_synth"));
+    EXPECT_TRUE(text.contains("sub_synth"));
 }
 
 } // namespace

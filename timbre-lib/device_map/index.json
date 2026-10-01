@@ -29,6 +29,96 @@
    "durability": "presetSysex",
    "engine": "vavra",
    "paramCount": 363
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "eq",
+   "paramCount": 3
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "compressor",
+   "paramCount": 4
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "reverb",
+   "paramCount": 5
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "delay",
+   "paramCount": 6
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "chorus",
+   "paramCount": 5
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "flanger",
+   "paramCount": 5
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "phaser",
+   "paramCount": 5
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "filter",
+   "paramCount": 3
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "saturator",
+   "paramCount": 6
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "sampler",
+   "paramCount": 10
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "fm_synth",
+   "paramCount": 26
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "growl_bass",
+   "paramCount": 26
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "psyarp",
+   "paramCount": 21
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "psy_fm",
+   "paramCount": 33
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "sub_synth",
+   "paramCount": 33
   }
  ],
  "excludedStages": [
@@ -226,6 +316,48 @@
    "id": "mod-source",
    "kind": "identity",
    "label": "Modulation source select",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "compressor-shape",
+   "kind": "movement",
+   "label": "Compressor threshold / ratio / timing",
+   "stage": "fx-automation-engineer"
+  },
+  {
+   "id": "sample-transpose",
+   "kind": "identity",
+   "label": "Sample transpose / pitch",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "sample-region",
+   "kind": "identity",
+   "label": "Sample start/end region",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "playback-mode",
+   "kind": "identity",
+   "label": "Playback direction / toggle",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "arp-pattern",
+   "kind": "identity",
+   "label": "Arp pattern shape / octave span",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "polyphony",
+   "kind": "identity",
+   "label": "Mono / poly voice mode",
+   "stage": "sound-selector"
+  },
+  {
+   "id": "pitch-bend",
+   "kind": "identity",
+   "label": "Pitch bend range",
    "stage": "sound-selector"
   }
  ],

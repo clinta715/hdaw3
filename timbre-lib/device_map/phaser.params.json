@@ -1,0 +1,133 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 0,
+  "indexMapped": 5,
+  "movement": 5,
+  "offsetMapped": 0,
+  "total": 5,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "phaser",
+ "params": [
+  {
+   "category": "phaser",
+   "default": 0.5,
+   "index": 0,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "max": 5.0,
+   "min": 0.1,
+   "name": "Rate",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:156",
+   "sources": [
+    "src/engine/TrackFXSlot.h:156"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "phaser",
+   "default": 0.5,
+   "index": 1,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Depth",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:157",
+   "sources": [
+    "src/engine/TrackFXSlot.h:157"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "phaser",
+   "default": 1000.0,
+   "index": 2,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "max": 20000.0,
+   "min": 20.0,
+   "name": "Centre Frequency",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:158",
+   "sources": [
+    "src/engine/TrackFXSlot.h:158"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "phaser",
+   "default": 0.0,
+   "index": 3,
+   "intents": [
+    "phaser-sweep"
+   ],
+   "max": 1.0,
+   "min": -1.0,
+   "name": "Feedback",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:159",
+   "sources": [
+    "src/engine/TrackFXSlot.h:159"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "phaser",
+   "default": 0.5,
+   "index": 4,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Mix",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:160",
+   "sources": [
+    "src/engine/TrackFXSlot.h:160"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

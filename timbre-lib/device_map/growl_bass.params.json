@@ -1,0 +1,610 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 10,
+  "indexMapped": 26,
+  "movement": 16,
+  "offsetMapped": 0,
+  "total": 26,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "growl_bass",
+ "params": [
+  {
+   "category": "growl-bass",
+   "default": 55.0,
+   "index": 0,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 200.0,
+   "min": 20.0,
+   "name": "Fundamental Hz",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:239",
+   "sources": [
+    "src/engine/TrackFXSlot.h:239"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 1.5,
+   "index": 1,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 8.0,
+   "min": 0.5,
+   "name": "Mod Ratio",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:240",
+   "sources": [
+    "src/engine/TrackFXSlot.h:240"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.6,
+   "index": 2,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Mod Depth",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:241",
+   "sources": [
+    "src/engine/TrackFXSlot.h:241"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.0,
+   "enum": {
+    "0": "Sine",
+    "1": "Tri",
+    "2": "Square"
+   },
+   "index": 3,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Mod Shape",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:242",
+   "sources": [
+    "src/engine/TrackFXSlot.h:242"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.0,
+   "enum": {
+    "0": "Tanh",
+    "1": "Atan",
+    "2": "Hard",
+    "3": "Bitcrush"
+   },
+   "index": 4,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "Clip Type",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:243",
+   "sources": [
+    "src/engine/TrackFXSlot.h:243"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 18.0,
+   "index": 5,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 40.0,
+   "min": 0.0,
+   "name": "Drive dB",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:244",
+   "sources": [
+    "src/engine/TrackFXSlot.h:244"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.15,
+   "index": 6,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 1.0,
+   "min": -1.0,
+   "name": "Asymmetry",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:245",
+   "sources": [
+    "src/engine/TrackFXSlot.h:245"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 8.0,
+   "index": 7,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 16.0,
+   "min": 2.0,
+   "name": "Bitcrush Bits",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:246",
+   "sources": [
+    "src/engine/TrackFXSlot.h:246"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 800.0,
+   "index": 8,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 20000.0,
+   "min": 20.0,
+   "name": "Filter Cutoff",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:247",
+   "sources": [
+    "src/engine/TrackFXSlot.h:247"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 4.0,
+   "index": 9,
+   "intents": [
+    "resonance"
+   ],
+   "max": 20.0,
+   "min": 0.1,
+   "name": "Filter Res",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:248",
+   "sources": [
+    "src/engine/TrackFXSlot.h:248"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.7,
+   "index": 10,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Env Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:249",
+   "sources": [
+    "src/engine/TrackFXSlot.h:249"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.0,
+   "enum": {
+    "0": "LP",
+    "1": "BP"
+   },
+   "index": 11,
+   "intents": [
+    "filter-type"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Type",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:250",
+   "sources": [
+    "src/engine/TrackFXSlot.h:250"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 2.0,
+   "index": 12,
+   "intents": [
+    "env-shape"
+   ],
+   "max": 100.0,
+   "min": 0.1,
+   "name": "Attack ms",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:251",
+   "sources": [
+    "src/engine/TrackFXSlot.h:251"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 80.0,
+   "index": 13,
+   "intents": [
+    "env-shape"
+   ],
+   "max": 1000.0,
+   "min": 1.0,
+   "name": "Decay ms",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:252",
+   "sources": [
+    "src/engine/TrackFXSlot.h:252"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.7,
+   "index": 14,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Sustain",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:253",
+   "sources": [
+    "src/engine/TrackFXSlot.h:253"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 40.0,
+   "index": 15,
+   "intents": [
+    "env-shape"
+   ],
+   "max": 1000.0,
+   "min": 1.0,
+   "name": "Release ms",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:254",
+   "sources": [
+    "src/engine/TrackFXSlot.h:254"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.4,
+   "index": 16,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Output Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:255",
+   "sources": [
+    "src/engine/TrackFXSlot.h:255"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.0,
+   "index": 17,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Unison Enable",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:256",
+   "sources": [
+    "src/engine/TrackFXSlot.h:256"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 2.0,
+   "index": 18,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 4.0,
+   "min": 1.0,
+   "name": "Unison Voices",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:257",
+   "sources": [
+    "src/engine/TrackFXSlot.h:257"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 12.0,
+   "index": 19,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 50.0,
+   "min": 0.0,
+   "name": "Unison Detune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:258",
+   "sources": [
+    "src/engine/TrackFXSlot.h:258"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.0,
+   "index": 20,
+   "intents": [
+    "mod-rate"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Ratio Jitter",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:259",
+   "sources": [
+    "src/engine/TrackFXSlot.h:259"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.05,
+   "index": 21,
+   "intents": [
+    "mod-rate"
+   ],
+   "max": 0.5,
+   "min": 0.0,
+   "name": "Jitter Amount",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:260",
+   "sources": [
+    "src/engine/TrackFXSlot.h:260"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.0,
+   "index": 22,
+   "intents": [
+    "formant-vocal"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Formant Enable",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:261",
+   "sources": [
+    "src/engine/TrackFXSlot.h:261"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.0,
+   "index": 23,
+   "intents": [
+    "formant-vocal"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Formant Morph",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:262",
+   "sources": [
+    "src/engine/TrackFXSlot.h:262"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.0,
+   "index": 24,
+   "intents": [
+    "pump"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Sidechain Drive",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:263",
+   "sources": [
+    "src/engine/TrackFXSlot.h:263"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "growl-bass",
+   "default": 0.5,
+   "index": 25,
+   "intents": [
+    "pump"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Sidechain Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:264",
+   "sources": [
+    "src/engine/TrackFXSlot.h:264"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

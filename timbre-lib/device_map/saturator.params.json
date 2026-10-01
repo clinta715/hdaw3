@@ -1,0 +1,163 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 2,
+  "indexMapped": 6,
+  "movement": 4,
+  "offsetMapped": 0,
+  "total": 6,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "saturator",
+ "params": [
+  {
+   "category": "saturator",
+   "default": 12.0,
+   "index": 0,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 40.0,
+   "min": 0.0,
+   "name": "Drive dB",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:188",
+   "sources": [
+    "src/engine/TrackFXSlot.h:188"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "saturator",
+   "default": 0.0,
+   "enum": {
+    "0": "SoftTanh",
+    "1": "SoftAtan",
+    "2": "Hard",
+    "3": "Bitcrush"
+   },
+   "index": 1,
+   "intents": [
+    "fx-type"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "Type",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:189",
+   "sources": [
+    "src/engine/TrackFXSlot.h:189"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "saturator",
+   "default": 0.0,
+   "index": 2,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 1.0,
+   "min": -1.0,
+   "name": "Asymmetry",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:190",
+   "sources": [
+    "src/engine/TrackFXSlot.h:190"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "saturator",
+   "default": 1.0,
+   "index": 3,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Mix",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:191",
+   "sources": [
+    "src/engine/TrackFXSlot.h:191"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "saturator",
+   "default": 0.0,
+   "index": 4,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "Output dB",
+   "note": "Trims the WET path only.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:192",
+   "sources": [
+    "src/engine/TrackFXSlot.h:192"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "saturator",
+   "default": 8.0,
+   "index": 5,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 16.0,
+   "min": 2.0,
+   "name": "Bits",
+   "note": "Applies to the Bitcrush curve only.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:193",
+   "sources": [
+    "src/engine/TrackFXSlot.h:193"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

@@ -1,0 +1,247 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 10,
+  "indexMapped": 10,
+  "movement": 0,
+  "offsetMapped": 0,
+  "total": 10,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "sampler",
+ "params": [
+  {
+   "category": "sampler",
+   "default": 0.005,
+   "index": 0,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.0,
+   "name": "Attack",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:197",
+   "sources": [
+    "src/engine/TrackFXSlot.h:197"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 0.1,
+   "index": 1,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.0,
+   "name": "Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:198",
+   "sources": [
+    "src/engine/TrackFXSlot.h:198"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 0.9,
+   "index": 2,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Sustain",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:199",
+   "sources": [
+    "src/engine/TrackFXSlot.h:199"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 0.1,
+   "index": 3,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 10.0,
+   "min": 0.0,
+   "name": "Release",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:200",
+   "sources": [
+    "src/engine/TrackFXSlot.h:200"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 0.0,
+   "index": 4,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 36.0,
+   "min": -36.0,
+   "name": "Transpose",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:201",
+   "sources": [
+    "src/engine/TrackFXSlot.h:201"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 0.0,
+   "index": 5,
+   "intents": [
+    "sample-region"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "SampleStart",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:202",
+   "sources": [
+    "src/engine/TrackFXSlot.h:202"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 0.0,
+   "index": 6,
+   "intents": [
+    "env-shape"
+   ],
+   "max": 5.0,
+   "min": 0.0,
+   "name": "Hold",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:203",
+   "sources": [
+    "src/engine/TrackFXSlot.h:203"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 0.0,
+   "index": 7,
+   "intents": [
+    "glide-portamento"
+   ],
+   "max": 5.0,
+   "min": 0.0,
+   "name": "Glide",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:204",
+   "sources": [
+    "src/engine/TrackFXSlot.h:204"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 0.0,
+   "enum": {
+    "0": "forward",
+    "1": "reversed"
+   },
+   "index": 8,
+   "intents": [
+    "playback-mode"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Reverse",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:205",
+   "sources": [
+    "src/engine/TrackFXSlot.h:205"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sampler",
+   "default": 1.0,
+   "index": 9,
+   "intents": [
+    "sample-region"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "SampleEnd",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:206",
+   "sources": [
+    "src/engine/TrackFXSlot.h:206"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

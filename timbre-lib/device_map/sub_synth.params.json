@@ -1,0 +1,791 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 23,
+  "indexMapped": 33,
+  "movement": 10,
+  "offsetMapped": 0,
+  "total": 33,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render. Virus SysEx patches additionally load via sub_synth_import_sysex.",
+ "engine": "sub_synth",
+ "params": [
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "enum": {
+    "0": "Sine",
+    "1": "Saw",
+    "2": "Square",
+    "3": "Triangle"
+   },
+   "index": 0,
+   "intents": [
+    "osc-wave"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "Osc1 Wave",
+   "note": "SubtractiveSynthEngine Waveform enum (SubtractiveSynthEngine.h:83-89).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:328",
+   "sources": [
+    "src/engine/TrackFXSlot.h:328"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.6,
+   "index": 1,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Osc1 Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:329",
+   "sources": [
+    "src/engine/TrackFXSlot.h:329"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 1.0,
+   "enum": {
+    "0": "Sine",
+    "1": "Saw",
+    "2": "Square",
+    "3": "Triangle"
+   },
+   "index": 2,
+   "intents": [
+    "osc-wave"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "Osc2 Wave",
+   "note": "SubtractiveSynthEngine Waveform enum (SubtractiveSynthEngine.h:83-89).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:330",
+   "sources": [
+    "src/engine/TrackFXSlot.h:330"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.4,
+   "index": 3,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Osc2 Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:331",
+   "sources": [
+    "src/engine/TrackFXSlot.h:331"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 8.0,
+   "index": 4,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 1200.0,
+   "min": -1200.0,
+   "name": "Osc2 Detune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:332",
+   "sources": [
+    "src/engine/TrackFXSlot.h:332"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.35,
+   "index": 5,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Sub Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:333",
+   "sources": [
+    "src/engine/TrackFXSlot.h:333"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": -1.0,
+   "enum": {
+    "-1": "-1 oct",
+    "-2": "-2 oct",
+    "0": "unison"
+   },
+   "index": 6,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 0.0,
+   "min": -2.0,
+   "name": "Sub Octave",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:334",
+   "sources": [
+    "src/engine/TrackFXSlot.h:334"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 1800.0,
+   "index": 7,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 20000.0,
+   "min": 20.0,
+   "name": "Cutoff",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:335",
+   "sources": [
+    "src/engine/TrackFXSlot.h:335"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.15,
+   "index": 8,
+   "intents": [
+    "resonance"
+   ],
+   "max": 0.99,
+   "min": 0.0,
+   "name": "Resonance",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:336",
+   "sources": [
+    "src/engine/TrackFXSlot.h:336"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 9,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Drive",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:337",
+   "sources": [
+    "src/engine/TrackFXSlot.h:337"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.01,
+   "index": 10,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Attack",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:338",
+   "sources": [
+    "src/engine/TrackFXSlot.h:338"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.18,
+   "index": 11,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:339",
+   "sources": [
+    "src/engine/TrackFXSlot.h:339"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.65,
+   "index": 12,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Sustain",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:340",
+   "sources": [
+    "src/engine/TrackFXSlot.h:340"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.18,
+   "index": 13,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Release",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:341",
+   "sources": [
+    "src/engine/TrackFXSlot.h:341"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.8,
+   "index": 14,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "Output Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:342",
+   "sources": [
+    "src/engine/TrackFXSlot.h:342"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 15,
+   "intents": [
+    "glide-portamento"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Legato",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:343",
+   "sources": [
+    "src/engine/TrackFXSlot.h:343"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 16,
+   "intents": [
+    "glide-portamento"
+   ],
+   "max": 5.0,
+   "min": 0.0,
+   "name": "Portamento",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:344",
+   "sources": [
+    "src/engine/TrackFXSlot.h:344"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 17,
+   "intents": [
+    "filter-type"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "Filter Type",
+   "note": "0..3 int enum; individual values are not enumerated in source (clampFilterType).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:345",
+   "sources": [
+    "src/engine/TrackFXSlot.h:345"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 24.0,
+   "index": 18,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 48.0,
+   "min": 0.0,
+   "name": "Filter Env Amount",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:346",
+   "sources": [
+    "src/engine/TrackFXSlot.h:346"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.01,
+   "index": 19,
+   "intents": [
+    "env-shape",
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Filter Attack",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:347",
+   "sources": [
+    "src/engine/TrackFXSlot.h:347"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.3,
+   "index": 20,
+   "intents": [
+    "env-shape",
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Filter Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:348",
+   "sources": [
+    "src/engine/TrackFXSlot.h:348"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.7,
+   "index": 21,
+   "intents": [
+    "env-shape",
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Sustain",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:349",
+   "sources": [
+    "src/engine/TrackFXSlot.h:349"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.3,
+   "index": 22,
+   "intents": [
+    "env-shape",
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Filter Release",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:350",
+   "sources": [
+    "src/engine/TrackFXSlot.h:350"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 2.0,
+   "index": 23,
+   "intents": [
+    "pitch-bend"
+   ],
+   "max": 12.0,
+   "min": 0.0,
+   "name": "Pitch Bend Range",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:351",
+   "sources": [
+    "src/engine/TrackFXSlot.h:351"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "enum": {
+    "0": "mono (default)",
+    "1": "poly (up to 8 voices)"
+   },
+   "index": 24,
+   "intents": [
+    "polyphony"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Polyphony",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:352",
+   "sources": [
+    "src/engine/TrackFXSlot.h:352"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 25,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Osc2 FM",
+   "note": "osc2 -> osc1 phase-mod amount; 0 = off (default, bit-identical).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:356",
+   "sources": [
+    "src/engine/TrackFXSlot.h:356"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "enum": {
+    "0": "12 dB lowpass (default)",
+    "1": "24 dB lowpass cascade"
+   },
+   "index": 26,
+   "intents": [
+    "filter-type"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Slope",
+   "note": "24 dB applies to lowpass mode only (SubtractiveSynthEngine.h:45-47).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:357",
+   "sources": [
+    "src/engine/TrackFXSlot.h:357"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "enum": {
+    "0": "Sine",
+    "1": "Saw",
+    "2": "Square",
+    "3": "Triangle"
+   },
+   "index": 27,
+   "intents": [
+    "mod-source"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "LFO Wave",
+   "note": "Same clampWave domain as the osc waves (SubtractiveSynthEngine).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:360",
+   "sources": [
+    "src/engine/TrackFXSlot.h:360"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.5,
+   "index": 28,
+   "intents": [
+    "mod-rate"
+   ],
+   "max": 40.0,
+   "min": 0.01,
+   "name": "LFO Rate",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:361",
+   "sources": [
+    "src/engine/TrackFXSlot.h:361"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 29,
+   "intents": [
+    "filter-sweep",
+    "mod-routing"
+   ],
+   "max": 48.0,
+   "min": -48.0,
+   "name": "LFO Cutoff Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:362",
+   "sources": [
+    "src/engine/TrackFXSlot.h:362"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 30,
+   "intents": [
+    "mod-routing"
+   ],
+   "max": 1200.0,
+   "min": -1200.0,
+   "name": "LFO Pitch Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:363",
+   "sources": [
+    "src/engine/TrackFXSlot.h:363"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 31,
+   "intents": [
+    "mod-routing"
+   ],
+   "max": 1.0,
+   "min": -1.0,
+   "name": "LFO Amp Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:364",
+   "sources": [
+    "src/engine/TrackFXSlot.h:364"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "sub-synth",
+   "default": 0.0,
+   "index": 32,
+   "intents": [
+    "mod-routing"
+   ],
+   "max": 1.0,
+   "min": -1.0,
+   "name": "LFO FM Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:365",
+   "sources": [
+    "src/engine/TrackFXSlot.h:365"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

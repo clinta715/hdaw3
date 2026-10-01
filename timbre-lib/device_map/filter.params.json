@@ -1,0 +1,95 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 1,
+  "indexMapped": 3,
+  "movement": 2,
+  "offsetMapped": 0,
+  "total": 3,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render. Table comes from InternalFilter::paramDefs(); the same class backs the bus `filter` return.",
+ "engine": "filter",
+ "params": [
+  {
+   "category": "filter",
+   "default": 1000.0,
+   "index": 0,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 20000.0,
+   "min": 20.0,
+   "name": "Cutoff",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalFilter.h:64",
+   "sources": [
+    "src/engine/InternalFilter.h:64"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "default": 0.0,
+   "enum": {
+    "0": "lowpass",
+    "1": "highpass",
+    "2": "bandpass"
+   },
+   "index": 1,
+   "intents": [
+    "filter-type"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Mode",
+   "note": "Int enum; automation rounds to the nearest value (TrackFXSlot.h).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalFilter.h:65",
+   "sources": [
+    "src/engine/InternalFilter.h:65"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "filter",
+   "default": 0.7,
+   "index": 2,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 10.0,
+   "min": 0.1,
+   "name": "Resonance",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/InternalFilter.h:66",
+   "sources": [
+    "src/engine/InternalFilter.h:66"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/InternalFilter.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

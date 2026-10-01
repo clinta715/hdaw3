@@ -1,0 +1,597 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 8,
+  "indexMapped": 26,
+  "movement": 18,
+  "offsetMapped": 0,
+  "total": 26,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render. Raw DX7 patches additionally load via fm_synth_import_sysex / load_preset.",
+ "engine": "fm_synth",
+ "params": [
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 0,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 31.0,
+   "min": 0.0,
+   "name": "Algorithm",
+   "note": "32 DX7-style operator arrangements (0..31); individual arrangements are not enumerated in source (PsyFmAlgorithms covers the psy_fm sibling, not this engine).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:210",
+   "sources": [
+    "src/engine/TrackFXSlot.h:210"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 5.0,
+   "index": 1,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 7.0,
+   "min": 0.0,
+   "name": "Feedback",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:211",
+   "sources": [
+    "src/engine/TrackFXSlot.h:211"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.4,
+   "index": 2,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Output Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:212",
+   "sources": [
+    "src/engine/TrackFXSlot.h:212"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.6,
+   "index": 3,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "OP1 Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:213",
+   "sources": [
+    "src/engine/TrackFXSlot.h:213"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.6,
+   "index": 4,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "OP2 Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:214",
+   "sources": [
+    "src/engine/TrackFXSlot.h:214"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.6,
+   "index": 5,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "OP3 Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:215",
+   "sources": [
+    "src/engine/TrackFXSlot.h:215"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.6,
+   "index": 6,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "OP4 Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:216",
+   "sources": [
+    "src/engine/TrackFXSlot.h:216"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.6,
+   "index": 7,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "OP5 Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:217",
+   "sources": [
+    "src/engine/TrackFXSlot.h:217"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.6,
+   "index": 8,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "OP6 Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:218",
+   "sources": [
+    "src/engine/TrackFXSlot.h:218"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 9,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 31.0,
+   "min": 0.0,
+   "name": "OP1 Coarse",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:219",
+   "sources": [
+    "src/engine/TrackFXSlot.h:219"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 10,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 31.0,
+   "min": 0.0,
+   "name": "OP2 Coarse",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:220",
+   "sources": [
+    "src/engine/TrackFXSlot.h:220"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 11,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 31.0,
+   "min": 0.0,
+   "name": "OP3 Coarse",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:221",
+   "sources": [
+    "src/engine/TrackFXSlot.h:221"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 12,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 31.0,
+   "min": 0.0,
+   "name": "OP4 Coarse",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:222",
+   "sources": [
+    "src/engine/TrackFXSlot.h:222"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 13,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 31.0,
+   "min": 0.0,
+   "name": "OP5 Coarse",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:223",
+   "sources": [
+    "src/engine/TrackFXSlot.h:223"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 14,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 31.0,
+   "min": 0.0,
+   "name": "OP6 Coarse",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:224",
+   "sources": [
+    "src/engine/TrackFXSlot.h:224"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 15,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 99.0,
+   "min": 0.0,
+   "name": "OP1 Fine",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:225",
+   "sources": [
+    "src/engine/TrackFXSlot.h:225"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 16,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 99.0,
+   "min": 0.0,
+   "name": "OP2 Fine",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:226",
+   "sources": [
+    "src/engine/TrackFXSlot.h:226"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 17,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 99.0,
+   "min": 0.0,
+   "name": "OP3 Fine",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:227",
+   "sources": [
+    "src/engine/TrackFXSlot.h:227"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 18,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 99.0,
+   "min": 0.0,
+   "name": "OP4 Fine",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:228",
+   "sources": [
+    "src/engine/TrackFXSlot.h:228"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 19,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 99.0,
+   "min": 0.0,
+   "name": "OP5 Fine",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:229",
+   "sources": [
+    "src/engine/TrackFXSlot.h:229"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 20,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 99.0,
+   "min": 0.0,
+   "name": "OP6 Fine",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:230",
+   "sources": [
+    "src/engine/TrackFXSlot.h:230"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.5,
+   "index": 21,
+   "intents": [
+    "mod-rate"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Rate",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:231",
+   "sources": [
+    "src/engine/TrackFXSlot.h:231"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 22,
+   "intents": [
+    "mod-rate"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Delay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:232",
+   "sources": [
+    "src/engine/TrackFXSlot.h:232"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 23,
+   "intents": [
+    "vibrato"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Pitch Depth",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:233",
+   "sources": [
+    "src/engine/TrackFXSlot.h:233"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 24,
+   "intents": [
+    "tremolo"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Amp Depth",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:234",
+   "sources": [
+    "src/engine/TrackFXSlot.h:234"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "fm-synth",
+   "default": 0.0,
+   "index": 25,
+   "intents": [
+    "osc-wave"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "LFO Waveform",
+   "note": "0..3 enum; values are not enumerated in FmSynthEngine source - treat as undocumented.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:235",
+   "sources": [
+    "src/engine/TrackFXSlot.h:235"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

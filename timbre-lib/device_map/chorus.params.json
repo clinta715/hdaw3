@@ -1,0 +1,133 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 0,
+  "indexMapped": 5,
+  "movement": 5,
+  "offsetMapped": 0,
+  "total": 5,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "chorus",
+ "params": [
+  {
+   "category": "chorus",
+   "default": 1.5,
+   "index": 0,
+   "intents": [
+    "chorus-motion"
+   ],
+   "max": 5.0,
+   "min": 0.1,
+   "name": "Rate",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:140",
+   "sources": [
+    "src/engine/TrackFXSlot.h:140"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "chorus",
+   "default": 0.25,
+   "index": 1,
+   "intents": [
+    "chorus-motion"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Depth",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:141",
+   "sources": [
+    "src/engine/TrackFXSlot.h:141"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "chorus",
+   "default": 7.0,
+   "index": 2,
+   "intents": [
+    "chorus-motion"
+   ],
+   "max": 50.0,
+   "min": 1.0,
+   "name": "Centre Delay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:142",
+   "sources": [
+    "src/engine/TrackFXSlot.h:142"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "chorus",
+   "default": 0.0,
+   "index": 3,
+   "intents": [
+    "chorus-motion"
+   ],
+   "max": 1.0,
+   "min": -1.0,
+   "name": "Feedback",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:143",
+   "sources": [
+    "src/engine/TrackFXSlot.h:143"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "chorus",
+   "default": 0.5,
+   "index": 4,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Mix",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:144",
+   "sources": [
+    "src/engine/TrackFXSlot.h:144"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

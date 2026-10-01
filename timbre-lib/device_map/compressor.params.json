@@ -1,0 +1,111 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 0,
+  "indexMapped": 4,
+  "movement": 4,
+  "offsetMapped": 0,
+  "total": 4,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "compressor",
+ "params": [
+  {
+   "category": "compressor",
+   "default": -6.0,
+   "index": 0,
+   "intents": [
+    "compressor-shape"
+   ],
+   "max": 0.0,
+   "min": -80.0,
+   "name": "Threshold",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:103",
+   "sources": [
+    "src/engine/TrackFXSlot.h:103"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "compressor",
+   "default": 2.0,
+   "index": 1,
+   "intents": [
+    "compressor-shape"
+   ],
+   "max": 40.0,
+   "min": 1.0,
+   "name": "Ratio",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:104",
+   "sources": [
+    "src/engine/TrackFXSlot.h:104"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "compressor",
+   "default": 5.0,
+   "index": 2,
+   "intents": [
+    "compressor-shape"
+   ],
+   "max": 100.0,
+   "min": 0.1,
+   "name": "Attack",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:105",
+   "sources": [
+    "src/engine/TrackFXSlot.h:105"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "compressor",
+   "default": 100.0,
+   "index": 3,
+   "intents": [
+    "compressor-shape"
+   ],
+   "max": 2000.0,
+   "min": 1.0,
+   "name": "Release",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:106",
+   "sources": [
+    "src/engine/TrackFXSlot.h:106"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}
