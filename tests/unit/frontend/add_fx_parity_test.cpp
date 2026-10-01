@@ -24,6 +24,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QDir>
+#include <QFile>
 #include <QString>
 
 #include <tuple>
@@ -1601,6 +1603,61 @@ TEST_F(AddFxParityTest, StableTrackIdDrivesFxChainPresetsOnBothSurfaces) {
     // Leave the user chain library as found.
     EXPECT_EQ(mcpText("delete_fx_chain", QJsonObject{ { "id", idTool } }).toStdString(), "ok");
     EXPECT_EQ(mcpText("delete_fx_chain", QJsonObject{ { "id", idRoute } }).toStdString(), "ok");
+}
+
+// ─── project lifecycle: save_project / load_project absolute-path gate ─────
+// Lesson-34/38 class: `save_project {"filePath":"compositions/x.hdaw"}` used
+// to return ok and write NOTHING — juce::File anchors a relative path to the
+// ENGINE process CWD (a Temp dir on the MCP surface). Both surfaces now refuse
+// through the shared gate (HDAW::projectPathError,
+// src/common/ProjectPathCheck.h), byte-identically.
+TEST_F(AddFxParityTest, SaveLoadProjectRefuseRelativeFilePathOnBothSurfaces) {
+    const QString relative = "compositions/x.hdaw";
+    // Operation-neutral: the gate serves BOTH save and load.
+    const std::string refusal =
+        "filePath must be absolute (got \"compositions/x.hdaw\") — relative "
+        "paths are not resolved against the engine process CWD";
+
+    // (a) relative save: identical refusal bytes, naming the offending value.
+    expectSameFailure("save_project", "project.saveProject",
+                      QJsonObject{ { "filePath", relative } });
+    EXPECT_EQ(mcpText("save_project", QJsonObject{ { "filePath", relative } }).toStdString(),
+              refusal);
+
+    // (b) relative load: the SAME rule, the SAME bytes.
+    expectSameFailure("load_project", "project.loadProject",
+                      QJsonObject{ { "filePath", relative } });
+    EXPECT_EQ(mcpText("load_project", QJsonObject{ { "filePath", relative } }).toStdString(),
+              refusal);
+
+    // Neither refusal touched the session project path (whoami vocabulary).
+    EXPECT_TRUE(engine->getProjectCommands().getProjectFilePath().empty());
+
+    // (c) absolute + missing parent dir: past the gate, the underlying save
+    // failure must still surface — never a silent ok. The MCP tool reports it
+    // as an error; the RPC route's contract for THIS method is the command's
+    // bare bool (false), so the false is asserted there.
+    const QString missingParent =
+        QDir::tempPath() + "/hdaw_no_such_parent_dir_2026/a.hdaw";
+    EXPECT_TRUE(mcpIsError("save_project", QJsonObject{ { "filePath", missingParent } }));
+    EXPECT_EQ(mcpText("save_project", QJsonObject{ { "filePath", missingParent } }).toStdString(),
+              "save failed");
+    EXPECT_FALSE(rpc("project.saveProject",
+                     QJsonObject{ { "filePath", missingParent } }).payload.toBool());
+    EXPECT_FALSE(QFile::exists(missingParent));
+
+    // (d) absolute + valid: the file EXISTS on disk after the call (Gate 2:
+    // observable behaviour, not the ok payload), on both surfaces.
+    const QString valid = QDir::tempPath() + "/hdaw_parity_save_valid.hdaw";
+    QFile::remove(valid);
+    EXPECT_EQ(mcpText("save_project", QJsonObject{ { "filePath", valid } })
+                  .trimmed().toStdString(), "saved");
+    EXPECT_TRUE(QFile::exists(valid));
+    EXPECT_FALSE(rpc("project.saveProject", QJsonObject{ { "filePath", valid } }).isError);
+    EXPECT_TRUE(QFile::exists(valid));
+    // The load twin accepts the same absolute path.
+    EXPECT_FALSE(rpc("project.loadProject", QJsonObject{ { "filePath", valid } }).isError);
+    QFile::remove(valid);
 }
 
 } // namespace

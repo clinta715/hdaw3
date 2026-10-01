@@ -11,6 +11,9 @@
 // S3 batch-edit verbs: the SAME `edits` parser the MCP tools call, so the twin
 // failures (empty batch, unknown id, typo'd key) are byte-identical.
 #include "../../common/BatchEditJson.h"
+// Shared save/load filePath gate (project.saveProject / project.loadProject) —
+// the SAME refusal text the MCP save_project / load_project tools report.
+#include "../../common/ProjectPathCheck.h"
 // Shared bodies for the automation/master-FX routes below — the SAME entry
 // points the MCP tools call (automation_preset / apply_movement_plan /
 // set_master_fx_param / set_master_fx_bypassed), so both surfaces cannot drift:
@@ -1163,8 +1166,8 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
 
     // --- Project lifecycle ---
     if (m == "newProject")  { c.newProject(); return { false, QJsonValue::Null }; }
-    if (m == "saveProject") { std::string p; if (!requireString(o, "filePath", p, nullptr)) return makeError(-32602, "filePath required"); return { false, c.saveProject(p) }; }
-    if (m == "loadProject") { std::string p; if (!requireString(o, "filePath", p, nullptr)) return makeError(-32602, "filePath required"); return { false, c.loadProject(p) }; }
+    if (m == "saveProject") { std::string p; if (!requireString(o, "filePath", p, nullptr)) return makeError(-32602, "filePath required"); if (auto refuse = HDAW::projectPathError(QString::fromStdString(p)); !refuse.isEmpty()) return makeError(-32602, refuse); return { false, c.saveProject(p) }; }
+    if (m == "loadProject") { std::string p; if (!requireString(o, "filePath", p, nullptr)) return makeError(-32602, "filePath required"); if (auto refuse = HDAW::projectPathError(QString::fromStdString(p)); !refuse.isEmpty()) return makeError(-32602, refuse); return { false, c.loadProject(p) }; }
 
     // --- Scale ---
     if (m == "setScaleRoot") { int r; if (!requireInt(o, "root", r, nullptr)) return makeError(-32602, "root required"); c.setScaleRoot(r); return { false, QJsonValue::Null }; }

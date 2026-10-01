@@ -17,6 +17,9 @@
 #include "../engine/ProjectSerializer.h"
 #include "../engine/ProjectBackup.h"
 #include "../common/ReadModel.h"
+// Shared absolute-path gate for save_project / load_project — the SAME refusal
+// text the RPC project.saveProject / project.loadProject routes report.
+#include "../common/ProjectPathCheck.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -32,6 +35,12 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
         "project",
         [e](const QJsonObject& a) {
             auto path = a.value("filePath").toString();
+            // Relative paths are refused loudly (the shared gate both surfaces
+            // call): juce::File would anchor them to the ENGINE process CWD —
+            // the save once reported ok while writing nothing the caller could
+            // find (lesson-34/38 class).
+            if (auto refuse = HDAW::projectPathError(path); !refuse.isEmpty())
+                return McpToolResult::text(refuse, true);
             // Route through the command layer (same as the RPC project.saveProject):
             // it cancels + joins any live render, saves, backs up with the
             // configured backup count, and records the session project path that
@@ -47,6 +56,10 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
         "project",
         [e](const QJsonObject& a) {
             auto path = a.value("filePath").toString();
+            // Same shared gate as save_project: a relative path would anchor
+            // the read to the engine process CWD, never the caller's filesystem.
+            if (auto refuse = HDAW::projectPathError(path); !refuse.isEmpty())
+                return McpToolResult::text(refuse, true);
             // Route through the command layer (same as the RPC loadProject):
             // direct ProjectSerializer::load skipped migrations (trackType,
             // MASTER_FX) and load-progress broadcast — the MCP tool silently
