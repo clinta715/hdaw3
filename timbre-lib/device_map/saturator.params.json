@@ -25,9 +25,9 @@
    "name": "Drive dB",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:188",
+   "source": "src/engine/TrackFXSlot.h:215",
    "sources": [
-    "src/engine/TrackFXSlot.h:188"
+    "src/engine/TrackFXSlot.h:215"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -53,9 +53,9 @@
    "name": "Type",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:189",
+   "source": "src/engine/TrackFXSlot.h:216",
    "sources": [
-    "src/engine/TrackFXSlot.h:189"
+    "src/engine/TrackFXSlot.h:216"
    ],
    "stages": [
     "sound-selector"
@@ -75,9 +75,9 @@
    "name": "Asymmetry",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:190",
+   "source": "src/engine/TrackFXSlot.h:217",
    "sources": [
-    "src/engine/TrackFXSlot.h:190"
+    "src/engine/TrackFXSlot.h:217"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -97,9 +97,9 @@
    "name": "Mix",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:191",
+   "source": "src/engine/TrackFXSlot.h:218",
    "sources": [
-    "src/engine/TrackFXSlot.h:191"
+    "src/engine/TrackFXSlot.h:218"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -120,9 +120,9 @@
    "note": "Trims the WET path only.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:192",
+   "source": "src/engine/TrackFXSlot.h:219",
    "sources": [
-    "src/engine/TrackFXSlot.h:192"
+    "src/engine/TrackFXSlot.h:219"
    ],
    "stages": [
     "sound-selector"
@@ -143,9 +143,9 @@
    "note": "Applies to the Bitcrush curve only.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:193",
+   "source": "src/engine/TrackFXSlot.h:220",
    "sources": [
-    "src/engine/TrackFXSlot.h:193"
+    "src/engine/TrackFXSlot.h:220"
    ],
    "stages": [
     "fx-automation-engineer"

@@ -1,0 +1,1165 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 40,
+  "indexMapped": 51,
+  "movement": 11,
+  "offsetMapped": 0,
+  "total": 51,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+ "engine": "drum_synth",
+ "params": [
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 0,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "Output Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:400",
+   "sources": [
+    "src/engine/TrackFXSlot.h:400"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 1,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "Kit Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:401",
+   "sources": [
+    "src/engine/TrackFXSlot.h:401"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 1.0,
+   "index": 2,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 4.0,
+   "min": 0.1,
+   "name": "Decay Scale",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:402",
+   "sources": [
+    "src/engine/TrackFXSlot.h:402"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 3,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Accent",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:403",
+   "sources": [
+    "src/engine/TrackFXSlot.h:403"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "enum": {
+    "0": "Kick",
+    "1": "Snare",
+    "10": "Ride",
+    "2": "Clap",
+    "3": "Rim",
+    "4": "Tom Low",
+    "5": "Tom Mid",
+    "6": "Tom High",
+    "7": "Closed Hat",
+    "8": "Open Hat",
+    "9": "Crash"
+   },
+   "index": 4,
+   "intents": [
+    "fx-type"
+   ],
+   "max": 10.0,
+   "min": 0.0,
+   "name": "Voice",
+   "note": "DrumSynthEngine::Instrument order; used when Note Map = Fixed (0).",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:404",
+   "sources": [
+    "src/engine/TrackFXSlot.h:404"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "enum": {
+    "0": "Fixed (every note plays Voice)",
+    "1": "GM (General MIDI drum map)"
+   },
+   "index": 5,
+   "intents": [
+    "fx-type"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Note Map",
+   "note": "Fixed is the DEFAULT: HDAW's own generators emit a key-derived kick pitch (diaRoot(keyRoot,2) = 36..47) and put one role per track, so GM resolution would misroute those notes. GM is for a single track carrying a real GM drum clip.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:405",
+   "sources": [
+    "src/engine/TrackFXSlot.h:405"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 1.0,
+   "index": 6,
+   "intents": [
+    "key-vel-track"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Key Track",
+   "note": "0 = pitched voices (Kick/Tom Low/Tom Mid/Tom High) use their fixed base frequency; 1 = they follow the incoming note, so a key-derived kick tunes to the key.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:406",
+   "sources": [
+    "src/engine/TrackFXSlot.h:406"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 7,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "Kick Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:408",
+   "sources": [
+    "src/engine/TrackFXSlot.h:408"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 8,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "Kick Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:409",
+   "sources": [
+    "src/engine/TrackFXSlot.h:409"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 9,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Kick Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:410",
+   "sources": [
+    "src/engine/TrackFXSlot.h:410"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 10,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Kick Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:411",
+   "sources": [
+    "src/engine/TrackFXSlot.h:411"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 11,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "Snare Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:413",
+   "sources": [
+    "src/engine/TrackFXSlot.h:413"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 12,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "Snare Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:414",
+   "sources": [
+    "src/engine/TrackFXSlot.h:414"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 13,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Snare Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:415",
+   "sources": [
+    "src/engine/TrackFXSlot.h:415"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 14,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Snare Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:416",
+   "sources": [
+    "src/engine/TrackFXSlot.h:416"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 15,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "Clap Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:418",
+   "sources": [
+    "src/engine/TrackFXSlot.h:418"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 16,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "Clap Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:419",
+   "sources": [
+    "src/engine/TrackFXSlot.h:419"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 17,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Clap Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:420",
+   "sources": [
+    "src/engine/TrackFXSlot.h:420"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 18,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Clap Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:421",
+   "sources": [
+    "src/engine/TrackFXSlot.h:421"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 19,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "Rim Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:423",
+   "sources": [
+    "src/engine/TrackFXSlot.h:423"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 20,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "Rim Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:424",
+   "sources": [
+    "src/engine/TrackFXSlot.h:424"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 21,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Rim Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:425",
+   "sources": [
+    "src/engine/TrackFXSlot.h:425"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 22,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Rim Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:426",
+   "sources": [
+    "src/engine/TrackFXSlot.h:426"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 23,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "TomLow Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:428",
+   "sources": [
+    "src/engine/TrackFXSlot.h:428"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 24,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "TomLow Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:429",
+   "sources": [
+    "src/engine/TrackFXSlot.h:429"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 25,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "TomLow Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:430",
+   "sources": [
+    "src/engine/TrackFXSlot.h:430"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 26,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "TomLow Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:431",
+   "sources": [
+    "src/engine/TrackFXSlot.h:431"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 27,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "TomMid Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:433",
+   "sources": [
+    "src/engine/TrackFXSlot.h:433"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 28,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "TomMid Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:434",
+   "sources": [
+    "src/engine/TrackFXSlot.h:434"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 29,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "TomMid Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:435",
+   "sources": [
+    "src/engine/TrackFXSlot.h:435"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 30,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "TomMid Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:436",
+   "sources": [
+    "src/engine/TrackFXSlot.h:436"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 31,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "TomHigh Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:438",
+   "sources": [
+    "src/engine/TrackFXSlot.h:438"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 32,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "TomHigh Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:439",
+   "sources": [
+    "src/engine/TrackFXSlot.h:439"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 33,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "TomHigh Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:440",
+   "sources": [
+    "src/engine/TrackFXSlot.h:440"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 34,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "TomHigh Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:441",
+   "sources": [
+    "src/engine/TrackFXSlot.h:441"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 35,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "ClosedHat Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:443",
+   "sources": [
+    "src/engine/TrackFXSlot.h:443"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 36,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "ClosedHat Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:444",
+   "sources": [
+    "src/engine/TrackFXSlot.h:444"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 37,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "ClosedHat Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:445",
+   "sources": [
+    "src/engine/TrackFXSlot.h:445"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 38,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "ClosedHat Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:446",
+   "sources": [
+    "src/engine/TrackFXSlot.h:446"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 39,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "OpenHat Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:448",
+   "sources": [
+    "src/engine/TrackFXSlot.h:448"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 40,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "OpenHat Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:449",
+   "sources": [
+    "src/engine/TrackFXSlot.h:449"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 41,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "OpenHat Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:450",
+   "sources": [
+    "src/engine/TrackFXSlot.h:450"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 42,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "OpenHat Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:451",
+   "sources": [
+    "src/engine/TrackFXSlot.h:451"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 43,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "Crash Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:453",
+   "sources": [
+    "src/engine/TrackFXSlot.h:453"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 44,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "Crash Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:454",
+   "sources": [
+    "src/engine/TrackFXSlot.h:454"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 45,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Crash Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:455",
+   "sources": [
+    "src/engine/TrackFXSlot.h:455"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 46,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Crash Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:456",
+   "sources": [
+    "src/engine/TrackFXSlot.h:456"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.8,
+   "index": 47,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.5,
+   "min": 0.0,
+   "name": "Ride Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:458",
+   "sources": [
+    "src/engine/TrackFXSlot.h:458"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.0,
+   "index": 48,
+   "intents": [
+    "sample-transpose"
+   ],
+   "max": 24.0,
+   "min": -24.0,
+   "name": "Ride Tune",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:459",
+   "sources": [
+    "src/engine/TrackFXSlot.h:459"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 49,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Ride Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:460",
+   "sources": [
+    "src/engine/TrackFXSlot.h:460"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null
+  },
+  {
+   "category": "drum-synth",
+   "default": 0.5,
+   "index": 50,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Ride Tone",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:461",
+   "sources": [
+    "src/engine/TrackFXSlot.h:461"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/TrackFXSlot.h"
+ },
+ "verifiedOn": "2026-09-30"
+}

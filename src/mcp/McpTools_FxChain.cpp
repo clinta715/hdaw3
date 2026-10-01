@@ -78,7 +78,7 @@ s.registerTool({"list_fx_chains",
         }});
 
 s.registerTool({"load_fx_chain",
-        "Load a saved FX chain preset onto a track: instrument slots (sampler/sub_synth/psy_fm/fm_synth/growl_bass/psyarp) are preserved; FX slots are replaced and appended after them in one undo unit. Give id or name (name must resolve to exactly one preset). Ids may be user presets or built-in factory presets (\"_factory/<File_Name>.json\" from list_fx_chains — the 8 psytrance per-role chains); name resolution covers factory presets too. " +
+        "Load a saved FX chain preset onto a track: instrument slots (sampler/sub_synth/psy_fm/fm_synth/growl_bass/psyarp/drum_synth) are preserved; FX slots are replaced and appended after them in one undo unit. Give id or name (name must resolve to exactly one preset). Ids may be user presets or built-in factory presets (\"_factory/<File_Name>.json\" from list_fx_chains — the 8 psytrance per-role chains); name resolution covers factory presets too. " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"trackID", QJsonObject{{"type","integer"}}},

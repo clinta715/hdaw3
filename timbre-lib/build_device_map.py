@@ -55,6 +55,7 @@ INTERNAL_ENGINES = {
     "psyarp":     {"file": "src/engine/TrackFXSlot.h",    "table": "psyarp"},
     "psy_fm":     {"file": "src/engine/TrackFXSlot.h",    "table": "psy_fm"},
     "sub_synth":  {"file": "src/engine/TrackFXSlot.h",    "table": "sub_synth"},
+    "drum_synth": {"file": "src/engine/TrackFXSlot.h",    "table": "drum_synth"},
 }
 
 _NUM = r"-?\d+(?:\.\d+)?f?"

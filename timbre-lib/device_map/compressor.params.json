@@ -25,9 +25,9 @@
    "name": "Threshold",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:103",
+   "source": "src/engine/TrackFXSlot.h:130",
    "sources": [
-    "src/engine/TrackFXSlot.h:103"
+    "src/engine/TrackFXSlot.h:130"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -47,9 +47,9 @@
    "name": "Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:104",
+   "source": "src/engine/TrackFXSlot.h:131",
    "sources": [
-    "src/engine/TrackFXSlot.h:104"
+    "src/engine/TrackFXSlot.h:131"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -69,9 +69,9 @@
    "name": "Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:105",
+   "source": "src/engine/TrackFXSlot.h:132",
    "sources": [
-    "src/engine/TrackFXSlot.h:105"
+    "src/engine/TrackFXSlot.h:132"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -91,9 +91,9 @@
    "name": "Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:106",
+   "source": "src/engine/TrackFXSlot.h:133",
    "sources": [
-    "src/engine/TrackFXSlot.h:106"
+    "src/engine/TrackFXSlot.h:133"
    ],
    "stages": [
     "fx-automation-engineer"

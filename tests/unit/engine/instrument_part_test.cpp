@@ -795,6 +795,121 @@ TEST_F(InstrumentPart, ExplicitFxTypeSelectsTheInstrumentSlot)
     EXPECT_EQ(engine.getReadModel().getTrackCount(), before);
 }
 
+// Integration branch in AudioEngineCommands::addInstrumentPart
+// (AudioEngineCommands_Composition.cpp:858-863): the drums role emits a multi-voice GM
+// pattern (kick 36, closed hat 42, clap 39), which only resolves correctly when the
+// drum_synth slot's Note Map (param 5) is GM (1.0). Every other role/type leaves the
+// Fixed default (0.0). Gate 1/10: assert the LIVE processor, not a ReadModel snapshot —
+// the write lands in the ValueTree param_5 property, so a full rebuildFXChain must
+// restore it onto the live slot.
+TEST_F(InstrumentPart, DrumsRoleDrumSynthSelectsGmNoteMap)
+{
+    auto& pc = engine.getProjectCommands();
+
+    // (1) role:"drums" + fxType:"drum_synth" → Note Map = 1 (GM) on the LIVE slot.
+    ProjectCommands::InstrumentPartParams drums;
+    drums.trackName = "Drums";
+    drums.role = "drums";
+    drums.fxType = "drum_synth";
+    drums.lengthBeats = 4.0;
+    drums.count = 1;
+    drums.seed = 11;
+    auto res = pc.addInstrumentPart(drums);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+    ASSERT_GE(res.trackIndex, 0);
+
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+
+    auto* track = engine.getMainProcessor()->getTrack(res.trackIndex);
+    ASSERT_NE(track, nullptr);
+    ASSERT_FALSE(track->getFXChain().empty());
+    ASSERT_NE(track->getFXChain()[0], nullptr);
+    EXPECT_EQ(track->getFXChain()[0]->getType(), "drum_synth");
+    {
+        const auto values = track->getFXChain()[0]->getInternalParamValues();
+        ASSERT_GE(values.size(), 6u);
+        EXPECT_FLOAT_EQ(values[5], 1.0f);
+    }
+
+    // (2) The write is a ValueTree param_5 property write (setFxSlotParam), so a full
+    // rebuildFXChain (TrackFXSlot(type) + loadParamsFromTree) restores it — Gate 1/10.
+    auto fxChainTree = engine.getProjectModel().getTrackListTree()
+        .getChild(res.trackIndex)
+        .getChildWithName(IDs::FX_CHAIN);
+    ASSERT_TRUE(fxChainTree.isValid());
+    track->rebuildFXChain(fxChainTree);
+
+    track = engine.getMainProcessor()->getTrack(res.trackIndex);
+    ASSERT_NE(track, nullptr);
+    ASSERT_FALSE(track->getFXChain().empty());
+    EXPECT_EQ(track->getFXChain()[0]->getType(), "drum_synth");
+    {
+        const auto values = track->getFXChain()[0]->getInternalParamValues();
+        ASSERT_GE(values.size(), 6u);
+        EXPECT_FLOAT_EQ(values[5], 1.0f);
+    }
+
+    // (3) Negative — the branch must fire ONLY for drum_synth. Negative type: sub_synth,
+    // which exposes a param 5 of its OWN at the SAME index (Sub Level, default 0.35); the
+    // assertion pins that param 5 to the type's def default, so "the drums branch did not
+    // write Note Map" is directly observable. (fm_synth also has a param 5 — OP3 Level,
+    // default 0.6 — so it would serve equally; sub_synth is used because its expected
+    // value is read straight from the def table instead of a hardcoded magic number.)
+    ProjectCommands::InstrumentPartParams drumsOther;
+    drumsOther.trackName = "DrumsSub";
+    drumsOther.role = "drums";
+    drumsOther.fxType = "sub_synth";
+    drumsOther.lengthBeats = 4.0;
+    drumsOther.count = 1;
+    drumsOther.seed = 12;
+    auto other = pc.addInstrumentPart(drumsOther);
+    ASSERT_TRUE(other.error.empty()) << other.error;
+    ASSERT_GE(other.trackIndex, 0);
+
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    auto* otherTrack = engine.getMainProcessor()->getTrack(other.trackIndex);
+    ASSERT_NE(otherTrack, nullptr);
+    ASSERT_FALSE(otherTrack->getFXChain().empty());
+    EXPECT_EQ(otherTrack->getFXChain()[0]->getType(), "sub_synth");
+    {
+        const auto values = otherTrack->getFXChain()[0]->getInternalParamValues();
+        ASSERT_GE(values.size(), 6u);
+        const float subDefault =
+            HDAW::TrackFXSlot::getParamDefsForType("sub_synth")[5].defaultValue;
+        EXPECT_FLOAT_EQ(values[5], subDefault);   // sub_synth's own default, untouched
+    }
+
+    // (4) Non-drums role — role:"bass" + fxType:"drum_synth" must leave Note Map at its
+    // Fixed default (0.0). targetRms is pinned to 0 via the explicit mask so the part
+    // skips the bass role's gain-stage render (that path is covered elsewhere).
+    ProjectCommands::InstrumentPartParams bass;
+    bass.trackName = "Bass";
+    bass.role = "bass";
+    bass.fxType = "drum_synth";
+    bass.lengthBeats = 4.0;
+    bass.count = 1;
+    bass.seed = 13;
+    bass.targetRms = 0.0f;
+    bass.explicitMask = ProjectCommands::kRoleBitTargetRms;
+    auto bassRes = pc.addInstrumentPart(bass);
+    ASSERT_TRUE(bassRes.error.empty()) << bassRes.error;
+    ASSERT_GE(bassRes.trackIndex, 0);
+
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    auto* bassTrack = engine.getMainProcessor()->getTrack(bassRes.trackIndex);
+    ASSERT_NE(bassTrack, nullptr);
+    ASSERT_FALSE(bassTrack->getFXChain().empty());
+    EXPECT_EQ(bassTrack->getFXChain()[0]->getType(), "drum_synth");
+    {
+        const auto values = bassTrack->getFXChain()[0]->getInternalParamValues();
+        ASSERT_GE(values.size(), 6u);
+        EXPECT_FLOAT_EQ(values[5], 0.0f);   // Fixed default — the branch did not fire
+    }
+}
+
 // P3-1 (2026-09-21 dogfood): batch gain-staging — MANY tracks to their own targets in ONE
 // undo unit. Before this a peak-1.0 mix cost one auto_gain_to_target call AND one undo entry
 // per track, so undoing a gain pass took N undos

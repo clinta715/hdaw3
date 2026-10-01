@@ -443,6 +443,28 @@
           "LFO Wave": { "enum": { "0": "Sine", "1": "Saw", "2": "Square", "3": "Triangle" },
             "note": "Same clampWave domain as the osc waves (SubtractiveSynthEngine)." }
         }
+      },
+      "drum_synth": {
+        "appliesVia": "set_internal_fx_param",
+        "durability": "valuetree",
+        "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
+        "categoryRules": [{ "id": "ds", "match": ["level", "tune", "decay", "tone", "accent", "voice", "note map", "key track", "output"], "category": "drum-synth" }],
+        "categoryDefaults": { "drum-synth": { "tier": "identity", "intents": ["amp-env"] } },
+        "intentRules": [
+          { "id": "ds-level", "match": ["level", "accent"], "intents": ["mix-balance"], "tier": "identity" },
+          { "id": "ds-tune", "match": ["tune"], "intents": ["sample-transpose"], "tier": "identity" },
+          { "id": "ds-keytrack", "match": ["key track"], "intents": ["key-vel-track"], "tier": "identity" },
+          { "id": "ds-decay", "match": ["decay", "decay scale"], "intents": ["amp-env"], "tier": "identity" },
+          { "id": "ds-tone", "match": ["tone"], "intents": ["filter-sweep"], "tier": "movement" },
+          { "id": "ds-select", "match": ["voice", "note map"], "intents": ["fx-type"], "tier": "identity" }
+        ],
+        "paramNotes": {
+          "Voice": { "enum": { "0": "Kick", "1": "Snare", "2": "Clap", "3": "Rim", "4": "Tom Low", "5": "Tom Mid", "6": "Tom High", "7": "Closed Hat", "8": "Open Hat", "9": "Crash", "10": "Ride" },
+            "note": "DrumSynthEngine::Instrument order; used when Note Map = Fixed (0)." },
+          "Note Map": { "enum": { "0": "Fixed (every note plays Voice)", "1": "GM (General MIDI drum map)" },
+            "note": "Fixed is the DEFAULT: HDAW's own generators emit a key-derived kick pitch (diaRoot(keyRoot,2) = 36..47) and put one role per track, so GM resolution would misroute those notes. GM is for a single track carrying a real GM drum clip." },
+          "Key Track": { "note": "0 = pitched voices (Kick/Tom Low/Tom Mid/Tom High) use their fixed base frequency; 1 = they follow the incoming note, so a key-derived kick tunes to the key." }
+        }
       }
     }
   },

@@ -25,9 +25,9 @@
    "name": "Frequency",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:110",
+   "source": "src/engine/TrackFXSlot.h:137",
    "sources": [
-    "src/engine/TrackFXSlot.h:110"
+    "src/engine/TrackFXSlot.h:137"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -47,9 +47,9 @@
    "name": "Q",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:111",
+   "source": "src/engine/TrackFXSlot.h:138",
    "sources": [
-    "src/engine/TrackFXSlot.h:111"
+    "src/engine/TrackFXSlot.h:138"
    ],
    "stages": [
     "sound-selector"
@@ -69,9 +69,9 @@
    "name": "Gain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:112",
+   "source": "src/engine/TrackFXSlot.h:139",
    "sources": [
-    "src/engine/TrackFXSlot.h:112"
+    "src/engine/TrackFXSlot.h:139"
    ],
    "stages": [
     "fx-automation-engineer"

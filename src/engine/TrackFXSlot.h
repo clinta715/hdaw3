@@ -18,6 +18,7 @@
 #include "engine/SamplerEngine.h"
 #include "engine/SubtractiveSynthEngine.h"
 #include "engine/FmSynthEngine.h"
+#include "engine/DrumSynthEngine.h"
 #include "engine/GrowlBassEngine.h"
 #include "engine/SaturatorEngine.h"
 #include "DecodedSoundPool.h"
@@ -100,7 +101,7 @@ public:
     {
         return { "reverb", "compressor", "eq", "delay", "chorus", "flanger",
                  "phaser", "filter", "saturator", "sampler", "fm_synth",
-                 "growl_bass", "psyarp", "psy_fm", "sub_synth" };
+                 "growl_bass", "psyarp", "psy_fm", "sub_synth", "drum_synth" };
     }
 
     static juce::String internalFxTypeNamesText()
@@ -390,6 +391,75 @@ public:
                 {31, "LFO Amp Amt",      0.0f,  -1.0f,    1.0f },
                 {32, "LFO FM Amt",       0.0f,  -1.0f,    1.0f },
             };
+        // Internal drum_synth: an independently implemented 11-voice TR-909-style analog kit (no third-party source vendored)
+        // (DrumSynthEngine). Layout: 7 global params (0..6), then 4 per
+        // instrument (level / tune / decay / tone) at 7 + i*4 .. 10 + i*4,
+        // instruments in DrumSynthEngine::Instrument order (Kick..Ride).
+        if (type == "drum_synth")
+            return {
+                { 0, "Output Level",   0.8f,   0.0f,   1.5f },
+                { 1, "Kit Tune",       0.0f, -24.0f,  24.0f },
+                { 2, "Decay Scale",    1.0f,   0.1f,   4.0f },
+                { 3, "Accent",         0.5f,   0.0f,   1.0f },
+                { 4, "Voice",          0.0f,   0.0f,  10.0f },
+                { 5, "Note Map",       0.0f,   0.0f,   1.0f },
+                { 6, "Key Track",      1.0f,   0.0f,   1.0f },
+                // Kick
+                { 7, "Kick Level",     0.8f,   0.0f,   1.5f },
+                { 8, "Kick Tune",      0.0f, -24.0f,  24.0f },
+                { 9, "Kick Decay",     0.5f,   0.0f,   1.0f },
+                {10, "Kick Tone",      0.5f,   0.0f,   1.0f },
+                // Snare
+                {11, "Snare Level",    0.8f,   0.0f,   1.5f },
+                {12, "Snare Tune",     0.0f, -24.0f,  24.0f },
+                {13, "Snare Decay",    0.5f,   0.0f,   1.0f },
+                {14, "Snare Tone",     0.5f,   0.0f,   1.0f },
+                // Clap
+                {15, "Clap Level",     0.8f,   0.0f,   1.5f },
+                {16, "Clap Tune",      0.0f, -24.0f,  24.0f },
+                {17, "Clap Decay",     0.5f,   0.0f,   1.0f },
+                {18, "Clap Tone",      0.5f,   0.0f,   1.0f },
+                // Rim
+                {19, "Rim Level",      0.8f,   0.0f,   1.5f },
+                {20, "Rim Tune",       0.0f, -24.0f,  24.0f },
+                {21, "Rim Decay",      0.5f,   0.0f,   1.0f },
+                {22, "Rim Tone",       0.5f,   0.0f,   1.0f },
+                // TomLow
+                {23, "TomLow Level",   0.8f,   0.0f,   1.5f },
+                {24, "TomLow Tune",    0.0f, -24.0f,  24.0f },
+                {25, "TomLow Decay",   0.5f,   0.0f,   1.0f },
+                {26, "TomLow Tone",    0.5f,   0.0f,   1.0f },
+                // TomMid
+                {27, "TomMid Level",   0.8f,   0.0f,   1.5f },
+                {28, "TomMid Tune",    0.0f, -24.0f,  24.0f },
+                {29, "TomMid Decay",   0.5f,   0.0f,   1.0f },
+                {30, "TomMid Tone",    0.5f,   0.0f,   1.0f },
+                // TomHigh
+                {31, "TomHigh Level",  0.8f,   0.0f,   1.5f },
+                {32, "TomHigh Tune",   0.0f, -24.0f,  24.0f },
+                {33, "TomHigh Decay",  0.5f,   0.0f,   1.0f },
+                {34, "TomHigh Tone",   0.5f,   0.0f,   1.0f },
+                // ClosedHat
+                {35, "ClosedHat Level",0.8f,   0.0f,   1.5f },
+                {36, "ClosedHat Tune", 0.0f, -24.0f,  24.0f },
+                {37, "ClosedHat Decay",0.5f,   0.0f,   1.0f },
+                {38, "ClosedHat Tone", 0.5f,   0.0f,   1.0f },
+                // OpenHat
+                {39, "OpenHat Level",  0.8f,   0.0f,   1.5f },
+                {40, "OpenHat Tune",   0.0f, -24.0f,  24.0f },
+                {41, "OpenHat Decay",  0.5f,   0.0f,   1.0f },
+                {42, "OpenHat Tone",   0.5f,   0.0f,   1.0f },
+                // Crash
+                {43, "Crash Level",    0.8f,   0.0f,   1.5f },
+                {44, "Crash Tune",     0.0f, -24.0f,  24.0f },
+                {45, "Crash Decay",    0.5f,   0.0f,   1.0f },
+                {46, "Crash Tone",     0.5f,   0.0f,   1.0f },
+                // Ride
+                {47, "Ride Level",     0.8f,   0.0f,   1.5f },
+                {48, "Ride Tune",      0.0f, -24.0f,  24.0f },
+                {49, "Ride Decay",     0.5f,   0.0f,   1.0f },
+                {50, "Ride Tone",      0.5f,   0.0f,   1.0f },
+            };
         return {};
     }
 
@@ -425,6 +495,8 @@ public:
             activeType = ActiveType::PsyFm;
         else if (type == "sub_synth")
             activeType = ActiveType::SubSynth;
+        else if (type == "drum_synth")
+            activeType = ActiveType::DrumSynth;
         else if (type == "saturator")
             activeType = ActiveType::Saturator;
         else if (type == "plugin")
@@ -1100,6 +1172,31 @@ public:
                 if (internalParamValues.size() > 32) subSynth->setModLfoFmAmount(internalParamValues[32]);
                 break;
             }
+            case ActiveType::DrumSynth:
+            {
+                if (!drumSynth)
+                    drumSynth = std::make_unique<DrumSynthEngine>();
+                drumSynth->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
+                // Push all 51 stored params in the pinned order (7 globals, then
+                // level/tune/decay/tone for each of the 11 instruments).
+                const size_t n = internalParamValues.size();
+                if (n > 0) drumSynth->setOutputLevel(internalParamValues[0]);
+                if (n > 1) drumSynth->setKitTune(internalParamValues[1]);
+                if (n > 2) drumSynth->setDecayScale(internalParamValues[2]);
+                if (n > 3) drumSynth->setAccent(internalParamValues[3]);
+                if (n > 4) drumSynth->setVoice(juce::roundToInt(internalParamValues[4]));
+                if (n > 5) drumSynth->setNoteMap(juce::roundToInt(internalParamValues[5]));
+                if (n > 6) drumSynth->setKeyTrack(internalParamValues[6]);
+                for (int i = 0; i < DrumSynthEngine::kNumInstruments; ++i)
+                {
+                    const size_t base = 7 + (size_t) i * 4;
+                    if (n > base + 0) drumSynth->setInstrumentLevel(i, internalParamValues[base + 0]);
+                    if (n > base + 1) drumSynth->setInstrumentTune (i, internalParamValues[base + 1]);
+                    if (n > base + 2) drumSynth->setInstrumentDecay(i, internalParamValues[base + 2]);
+                    if (n > base + 3) drumSynth->setInstrumentTone (i, internalParamValues[base + 3]);
+                }
+                break;
+            }
             case ActiveType::None:
             default:
                 break;
@@ -1272,6 +1369,16 @@ public:
             return;
         }
 
+        if (activeType == ActiveType::DrumSynth)
+        {
+            if (drumSynth)
+            {
+                drumSynth->render(buffer, midiMessages);
+                midiMessages.clear();
+            }
+            return;
+        }
+
         if (activeType == ActiveType::None) return;
 
         juce::dsp::AudioBlock<float> block(buffer);
@@ -1367,6 +1474,7 @@ public:
         if (psyArp)    psyArp->prepare(sampleRate_, 0);
         if (psyFm)     psyFm->prepare(sampleRate_, 0);
         if (subSynth)  subSynth->prepare(sampleRate_, 0);
+        if (drumSynth) drumSynth->prepare(sampleRate_, 0);
         sat_[0].reset();
         sat_[1].reset();
         if (over_)     over_->reset();
@@ -1650,6 +1758,7 @@ public:
 
     FmSynthEngine* fmSynthEngine() { return fmSynth.get(); }
     SubtractiveSynthEngine* subSynthEngineForTest() { return subSynth.get(); }
+    DrumSynthEngine* drumSynthEngineForTest() { return drumSynth.get(); }
     PsyFmEngine* psyFmEngine() { return psyFm.get(); }
 
     // â”€â”€ PsyFm matrix/sweep state (tree-persisted, rebuild-safe) â”€â”€
@@ -1703,7 +1812,7 @@ private:
     juce::MemoryBlock stateBaseline_;
     bool hasStateBaseline_ = false;
     bool stateRestoredFromTree_ = false;
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm, SubSynth, Saturator };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm, SubSynth, Saturator, DrumSynth };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -1739,6 +1848,7 @@ private:
     InternalFilter filter;
     std::unique_ptr<SamplerEngine> sampler;
     std::unique_ptr<SubtractiveSynthEngine> subSynth;
+    std::unique_ptr<DrumSynthEngine> drumSynth;
     std::unique_ptr<FmSynthEngine> fmSynth;
     std::unique_ptr<GrowlBassEngine> growlBass;
     std::unique_ptr<PsyArpEngine> psyArp;
@@ -2188,6 +2298,41 @@ private:
                     case 31: subSynth->setModLfoAmpAmount(value); break;
                     case 32: subSynth->setModLfoFmAmount(value); break;
                     default: return;
+                }
+                break;
+            }
+            case ActiveType::DrumSynth:
+            {
+                if (!drumSynth) return;
+                switch (paramIndex)
+                {
+                    case 0: drumSynth->setOutputLevel(value); break;
+                    case 1: drumSynth->setKitTune(value); break;
+                    case 2: drumSynth->setDecayScale(value); break;
+                    case 3: drumSynth->setAccent(value); break;
+                    case 4: drumSynth->setVoice(juce::roundToInt(value)); break;
+                    case 5: drumSynth->setNoteMap(juce::roundToInt(value)); break;
+                    case 6: drumSynth->setKeyTrack(value); break;
+                    default:
+                    {
+                        // Params 7..50: 4 fields per instrument, in
+                        // DrumSynthEngine::Instrument order — instrument index
+                        // (paramIndex - 7) / 4, field (paramIndex - 7) % 4
+                        // (0=Level, 1=Tune, 2=Decay, 3=Tone).
+                        if (paramIndex >= 7 && paramIndex <= 50)
+                        {
+                            const int inst  = (paramIndex - 7) / 4;
+                            const int field = (paramIndex - 7) % 4;
+                            switch (field)
+                            {
+                                case 0: drumSynth->setInstrumentLevel(inst, value); break;
+                                case 1: drumSynth->setInstrumentTune(inst, value); break;
+                                case 2: drumSynth->setInstrumentDecay(inst, value); break;
+                                case 3: drumSynth->setInstrumentTone(inst, value); break;
+                            }
+                        }
+                        break;
+                    }
                 }
                 break;
             }

@@ -80,6 +80,7 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/growl_bass_engine_test.cpp
     unit/engine/saturator_engine_test.cpp
     unit/engine/psyarp_engine_test.cpp
+    unit/engine/drum_synth_test.cpp
     unit/engine/dx7_sysex_import_test.cpp
     unit/engine/virus_sysex_import_test.cpp
     unit/engine/slice_detector_test.cpp

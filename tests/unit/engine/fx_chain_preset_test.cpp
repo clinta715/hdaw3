@@ -367,7 +367,7 @@ TEST(FxChainPreset, ApplyErrorPathsLeaveChainUnchanged)
     EXPECT_EQ(error,
               "applyFxChain: slot 0: unknown fxType 'not_a_real_fx' (valid: reverb, "
               "compressor, eq, delay, chorus, flanger, phaser, filter, saturator, sampler, "
-              "fm_synth, growl_bass, psyarp, psy_fm, sub_synth, plugin, none)");
+              "fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth, plugin, none)");
     EXPECT_EQ(treeFxSlotCount(engine, 0), 0);
 
     // Param index beyond the def count for compressor.
@@ -396,7 +396,7 @@ TEST(FxChainPreset, ApplyErrorPathsLeaveChainUnchanged)
 TEST(FxChainPreset, InternalFxTypeNameListMatchesParamDefs)
 {
     const auto names = HDAW::TrackFXSlot::internalFxTypeNames();
-    ASSERT_EQ(names.size(), 15u);   // reverb..sub_synth; the if-chain's types
+    ASSERT_EQ(names.size(), 16u);   // reverb..drum_synth; the if-chain's types
     for (const auto& n : names)
         EXPECT_FALSE(HDAW::TrackFXSlot::getParamDefsForType(n).empty()) << n.toStdString();
 

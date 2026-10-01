@@ -831,7 +831,7 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
         && HDAW::TrackFXSlot::getParamDefsForType(p.fxType).empty())
     {
         result.error = "unknown fxType: " + p.fxType
-                     + " (internal instruments: fm_synth, psy_fm, growl_bass, psyarp, sampler, sub_synth)";
+                     + " (internal instruments: fm_synth, psy_fm, growl_bass, psyarp, sampler, sub_synth, drum_synth)";
         return result;
     }
 
@@ -854,6 +854,13 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
                                            ? p.fxType
                                            : (p.pluginId.empty() ? "fm_synth" : "plugin");
     addFxSlotInternal(trackIndex, instrumentType, -1, p.pluginId);
+
+    // The drums role emits a multi-voice GM pattern (kick 36, closed hat 42,
+    // clap 39), which only sounds right in GM mode — so a drum_synth slot for
+    // the drums role is switched to Note Map = 1 (GM). Any other role leaves
+    // the default (0 = Fixed, every incoming note triggers the selected Voice).
+    if (p.fxType == "drum_synth" && isDrumsRole)
+        setFxSlotParam(trackIndex, 0, 5, 1.0f);
 
     const int scaleRoot = (p.scaleRoot >= 0) ? p.scaleRoot : model.getScaleRoot();
     const int scaleMode = (p.scaleMode >= 0) ? p.scaleMode : model.getScaleMode();

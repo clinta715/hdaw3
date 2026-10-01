@@ -25,9 +25,9 @@
    "name": "Room Size",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:95",
+   "source": "src/engine/TrackFXSlot.h:122",
    "sources": [
-    "src/engine/TrackFXSlot.h:95"
+    "src/engine/TrackFXSlot.h:122"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -47,9 +47,9 @@
    "name": "Damping",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:96",
+   "source": "src/engine/TrackFXSlot.h:123",
    "sources": [
-    "src/engine/TrackFXSlot.h:96"
+    "src/engine/TrackFXSlot.h:123"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -69,9 +69,9 @@
    "name": "Wet Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:97",
+   "source": "src/engine/TrackFXSlot.h:124",
    "sources": [
-    "src/engine/TrackFXSlot.h:97"
+    "src/engine/TrackFXSlot.h:124"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -91,9 +91,9 @@
    "name": "Dry Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:98",
+   "source": "src/engine/TrackFXSlot.h:125",
    "sources": [
-    "src/engine/TrackFXSlot.h:98"
+    "src/engine/TrackFXSlot.h:125"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -113,9 +113,9 @@
    "name": "Width",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:99",
+   "source": "src/engine/TrackFXSlot.h:126",
    "sources": [
-    "src/engine/TrackFXSlot.h:99"
+    "src/engine/TrackFXSlot.h:126"
    ],
    "stages": [
     "fx-automation-engineer"

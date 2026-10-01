@@ -1435,7 +1435,8 @@ bool isSamplerDoubleKey(const juce::String& k)
 bool isPreservedInstrumentFxType(const juce::String& type)
 {
     return type == "sampler" || type == "sub_synth" || type == "psy_fm"
-        || type == "fm_synth" || type == "growl_bass" || type == "psyarp";
+        || type == "fm_synth" || type == "growl_bass" || type == "psyarp"
+        || type == "drum_synth";
 }
 } // namespace
 

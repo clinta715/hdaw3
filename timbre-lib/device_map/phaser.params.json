@@ -25,9 +25,9 @@
    "name": "Rate",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:156",
+   "source": "src/engine/TrackFXSlot.h:183",
    "sources": [
-    "src/engine/TrackFXSlot.h:156"
+    "src/engine/TrackFXSlot.h:183"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -47,9 +47,9 @@
    "name": "Depth",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:157",
+   "source": "src/engine/TrackFXSlot.h:184",
    "sources": [
-    "src/engine/TrackFXSlot.h:157"
+    "src/engine/TrackFXSlot.h:184"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -69,9 +69,9 @@
    "name": "Centre Frequency",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:158",
+   "source": "src/engine/TrackFXSlot.h:185",
    "sources": [
-    "src/engine/TrackFXSlot.h:158"
+    "src/engine/TrackFXSlot.h:185"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -91,9 +91,9 @@
    "name": "Feedback",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:159",
+   "source": "src/engine/TrackFXSlot.h:186",
    "sources": [
-    "src/engine/TrackFXSlot.h:159"
+    "src/engine/TrackFXSlot.h:186"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -113,9 +113,9 @@
    "name": "Mix",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:160",
+   "source": "src/engine/TrackFXSlot.h:187",
    "sources": [
-    "src/engine/TrackFXSlot.h:160"
+    "src/engine/TrackFXSlot.h:187"
    ],
    "stages": [
     "fx-automation-engineer"

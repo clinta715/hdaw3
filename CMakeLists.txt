@@ -213,6 +213,8 @@ add_library(hdaw_engine STATIC
     src/engine/ArrangementGenerator.cpp
     src/engine/RhythmPatternGenerator.cpp
     src/engine/SamplerEngine.cpp
+    src/engine/DrumSynthEngine.h
+    src/engine/DrumSynthEngine.cpp
     src/engine/FmSynthEngine.cpp
     src/engine/GrowlBassEngine.cpp
     src/engine/PsyArpEngine.cpp
