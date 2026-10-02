@@ -652,6 +652,12 @@ SamplerStateSnapshot ReadModelImpl::getSamplerState(int trackIndex, int slotInde
     for (auto& tok : juce::StringArray::fromTokens(sliceStr, ",", ""))
         snap.slicePoints.push_back(static_cast<float>(tok.trim().getDoubleValue()));
 
+    juce::String overrideStr = slotTree.getProperty("slicePointsOverride", "").toString();
+    for (auto& tok : juce::StringArray::fromTokens(overrideStr, ",", ""))
+        snap.slicePointsOverride.push_back(static_cast<float>(tok.trim().getDoubleValue()));
+
+    snap.sliceMeta = slotTree.getProperty("sliceMeta", "").toString().toStdString();
+
     snap.keyRangeLow = static_cast<int>(slotTree.getProperty("keyRangeLow", -1));
     snap.keyRangeHigh = static_cast<int>(slotTree.getProperty("keyRangeHigh", -1));
 

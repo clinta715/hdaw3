@@ -3821,6 +3821,152 @@ TEST_F(McpCoverageTest, GenerateChoppedBreakWritesSlicePattern) {
     EXPECT_TRUE(text(badStyle).contains("enum")) << text(badStyle).toStdString();
 }
 
+// Re-cut end-to-end: seed a COARSE grid, then re-cut ONLY the middle half with
+// a finer grid. The contract (the tool description states it): boundaries
+// outside [fromNorm,toNorm) are preserved verbatim, the ones inside are
+// re-detected. Grid mode is used on both sides so the expectation is pure
+// arithmetic (no dependence on transient-detector tuning).
+TEST_F(McpCoverageTest, RecutSamplerSlicesRewritesOnlyTheWindow) {
+    QString wavPath = writeClickWav();
+    ASSERT_FALSE(wavPath.isEmpty()) << "failed to write click WAV";
+    auto addFx = call("add_fx", {{"trackId", 0}, {"fxType", "sampler"}});
+    ASSERT_FALSE(isError(addFx)) << text(addFx).toStdString();
+    int slot = text(addFx).mid(text(addFx).indexOf('=') + 1).toInt();
+
+    auto setSample = call("sampler_set_sample", {
+        {"trackId", 0}, {"slotIndex", slot}, {"filePath", wavPath}});
+    ASSERT_FALSE(isError(setSample)) << text(setSample).toStdString();
+
+    // Coarse grid: 1 beat at the project's 120 BPM = 0.5 s over the 4 s WAV ->
+    // normalized boundaries every 0.125 (0, .125, …, 1.0).
+    auto seed = call("detect_sampler_slices", {
+        {"trackId", 0}, {"slotIndex", slot}, {"sliceMode", "grid"}, {"sliceGrid", 1.0}});
+    ASSERT_FALSE(isError(seed)) << text(seed).toStdString();
+    auto before = QJsonDocument::fromJson(text(seed).toUtf8()).object();
+    ASSERT_TRUE(before.value("ok").toBool()) << text(seed).toStdString();
+    auto beforePts = before.value("slicePoints").toArray();
+    ASSERT_GE(beforePts.size(), 3) << text(seed).toStdString();
+
+    // Re-cut the middle half with a finer grid (0.5 beat = 0.25 s steps).
+    auto recut = call("recut_sampler_slices", {
+        {"trackId", 0}, {"slotIndex", slot},
+        {"sliceMode", "grid"}, {"sliceGrid", 0.5},
+        {"fromNorm", 0.25}, {"toNorm", 0.75}});
+    ASSERT_FALSE(isError(recut)) << text(recut).toStdString();
+    auto after = QJsonDocument::fromJson(text(recut).toUtf8()).object();
+    ASSERT_TRUE(after.value("ok").toBool()) << text(recut).toStdString();
+    auto afterPts = after.value("slicePoints").toArray();
+
+    constexpr double kFrom = 0.25, kTo = 0.75, kEps = 1e-4;
+    auto outside = [&](const QJsonArray& a) {
+        QVector<double> v;
+        for (const auto& p : a) {
+            const double d = p.toDouble();
+            if (d < kFrom - kEps || d >= kTo - kEps) v.push_back(d);
+        }
+        return v;
+    };
+    auto inside = [&](const QJsonArray& a) {
+        QVector<double> v;
+        for (const auto& p : a) {
+            const double d = p.toDouble();
+            if (d >= kFrom - kEps && d < kTo - kEps) v.push_back(d);
+        }
+        return v;
+    };
+
+    // Boundaries outside the window survive byte-identical.
+    const auto outBefore = outside(beforePts);
+    const auto outAfter = outside(afterPts);
+    ASSERT_EQ(outBefore.size(), outAfter.size())
+        << "the re-cut must not add or drop boundaries outside the window";
+    for (int i = 0; i < outBefore.size(); ++i)
+        EXPECT_NEAR(outAfter[i], outBefore[i], kEps)
+            << "boundary outside the window moved at index " << i;
+
+    // The interior is the newly detected (finer) set — it changed.
+    const auto inBefore = inside(beforePts);
+    const auto inAfter = inside(afterPts);
+    ASSERT_GT(inAfter.size(), 0) << "the re-cut interior must not be empty";
+    EXPECT_NE(inAfter.size(), inBefore.size())
+        << "the finer grid must replace the coarse interior boundaries";
+}
+
+// End-to-end pin workflow: the write surface (set_sampler_slice_overrides) must
+// actually pin a frame that a keepOverrides re-cut then preserves, and the same
+// re-cut with keepOverrides=false must replace it with the detection result.
+// The pinned frame (0.3137) is deliberately OFF the detection grid so it can
+// only survive by being pinned.
+TEST_F(McpCoverageTest, SetSamplerSliceOverridesPinsFramesAcrossRecut) {
+    QString wavPath = writeClickWav();
+    ASSERT_FALSE(wavPath.isEmpty()) << "failed to write click WAV";
+    auto addFx = call("add_fx", {{"trackId", 0}, {"fxType", "sampler"}});
+    ASSERT_FALSE(isError(addFx)) << text(addFx).toStdString();
+    int slot = text(addFx).mid(text(addFx).indexOf('=') + 1).toInt();
+
+    auto setSample = call("sampler_set_sample", {
+        {"trackId", 0}, {"slotIndex", slot}, {"filePath", wavPath}});
+    ASSERT_FALSE(isError(setSample)) << text(setSample).toStdString();
+
+    // Seed a coarse grid so a boundary set exists before pinning.
+    auto seed = call("detect_sampler_slices", {
+        {"trackId", 0}, {"slotIndex", slot}, {"sliceMode", "grid"}, {"sliceGrid", 1.0}});
+    ASSERT_FALSE(isError(seed)) << text(seed).toStdString();
+
+    constexpr double kPinned = 0.3137;
+    const auto containsNorm = [](const QJsonArray& a, double v) {
+        for (const auto& p : a)
+            if (std::fabs(p.toDouble() - v) < 1e-5) return true;
+        return false;
+    };
+
+    // Pin one frame. The payload reports exactly what was stored.
+    auto setOv = call("set_sampler_slice_overrides", {
+        {"trackId", 0}, {"slotIndex", slot},
+        {"slicePointsOverride", QJsonArray{ kPinned }}});
+    ASSERT_FALSE(isError(setOv)) << text(setOv).toStdString();
+    auto setObj = QJsonDocument::fromJson(text(setOv).toUtf8()).object();
+    ASSERT_TRUE(setObj.value("ok").toBool()) << text(setOv).toStdString();
+    EXPECT_EQ(setObj.value("overrideCount").toInt(), 1);
+    auto storedOv = setObj.value("slicePointsOverride").toArray();
+    ASSERT_EQ(storedOv.size(), 1);
+    EXPECT_NEAR(storedOv[0].toDouble(), kPinned, 1e-5);
+
+    // The stored property is visible on the state read too.
+    auto state = QJsonDocument::fromJson(text(call("sampler_get_state",
+        {{"trackId", 0}, {"slotIndex", slot}})).toUtf8()).object();
+    auto stateOv = state.value("slicePointsOverride").toArray();
+    ASSERT_EQ(stateOv.size(), 1) << text(call("sampler_get_state",
+        {{"trackId", 0}, {"slotIndex", slot}})).toStdString();
+    EXPECT_NEAR(stateOv[0].toDouble(), kPinned, 1e-5);
+
+    // Re-cut the window CONTAINING the pinned frame, keeping overrides: it survives.
+    auto keep = call("recut_sampler_slices", {
+        {"trackId", 0}, {"slotIndex", slot},
+        {"sliceMode", "grid"}, {"sliceGrid", 0.5},
+        {"fromNorm", 0.25}, {"toNorm", 0.75}, {"keepOverrides", true}});
+    ASSERT_FALSE(isError(keep)) << text(keep).toStdString();
+    auto keepObj = QJsonDocument::fromJson(text(keep).toUtf8()).object();
+    ASSERT_TRUE(keepObj.value("ok").toBool()) << text(keep).toStdString();
+    EXPECT_EQ(keepObj.value("overrideCount").toInt(), 1);
+    EXPECT_TRUE(containsNorm(keepObj.value("slicePoints").toArray(), kPinned))
+        << "the pinned frame must survive a keepOverrides re-cut: " << text(keep).toStdString();
+
+    // The SAME re-cut without keepOverrides replaces the interior with the
+    // detection result — the pinned frame is gone.
+    auto drop = call("recut_sampler_slices", {
+        {"trackId", 0}, {"slotIndex", slot},
+        {"sliceMode", "grid"}, {"sliceGrid", 0.5},
+        {"fromNorm", 0.25}, {"toNorm", 0.75}, {"keepOverrides", false}});
+    ASSERT_FALSE(isError(drop)) << text(drop).toStdString();
+    auto dropObj = QJsonDocument::fromJson(text(drop).toUtf8()).object();
+    ASSERT_TRUE(dropObj.value("ok").toBool()) << text(drop).toStdString();
+    EXPECT_EQ(dropObj.value("overrideCount").toInt(), 0);
+    EXPECT_FALSE(containsNorm(dropObj.value("slicePoints").toArray(), kPinned))
+        << "a keepOverrides=false re-cut must not preserve the pinned frame: "
+        << text(drop).toStdString();
+}
+
 // ============================================================================
 // PATTERN PLACEMENT — docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P2-2
 // ============================================================================

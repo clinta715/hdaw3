@@ -87,6 +87,8 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/corpus_arranger_test.cpp
     unit/engine/sampler_fxslot_test.cpp
     unit/engine/sampler_key_range_test.cpp
+    unit/engine/sampler_slice_mode_test.cpp
+    unit/engine/sampler_recut_test.cpp
     unit/engine/realtime_safety_test.cpp
     unit/engine/audio_pool_dedup_test.cpp
     unit/engine/track_fx_rebuild_race_test.cpp

@@ -1292,7 +1292,9 @@ TEST_F(GuiFuncTest, GenerateEnvelopeInvalidShape) {
 // be registered with the server, alongside the extended sampler_get_state.
 TEST_F(GuiFuncTest, SamplerToolsRegistered) {
     for (const char* name : {"set_sampler_param", "set_sampler_mode",
-                             "detect_sampler_slices", "trigger_sampler_slice",
+                             "detect_sampler_slices", "recut_sampler_slices",
+                             "set_sampler_slice_overrides",
+                             "trigger_sampler_slice",
                              "sampler_set_sample", "sampler_get_state"})
         EXPECT_TRUE(server->tools().contains(name)) << "missing tool: " << name;
 }

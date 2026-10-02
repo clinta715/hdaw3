@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <cstdint>
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -336,14 +337,59 @@ public:
     void setSamplerProperty(int trackIndex, int slotIndex,
                             const std::string& property, double value);
     void setSamplerKeyRange(int trackIndex, int slotIndex, int keyLow, int keyHigh) override;
-    void setSamplerSliceMode(int trackIndex, int slotIndex,
-                             const std::string& sliceMode,
-                             double sliceGrid, double sliceSensitivity);
 
-    struct SamplerDetectionResult { bool ok = false; int totalSlices = 0; std::vector<float> slicePoints; };
+    /// Write the slot's slice mode + grid + sensitivity. `sliceMode` must be in
+    /// the ONE shared vocabulary (common/SamplerSliceModes.h): transient | grid |
+    /// aligned, case-insensitive. An unknown mode is REFUSED — the returned text
+    /// names the valid set and NOTHING is written (previously any string was
+    /// stored verbatim). An empty return means the write happened; an invalid
+    /// slot stays the silent no-op it always was.
+    std::string setSamplerSliceMode(int trackIndex, int slotIndex,
+                                    const std::string& sliceMode,
+                                    double sliceGrid, double sliceSensitivity);
+
+    struct SamplerDetectionResult
+    {
+        bool ok = false;
+        int totalSlices = 0;
+        std::vector<float> slicePoints;      // normalized 0..1 (existing)
+        std::vector<uint32_t> bandMasks;     // NEW, parallel to slicePoints (one per BOUNDARY; 0 for 0 and len)
+        std::vector<float> strengths;        // NEW, parallel
+        int overrideCount = 0;               // NEW
+        std::string error;                   // NEW: refusal/failure text (empty when ok)
+    };
+    // Detect slice boundaries. `sliceMode` is the shared vocabulary
+    // (transient | grid | aligned, common/SamplerSliceModes.h); an unknown mode
+    // sets `error` and returns ok=false with NOTHING written.
+    // `fromNorm`/`toNorm` are normalized (0..1) window
+    // bounds; the defaults (full range) keep every pre-existing call site
+    // byte-identical in behaviour.
     SamplerDetectionResult detectSamplerSlices(int trackIndex, int slotIndex,
                                                const std::string& sliceMode,
-                                               double sliceGrid, double sliceSensitivity);
+                                               double sliceGrid, double sliceSensitivity,
+                                               double fromNorm = 0.0, double toNorm = 1.0);
+    // Re-cut ONLY the [fromNorm, toNorm) window: boundaries outside it are
+    // preserved, and with `keepOverrides` any frame pinned in
+    // `slicePointsOverride` survives verbatim.
+    SamplerDetectionResult recutSamplerSlices(int trackIndex, int slotIndex,
+                                              const std::string& sliceMode,
+                                              double sliceGrid, double sliceSensitivity,
+                                              double fromNorm, double toNorm,
+                                              bool keepOverrides);
+    // Pin slice boundaries: every frame written to `slicePointsOverride` is a
+    // boundary the user chose, and recutSamplerSlices with keepOverrides=true
+    // never moves it. Values are clamped to [0,1], sorted, de-duped, and the
+    // implicit endpoints 0/1 dropped; an EMPTY input clears the property.
+    // ok=false (nothing written) on an invalid slot or a non-sampler slot.
+    struct SamplerSliceOverrideResult
+    {
+        bool ok = false;
+        int overrideCount = 0;
+        std::vector<float> slicePointsOverride;   // normalized 0..1, sorted
+    };
+    SamplerSliceOverrideResult setSamplerSliceOverrides(int trackIndex, int slotIndex,
+                                                        const std::vector<float>& normalized);
+
     struct SamplerTriggerResult { bool ok = false; int totalSlices = 0; };
     SamplerTriggerResult triggerSamplerSlice(int trackIndex, int slotIndex,
                                              int sliceIndex, float velocity);

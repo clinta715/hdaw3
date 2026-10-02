@@ -45,6 +45,11 @@ inline QJsonObject samplerStateJson(const SamplerStateSnapshot& s)
     for (float p : s.slicePoints)
         slicePoints.append(static_cast<double>(p));
     obj["slicePoints"] = slicePoints;
+    QJsonArray slicePointsOverride;
+    for (float p : s.slicePointsOverride)
+        slicePointsOverride.append(static_cast<double>(p));
+    obj["slicePointsOverride"] = slicePointsOverride;
+    obj["sliceMeta"] = QString::fromStdString(s.sliceMeta);
     obj["keyRangeLow"] = s.keyRangeLow;
     obj["keyRangeHigh"] = s.keyRangeHigh;
     return obj;

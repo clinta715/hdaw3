@@ -32,6 +32,8 @@ struct ChainPreset {
         PluginRef plugin;                                // only when fxType == "plugin"
         std::map<juce::String, juce::String> sampler;   // sampleFile, mode, rootNote, ... (strings)
         juce::String slicePoints;                        // space-separated normalized floats
+        juce::String slicePointsOverride;                // user-pinned boundaries (normalized)
+        juce::String sliceMeta;                          // frame:bandMask:strength triples
         juce::String psyFmMatrix; double psyFmSweepRate = 0.0;
     };
     juce::String id, name;

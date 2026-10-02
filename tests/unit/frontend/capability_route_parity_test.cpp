@@ -39,10 +39,45 @@
 #include "mcp/McpTools.h"
 #include "model/ProjectModel.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
+
+#include <cmath>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace {
+
+// A short 1 kHz click track (660-sample bursts every 0.25 s) so the transient
+// detector has real onsets to find; hermetic (no sample-library dependency).
+QString writeSliceParityWav()
+{
+    const juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                             .getNonexistentChildFile("hdaw_slice_parity", ".wav", false);
+    constexpr int sampleRate = 44100;
+    constexpr int numSamples = sampleRate * 2;   // 2 s
+    constexpr int burstSamples = 660;            // ~15 ms
+    juce::AudioBuffer<float> buf(1, numSamples);
+    buf.clear();
+    for (int c = 0; c < numSamples; ++c)
+    {
+        const double phaseInClick = std::fmod(static_cast<double>(c) / sampleRate, 0.25);
+        if (phaseInClick < static_cast<double>(burstSamples) / sampleRate)
+        {
+            const int n = static_cast<int>(std::round(phaseInClick * sampleRate));
+            buf.setSample(0, c, 0.6f * static_cast<float>(std::sin(
+                2.0 * juce::MathConstants<double>::pi * 1000.0 / sampleRate * n)));
+        }
+    }
+    juce::WavAudioFormat wav;
+    auto* fileOut = new juce::FileOutputStream(f);
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        wav.createWriterFor(fileOut, sampleRate, 1, 16, {}, 0));
+    if (writer == nullptr) { delete fileOut; return {}; }
+    writer->writeFromAudioSampleBuffer(buf, 0, numSamples);
+    writer->flush();
+    return QString::fromStdString(f.getFullPathName().toStdString());
+}
 
 class CapabilityRouteParityTest : public ::testing::Test {
 protected:
@@ -121,8 +156,21 @@ protected:
         EXPECT_TRUE(text.startsWith("slot=")) << text.toStdString();
         return text.mid(5).toInt();
     }
+    // add_track's MCP payload carries BOTH the positional index and the stable
+    // id; the sampler twins must share the `trackID` spelling (the MCP tool
+    // takes trackId/trackID, the sampler route takes trackIndex/trackID).
+    std::pair<int, int> addTrackWithID(const QString& name = "Track") {
+        const QJsonObject o = parseText(mcpText("add_track", QJsonObject{ { "name", name } }));
+        return { o.value("trackId").toInt(), o.value("trackID").toInt() };
+    }
     juce::ValueTree masterFx() {
         return engine->getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
+    }
+    // A sampler slot's tree property (the "nothing was written" probe).
+    std::string slotProperty(int trackIndex, int slotIndex, const char* prop) {
+        return engine->getProjectModel().getTrackListTree().getChild(trackIndex)
+            .getChildWithName(IDs::FX_CHAIN).getChild(slotIndex)
+            .getProperty(prop, "").toString().toStdString();
     }
     static QJsonObject parseText(const QString& text) {
         return QJsonDocument::fromJson(text.toUtf8()).object();
@@ -467,6 +515,264 @@ TEST_F(CapabilityRouteParityTest, AuditionPatchMissingPathFailsWithRouteText) {
     ASSERT_TRUE(r.isError);
     EXPECT_EQ(r.payload.toObject().value("code").toInt(), -32602);
     EXPECT_EQ(r.payload.toObject().value("message").toString(), QString("path required"));
+}
+
+// ─── detect_sampler_slices ↔ sampler.detectSlices ──────────────────────────
+//     recut_sampler_slices  ↔ sampler.recutSlices
+// Both surfaces call the SAME AudioEngineCommands entry point and shape the
+// reply through the SAME HDAW::samplerSlicePayloadJson (src/common/
+// SamplerSliceShaper.h), so the payloads cannot drift. The twin argument
+// object uses `trackID` — the one track spelling both surfaces accept.
+
+TEST_F(CapabilityRouteParityTest, DetectSamplerSlicesUnknownSlotFailsIdentically) {
+    const auto track = addTrackWithID("SliceParity");
+    ASSERT_GT(track.second, 0) << "the stable track id must be minted";
+    addFxTool(track.first, "sampler");
+
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", 99 } };
+    expectSameFailure("detect_sampler_slices", "sampler.detectSlices", args);
+    EXPECT_EQ(mcpText("detect_sampler_slices", args), QString("slot not found"));
+    EXPECT_EQ(rpc("sampler.detectSlices", args).payload.toObject().value("message").toString(),
+              QString("slot not found"));
+}
+
+TEST_F(CapabilityRouteParityTest, RecutSamplerSlicesUnknownSlotFailsIdentically) {
+    const auto track = addTrackWithID("SliceParity");
+    ASSERT_GT(track.second, 0) << "the stable track id must be minted";
+    addFxTool(track.first, "sampler");
+
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", 99 },
+                            { "fromNorm", 0.0 }, { "toNorm", 1.0 } };
+    expectSameFailure("recut_sampler_slices", "sampler.recutSlices", args);
+    EXPECT_EQ(mcpText("recut_sampler_slices", args), QString("slot not found"));
+    EXPECT_EQ(rpc("sampler.recutSlices", args).payload.toObject().value("message").toString(),
+              QString("slot not found"));
+}
+
+TEST_F(CapabilityRouteParityTest, DetectSamplerSlicesPayloadMatchesOnBothSurfaces) {
+    const auto track = addTrackWithID("SliceParity");
+    const int slot = addFxTool(track.first, "sampler");
+    ASSERT_GE(slot, 0);
+    const QString wav = writeSliceParityWav();
+    ASSERT_FALSE(wav.isEmpty());
+    const QJsonObject sampleArgs{ { "trackId", track.first }, { "slotIndex", slot },
+                                  { "filePath", wav } };
+    ASSERT_FALSE(mcpIsError("sampler_set_sample", sampleArgs))
+        << mcpText("sampler_set_sample", sampleArgs).toStdString();
+
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", slot },
+                            { "sliceMode", "transient" }, { "sliceSensitivity", 0.5 } };
+    expectPayloadParity("detect_sampler_slices", "sampler.detectSlices", args);
+
+    const QJsonObject parsed = parseText(mcpText("detect_sampler_slices", args));
+    EXPECT_TRUE(parsed.value("ok").toBool());
+    EXPECT_GT(parsed.value("totalSlices").toInt(), 0);
+    // The shared shaper emits every field (the old hand-built route object had
+    // only ok/totalSlices/slicePoints).
+    EXPECT_TRUE(parsed.contains("bandMasks"));
+    EXPECT_TRUE(parsed.contains("strengths"));
+    EXPECT_TRUE(parsed.contains("overrideCount"));
+}
+
+TEST_F(CapabilityRouteParityTest, RecutSamplerSlicesPayloadMatchesOnBothSurfaces) {
+    const auto track = addTrackWithID("SliceParity");
+    const int slot = addFxTool(track.first, "sampler");
+    ASSERT_GE(slot, 0);
+    const QString wav = writeSliceParityWav();
+    ASSERT_FALSE(wav.isEmpty());
+    const QJsonObject sampleArgs{ { "trackId", track.first }, { "slotIndex", slot },
+                                  { "filePath", wav } };
+    ASSERT_FALSE(mcpIsError("sampler_set_sample", sampleArgs))
+        << mcpText("sampler_set_sample", sampleArgs).toStdString();
+
+    // A coarse grid seeds boundaries OUTSIDE the re-cut window; the re-cut
+    // replaces only the [fromNorm,toNorm) interior. Re-seed before EACH surface
+    // so both run the SAME operation from the SAME state (the payload is a pure
+    // function of the seed + window).
+    const QJsonObject seedArgs{ { "trackID", track.second }, { "slotIndex", slot },
+                                { "sliceMode", "grid" }, { "sliceGrid", 1.0 } };
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", slot },
+                            { "sliceMode", "transient" }, { "sliceSensitivity", 0.5 },
+                            { "fromNorm", 0.25 }, { "toNorm", 0.75 } };
+
+    ASSERT_FALSE(mcpIsError("detect_sampler_slices", seedArgs));
+    const auto r = rpc("sampler.recutSlices", args);
+    ASSERT_FALSE(r.isError) << r.payload.toObject().value("message").toString().toStdString();
+
+    ASSERT_FALSE(mcpIsError("detect_sampler_slices", seedArgs));
+    const QString toolText = mcpText("recut_sampler_slices", args);
+    EXPECT_FALSE(mcpIsError("recut_sampler_slices", args)) << toolText.toStdString();
+    const auto expected = QJsonDocument::fromJson(toolText.toUtf8());
+    ASSERT_FALSE(expected.isNull()) << "tool text is not JSON: " << toolText.toStdString();
+    EXPECT_EQ(QJsonDocument::fromVariant(r.payload.toVariant()), expected)
+        << "route payload must equal the parsed tool text";
+
+    const QJsonObject parsed = expected.object();
+    EXPECT_TRUE(parsed.value("ok").toBool());
+    EXPECT_TRUE(parsed.contains("bandMasks"));
+    EXPECT_TRUE(parsed.contains("strengths"));
+    EXPECT_TRUE(parsed.contains("overrideCount"));
+}
+
+TEST_F(CapabilityRouteParityTest, DetectSamplerSlicesAlignedModePayloadMatchesOnBothSurfaces) {
+    // `aligned` (the onset-fitted grid, common/SamplerSliceModes.h) is a
+    // first-class mode on BOTH surfaces: the MCP enum accepts it and the route
+    // passes it to the same AudioEngineCommands entry point, so the payloads
+    // stay identical by construction.
+    const auto track = addTrackWithID("SliceParity");
+    const int slot = addFxTool(track.first, "sampler");
+    ASSERT_GE(slot, 0);
+    const QString wav = writeSliceParityWav();
+    ASSERT_FALSE(wav.isEmpty());
+    const QJsonObject sampleArgs{ { "trackId", track.first }, { "slotIndex", slot },
+                                  { "filePath", wav } };
+    ASSERT_FALSE(mcpIsError("sampler_set_sample", sampleArgs))
+        << mcpText("sampler_set_sample", sampleArgs).toStdString();
+
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", slot },
+                            { "sliceMode", "aligned" }, { "sliceGrid", 0.25 },
+                            { "sliceSensitivity", 0.5 } };
+    expectPayloadParity("detect_sampler_slices", "sampler.detectSlices", args);
+
+    const QJsonObject parsed = parseText(mcpText("detect_sampler_slices", args));
+    EXPECT_TRUE(parsed.value("ok").toBool());
+    EXPECT_GT(parsed.value("totalSlices").toInt(), 0);
+    EXPECT_EQ(parsed.value("error").toString(), QString());
+}
+
+TEST_F(CapabilityRouteParityTest, UnknownSliceModeIsRefusedOnBothSurfaces) {
+    // A typo must NOT silently change the algorithm (the pre-fix engine fell
+    // through to transient). MCP refuses through the schema enum, the route
+    // through the engine's shared validator — both name the valid set, and
+    // neither writes to the slot.
+    const auto track = addTrackWithID("SliceParity");
+    const int slot = addFxTool(track.first, "sampler");
+    ASSERT_GE(slot, 0);
+    const QString wav = writeSliceParityWav();
+    ASSERT_FALSE(wav.isEmpty());
+    const QJsonObject sampleArgs{ { "trackId", track.first }, { "slotIndex", slot },
+                                  { "filePath", wav } };
+    ASSERT_FALSE(mcpIsError("sampler_set_sample", sampleArgs))
+        << mcpText("sampler_set_sample", sampleArgs).toStdString();
+
+    // Seed real boundaries so "nothing was written" is observable.
+    const QJsonObject seedArgs{ { "trackID", track.second }, { "slotIndex", slot },
+                                { "sliceMode", "grid" }, { "sliceGrid", 0.25 } };
+    ASSERT_FALSE(mcpIsError("detect_sampler_slices", seedArgs));
+    const std::string before = slotProperty(track.first, slot, "slicePoints");
+    ASSERT_FALSE(before.empty());
+
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", slot },
+                            { "sliceMode", "transientt" } };
+
+    EXPECT_TRUE(mcpIsError("detect_sampler_slices", args));
+    // The schema enum names the valid set (quoted, so the three names are
+    // checked individually rather than as one substring).
+    const QString mcpMsg = mcpText("detect_sampler_slices", args);
+    EXPECT_TRUE(mcpMsg.contains("transient")) << mcpMsg.toStdString();
+    EXPECT_TRUE(mcpMsg.contains("grid")) << mcpMsg.toStdString();
+    EXPECT_TRUE(mcpMsg.contains("aligned")) << mcpMsg.toStdString();
+
+    const auto r = rpc("sampler.detectSlices", args);
+    ASSERT_FALSE(r.isError);
+    const QJsonObject payload = r.payload.toObject();
+    EXPECT_FALSE(payload.value("ok").toBool());
+    EXPECT_TRUE(payload.value("error").toString().contains("transient, grid, aligned"))
+        << payload.value("error").toString().toStdString();
+
+    // The route-only setSliceMode surface hands the same refusal back as -32602.
+    const auto setR = rpc("sampler.setSliceMode", args);
+    ASSERT_TRUE(setR.isError);
+    EXPECT_EQ(setR.payload.toObject().value("code").toInt(), -32602);
+    EXPECT_TRUE(setR.payload.toObject().value("message").toString()
+                    .contains("transient, grid, aligned"))
+        << setR.payload.toObject().value("message").toString().toStdString();
+
+    // Neither surface wrote anything.
+    EXPECT_EQ(slotProperty(track.first, slot, "slicePoints"), before);
+    EXPECT_EQ(slotProperty(track.first, slot, "sliceMode"), std::string("grid"));
+}
+
+// ─── set_sampler_slice_overrides ↔ sampler.setSliceOverrides ───────────────
+// The pin write surface. Both surfaces gate the slot with the SAME text before
+// the shared AudioEngineCommands::setSamplerSliceOverrides entry point runs and
+// shape the reply through the SAME HDAW::samplerSliceOverridePayloadJson
+// (src/common/SamplerSliceShaper.h).
+
+TEST_F(CapabilityRouteParityTest, SetSamplerSliceOverridesUnknownSlotFailsIdentically) {
+    const auto track = addTrackWithID("SliceParity");
+    ASSERT_GT(track.second, 0) << "the stable track id must be minted";
+    addFxTool(track.first, "sampler");
+
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", 99 },
+                            { "slicePointsOverride", QJsonArray{ 0.25 } } };
+    expectSameFailure("set_sampler_slice_overrides", "sampler.setSliceOverrides", args);
+    EXPECT_EQ(mcpText("set_sampler_slice_overrides", args), QString("slot not found"));
+    EXPECT_EQ(rpc("sampler.setSliceOverrides", args).payload.toObject().value("message").toString(),
+              QString("slot not found"));
+}
+
+TEST_F(CapabilityRouteParityTest, SetSamplerSliceOverridesNonSamplerFailsIdentically) {
+    const int t = addTrack("SliceParity");
+    addFxTool(t, "eq");
+
+    const QJsonObject args{ { "trackId", t }, { "slotIndex", 0 },
+                            { "slicePointsOverride", QJsonArray{ 0.25 } } };
+    expectSameFailure("set_sampler_slice_overrides", "sampler.setSliceOverrides", args);
+    EXPECT_EQ(mcpText("set_sampler_slice_overrides", args), QString("slot is not a sampler"));
+    EXPECT_EQ(rpc("sampler.setSliceOverrides", args).payload.toObject().value("message").toString(),
+              QString("slot is not a sampler"));
+}
+
+// A non-number element used to coerce to 0 via QJsonValue::toDouble() and be
+// dropped as an implicit endpoint, so `[0.25,"oops"]` SUCCEEDED with one pin —
+// the accepted-argument-dropped class. ONE shared rule + text
+// (common/SamplerSliceModes.h): the MCP validator's items type answers with it,
+// the route applies the helper itself, and the whole call is refused with
+// nothing written on either surface.
+TEST_F(CapabilityRouteParityTest, SetSamplerSliceOverridesNonNumberElementFailsIdentically) {
+    const auto track = addTrackWithID("SliceParity");
+    ASSERT_GT(track.second, 0) << "the stable track id must be minted";
+    const int slot = addFxTool(track.first, "sampler");
+    ASSERT_GE(slot, 0);
+
+    // Seed a real pin so "nothing was written" is observable.
+    const QJsonObject seed{ { "trackID", track.second }, { "slotIndex", slot },
+                            { "slicePointsOverride", QJsonArray{ 0.25 } } };
+    ASSERT_FALSE(mcpIsError("set_sampler_slice_overrides", seed));
+    const std::string before = slotProperty(track.first, slot, "slicePointsOverride");
+    ASSERT_FALSE(before.empty());
+
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", slot },
+                            { "slicePointsOverride", QJsonArray{ 0.25, "oops" } } };
+    expectSameFailure("set_sampler_slice_overrides", "sampler.setSliceOverrides", args);
+    EXPECT_EQ(mcpText("set_sampler_slice_overrides", args),
+              QString("invalid params: slicePointsOverride[1]: expected number"));
+    EXPECT_EQ(rpc("sampler.setSliceOverrides", args).payload.toObject().value("message").toString(),
+              QString("invalid params: slicePointsOverride[1]: expected number"));
+
+    // Refused as a WHOLE: the seed pin is untouched on both surfaces.
+    EXPECT_EQ(slotProperty(track.first, slot, "slicePointsOverride"), before);
+}
+
+// The other half of the rule: a JSON INTEGER is a JSON number (Qt stores every
+// JSON number as a double, so QJsonValue::isDouble() is true for `0`/`1`), so an
+// integer element is ACCEPTED, not refused. Both endpoints are then dropped as
+// implicit endpoints, so the pin set is empty and both surfaces agree.
+TEST_F(CapabilityRouteParityTest, SetSamplerSliceOverridesAcceptsJsonIntegers) {
+    const auto track = addTrackWithID("SliceParity");
+    ASSERT_GT(track.second, 0) << "the stable track id must be minted";
+    const int slot = addFxTool(track.first, "sampler");
+    ASSERT_GE(slot, 0);
+
+    const QJsonObject args{ { "trackID", track.second }, { "slotIndex", slot },
+                            { "slicePointsOverride", QJsonArray{ 0, 1 } } };
+    expectPayloadParity("set_sampler_slice_overrides", "sampler.setSliceOverrides", args);
+
+    const QJsonObject payload = parseText(mcpText("set_sampler_slice_overrides", args));
+    EXPECT_TRUE(payload.value("ok").toBool());
+    EXPECT_EQ(payload.value("overrideCount").toInt(), 0);
+    EXPECT_EQ(slotProperty(track.first, slot, "slicePointsOverride"), std::string());
 }
 
 } // namespace

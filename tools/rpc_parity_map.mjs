@@ -230,11 +230,13 @@ const ALIASES = {
   delete_cluster_preset: ['library.clusterPresetsDelete', 'route comment: mirror of the MCP delete_cluster_preset tool'],
   set_library_autoscan: ['library.setAutoScan', 'same FileLibraryManager::setAutoScan'],
   // Sampler (Router_Sampler.cpp): same AudioEngineCommands calls.
-  detect_sampler_slices: ['sampler.detectSlices', 'shared entry point: AudioEngineCommands::detectSamplerSlices'],
+  detect_sampler_slices: ['sampler.detectSlices', 'shared entry point: AudioEngineCommands::detectSamplerSlices + the shared HDAW::samplerSlicePayloadJson shaper (src/common/SamplerSliceShaper.h) — same {ok,totalSlices,slicePoints,bandMasks,strengths,overrideCount,error} payload by construction; both surfaces take the same optional fromNorm/toNorm window and the same sliceMode vocabulary (transient|grid|aligned, common/SamplerSliceModes.h)'],
+  recut_sampler_slices: ['sampler.recutSlices', 'shared entry point: AudioEngineCommands::recutSamplerSlices + the shared HDAW::samplerSlicePayloadJson shaper (src/common/SamplerSliceShaper.h) — re-detects onsets only inside [fromNorm,toNorm), preserves boundaries outside it and never moves a slicePointsOverride frame when keepOverrides (default) is set; same sliceMode vocabulary (transient|grid|aligned, common/SamplerSliceModes.h). Twin test: CapabilityRouteParityTest.RecutSamplerSlices*'],
   set_sampler_key_range: ['sampler.setKeyRange', 'shared entry point: AudioEngineCommands::setSamplerKeyRange'],
   set_sampler_mode: ['sampler.setMode', 'shared entry point: AudioEngineCommands::setSamplerMode'],
   set_sampler_param: ['sampler.setParam', 'shared entry point: setSamplerProperty / setFxSlotParam — the route takes the same property|paramIndex split'],
   trigger_sampler_slice: ['sampler.triggerSlice', 'shared entry point: AudioEngineCommands::triggerSamplerSlice'],
+  set_sampler_slice_overrides: ['sampler.setSliceOverrides', 'shared entry point: AudioEngineCommands::setSamplerSliceOverrides + the shared HDAW::samplerSliceOverridePayloadJson shaper (src/common/SamplerSliceShaper.h) — same {ok,overrideCount,slicePointsOverride} payload by construction; the same PINNED-boundary semantics (recut with keepOverrides never moves a pinned frame). Twin test: CapabilityRouteParityTest.SetSamplerSliceOverrides*'],
   // MIDI devices (Router_Midi.cpp): same MidiService calls; the routes additionally
   // persist (open) / clear (close) the device key in QSettings.
   open_midi_device: ['midi.openDevice', 'same MidiService::openDevice (+ the route persists the device key)'],

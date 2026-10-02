@@ -71,6 +71,8 @@ ChainPreset presetFromObject(juce::DynamicObject* obj)
                     s.sampler[prop.name.toString()] = prop.value.toString();
             }
             s.slicePoints = sObj->getProperty("slicePoints").toString();
+            s.slicePointsOverride = sObj->getProperty("slicePointsOverride").toString();
+            s.sliceMeta = sObj->getProperty("sliceMeta").toString();
             s.psyFmMatrix = sObj->getProperty("psyFmMatrix").toString();
             if (sObj->hasProperty("psyFmSweepRate"))
                 s.psyFmSweepRate = (double) sObj->getProperty("psyFmSweepRate");
@@ -107,6 +109,8 @@ juce::DynamicObject::Ptr presetToObject(const ChainPreset& p)
             sampObj->setProperty(kv.first, kv.second);
         sObj->setProperty("sampler", juce::var(sampObj.get()));
         sObj->setProperty("slicePoints", s.slicePoints);
+        sObj->setProperty("slicePointsOverride", s.slicePointsOverride);
+        sObj->setProperty("sliceMeta", s.sliceMeta);
         sObj->setProperty("psyFmMatrix", s.psyFmMatrix);
         sObj->setProperty("psyFmSweepRate", s.psyFmSweepRate);
         slotsArr.add(juce::var(sObj.get()));

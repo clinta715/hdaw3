@@ -450,7 +450,13 @@ bool AudioEngine::startMcpHttp(const QString& host, quint16 port, QString* error
         mcp::registerAllTools(*mcpHttpServer);
     }
 
-    if (mcpHttpRunning_ && mcpHttpHost_ == normalizedHost && mcpHttpPort_ == port)
+    // Short-circuit ONLY against a genuinely matching LIVE server: the members
+    // describe the running transport, so the check must agree with the live
+    // transport's actual port too. (Pre-fix, setMcpHttpConfig assigned the
+    // requested host/port to these members first, so this test compared the
+    // request to itself and skipped the rebind.)
+    if (mcpHttpRunning_ && mcpHttpTransport && mcpHttpTransport->port() == port
+        && mcpHttpHost_ == normalizedHost)
     {
         mcpHttpLastError_.clear();
         if (error) error->clear();
@@ -526,14 +532,19 @@ bool AudioEngine::setMcpHttpConfig(bool enabled, const QString& host, quint16 po
     if (port != 0)
         s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(port));
 
-    mcpHttpEnabled_ = enabled;
-    mcpHttpHost_ = normalizedHost;
-    if (port != 0)
-        mcpHttpPort_ = port;
+    // NOTE: mcpHttpEnabled_/mcpHttpHost_/mcpHttpPort_ describe the LIVE server,
+    // not the REQUEST. They are assigned by startMcpHttp() only after a
+    // transport is actually bound (and never here before it runs). Assigning
+    // them here pre-fix made startMcpHttp's "already running on the same
+    // config" test compare the request against itself, so an explicit
+    // --mcp-http-port short-circuited and the server stayed bound to the
+    // PERSISTED port. The QSettings writes above are the persistence intent and
+    // stay; the live members do not.
 
     if (!enabled)
     {
         stopMcpHttp();
+        mcpHttpEnabled_ = false;
         mcpHttpLastError_.clear();
         if (error) error->clear();
         return true;

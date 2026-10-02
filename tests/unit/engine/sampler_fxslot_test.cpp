@@ -208,3 +208,83 @@ TEST (SamplerFxSlot, LoadStateRestoresSlicePoints)
 
     wavFile.deleteFile();
 }
+
+TEST (SamplerFxSlot, LoadStateRestoresSlicePointsOverrideAndMeta)
+{
+    // A real WAV so the decode path (and hence builder.length) is live.
+    const int len = 4000;
+    const double sr = 44100.0;
+    juce::File wavFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                             .getChildFile ("hdaw_sampler_slice_override_test.wav");
+    wavFile.deleteFile();
+    {
+        juce::WavAudioFormat wav;
+        auto* fileOut = new juce::FileOutputStream (wavFile);
+        std::unique_ptr<juce::AudioFormatWriter> writer (
+            wav.createWriterFor (fileOut, sr, 1, 16, {}, 0));
+        if (writer == nullptr)
+            delete fileOut;
+        ASSERT_NE (writer, nullptr);
+        juce::AudioBuffer<float> data (1, len);
+        for (int i = 0; i < len; ++i)
+            data.setSample (0, i, static_cast<float> (std::sin (6.2831853 * 440.0 * i / sr)));
+        writer->writeFromAudioSampleBuffer (data, 0, len);
+        writer->flush();
+    }
+
+    AudioEngine engine;
+    engine.initialize();
+    engine.getProjectCommands().addTrack ("Track"); // default projects are empty
+    engine.drainPendingRoutingRebuild();
+
+    auto* mp = engine.getMainProcessor();
+    ASSERT_NE (mp, nullptr);
+    auto trackTree = engine.getProjectModel().getTrackListTree().getChild (0);
+    ASSERT_TRUE (trackTree.isValid());
+
+    const juce::String kMeta = "0.000000:0:0.000,0.250000:3:0.500,1.000000:0:0.000";
+
+    juce::ValueTree fxChain (IDs::FX_CHAIN);
+    juce::ValueTree slotTree (IDs::FX_SLOT);
+    slotTree.setProperty (IDs::fxType, "sampler", nullptr);
+    slotTree.setProperty (IDs::bypassed, false, nullptr);
+    slotTree.setProperty (juce::Identifier ("sampleFile"), wavFile.getFullPathName(), nullptr);
+    slotTree.setProperty (juce::Identifier ("mode"), "slice", nullptr);
+    slotTree.setProperty (juce::Identifier ("slicePoints"), "0,1", nullptr);
+    slotTree.setProperty (juce::Identifier ("slicePointsOverride"), "0.25", nullptr);
+    slotTree.setProperty (juce::Identifier ("sliceMeta"), kMeta, nullptr);
+    fxChain.addChild (slotTree, -1, nullptr);
+
+    auto existingFX = trackTree.getChildWithName (IDs::FX_CHAIN);
+    if (existingFX.isValid())
+        trackTree.removeChild (existingFX, nullptr);
+    trackTree.addChild (fxChain, -1, nullptr);
+
+    mp->rebuildRoutingGraph();
+
+    // ── LIVE side (Gate 1/10): the pinned override frame must survive the
+    //    front/back normalisation the stored slicePoints undergo. ──
+    auto* tr = mp->getTrack (0);
+    ASSERT_NE (tr, nullptr);
+    auto& chain = tr->getFXChain();
+    ASSERT_GE (chain.size(), 1u);
+    ASSERT_NE (chain[0], nullptr);
+    EXPECT_EQ (chain[0]->getType(), "sampler");
+
+    auto* samplerEngine = chain[0]->samplerEngineForTest();
+    ASSERT_NE (samplerEngine, nullptr);
+    const auto* sound = samplerEngine->getSoundForTest();
+    ASSERT_NE (sound, nullptr);
+    ASSERT_EQ (sound->slicePoints.size(), 3u);
+    EXPECT_EQ (sound->slicePoints[0], 0);
+    EXPECT_EQ (sound->slicePoints[1], 1000);   // 0.25 * 4000 — the pinned frame
+    EXPECT_EQ (sound->slicePoints[2], 4000);
+
+    // ── The ReadModel snapshot must report BOTH new props. ──
+    const auto snap = engine.getReadModel().getSamplerState (0, 0);
+    ASSERT_EQ (snap.slicePointsOverride.size(), 1u);
+    EXPECT_FLOAT_EQ (snap.slicePointsOverride[0], 0.25f);
+    EXPECT_EQ (snap.sliceMeta, kMeta.toStdString());
+
+    wavFile.deleteFile();
+}

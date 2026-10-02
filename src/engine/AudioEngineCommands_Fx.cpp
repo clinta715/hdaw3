@@ -13,6 +13,7 @@
 #include "engine/PsyFmModMatrix.h"
 #include "../common/ParamOverrideLedger.h"
 #include "../common/LiveTrackLookupError.h"
+#include "../common/SamplerSliceModes.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <cmath>
@@ -1066,30 +1067,114 @@ void AudioEngineCommands::setSamplerKeyRange(int trackIndex, int slotIndex,
         proc->rebuildTrackFX(trackIndex);
 }
 
-void AudioEngineCommands::setSamplerSliceMode(int trackIndex, int slotIndex,
-                                              const std::string& sliceMode,
-                                              double sliceGrid, double sliceSensitivity)
+std::string AudioEngineCommands::setSamplerSliceMode(int trackIndex, int slotIndex,
+                                                     const std::string& sliceMode,
+                                                     double sliceGrid, double sliceSensitivity)
 {
+    // ONE shared vocabulary (common/SamplerSliceModes.h). An unknown mode is
+    // refused with the text naming the valid set and NOTHING is written — the
+    // old body stored whatever string it was handed ("gridd" landed in the tree
+    // and the next detect silently ran transient).
+    if (const std::string refusal = HDAW::sliceModeRefusal(sliceMode); !refusal.empty())
+        return refusal;
+
     auto& um = engine_.getProjectModel().getUndoManager();
     auto slot = findFxSlot(trackIndex, slotIndex);
-    if (!slot.isValid()) return;
+    if (!slot.isValid()) return {};   // silent no-op, unchanged
 
-    juce::String sm = juce::String(sliceMode).trim().toLowerCase();
-    if (sm != "transient" && sm != "grid")
-        return;
-
-    slot.setProperty(juce::Identifier("sliceMode"), sm, &um);
+    const std::string sm = HDAW::normalizeSliceMode(sliceMode);
+    slot.setProperty(juce::Identifier("sliceMode"), juce::String(sm), &um);
     slot.setProperty(juce::Identifier("sliceGrid"), sliceGrid, &um);
     slot.setProperty(juce::Identifier("sliceSensitivity"), sliceSensitivity, &um);
+    return {};
 }
 
-AudioEngineCommands::SamplerDetectionResult AudioEngineCommands::detectSamplerSlices(
-    int trackIndex, int slotIndex, const std::string& sliceMode, double sliceGrid, double sliceSensitivity)
+AudioEngineCommands::SamplerSliceOverrideResult AudioEngineCommands::setSamplerSliceOverrides(
+    int trackIndex, int slotIndex, const std::vector<float>& normalized)
 {
-    SamplerDetectionResult result;
+    SamplerSliceOverrideResult result;
+
     auto& um = engine_.getProjectModel().getUndoManager();
     auto slot = findFxSlot(trackIndex, slotIndex);
-    if (!slot.isValid()) return result;
+    if (!slot.isValid()) return result;                                       // Gate 9
+    if (slot.getProperty(IDs::fxType, "").toString() != "sampler") return result;
+
+    // The stored set is what recutSamplerSlices reads back: clamp to [0,1],
+    // drop the implicit 0/1 endpoints, sort, then de-dupe (1e-6 tolerance —
+    // the same merge tolerance the detection merge uses). slicePoints and
+    // sliceMeta are deliberately untouched.
+    std::vector<float> pts;
+    pts.reserve(normalized.size());
+    for (float v : normalized)
+    {
+        const float c = juce::jlimit(0.0f, 1.0f, v);
+        if (c <= 0.0f || c >= 1.0f) continue;
+        pts.push_back(c);
+    }
+    std::sort(pts.begin(), pts.end());
+    pts.erase(std::unique(pts.begin(), pts.end(),
+                          [](float a, float b) { return std::abs(a - b) < 1e-6f; }),
+              pts.end());
+
+    // Empty input -> empty string, which clears the property (recut treats an
+    // empty override string as "nothing pinned").
+    juce::String joined;
+    for (size_t i = 0; i < pts.size(); ++i)
+    {
+        if (i) joined += ",";
+        joined += juce::String(static_cast<double>(pts[i]), 6);
+    }
+    slot.setProperty(juce::Identifier("slicePointsOverride"), joined, &um);
+
+    result.ok = true;
+    result.overrideCount = static_cast<int>(pts.size());
+    result.slicePointsOverride = pts;
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+    return result;
+}
+
+namespace {
+
+// A re-cut window narrower than this is analysed as the WHOLE buffer instead:
+// the onset engine's adaptive statistics need a usable amount of material.
+constexpr int64_t kMinRecutAnalysisFrames = 512;
+
+// Shared body of detectSamplerSlices / recutSamplerSlices. Decodes the slot's
+// sample ONCE, runs the band-aware onset engine (the nominal grid, or the
+// onset-fitted grid), then
+// merges the boundaries that must survive: with `recut`, boundaries outside
+// [fromNorm, toNorm) are kept, and with `keepOverrides` every frame in the
+// slot's slicePointsOverride survives verbatim. `recut == false` replaces the
+// boundary set wholesale (the historical detect behaviour).
+AudioEngineCommands::SamplerDetectionResult runSamplerDetection(
+    juce::ValueTree slot, double bpm, juce::UndoManager* um,
+    const std::string& sliceMode, double sliceGrid, double sliceSensitivity,
+    double fromNorm, double toNorm, bool recut, bool keepOverrides)
+{
+    AudioEngineCommands::SamplerDetectionResult result;
+
+    // The ONE slice-mode vocabulary (common/SamplerSliceModes.h), checked before
+    // ANY read or write: an unknown mode used to fall silently into the
+    // transient branch (a typo changed the algorithm), and the caller had no way
+    // to tell. Refused here with the shared text; nothing is written.
+    if (const std::string refusal = HDAW::sliceModeRefusal(sliceMode); !refusal.empty())
+    {
+        result.error = refusal;
+        return result;
+    }
+    const std::string mode = HDAW::normalizeSliceMode(sliceMode);
+
+    // Gate 9: the recut window is caller data — clamp it, and treat a
+    // degenerate/inverted window as the full range rather than emitting nothing.
+    fromNorm = juce::jlimit(0.0, 1.0, fromNorm);
+    toNorm   = juce::jlimit(0.0, 1.0, toNorm);
+    if (! (toNorm > fromNorm))
+    {
+        fromNorm = 0.0;
+        toNorm   = 1.0;
+    }
 
     juce::String sampleFile = slot.getProperty("sampleFile", "").toString();
     if (sampleFile.isEmpty()) return result;
@@ -1101,47 +1186,320 @@ AudioEngineCommands::SamplerDetectionResult AudioEngineCommands::detectSamplerSl
     const int64_t len = reader->lengthInSamples;
     if (len <= 0) return result;
 
-    std::vector<int64_t> points;
-    const bool grid = (juce::String(sliceMode).trim().toLowerCase() == "grid");
-    if (grid)
+    const bool gridMode    = (mode == "grid");
+    const bool alignedMode = (mode == "aligned");
+
+    // Interior onsets only — frame 0 and frame len are always the outer
+    // boundaries of the emitted set.
+    std::vector<int64_t>  frames;
+    std::vector<uint32_t> masks;
+    std::vector<float>    strengths;
+
+    if (gridMode)
     {
-        const double bpm = engine_.getTransportManager().getBPM();
-        points = HDAW::SliceDetector::grid(len, reader->sampleRate, bpm, sliceGrid);
+        const auto gridPts = HDAW::SliceDetector::grid(len, reader->sampleRate, bpm, sliceGrid);
+        if (gridPts.size() < 2) return result;   // degenerate params: same failure as before
+        for (int64_t p : gridPts)
+            if (p > 0 && p < len)
+                frames.push_back(p);
+        masks.assign(frames.size(), 0u);
+        strengths.assign(frames.size(), 0.0f);
     }
     else
     {
         // Cap the decode so a pathological huge file cannot exhaust memory;
         // detection on the capped region is fine for the >2^28-sample case.
         const int readLen = static_cast<int>((std::min)(len, static_cast<int64_t>(1) << 28));
-        std::vector<float> mono(static_cast<size_t>(readLen), 0.0f);
-        juce::AudioBuffer<float> buf(1, readLen);
+        const int numCh = static_cast<int>((std::max)(static_cast<int64_t>(1),
+                                                      static_cast<int64_t>(reader->numChannels)));
+        juce::AudioBuffer<float> buf(numCh, readLen);
         if (!reader->read(&buf, 0, readLen, 0, true, true))
             return result;
-        const float* ch0 = buf.getReadPointer(0);
-        std::copy(ch0, ch0 + readLen, mono.begin());
-        points = HDAW::SliceDetector::transient(mono, sliceSensitivity);
-    }
-    if (points.size() < 2) return result;
 
-    // Store normalized (0..1), comma-separated, for loadSamplerState to restore.
-    juce::String parts;
-    for (size_t i = 0; i < points.size(); ++i)
+        // MEAN of every decoded channel. A hard-panned hat lives in ONE channel
+        // only, so the old channel-0-only copy was deaf to it.
+        std::vector<float> mono(static_cast<size_t>(readLen), 0.0f);
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            const float* src = buf.getReadPointer(ch);
+            for (int i = 0; i < readLen; ++i)
+                mono[static_cast<size_t>(i)] += src[i];
+        }
+        const float invCh = 1.0f / static_cast<float>(numCh);
+        for (int i = 0; i < readLen; ++i)
+            mono[static_cast<size_t>(i)] *= invCh;
+
+        // The ANALYSIS RANGE. A fresh detect analyses the whole decoded buffer;
+        // a RE-CUT analyses ONLY its window, so the adaptive per-band statistics
+        // (histogram percentile, mean + k*stddev floor, the participation gate)
+        // describe the piece being re-cut rather than whatever loud material
+        // happens to lie elsewhere in the file — and the cost follows the
+        // window instead of the file. `grid` is exempt: a nominal grid is
+        // global by definition (it is filtered to the window in the merge
+        // below), and `aligned` fits the WINDOW's own onsets automatically once
+        // the analysis is windowed. A window too narrow to analyse on its own
+        // falls back to the whole buffer rather than starving the detector.
+        int64_t anaStart = 0;
+        int64_t anaLen   = static_cast<int64_t>(readLen);
+        if (recut && !gridMode)
+        {
+            const int64_t fromF = juce::jlimit<int64_t>(
+                0, static_cast<int64_t>(readLen),
+                static_cast<int64_t>(std::llround(fromNorm * static_cast<double>(readLen))));
+            const int64_t toF = juce::jlimit<int64_t>(
+                0, static_cast<int64_t>(readLen),
+                static_cast<int64_t>(std::llround(toNorm * static_cast<double>(readLen))));
+            if (toF - fromF >= kMinRecutAnalysisFrames)
+            {
+                anaStart = fromF;
+                anaLen   = toF - fromF;
+            }
+        }
+        const float* const ana = mono.data() + anaStart;
+
+        if (alignedMode)
+        {
+            // GRID-family: a grid whose tempo/phase is least-squares fitted to
+            // the detected onsets, so a source that plays a few percent slow is
+            // sliced where it ACTUALLY plays instead of where the nominal grid
+            // says. Needs the decoded mono buffer + the project bpm + sliceGrid,
+            // which is why it lives in this branch rather than gridMode's.
+            // A fitted grid carries no per-onset band information, so every
+            // emitted frame gets bandMask 0 / strength 0, exactly like grid.
+            const auto fitted = HDAW::SliceDetector::driftAlignedGrid(
+                ana, anaLen, reader->sampleRate, bpm,
+                sliceGrid, juce::jlimit(0.0, 1.0, sliceSensitivity));
+            if (fitted.size() < 2) return result;   // degenerate params: same failure as grid
+            for (int64_t p : fitted)
+            {
+                const int64_t f = p + anaStart;   // window-local frame -> file frame
+                if (f > 0 && f < len)
+                    frames.push_back(f);
+            }
+            masks.assign(frames.size(), 0u);
+            strengths.assign(frames.size(), 0.0f);
+        }
+        else
+        {
+            HDAW::SliceDetectOptions opt;
+            opt.sensitivity = juce::jlimit(0.0, 1.0, sliceSensitivity);
+            for (const auto& o : HDAW::SliceDetector::onsets(ana, anaLen,
+                                                             reader->sampleRate, opt))
+            {
+                const int64_t f = o.frame + anaStart;   // window-local frame -> file frame
+                if (f <= 0 || f >= len) continue;       // boundaries handled below
+                frames.push_back(f);
+                masks.push_back(o.bandMask);
+                strengths.push_back(o.strength);
+            }
+        }
+    }
+
+    // The PER-PIECE metadata lookup. The slot's stored `sliceMeta` is
+    // "frame:bandMask:strength" triples, comma-separated and parallel to
+    // slicePoints (frame normalized with 6 dp, mask an int, strength 3 dp).
+    // A RE-CUT must CARRY the stored mask/strength of every boundary it does
+    // not touch: rebuilding the meta wholesale used to erase the band mask +
+    // strength of every boundary outside the window, which is exactly the
+    // per-piece metadata this feature exists to persist.
+    struct StoredMeta { double norm = 0.0; uint32_t mask = 0u; float strength = 0.0f; };
+    std::vector<StoredMeta> storedMeta;
+    if (recut)
     {
-        if (i) parts += ",";
-        parts += juce::String(points[i] / static_cast<double>(len), 6);
+        for (auto& tok : juce::StringArray::fromTokens(
+                 slot.getProperty("sliceMeta", "").toString(), ",", ""))
+        {
+            const auto parts = juce::StringArray::fromTokens(tok.trim(), ":", "");
+            if (parts.size() != 3) continue;   // not a triple: no metadata for it
+            storedMeta.push_back({parts[0].getDoubleValue(),
+                                  static_cast<uint32_t>(parts[1].getIntValue()),
+                                  parts[2].getFloatValue()});
+        }
     }
-    slot.setProperty(juce::Identifier("sliceMode"), juce::String(sliceMode), &um);
-    slot.setProperty(juce::Identifier("sliceGrid"), sliceGrid, &um);
-    slot.setProperty(juce::Identifier("sliceSensitivity"), sliceSensitivity, &um);
-    slot.setProperty(juce::Identifier("slicePoints"), parts, &um);
+    // The stored mask/strength of the boundary at `norm`, or 0/0 when the slot
+    // has no metadata for it (e.g. the boundary came from grid mode).
+    const auto storedAt = [&storedMeta](double norm) -> StoredMeta
+    {
+        for (const auto& m : storedMeta)
+            if (std::abs(m.norm - norm) < 1e-6)
+                return m;
+        return {};
+    };
 
-    if (auto* proc = engine_.getMainProcessor())
-        proc->rebuildTrackFX(trackIndex);
+    // ── Merge in the boundaries that must survive ──
+    struct Cand { double norm; uint32_t mask; float strength; };
+    std::vector<Cand> cands;
+    cands.push_back({0.0, 0u, 0.0f});
+    cands.push_back({1.0, 0u, 0.0f});
+
+    for (size_t i = 0; i < frames.size(); ++i)
+    {
+        const double n = static_cast<double>(frames[i]) / static_cast<double>(len);
+        if (n <= 0.0 || n >= 1.0) continue;
+        if (recut && (n < fromNorm || n >= toNorm)) continue;
+        cands.push_back({n, masks[i], strengths[i]});
+    }
+
+    juce::String overrideStr;
+    if (recut)
+    {
+        if (keepOverrides)
+            overrideStr = slot.getProperty("slicePointsOverride", "").toString();
+        if (overrideStr.isNotEmpty())
+        {
+            for (auto& tok : juce::StringArray::fromTokens(overrideStr, ",", ""))
+            {
+                const double v = tok.trim().getDoubleValue();
+                if (v <= 0.0 || v >= 1.0) continue;
+                // Pinned: survives verbatim, per-piece metadata included.
+                const auto sm = storedAt(v);
+                cands.push_back({v, sm.mask, sm.strength});
+                ++result.overrideCount;
+            }
+        }
+        else
+        {
+            overrideStr.clear();
+        }
+
+        // Boundaries already outside the recut window are preserved as-is.
+        for (auto& tok : juce::StringArray::fromTokens(
+                 slot.getProperty("slicePoints", "").toString(), ",", ""))
+        {
+            const double v = tok.trim().getDoubleValue();
+            if (v <= 0.0 || v >= 1.0) continue;
+            if (v < fromNorm || v >= toNorm)
+            {
+                // Preserved as-is: reuse the STORED per-piece metadata.
+                const auto sm = storedAt(v);
+                cands.push_back({v, sm.mask, sm.strength});
+            }
+        }
+    }
+    else
+    {
+        // A full detect replaces the boundary set, so a previously pinned
+        // override no longer names a boundary the user chose: clear it.
+        overrideStr.clear();
+    }
+
+    std::sort(cands.begin(), cands.end(),
+              [](const Cand& a, const Cand& b) { return a.norm < b.norm; });
+
+    std::vector<Cand> out;
+    for (const auto& c : cands)
+    {
+        if (! out.empty() && c.norm - out.back().norm < 1e-6)
+        {
+            out.back().mask |= c.mask;                          // OR the band mask
+            out.back().strength = (std::max)(out.back().strength, c.strength);
+            continue;
+        }
+        out.push_back(c);
+    }
+    if (out.size() < 2) return result;   // no usable boundary set
+    out.front().norm = 0.0;
+    out.back().norm  = 1.0;
+
+    juce::String parts, metaParts;
+    for (size_t i = 0; i < out.size(); ++i)
+    {
+        if (i) { parts += ","; metaParts += ","; }
+        parts += juce::String(out[i].norm, 6);
+        // frame:bandMask:strength — normalized frame (6 dp), int mask, 3 dp.
+        metaParts += juce::String(out[i].norm, 6) + ":"
+                   + juce::String(static_cast<int>(out[i].mask)) + ":"
+                   + juce::String(out[i].strength, 3);
+    }
+    // A wholesale detect (recut == false) REPLACES the boundary set, and the
+    // grid-family modes (the nominal grid AND the onset-fitted grid) carry no
+    // per-onset band information at all -> the meta stays empty ("unknown"),
+    // exactly as before. A RE-CUT MERGES, so the merged meta is written
+    // PARALLEL to the merged slicePoints: a boundary carried over from outside
+    // the window (or pinned in slicePointsOverride) keeps its STORED
+    // mask/strength, and only the boundaries this pass produced carry fresh
+    // values (0/0 for the grid-family modes, which have no band information).
+    if (!recut && (gridMode || alignedMode)) metaParts.clear();
+
+    // Same &um writes (hence the same undo transaction) the old code used.
+    // The CANONICAL token is stored (the vocabulary is closed now), so
+    // "ALIGNED" round-trips as "aligned" exactly like setSamplerSliceMode.
+    slot.setProperty(juce::Identifier("sliceMode"), juce::String(mode), um);
+    slot.setProperty(juce::Identifier("sliceGrid"), sliceGrid, um);
+    slot.setProperty(juce::Identifier("sliceSensitivity"), sliceSensitivity, um);
+    slot.setProperty(juce::Identifier("slicePoints"), parts, um);
+    slot.setProperty(juce::Identifier("slicePointsOverride"), overrideStr, um);
+    slot.setProperty(juce::Identifier("sliceMeta"), metaParts, um);
 
     result.ok = true;
-    result.totalSlices = static_cast<int>(points.size()) - 1;
-    for (int64_t p : points)
-        result.slicePoints.push_back(static_cast<float>(p / static_cast<double>(len)));
+    result.totalSlices = static_cast<int>(out.size()) - 1;
+    for (const auto& c : out)
+    {
+        result.slicePoints.push_back(static_cast<float>(c.norm));
+        result.bandMasks.push_back(c.mask);
+        result.strengths.push_back(c.strength);
+    }
+    return result;
+}
+
+} // namespace
+
+AudioEngineCommands::SamplerDetectionResult AudioEngineCommands::detectSamplerSlices(
+    int trackIndex, int slotIndex, const std::string& sliceMode, double sliceGrid,
+    double sliceSensitivity, double fromNorm, double toNorm)
+{
+    SamplerDetectionResult result;
+
+    // Refuse an unknown mode BEFORE touching the slot: the shared vocabulary
+    // (common/SamplerSliceModes.h) with the shared text, nothing written.
+    if (const std::string refusal = HDAW::sliceModeRefusal(sliceMode); !refusal.empty())
+    {
+        result.error = refusal;
+        return result;
+    }
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return result;
+
+    const double bpm = engine_.getTransportManager().getBPM();
+    result = runSamplerDetection(slot, bpm, &um, sliceMode, sliceGrid, sliceSensitivity,
+                                 fromNorm, toNorm, /*recut=*/false, /*keepOverrides=*/false);
+
+    if (result.ok)
+    {
+        if (auto* proc = engine_.getMainProcessor())
+            proc->rebuildTrackFX(trackIndex);
+    }
+    return result;
+}
+
+AudioEngineCommands::SamplerDetectionResult AudioEngineCommands::recutSamplerSlices(
+    int trackIndex, int slotIndex, const std::string& sliceMode, double sliceGrid,
+    double sliceSensitivity, double fromNorm, double toNorm, bool keepOverrides)
+{
+    SamplerDetectionResult result;
+
+    // Same refusal as detectSamplerSlices (ONE shared vocabulary + text).
+    if (const std::string refusal = HDAW::sliceModeRefusal(sliceMode); !refusal.empty())
+    {
+        result.error = refusal;
+        return result;
+    }
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return result;
+
+    const double bpm = engine_.getTransportManager().getBPM();
+    result = runSamplerDetection(slot, bpm, &um, sliceMode, sliceGrid, sliceSensitivity,
+                                 fromNorm, toNorm, /*recut=*/true, keepOverrides);
+
+    if (result.ok)
+    {
+        if (auto* proc = engine_.getMainProcessor())
+            proc->rebuildTrackFX(trackIndex);
+    }
     return result;
 }
 
@@ -1371,6 +1729,7 @@ HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
                 "transpose", "baseNote", "sampleStart", "sampleEnd",
                 "loopStart", "loopEnd", "loopEnabled", "sliceMode",
                 "sliceGrid", "sliceSensitivity", "keyRangeLow", "keyRangeHigh",
+                "slicePointsOverride", "sliceMeta",
             };
             for (const auto* k : kKeys)
             {
@@ -1379,6 +1738,8 @@ HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
                     s.sampler[k] = slotTree.getProperty(id).toString();
             }
             s.slicePoints = slotTree.getProperty("slicePoints", "").toString();
+            s.slicePointsOverride = slotTree.getProperty("slicePointsOverride", "").toString();
+            s.sliceMeta = slotTree.getProperty("sliceMeta", "").toString();
         }
 
         if (s.fxType == "psy_fm")
@@ -1624,6 +1985,11 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
             }
             if (s.slicePoints.isNotEmpty())
                 slotTree.setProperty(juce::Identifier("slicePoints"), s.slicePoints, &um);
+            if (s.slicePointsOverride.isNotEmpty())
+                slotTree.setProperty(juce::Identifier("slicePointsOverride"),
+                                     s.slicePointsOverride, &um);
+            if (s.sliceMeta.isNotEmpty())
+                slotTree.setProperty(juce::Identifier("sliceMeta"), s.sliceMeta, &um);
         }
 
         if (s.fxType == "psy_fm")

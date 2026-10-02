@@ -3,6 +3,12 @@
 
 #include "../../engine/AudioEngine.h"
 #include "../../common/SamplerStateJson.h"
+// The ONE slice-detection payload shaper (bandMasks/strengths/overrideCount
+// included) shared with the detect_sampler_slices / recut_sampler_slices tools.
+#include "../../common/SamplerSliceShaper.h"
+// The ONE sliceMode vocabulary AND the ONE slicePointsOverride element rule
+// (common/SamplerSliceModes.h) — the MCP twin refuses with the same bytes.
+#include "../../common/SamplerSliceModes.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -10,6 +16,7 @@
 #include <QString>
 
 #include <string>
+#include <vector>
 
 using namespace frontend::router_helpers;
 
@@ -78,7 +85,13 @@ DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJso
             return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, sliceMode required");
         double grid = optDouble(o, "sliceGrid", 0.25, nullptr);
         double sens = optDouble(o, "sliceSensitivity", 0.5, nullptr);
-        cmds.setSamplerSliceMode(ti, si, sliceMode, grid, sens);
+        // The route reaches the SAME shared validator the engine commands use
+        // (common/SamplerSliceModes.h via setSamplerSliceMode) and hands its
+        // refusal straight back as -32602 — previously the string was stored
+        // verbatim whatever it was.
+        const std::string modeError = cmds.setSamplerSliceMode(ti, si, sliceMode, grid, sens);
+        if (!modeError.empty())
+            return makeError(-32602, QString::fromStdString(modeError));
         return { false, QJsonValue::Null };
     }
     if (m == "detectSlices") {
@@ -86,16 +99,83 @@ DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJso
         if (!trackIndexArg(o, trackList, ti, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
             || !requireInt(o, "slotIndex", si, nullptr))
             return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required");
+        // Same slot gate the MCP tool applies, with the same text — the twin
+        // surfaces must refuse an unknown slot identically (they used to drift:
+        // the tool errored, the route returned an ok:false payload).
+        auto fxSlots = engine.getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= static_cast<int>(fxSlots.size()))
+            return makeError(-32602, "slot not found");
+        if (fxSlots[si].fxType != "sampler")
+            return makeError(-32602, "slot is not a sampler");
         std::string sm = optString(o, "sliceMode", "transient");
         double grid = optDouble(o, "sliceGrid", 0.25, nullptr);
         double sens = optDouble(o, "sliceSensitivity", 0.5, nullptr);
-        auto r = cmds.detectSamplerSlices(ti, si, sm, grid, sens);
-        QJsonArray pts;
-        for (float p : r.slicePoints)
-            pts.append(static_cast<double>(p));
-        return { false, QJsonObject{{"ok", r.ok},
-                                    {"totalSlices", r.totalSlices},
-                                    {"slicePoints", pts}} };
+        double fromNorm = optDouble(o, "fromNorm", 0.0, nullptr);
+        double toNorm = optDouble(o, "toNorm", 1.0, nullptr);
+        auto r = cmds.detectSamplerSlices(ti, si, sm, grid, sens, fromNorm, toNorm);
+        // ONE shared shaper (common/SamplerSliceShaper.h) — the route payload is
+        // the tool's parsed text by construction.
+        return { false, HDAW::samplerSlicePayloadJson(r) };
+    }
+    if (m == "recutSlices") {
+        int ti, si; double fromNorm, toNorm; DispatchResult err;
+        // NEW route: its argument vocabulary is the MCP tool's VERBATIM
+        // (trackId/trackID — the B2 canonical track pair, StableRefResolve.h),
+        // so the twin's names match as the contract requires. The older sampler
+        // routes keep their legacy `trackIndex` spelling; this one does not.
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::kTrackRefKeys)
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackId and slotIndex required");
+        if (!requireDouble(o, "fromNorm", fromNorm, nullptr)
+            || !requireDouble(o, "toNorm", toNorm, nullptr))
+            return makeError(-32602, "fromNorm and toNorm required");
+        auto fxSlots = engine.getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= static_cast<int>(fxSlots.size()))
+            return makeError(-32602, "slot not found");
+        if (fxSlots[si].fxType != "sampler")
+            return makeError(-32602, "slot is not a sampler");
+        std::string sm = optString(o, "sliceMode", "transient");
+        double grid = optDouble(o, "sliceGrid", 0.25, nullptr);
+        double sens = optDouble(o, "sliceSensitivity", 0.5, nullptr);
+        bool keepOverrides = optBool(o, "keepOverrides", true, nullptr);
+        auto r = cmds.recutSamplerSlices(ti, si, sm, grid, sens, fromNorm, toNorm, keepOverrides);
+        return { false, HDAW::samplerSlicePayloadJson(r) };
+    }
+    if (m == "setSliceOverrides") {
+        int ti, si; DispatchResult err;
+        // Same argument vocabulary as the set_sampler_slice_overrides tool
+        // (trackId/trackID + slotIndex + slicePointsOverride) and the same
+        // shared HDAW::samplerSliceOverridePayloadJson shaper.
+        if (!trackIndexArg(o, trackList, ti, &err, HDAW::kTrackRefKeys)
+            || !requireInt(o, "slotIndex", si, nullptr))
+            return err.isError ? err : makeError(-32602, "trackId and slotIndex required");
+        auto fxSlots = engine.getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= static_cast<int>(fxSlots.size()))
+            return makeError(-32602, "slot not found");
+        if (fxSlots[si].fxType != "sampler")
+            return makeError(-32602, "slot is not a sampler");
+        if (!o.value("slicePointsOverride").isArray())
+            return makeError(-32602, "slicePointsOverride must be an array");
+        const auto arr = o.value("slicePointsOverride").toArray();
+        // Same element rule as the set_sampler_slice_overrides tool, from the
+        // ONE shared helper (common/SamplerSliceModes.h): every element must be
+        // a JSON number, a non-number refuses the WHOLE call with the same
+        // bytes the MCP validator emits, and nothing is written. A non-number
+        // used to coerce to 0 and be dropped as an implicit endpoint, so
+        // `[0.25,"oops"]` SUCCEEDED with one pin.
+        std::vector<bool> isNumber;
+        isNumber.reserve(static_cast<std::size_t>(arr.size()));
+        for (const auto& v : arr)
+            isNumber.push_back(v.isDouble());   // true for JSON integers too
+        if (const std::string refusal = HDAW::sliceOverrideRefusal(isNumber);
+            !refusal.empty())
+            return makeError(-32602, QString::fromStdString(refusal));
+        std::vector<float> pts;
+        pts.reserve(static_cast<std::size_t>(arr.size()));
+        for (const auto& v : arr)
+            pts.push_back(static_cast<float>(v.toDouble()));
+        auto r = cmds.setSamplerSliceOverrides(ti, si, pts);
+        return { false, HDAW::samplerSliceOverridePayloadJson(r) };
     }
     if (m == "triggerSlice") {
         int ti, si, idx; float vel = 0.8f; DispatchResult err;

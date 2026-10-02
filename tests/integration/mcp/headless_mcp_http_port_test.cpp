@@ -24,6 +24,15 @@
 //   1. an explicit --mcp-http-port is the port actually served;
 //   2. when that port is already occupied, an explicit --mcp-http exits with a
 //      NON-ZERO status promptly instead of lingering alive-but-mute.
+//
+// A second defect (2026-10-01, fixed in src/engine/AudioEngine.cpp) is pinned
+// here too: even when the CLI port was FREE, the engine stayed on the PERSISTED
+// port whenever that persisted port also bound successfully, because
+// setMcpHttpConfig assigned the requested host/port to the LIVE members before
+// startMcpHttp() ran — so startMcpHttp's "already running on the same config"
+// check short-circuited against the request and never rebound the transport.
+// Case 2 (CliPortWinsOverAFreePersistedPort) makes that deterministic by
+// persisting a FREE port A and asserting the engine serves the CLI port B.
 
 #include <gtest/gtest.h>
 
@@ -160,6 +169,74 @@ private:
     bool present_[3] = { false, false, false };
 };
 
+// Write an explicit PERSISTED MCP HTTP port into the CHILD's native settings
+// store (the same store AudioEngine::initialize() ->
+// syncMcpHttpFromSettings() reads). This is what makes the CLI-port cases
+// deterministic: with a FREE persisted port the settings-driven start SUCCEEDS
+// on it, so the CLI port can only be served if the explicit --mcp-http-port
+// really rebinds the live transport. Pre-fix it did not (startMcpHttp
+// short-circuited against the just-assigned members), which is the regression.
+// Pair with NativeMcpHttpSettingsGuard so the keys are restored afterwards.
+//
+// Returns whether the write ACTUALLY LANDED. The native store is not writable
+// on every machine (a restricted token makes the registry refuse
+// HKCU\Software\HDAW writes, and QSettings::setValue/sync then silently do
+// nothing), so a caller must SKIP rather than assert on a precondition that was
+// never established. The read-back uses a FRESH QSettings instance: reading
+// through the writing instance could be served from its own in-memory cache.
+bool persistMcpHttpPort(quint16 port)
+{
+    const QString enabledKey = QString::fromUtf8(SettingsKeys::kKeyMcpHttpEnabled);
+    const QString hostKey    = QString::fromUtf8(SettingsKeys::kKeyMcpHttpHost);
+    const QString portKey    = QString::fromUtf8(SettingsKeys::kKeyMcpHttpPort);
+    const QString host       = QString::fromUtf8(SettingsKeys::kDefaultMcpHttpHost);
+
+    {
+        QSettings settings(QSettings::NativeFormat, QSettings::UserScope,
+                           QStringLiteral("HDAW"), QStringLiteral("HDAW"));
+        settings.setValue(enabledKey, true);
+        settings.setValue(hostKey, host);
+        settings.setValue(portKey, static_cast<int>(port));
+        settings.sync();
+    }
+
+    QSettings verify(QSettings::NativeFormat, QSettings::UserScope,
+                     QStringLiteral("HDAW"), QStringLiteral("HDAW"));
+    verify.sync();
+    return verify.value(enabledKey).toBool() == true
+        && verify.value(hostKey).toString() == host
+        && verify.value(portKey).toInt() == static_cast<int>(port);
+}
+
+// The documented environmental skip shared by the two CLI-port cases: their
+// discriminating precondition (a persisted port that BINDS during initialize())
+// needs a write into the child's native store, and without that write the case
+// would pass vacuously on whichever port the store happens to hold.
+QString unwritableNativeStoreSkipMessage()
+{
+    return QStringLiteral(
+        "cannot persist a free MCP HTTP port into the child's native QSettings "
+        "store (QSettings::NativeFormat/UserScope, org/app HDAW/HDAW — the "
+        "Windows registry key HKCU\\Software\\HDAW): the store is NOT WRITABLE on "
+        "this machine (a restricted token makes the write silently no-op, and the "
+        "read-back after sync() confirms it did not land), so the persisted-port "
+        "precondition cannot be established and this case would not discriminate "
+        "the regression. Skipping instead of passing vacuously.");
+}
+
+// Is `port` free RIGHT NOW? probeFreePort() only proves a port was free when it
+// was picked; the CLI-port cases assert their discriminating preconditions with
+// this immediately before spawning, so a lost race is an explicit failure
+// rather than a silently non-discriminating pass.
+bool isPortFree(quint16 port)
+{
+    QTcpServer probe;
+    if (!probe.listen(QHostAddress::LocalHost, port))
+        return false;
+    probe.close();
+    return true;
+}
+
 // Spawn the headless engine with BOTH listen ports. The child's %TMP%/%TEMP%
 // point at a scratch dir so the engine's hdaw_debug.log (and any dump) lands
 // there instead of the machine temp — the QProcess-environment analogue of the
@@ -241,12 +318,39 @@ TEST(HeadlessMcpHttpPort, ServesOnTheCliPort)
     if (wsPort == mcpPort)
         wsPort = probeFreePort();   // astronomically unlikely; cheap to avoid
 
+    // A FREE persisted port that is DIFFERENT from the CLI port. Persisting it
+    // before the spawn makes syncMcpHttpFromSettings() bind successfully on it
+    // during initialize(), so the CLI port can only be served if the explicit
+    // --mcp-http-port really rebinds the live transport. Without this the case
+    // was environment-dependent: it passed only when the persisted port
+    // happened to be BUSY (making the settings-driven start fail, so the CLI
+    // port won by default).
+    quint16 persistedPort = probeFreePort();
+    ASSERT_NE(persistedPort, 0) << "could not probe a free persisted port";
+    if (persistedPort == mcpPort || persistedPort == wsPort)
+        persistedPort = probeFreePort();
+    ASSERT_NE(persistedPort, mcpPort)
+        << "persisted port must differ from the CLI port";
+    ASSERT_NE(persistedPort, wsPort)
+        << "persisted port must differ from the WebSocket port";
+
     QTemporaryDir tmpDir;
     ASSERT_TRUE(tmpDir.isValid());
 
     // Declared BEFORE the process: destroyed LAST, i.e. after the child is
     // reaped, so the child's own settings write cannot land after the restore.
     NativeMcpHttpSettingsGuard settingsGuard;
+    if (!persistMcpHttpPort(persistedPort))
+        GTEST_SKIP() << unwritableNativeStoreSkipMessage().toStdString();
+
+    // The discriminating precondition, asserted rather than assumed: the
+    // persisted port must still be FREE right before the spawn (so the
+    // settings-driven start binds it successfully) and so must the CLI port.
+    ASSERT_TRUE(isPortFree(persistedPort))
+        << "persisted port " << persistedPort << " is not free — the settings "
+        << "start would fail on it and this case would not discriminate";
+    ASSERT_TRUE(isPortFree(mcpPort))
+        << "CLI port " << mcpPort << " is not free — the engine could not bind it";
 
     QProcess proc;
     ChildGuard guard(proc);
@@ -272,7 +376,95 @@ TEST(HeadlessMcpHttpPort, ServesOnTheCliPort)
     EXPECT_EQ(proc.state(), QProcess::NotRunning);
 }
 
-// Case 2: an explicit --mcp-http whose port is ALREADY TAKEN must fail fast
+// Case 2: a FREE persisted port must not capture the server when the CLI names
+// a different port. This is the deterministic, environment-independent form of
+// the silent-drop regression: the persisted port binds SUCCESSFULLY during
+// initialize(), so the engine ends up on the CLI port only if the explicit
+// --mcp-http-port rebinds the live transport. It FAILS against the pre-fix code
+// (setMcpHttpConfig assigned the requested port to mcpHttpPort_ before
+// startMcpHttp ran, so startMcpHttp's same-config check short-circuited and the
+// server stayed on the persisted port) and PASSES after the fix.
+TEST(HeadlessMcpHttpPort, CliPortWinsOverAFreePersistedPort)
+{
+    const QString exe = enginePath();
+    ASSERT_TRUE(QFile::exists(exe))
+        << "engine binary not found at " << exe.toStdString()
+        << " — this is an environmental failure (build HDAW_headless first), not a pass";
+
+    const quint16 persistedPort = probeFreePort();
+    ASSERT_NE(persistedPort, 0) << "could not probe a free persisted port";
+    quint16 cliPort = probeFreePort();
+    ASSERT_NE(cliPort, 0) << "could not probe a free CLI port";
+    if (cliPort == persistedPort)
+        cliPort = probeFreePort();
+    quint16 wsPort = probeFreePort();
+    ASSERT_NE(wsPort, 0) << "could not probe a free WebSocket port";
+    if (wsPort == cliPort || wsPort == persistedPort)
+        wsPort = probeFreePort();
+    ASSERT_NE(cliPort, persistedPort)
+        << "CLI port must differ from the persisted port";
+    ASSERT_NE(wsPort, cliPort) << "WebSocket port must differ from the CLI port";
+    ASSERT_NE(wsPort, persistedPort)
+        << "WebSocket port must differ from the persisted port";
+
+    QTemporaryDir tmpDir;
+    ASSERT_TRUE(tmpDir.isValid());
+
+    // Persist A (free) BEFORE the child starts; the guard restores it after.
+    // When the write does not land (unwritable native store) the case would be
+    // vacuous, so skip with the documented environmental message.
+    NativeMcpHttpSettingsGuard settingsGuard;
+    if (!persistMcpHttpPort(persistedPort))
+        GTEST_SKIP() << unwritableNativeStoreSkipMessage().toStdString();
+
+    // The discriminating precondition, asserted rather than assumed: the
+    // persisted port A must be FREE right before the spawn, so
+    // syncMcpHttpFromSettings() binds it SUCCESSFULLY during initialize() and
+    // the engine can end up on the CLI port B only if --mcp-http-port really
+    // rebinds the live transport. B must be free too, or the accept poll below
+    // would fail for the wrong reason.
+    ASSERT_TRUE(isPortFree(persistedPort))
+        << "persisted port " << persistedPort << " is not free — the settings "
+        << "start would fail on it and this case would not discriminate";
+    ASSERT_TRUE(isPortFree(cliPort))
+        << "CLI port " << cliPort << " is not free — the engine could not bind it";
+
+    QProcess proc;
+    ChildGuard guard(proc);
+    startEngine(proc, tmpDir, cliPort, wsPort);
+
+    ASSERT_TRUE(proc.waitForStarted(kStartDeadlineMs))
+        << "failed to start " << exe.toStdString();
+
+    // The engine must be serving the CLI port B...
+    const bool accepting = waitForPortAccepting(proc, cliPort, kServeDeadlineMs);
+    ASSERT_TRUE(accepting)
+        << "MCP HTTP never accepted on the CLI port " << cliPort
+        << " (persisted port was the FREE " << persistedPort << "; exitCode="
+        << proc.exitCode() << " state=" << int(proc.state()) << ")\n"
+        << debugLogTail(tmpDir.path()).toStdString();
+
+    // ...and the process must still be the one we started.
+    EXPECT_EQ(proc.state(), QProcess::Running)
+        << "engine exited right after accepting on the CLI port\n"
+        << debugLogTail(tmpDir.path()).toStdString();
+
+    // ...and it must NOT be bound to the persisted port A (the pre-fix
+    // behaviour: the transport stayed on the persisted port).
+    QTcpSocket staleSocket;
+    staleSocket.connectToHost(QHostAddress::LocalHost, persistedPort);
+    const bool boundToPersisted = staleSocket.waitForConnected(1000);
+    staleSocket.disconnectFromHost();
+    EXPECT_FALSE(boundToPersisted)
+        << "engine is listening on the PERSISTED port " << persistedPort
+        << " instead of the CLI port " << cliPort << "\n"
+        << debugLogTail(tmpDir.path()).toStdString();
+
+    EXPECT_TRUE(stopEngine(proc)) << "engine did not exit after terminate/kill";
+    EXPECT_EQ(proc.state(), QProcess::NotRunning);
+}
+
+// Case 3: an explicit --mcp-http whose port is ALREADY TAKEN must fail fast
 // (non-zero exit) instead of running alive-but-mute, where a stale engine on
 // that port silently answers every later tool call.
 TEST(HeadlessMcpHttpPort, ExitsNonZeroWhenTheCliPortIsTaken)

@@ -269,6 +269,8 @@ struct SamplerStateSnapshot {
     double sliceGrid = 0.25;
     double sliceSensitivity = 0.5;
     std::vector<float> slicePoints;   // normalized 0..1
+    std::vector<float> slicePointsOverride;  // user-pinned boundaries, normalized 0..1
+    std::string sliceMeta;            // frame:bandMask:strength triples ("" = unknown)
     int keyRangeLow = -1;             // -1 = full range
     int keyRangeHigh = -1;
 };

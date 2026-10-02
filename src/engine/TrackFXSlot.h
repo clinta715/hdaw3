@@ -1688,24 +1688,34 @@ public:
             delete reader;
         }
 
-        // Restore slice boundaries from a comma-separated normalized (0..1) string.
+        // Restore slice boundaries from a comma-separated normalized (0..1)
+        // string. `slicePointsOverride` lists user-pinned frames that MUST
+        // survive verbatim, so they are unioned into the same frame set rather
+        // than being moved by the front/back normalisation below.
         juce::String sliceStr = slotTree.getProperty ("slicePoints", "").toString();
-        if (sliceStr.isNotEmpty())
+        juce::String overrideStr = slotTree.getProperty ("slicePointsOverride", "").toString();
+        if (sliceStr.isNotEmpty() || overrideStr.isNotEmpty())
         {
             const int64_t len = builder.length;
-            auto tokens = juce::StringArray::fromTokens (sliceStr, ",", "");
-            for (auto& tok : tokens)
+            for (const juce::String& src : { sliceStr, overrideStr })
             {
-                tok = tok.trim();
-                const double norm = tok.getDoubleValue();
-                if (norm < 0.0 || norm > 1.0)
-                    continue;
-                int64_t frame = static_cast<int64_t> (std::round (norm * static_cast<double> (len)));
-                frame = std::clamp<int64_t> (frame, 0, len);
-                builder.slicePoints.push_back (frame);
+                for (auto& tok : juce::StringArray::fromTokens (src, ",", ""))
+                {
+                    tok = tok.trim();
+                    const double norm = tok.getDoubleValue();
+                    if (norm < 0.0 || norm > 1.0)
+                        continue;
+                    int64_t frame = static_cast<int64_t> (std::round (norm * static_cast<double> (len)));
+                    frame = std::clamp<int64_t> (frame, 0, len);
+                    builder.slicePoints.push_back (frame);
+                }
             }
             if (! builder.slicePoints.empty())
             {
+                std::sort (builder.slicePoints.begin(), builder.slicePoints.end());
+                builder.slicePoints.erase (
+                    std::unique (builder.slicePoints.begin(), builder.slicePoints.end()),
+                    builder.slicePoints.end());
                 builder.slicePoints.front() = 0;
                 builder.slicePoints.back()  = len;
             }

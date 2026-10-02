@@ -403,6 +403,9 @@ inline const QHash<QString, QString>& tokenUnits()
 //   {"repetitions", ""} -- 1: loop_clip.repetitions
 //   {"style", ""} -- 1: generate_arrangement.style
 //   {"targetrms", ""} -- 3: add_instrument_part.targetRms, auto_gain_to_target.targetRms, auto_gain_tracks.targetRms
+//   {"slicepointsoverride", ""} -- 1: set_sampler_slice_overrides.slicePointsOverride
+//     (normalized 0..1 pinned boundary frames; the engine clamps to [0,1] in
+//      AudioEngineCommands::setSamplerSliceOverrides)
 //   {"volume", ""} -- 2: preview_set_volume.volume, set_track.volume
 inline const QHash<QString, QString>& scalarNames() // lowercased exact names
 {
@@ -420,6 +423,7 @@ inline const QHash<QString, QString>& scalarNames() // lowercased exact names
         {"pattern", ""},
         {"recurrence", ""},
         {"repetitions", ""},
+        {"slicepointsoverride", ""},
         {"style", ""},
         {"targetrms", ""},
         {"volume", ""},
@@ -478,6 +482,10 @@ inline const QHash<QString, QString>& scalarNames() // lowercased exact names
 //   {"rotation", ""} -- 2: generate_rhythm_pattern.rotationA, generate_rhythm_pattern.rotationB
 //   {"seed", ""} -- 23: add_instrument_part.seed, apply_movement_plan.seed, audition_plugin.seed, automation_preset.seed, generate_arrangement.seed, generate_arrangement_corpus.seed, generate_automation_envelope.seed, generate_chopped_break.seed, generate_chord.seed, generate_clip_cc_lane.seed, generate_clip_gain_envelope.seed, generate_phrase.seed, generate_progression.seed, generate_psytrance.seed, generate_psytrance_markov.seed, rave_start_transform.seed, rave_transform_clip.seed, rave_transform_file.seed, select_patch.seed, set_cell.seed, set_cells.seed, set_clip_seed.seed, set_song_plan.seed
 //   {"sensitivity", ""} -- 1: detect_sampler_slices.sliceSensitivity
+//   {"norm", ""} -- 4: detect_sampler_slices.fromNorm, detect_sampler_slices.toNorm,
+//     recut_sampler_slices.fromNorm, recut_sampler_slices.toNorm
+//     (normalized 0..1 sample-window bounds; engine clamps to [0,1] at
+//      AudioEngineCommands_Fx.cpp runSamplerDetection)
 //   {"size", ""} -- 1: set_audio_buffer_size.size
 //   {"slot", ""} -- 51: apply_matrix_preset.slotIndex, apply_preset.slotIndex, apply_sub_synth_mod_preset.slotIndex, audition_plugin.slotIndex, capture_fx_snapshot.slotIndex, clear_fx_param_overrides.slotIndex, detect_sampler_slices.slotIndex, fm_synth_get_state.slotIndex, fm_synth_import_sysex.slotIndex, fm_synth_load_preset.slotIndex, generate_chopped_break.slotIndex, get_fx_capture_status.slotIndex, get_internal_fx_param.slotIndex, list_fx_params.slotIndex, list_midi_fx_params.slotIndex, list_plugin_presets.slotIndex, load_je8086_preset.slotIndex, load_nord_bank.slotIndex, load_plugin_preset.slotIndex, load_plugin_preset_file.slotIndex, load_virus_preset.slotIndex, param_verity.slotIndex, param_verity_corpus.slotIndex, psy_fm_clear_mod_matrix.slotIndex, psy_fm_get_analysis.slotIndex, psy_fm_load_preset.slotIndex, psy_fm_mod_matrix_debug.slotIndex, psy_fm_set_mod_route.slotIndex, rave_import_result.samplerSlotIndex, rave_transform_clip.samplerSlotIndex, remove_fx.slotIndex, remove_midi_fx.slotIndex, restart_fx.slotIndex, sampler_get_state.slotIndex, sampler_set_sample.slotIndex, send_fx_midi.slotIndex, set_fx_bypass.slotIndex, set_fx_param.slotIndex, set_internal_fx_param.slotIndex, set_master_fx_bypassed.slotIndex, set_master_fx_param.slotIndex, set_midi_fx_bypass.slotIndex, set_midi_fx_param.slotIndex, set_midi_fx_param_normalized.slotIndex, set_sampler_key_range.slotIndex, set_sampler_mode.slotIndex, set_sampler_param.slotIndex, sub_synth_import_sysex.slotIndex, swap_fx_snapshot.slotIndex, toggle_plugin_editor.slotIndex, trigger_sampler_slice.slotIndex
 //   {"smooth", ""} -- 3: generate_automation_envelope.smooth, generate_clip_cc_lane.smooth, generate_clip_gain_envelope.smooth
@@ -503,7 +511,8 @@ inline const QHash<QString, QString>& scalarTokens()
         {"density", ""}, {"step", ""}, {"steps", ""}, {"cycle", ""}, {"cycles", ""},
         {"phase", ""}, {"smooth", ""}, {"grid", ""}, {"limit", ""}, {"epoch", ""},
         {"epochs", ""}, {"batch", ""}, {"baseline", ""}, {"run", ""}, {"runs", ""},
-        {"temperature", ""}, {"complexity", ""}, {"sensitivity", ""}, {"num", ""},
+        {"temperature", ""}, {"complexity", ""}, {"sensitivity", ""}, {"norm", ""},
+        {"num", ""},
         {"bin", ""}, {"bins", ""}, {"channel", ""}, {"number", ""}, {"min", ""},
         {"max", ""}, {"prominence", ""}, {"tol", ""}, {"axis", ""}, {"key", ""},
         {"bus", ""}, {"mutation", ""}, {"prob", ""}, {"probability", ""}, {"pulse", ""},

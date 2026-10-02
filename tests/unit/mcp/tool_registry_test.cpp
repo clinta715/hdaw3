@@ -503,6 +503,7 @@ const ExpectedUnit kExpectedUnits[] = {
     {"set_note_velocities", "velocity", "scalar"},
     {"set_sampler_key_range", "keyHigh", "scalar"},
     {"set_sampler_key_range", "keyLow", "scalar"},
+    {"set_sampler_slice_overrides", "slicePointsOverride", "scalar"},
     {"set_scale", "mode", "scalar"},
     {"set_scale", "root", "scalar"},
     {"set_song_plan", "bars", "bars"},
