@@ -352,7 +352,7 @@ validator and the resolver cannot drift. Pinned by `WindowUnitParityTest.*` /
 `WindowUnitResolver.*`.
 
 **Probing the surface: the PowerShell `ConvertFrom-Json` trap (measured 2026-09-28).** The
-engine's `tools/list` body carries keys that differ only in CASE: **68 of the 317 tools
+engine's `tools/list` body carries keys that differ only in CASE: **68 of the 319 tools
 declare BOTH `trackID` and `trackId` in one `inputSchema.properties` object** (`set_track`,
 `trigger_sampler_slice`, `get_fx_capture_status`, …), and Windows PowerShell's
 `ConvertFrom-Json` fails on the WHOLE document:
@@ -363,7 +363,7 @@ the -AsHashTable switch instead. The key that was attempted to be added to the e
 'trackID' was 'trackId'.
 ```
 
-Parse with `-AsHashtable` (PowerShell 7; engine v0.39.2 answers 317 tools), or skip parsing
+Parse with `-AsHashtable` (PowerShell 7; engine v0.39.2 answers 319 tools), or skip parsing
 the raw body and drive the running engine through the helper:
 
 ```powershell

@@ -180,7 +180,7 @@ exactly; give each route a twin test asserting the same failure on both surfaces
 Adding a tool requires `node tools/rpc_parity_map.mjs` — the ratchet gate fails
 otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
 
-**Parity ledger CLOSED (as of 2026-09-28): 317 tools / 419 methods / mapped 303 /
+**Parity ledger CLOSED (as of 2026-10-01): 319 tools / 421 methods / mapped 305 /
 mcp-only 14 / unresolved 0.** The route-addition recipe: one shared `src/common/`
 shaper both surfaces call + a twin test asserting the same behaviour on both
 surfaces + `node tools/rpc_parity_map.mjs` regeneration — the ledger tracks
