@@ -25,15 +25,16 @@
    "name": "OP1 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:319",
+   "source": "src/engine/TrackFXSlot.h:337",
    "sources": [
-    "src/engine/TrackFXSlot.h:319"
+    "src/engine/TrackFXSlot.h:337"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "psy-fm",
@@ -47,15 +48,16 @@
    "name": "OP2 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:320",
+   "source": "src/engine/TrackFXSlot.h:338",
    "sources": [
-    "src/engine/TrackFXSlot.h:320"
+    "src/engine/TrackFXSlot.h:338"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "psy-fm",
@@ -69,15 +71,16 @@
    "name": "OP3 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:321",
+   "source": "src/engine/TrackFXSlot.h:339",
    "sources": [
-    "src/engine/TrackFXSlot.h:321"
+    "src/engine/TrackFXSlot.h:339"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "psy-fm",
@@ -91,15 +94,16 @@
    "name": "OP4 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:322",
+   "source": "src/engine/TrackFXSlot.h:340",
    "sources": [
-    "src/engine/TrackFXSlot.h:322"
+    "src/engine/TrackFXSlot.h:340"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "psy-fm",
@@ -113,15 +117,16 @@
    "name": "OP5 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:323",
+   "source": "src/engine/TrackFXSlot.h:341",
    "sources": [
-    "src/engine/TrackFXSlot.h:323"
+    "src/engine/TrackFXSlot.h:341"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "psy-fm",
@@ -135,15 +140,16 @@
    "name": "OP6 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:324",
+   "source": "src/engine/TrackFXSlot.h:342",
    "sources": [
-    "src/engine/TrackFXSlot.h:324"
+    "src/engine/TrackFXSlot.h:342"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "psy-fm",
@@ -157,15 +163,16 @@
    "name": "Feedback",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:325",
+   "source": "src/engine/TrackFXSlot.h:343",
    "sources": [
-    "src/engine/TrackFXSlot.h:325"
+    "src/engine/TrackFXSlot.h:343"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "psy-fm",
@@ -179,15 +186,16 @@
    "name": "OP1 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:326",
+   "source": "src/engine/TrackFXSlot.h:344",
    "sources": [
-    "src/engine/TrackFXSlot.h:326"
+    "src/engine/TrackFXSlot.h:344"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -201,15 +209,16 @@
    "name": "OP1 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:327",
+   "source": "src/engine/TrackFXSlot.h:345",
    "sources": [
-    "src/engine/TrackFXSlot.h:327"
+    "src/engine/TrackFXSlot.h:345"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -223,15 +232,16 @@
    "name": "OP1 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:328",
+   "source": "src/engine/TrackFXSlot.h:346",
    "sources": [
-    "src/engine/TrackFXSlot.h:328"
+    "src/engine/TrackFXSlot.h:346"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "psy-fm",
@@ -245,15 +255,16 @@
    "name": "OP1 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:329",
+   "source": "src/engine/TrackFXSlot.h:347",
    "sources": [
-    "src/engine/TrackFXSlot.h:329"
+    "src/engine/TrackFXSlot.h:347"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -267,15 +278,16 @@
    "name": "OP2 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:330",
+   "source": "src/engine/TrackFXSlot.h:348",
    "sources": [
-    "src/engine/TrackFXSlot.h:330"
+    "src/engine/TrackFXSlot.h:348"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -289,15 +301,16 @@
    "name": "OP2 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:331",
+   "source": "src/engine/TrackFXSlot.h:349",
    "sources": [
-    "src/engine/TrackFXSlot.h:331"
+    "src/engine/TrackFXSlot.h:349"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -311,15 +324,16 @@
    "name": "OP2 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:332",
+   "source": "src/engine/TrackFXSlot.h:350",
    "sources": [
-    "src/engine/TrackFXSlot.h:332"
+    "src/engine/TrackFXSlot.h:350"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "psy-fm",
@@ -333,15 +347,16 @@
    "name": "OP2 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:333",
+   "source": "src/engine/TrackFXSlot.h:351",
    "sources": [
-    "src/engine/TrackFXSlot.h:333"
+    "src/engine/TrackFXSlot.h:351"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -355,15 +370,16 @@
    "name": "OP3 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:334",
+   "source": "src/engine/TrackFXSlot.h:352",
    "sources": [
-    "src/engine/TrackFXSlot.h:334"
+    "src/engine/TrackFXSlot.h:352"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -377,15 +393,16 @@
    "name": "OP3 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:335",
+   "source": "src/engine/TrackFXSlot.h:353",
    "sources": [
-    "src/engine/TrackFXSlot.h:335"
+    "src/engine/TrackFXSlot.h:353"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -399,15 +416,16 @@
    "name": "OP3 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:336",
+   "source": "src/engine/TrackFXSlot.h:354",
    "sources": [
-    "src/engine/TrackFXSlot.h:336"
+    "src/engine/TrackFXSlot.h:354"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "psy-fm",
@@ -421,15 +439,16 @@
    "name": "OP3 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:337",
+   "source": "src/engine/TrackFXSlot.h:355",
    "sources": [
-    "src/engine/TrackFXSlot.h:337"
+    "src/engine/TrackFXSlot.h:355"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -443,15 +462,16 @@
    "name": "OP4 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:338",
+   "source": "src/engine/TrackFXSlot.h:356",
    "sources": [
-    "src/engine/TrackFXSlot.h:338"
+    "src/engine/TrackFXSlot.h:356"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -465,15 +485,16 @@
    "name": "OP4 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:339",
+   "source": "src/engine/TrackFXSlot.h:357",
    "sources": [
-    "src/engine/TrackFXSlot.h:339"
+    "src/engine/TrackFXSlot.h:357"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -487,15 +508,16 @@
    "name": "OP4 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:340",
+   "source": "src/engine/TrackFXSlot.h:358",
    "sources": [
-    "src/engine/TrackFXSlot.h:340"
+    "src/engine/TrackFXSlot.h:358"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "psy-fm",
@@ -509,15 +531,16 @@
    "name": "OP4 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:341",
+   "source": "src/engine/TrackFXSlot.h:359",
    "sources": [
-    "src/engine/TrackFXSlot.h:341"
+    "src/engine/TrackFXSlot.h:359"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -531,15 +554,16 @@
    "name": "OP5 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:342",
+   "source": "src/engine/TrackFXSlot.h:360",
    "sources": [
-    "src/engine/TrackFXSlot.h:342"
+    "src/engine/TrackFXSlot.h:360"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -553,15 +577,16 @@
    "name": "OP5 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:343",
+   "source": "src/engine/TrackFXSlot.h:361",
    "sources": [
-    "src/engine/TrackFXSlot.h:343"
+    "src/engine/TrackFXSlot.h:361"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -575,15 +600,16 @@
    "name": "OP5 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:344",
+   "source": "src/engine/TrackFXSlot.h:362",
    "sources": [
-    "src/engine/TrackFXSlot.h:344"
+    "src/engine/TrackFXSlot.h:362"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "psy-fm",
@@ -597,15 +623,16 @@
    "name": "OP5 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:345",
+   "source": "src/engine/TrackFXSlot.h:363",
    "sources": [
-    "src/engine/TrackFXSlot.h:345"
+    "src/engine/TrackFXSlot.h:363"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -619,15 +646,16 @@
    "name": "OP6 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:346",
+   "source": "src/engine/TrackFXSlot.h:364",
    "sources": [
-    "src/engine/TrackFXSlot.h:346"
+    "src/engine/TrackFXSlot.h:364"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -641,15 +669,16 @@
    "name": "OP6 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:347",
+   "source": "src/engine/TrackFXSlot.h:365",
    "sources": [
-    "src/engine/TrackFXSlot.h:347"
+    "src/engine/TrackFXSlot.h:365"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -663,15 +692,16 @@
    "name": "OP6 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:348",
+   "source": "src/engine/TrackFXSlot.h:366",
    "sources": [
-    "src/engine/TrackFXSlot.h:348"
+    "src/engine/TrackFXSlot.h:366"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "psy-fm",
@@ -685,15 +715,16 @@
    "name": "OP6 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:349",
+   "source": "src/engine/TrackFXSlot.h:367",
    "sources": [
-    "src/engine/TrackFXSlot.h:349"
+    "src/engine/TrackFXSlot.h:367"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "psy-fm",
@@ -707,15 +738,16 @@
    "name": "Output Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:350",
+   "source": "src/engine/TrackFXSlot.h:368",
    "sources": [
-    "src/engine/TrackFXSlot.h:350"
+    "src/engine/TrackFXSlot.h:368"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "psy-fm",
@@ -736,15 +768,16 @@
    "note": "TrackFXSlot.h:1024-1027 selects PsyFmAlgorithms' function per value.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:351",
+   "source": "src/engine/TrackFXSlot.h:369",
    "sources": [
-    "src/engine/TrackFXSlot.h:351"
+    "src/engine/TrackFXSlot.h:369"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "enum"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

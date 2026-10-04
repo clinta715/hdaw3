@@ -25,15 +25,16 @@
    "name": "Room Size",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:122",
+   "source": "src/engine/TrackFXSlot.h:140",
    "sources": [
-    "src/engine/TrackFXSlot.h:122"
+    "src/engine/TrackFXSlot.h:140"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "reverb",
@@ -47,15 +48,16 @@
    "name": "Damping",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:123",
+   "source": "src/engine/TrackFXSlot.h:141",
    "sources": [
-    "src/engine/TrackFXSlot.h:123"
+    "src/engine/TrackFXSlot.h:141"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "reverb",
@@ -69,15 +71,16 @@
    "name": "Wet Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:124",
+   "source": "src/engine/TrackFXSlot.h:142",
    "sources": [
-    "src/engine/TrackFXSlot.h:124"
+    "src/engine/TrackFXSlot.h:142"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "reverb",
@@ -91,15 +94,16 @@
    "name": "Dry Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:125",
+   "source": "src/engine/TrackFXSlot.h:143",
    "sources": [
-    "src/engine/TrackFXSlot.h:125"
+    "src/engine/TrackFXSlot.h:143"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "reverb",
@@ -113,15 +117,16 @@
    "name": "Width",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:126",
+   "source": "src/engine/TrackFXSlot.h:144",
    "sources": [
-    "src/engine/TrackFXSlot.h:126"
+    "src/engine/TrackFXSlot.h:144"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

@@ -137,6 +137,11 @@ struct FxSlotSnapshot {
     // 0 while the slot has no live instance (unloaded / "none" / pending
     // rebuild). Computed by TrackFXSlot::paramCount().
     int paramCount = 0;
+    // Compressor sidechain v1, read straight from the FX_SLOT tree
+    // (sidechainSource = STABLE source trackID, 0 = none/unset).
+    int sidechainSource = 0;
+    float sidechainLevel = 1.0f;
+    bool sidechainEnabled = true;
 };
 
 struct MidiFxSlotSnapshot {
@@ -232,6 +237,12 @@ struct InternalFxParamSnapshot {
     float minValue = 0.0f;
     float maxValue = 0.0f;
     float defaultValue = 0.0f;
+    // Slice A (2026-10-02): the SAME real values expressed on the 0..1 axis
+    // automation/modulation already uses (TrackFXSlot::normalizeParam). Emitted
+    // alongside — never instead of — the real-unit fields, so no existing key
+    // or unit changes. A degenerate range (max <= min) normalizes to 0.
+    float valueNormalized = 0.0f;
+    float defaultNormalized = 0.0f;
 };
 
 struct SendSnapshot {

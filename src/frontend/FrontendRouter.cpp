@@ -116,6 +116,11 @@ static DispatchResult dispatchInner(AudioEngine& engine, const QString& method,
         //                    (src/common/AddTrackWithFx.h), pluginId gate included
         if (m == "removeTrack")    return dispatchRemoveTrack(engine, params);
         if (m == "addTrackWithFx") return dispatchAddTrackWithFx(engine, params);
+        // setFxSidechain reaches AudioEngineCommands (the concrete command), not
+        // the abstract ProjectCommands dispatchProject receives — the same
+        // engine-context reason as addTrackWithFx above. It runs the shared body
+        // (common/FxSidechain.h) the MCP set_fx_sidechain tool runs.
+        if (m == "setFxSidechain") return dispatchSetFxSidechain(engine, params);
         // endBatch's optional verify hook renders + composes the release verdict,
         // so it needs engine context too (common/BatchEnd.h).
         if (m == "endBatch")       return dispatchEndBatch(engine, params);

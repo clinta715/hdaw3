@@ -189,6 +189,14 @@ namespace IDs {
     DECLARE_ID(keyRangeLow)
     DECLARE_ID(keyRangeHigh)
 
+    // FX_SLOT compressor sidechain v1 — properties live DIRECTLY on the
+    // FX_SLOT node (one source per slot). sidechainSource is the SOURCE
+    // track's STABLE trackID (B1), 0 = none; persists free via the whole-tree
+    // save (no FX_SLOT whitelist in ProjectSerializer).
+    DECLARE_ID(sidechainSource)
+    DECLARE_ID(sidechainLevel)
+    DECLARE_ID(sidechainEnabled)
+
     // Per-track MIDI FX chain
     DECLARE_ID(MIDI_FX_CHAIN)
     DECLARE_ID(MIDI_FX_SLOT)

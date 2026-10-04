@@ -418,10 +418,10 @@ automatic when a sidecar is newer than its audio. Backfill key/bpm into
 already-analyzed sidecars:  py -3.14 backfill_keybpm.py "<folder>" ...
 
 ## Manually add samples (daily use)
-1. Copy WAV/FLAC/AIFF/MP3 files into `D:\pdf\roo projects\hdaw3\timbre-lib\samples\`
+1. Copy WAV/FLAC/AIFF/MP3 files into `E:\build\hdaw3\timbre-lib\samples\`
    (or any folder). Subfolders are scanned too.
 2. Analyze (Windows python - the ML stack lives there, NOT the WSL agent venv):
-   cmd> py -3.14 "D:\pdf\roo projects\hdaw3\timbre-lib\lib_analyze.py" "E:\samples\Some Pack" --no-llm --sidecars
+   cmd> py -3.14 "E:\build\hdaw3\timbre-lib\lib_analyze.py" "E:\samples\Some Pack" --no-llm --sidecars
    or a single file. Only new/changed files are processed (per-file cache).
    ~10-25s per file with CLAP; key/bpm-only backfill via backfill_keybpm.py is ~0.2s.
 3. Search:          python lib_search.py "dark atmospheric pad"

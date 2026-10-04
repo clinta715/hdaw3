@@ -25,15 +25,16 @@
    "name": "Threshold",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:130",
+   "source": "src/engine/TrackFXSlot.h:148",
    "sources": [
-    "src/engine/TrackFXSlot.h:130"
+    "src/engine/TrackFXSlot.h:148"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "db"
   },
   {
    "category": "compressor",
@@ -47,15 +48,16 @@
    "name": "Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:131",
+   "source": "src/engine/TrackFXSlot.h:149",
    "sources": [
-    "src/engine/TrackFXSlot.h:131"
+    "src/engine/TrackFXSlot.h:149"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "compressor",
@@ -69,15 +71,16 @@
    "name": "Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:132",
+   "source": "src/engine/TrackFXSlot.h:150",
    "sources": [
-    "src/engine/TrackFXSlot.h:132"
+    "src/engine/TrackFXSlot.h:150"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ms"
   },
   {
    "category": "compressor",
@@ -91,15 +94,16 @@
    "name": "Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:133",
+   "source": "src/engine/TrackFXSlot.h:151",
    "sources": [
-    "src/engine/TrackFXSlot.h:133"
+    "src/engine/TrackFXSlot.h:151"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ms"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

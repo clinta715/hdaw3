@@ -25,15 +25,16 @@
    "name": "Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:224",
+   "source": "src/engine/TrackFXSlot.h:242",
    "sources": [
-    "src/engine/TrackFXSlot.h:224"
+    "src/engine/TrackFXSlot.h:242"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "sampler",
@@ -47,15 +48,16 @@
    "name": "Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:225",
+   "source": "src/engine/TrackFXSlot.h:243",
    "sources": [
-    "src/engine/TrackFXSlot.h:225"
+    "src/engine/TrackFXSlot.h:243"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "sampler",
@@ -69,15 +71,16 @@
    "name": "Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:226",
+   "source": "src/engine/TrackFXSlot.h:244",
    "sources": [
-    "src/engine/TrackFXSlot.h:226"
+    "src/engine/TrackFXSlot.h:244"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "sampler",
@@ -91,15 +94,16 @@
    "name": "Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:227",
+   "source": "src/engine/TrackFXSlot.h:245",
    "sources": [
-    "src/engine/TrackFXSlot.h:227"
+    "src/engine/TrackFXSlot.h:245"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "sampler",
@@ -113,15 +117,16 @@
    "name": "Transpose",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:228",
+   "source": "src/engine/TrackFXSlot.h:246",
    "sources": [
-    "src/engine/TrackFXSlot.h:228"
+    "src/engine/TrackFXSlot.h:246"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "sampler",
@@ -135,15 +140,16 @@
    "name": "SampleStart",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:229",
+   "source": "src/engine/TrackFXSlot.h:247",
    "sources": [
-    "src/engine/TrackFXSlot.h:229"
+    "src/engine/TrackFXSlot.h:247"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "sampler",
@@ -157,15 +163,16 @@
    "name": "Hold",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:230",
+   "source": "src/engine/TrackFXSlot.h:248",
    "sources": [
-    "src/engine/TrackFXSlot.h:230"
+    "src/engine/TrackFXSlot.h:248"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "sampler",
@@ -179,15 +186,16 @@
    "name": "Glide",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:231",
+   "source": "src/engine/TrackFXSlot.h:249",
    "sources": [
-    "src/engine/TrackFXSlot.h:231"
+    "src/engine/TrackFXSlot.h:249"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "sampler",
@@ -205,15 +213,16 @@
    "name": "Reverse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:232",
+   "source": "src/engine/TrackFXSlot.h:250",
    "sources": [
-    "src/engine/TrackFXSlot.h:232"
+    "src/engine/TrackFXSlot.h:250"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "boolean"
   },
   {
    "category": "sampler",
@@ -227,15 +236,16 @@
    "name": "SampleEnd",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:233",
+   "source": "src/engine/TrackFXSlot.h:251",
    "sources": [
-    "src/engine/TrackFXSlot.h:233"
+    "src/engine/TrackFXSlot.h:251"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

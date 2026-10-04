@@ -160,6 +160,10 @@ QJsonArray filterDeviceParams(const QJsonObject& map,
         if (p.contains("min"))               o["min"] = p.value("min");
         if (p.contains("max"))               o["max"] = p.value("max");
         if (p.contains("enum"))              o["enum"] = p.value("enum");
+        // Declared parameter unit (slice B: device-param unit convention).
+        // Present only on internal-engine maps carrying it, so VA payloads
+        // stay byte-compatible (same present-only rule as `enum`).
+        if (p.contains("unit"))              o["unit"] = p.value("unit");
         out.append(o);
     }
     return out;

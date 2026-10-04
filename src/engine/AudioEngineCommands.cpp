@@ -11,9 +11,17 @@
 #include <algorithm>
 
 AudioEngineCommands::AudioEngineCommands(AudioEngine& engine)
-    : engine_(engine) {}
+    : engine_(engine)
+{
+    alive_ = std::make_shared<std::atomic<bool>>(true);
+}
 
-AudioEngineCommands::~AudioEngineCommands() = default;
+AudioEngineCommands::~AudioEngineCommands()
+{
+    // FIRST: invalidate any deferred capture lambda still queued on the timer
+    // thread (Timer::callAfterDelay cannot be cancelled) before any member dies.
+    if (alive_) alive_->store(false, std::memory_order_release);
+}
 
 // ─── Helper methods ──────────────────────────────────────────────
 

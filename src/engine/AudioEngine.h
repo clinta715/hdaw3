@@ -20,6 +20,7 @@
 #include "PluginParamServiceImpl.h"
 #include "MidiServiceImpl.h"
 #include "../model/ProjectModel.h"
+#include <atomic>
 #include <functional>
 #include <cstdint>
 #include <map>
@@ -329,6 +330,14 @@ private:
     MidiCcCallback midiCcCallback;
 
     std::atomic<bool> midiNoteRecordArmed{ false };
+
+    // UAF guard for work posted off this object that cannot be cancelled:
+    // the MIDI-input callback (runs on the MIDI thread) and the two
+    // MessageManager::callAsync lambdas it posts. Cleared FIRST in shutdown(),
+    // before mainProcessor.reset(); every holder checks it before touching `this`.
+    // Same idiom as CLAPPluginInstance::alive / AudioEngineCommands::alive_.
+    std::shared_ptr<std::atomic<bool>> alive_;
+
     struct MidiNoteRecClip { int clipId = -1; int trackIndex = -1; int64_t startSample = 0; int64_t maxEndSample = 0; };
     std::vector<MidiNoteRecClip> midiNoteRecClips;
     std::map<int, std::map<int, std::pair<int64_t, int>>> midiPendingNotes;

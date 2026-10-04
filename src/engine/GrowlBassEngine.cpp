@@ -407,7 +407,9 @@ void GrowlBassEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
 
         // Calculate frequencies
         float midiFreq = 440.0f * std::pow(2.0f, (static_cast<float>(voice.midiNote) - 69.0f) / 12.0f);
-        float baseFreq = (fundHz > 10.0f) ? fundHz : midiFreq; // Use MIDI note if fundamental is very low
+        // Fundamental Hz 0 = follow the MIDI note (the exposed minimum is 0);
+        // any positive value pins the oscillator to that frequency.
+        float baseFreq = (fundHz > 0.0f) ? fundHz : midiFreq;
 
         // Apply jitter to modulator ratio
         float effectiveModRatio = modR;

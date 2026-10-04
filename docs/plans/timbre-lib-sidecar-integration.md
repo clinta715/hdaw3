@@ -101,7 +101,7 @@ JSON fields).
 4. Unit tests (file_library_test.cpp) — mirror existing patterns
    (tempDir, WAV writer, async scan polling loop, setLastModificationTime bump).
 5. MCP coverage test additions.
-6. Build: `cmd.exe /c "cd /d D:\pdf\roo projects\hdaw3 && build-fast.bat test"`
+6. Build: `cmd.exe /c "cd /d E:\build\hdaw3 && build-fast.bat test"`
    (Windows MSVC via WSL interop). Record binary mtime before/after.
 7. Run: filter FileLibraryTest.* -> McpCoverageTest.* -> full suite
    (`build\RelWithDebInfo\hdaw_tests.exe`). Capture output.

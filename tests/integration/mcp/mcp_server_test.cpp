@@ -586,10 +586,10 @@ TEST(McpServer, SetFxParamByName) {
     EXPECT_NEAR(snaps[0].value, 700.0f, 0.01f);
     EXPECT_NEAR(snaps[2].value, 5.5f, 0.01f);
 
-    // Neither paramName nor paramIndex is an error.
+    // Neither paramName nor paramIndex nor intent is an error.
     r = callTool(6, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"value":1})");
     EXPECT_TRUE(isError(r));
-    EXPECT_TRUE(text(r).contains("paramIndex or paramName required")) << text(r).toStdString();
+    EXPECT_TRUE(text(r).contains("paramIndex, paramName or intent required")) << text(r).toStdString();
 
     // set_master_fx_param by NAME: default slot 1 = limiter, param 0 = Threshold.
     r = callTool(7, "set_master_fx_param", R"({"slotIndex":1,"paramName":"Threshold","value":-6.0})");

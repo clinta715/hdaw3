@@ -7,6 +7,7 @@
 #include "GroupBusProcessor.h"
 #include "FxBusProcessor.h"
 #include "SendProcessor.h"
+#include "SidechainBus.h"
 #include "ClipSourceProcessor.h"
 #include "MidiClipProcessor.h"
 #include "StretchCache.h"
@@ -57,6 +58,43 @@ public:
     // Live send processor for a (trackIndex, sendIndex) — readback/tests
     // mirror of setSendLevel's lookup. nullptr when absent.
     SendProcessor* getSend(int trackIndex, int sendIndex) const;
+
+    // ── Compressor sidechain v1 (contract mirrored on the send API) ──
+    // A sidechain connection taps sourceTrack's output into the DEST track's
+    // compressor FX slot (destTrackIndex, slotIndex) through a shared
+    // SidechainBus. One source per slot (v1). The tap→dest edges ride the
+    // normal rebuild paths (rebuildFromValueTree / rebuildTrackFX refresh);
+    // setSidechainLevel/Enabled push the bus atomics incrementally, no
+    // rebuild.
+    struct SidechainConnection {
+        juce::AudioProcessorGraph::Node::Ptr node;
+        SidechainTapProcessor* processor = nullptr;
+        std::shared_ptr<SidechainBus> bus;
+        int sourceTrackIndex = -1;
+    };
+    // Incremental level/enabled push onto the LIVE bus (no rebuild). No-op
+    // when no connection exists for the key (silent no-op convention, like
+    // setSendLevel on a dead handle).
+    void setSidechainLevel(int destTrackIndex, int slotIndex, float level);
+    void setSidechainEnabled(int destTrackIndex, int slotIndex, bool enabled);
+    // Rebuild-path restore: (re)create every sidechain connection described
+    // by the tree, tearing down stale ones. Called from rebuildFromValueTree
+    // (all tracks) and rebuildTrackFX (one dest track, idempotent — an
+    // unchanged config touches no graph nodes).
+    void rebuildSidechainsForTrack(int destTrackIndex);
+    void rebuildAllSidechains();
+    // Teardown for track removal: drops connections where the track is the
+    // DEST (unregistering the bus from its still-alive-or-dying slot) and
+    // where it is the SOURCE (its edges must die with its node).
+    void removeSidechainsForTrack(int trackIndex);
+    // Live-state probes for tests/readback (Gate 1/10 discipline: assert on
+    // these after a drained rebuild, never on ReadModel alone).
+    int getSidechainCount() const { return static_cast<int>(sidechainConnections.size()); }
+    const SidechainConnection* getSidechainConnection(int destTrackIndex, int slotIndex) const
+    {
+        const auto it = sidechainConnections.find({ destTrackIndex, slotIndex });
+        return it != sidechainConnections.end() ? &it->second : nullptr;
+    }
 
     void updateClipParam(int trackIndex, int clipIndex, int paramID, float value);
     void switchClipTake(int trackIndex, int clipIndex, const juce::String& sourceFile);
@@ -166,6 +204,16 @@ private:
         SendProcessor* processor = nullptr;
     };
     std::map<std::pair<int, int>, SendConnection> sendConnections;
+
+    // (destTrackIndex, slotIndex) -> tap node + shared bus (see the public
+    // SidechainConnection contract above).
+    std::map<std::pair<int, int>, SidechainConnection> sidechainConnections;
+    // Creates ONE connection (guards + node + edges + dest-slot registration).
+    // Mirrors addSend's locking context: caller holds the same locks addSend's
+    // callers hold (message thread during rebuild; graphLock for incremental
+    // callers). Returns false when the topology can't support it.
+    bool createSidechainConnection(int destTrackIndex, int slotIndex,
+                                   int sourceTrackIndex, float level, bool enabled);
 
     juce::AudioProcessorGraph::Node::Ptr ioNode;
     juce::AudioProcessorGraph::Node::Ptr inputNode;

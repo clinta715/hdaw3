@@ -1,6 +1,7 @@
 #pragma once
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -8,6 +9,7 @@
 #include "BreakPatternGenerator.h"
 #include "PatternPlacer.h"
 #include <juce_data_structures/juce_data_structures.h>
+#include <optional>
 #include <vector>
 
 class AudioEngine;
@@ -249,6 +251,21 @@ public:
                             const std::string& paramName, double value) override;
     void removeFxSlot(int trackIndex, int slotIndex) override;
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
+    // ── FX_SLOT compressor sidechain v1 (engine core; MCP/RPC surfaces land
+    // separately). Accepts a positional trackId OR the stable trackID for both
+    // dest and source — the stable id wins when both are given (project-wide
+    // B2 convention). sourceTrackId/sourceTrackID absent or 0 = clear.
+    // level/enabled optional (absent = leave unchanged). One undo transaction.
+    // Returns compact JSON {"ok":true,trackId,slotIndex,sourceTrackId,level,
+    // enabled} or {"ok":false,"error":...}; on error the tree is untouched.
+    std::string setFxSidechain(const std::optional<int>& trackId,
+                               const std::optional<int>& trackID,
+                               int slotIndex,
+                               const std::optional<int>& sourceTrackId,
+                               const std::optional<int>& sourceTrackID,
+                               const std::optional<float>& level,
+                               const std::optional<bool>& enabled,
+                               std::string* error = nullptr);
     float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                          float value) override;
     // ── Plugin-slot host-param persistence (see ProjectCommands.h) ──
@@ -674,6 +691,12 @@ private:
     // Path of the project loaded/saved this session (message thread only).
     // Set on a successful saveProject/loadProject, cleared by newProject().
     std::string projectFilePath_;
+
+    // UAF guard for work deferred off this object (captureFxSlotState's
+    // juce::Timer::callAfterDelay, which cannot be cancelled). Set in the ctor,
+    // cleared FIRST in the dtor; the queued lambda holds a shared_ptr copy and
+    // bails when it reads false. Same idiom as CLAPPluginInstance::alive.
+    std::shared_ptr<std::atomic<bool>> alive_;
 
     AudioEngine& engine_;
 };

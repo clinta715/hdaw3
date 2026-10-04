@@ -1,4 +1,8 @@
 ﻿#include "ChainLibrary.h"
+#include <algorithm>
+#include <map>
+#include <unordered_map>
+#include <vector>
 #include "AudioEngineCommands.h"
 #include "AudioEngine.h"
 #include "../common/DebugLog.h"
@@ -315,6 +319,238 @@ void AudioEngineCommands::setFxSlotBypassed(int trackIndex, int slotIndex, bool 
         proc->rebuildTrackFX(trackIndex);
 }
 
+// ── FX_SLOT compressor sidechain v1 (see AudioEngineCommands.h contract) ────
+
+namespace {
+
+std::string sidechainFail(const std::string& msg, std::string* error)
+{
+    if (error != nullptr) *error = msg;
+    return "{\"ok\":false,\"error\":\"" + msg + "\"}";
+}
+
+// Directed edge set of the CURRENTLY STORED sidechain connections:
+// adjacency[sourceStableID] -> { destTrackID, ... } (one entry per FX slot
+// carrying sidechainSource > 0). BFS reachability from `from` to `to`;
+// on success `path` receives from .. to (inclusive). Small N — linear walk
+// of every track's FX chain.
+bool sidechainReaches(const juce::ValueTree& trackList, int from, int to,
+                      std::vector<int>* path)
+{
+    std::map<int, std::vector<int>> adj;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        const int destID =
+            static_cast<int>(trackList.getChild(t).getProperty(IDs::trackID, 0));
+        if (destID <= 0) continue;
+        const auto fxChain = trackList.getChild(t).getChildWithName(IDs::FX_CHAIN);
+        if (!fxChain.isValid()) continue;
+        for (int s = 0; s < fxChain.getNumChildren(); ++s)
+        {
+            const int src = static_cast<int>(
+                fxChain.getChild(s).getProperty(IDs::sidechainSource, 0));
+            if (src > 0)
+                adj[src].push_back(destID);
+        }
+    }
+
+    std::map<int, int> parent; // node -> predecessor (from has parent sentinel)
+    std::vector<int> queue { from };
+    parent[from] = -1;
+    for (size_t qi = 0; qi < queue.size(); ++qi)
+    {
+        const int cur = queue[qi];
+        if (cur == to) break;
+        const auto it = adj.find(cur);
+        if (it == adj.end()) continue;
+        for (const int next : it->second)
+        {
+            if (parent.count(next) != 0) continue;
+            parent[next] = cur;
+            queue.push_back(next);
+        }
+    }
+    if (parent.count(to) == 0)
+        return false;
+    if (path != nullptr)
+    {
+        path->clear();
+        for (int n = to; n != -1; n = parent[n])
+            path->push_back(n);
+        std::reverse(path->begin(), path->end());
+    }
+    return true;
+}
+
+} // namespace
+
+std::string AudioEngineCommands::setFxSidechain(const std::optional<int>& trackId,
+                                                const std::optional<int>& trackID,
+                                                int slotIndex,
+                                                const std::optional<int>& sourceTrackId,
+                                                const std::optional<int>& sourceTrackID,
+                                                const std::optional<float>& level,
+                                                const std::optional<bool>& enabled,
+                                                std::string* error)
+{
+    // Validation FIRST — on any refusal the tree is untouched (no partial
+    // mutation).
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    const int numTracks = trackList.getNumChildren();
+
+    // Stable trackID → position map (B1: 0 = unassigned, never a valid key).
+    std::unordered_map<int, int> idToIndex;
+    for (int t = 0; t < numTracks; ++t)
+    {
+        const int id = static_cast<int>(trackList.getChild(t).getProperty(IDs::trackID, 0));
+        if (id > 0)
+            idToIndex[id] = t;
+    }
+
+    // Dest resolution: stable wins on disagreement (B2 convention).
+    int destIndex = -1;
+    if (trackID.has_value())
+    {
+        const auto it = idToIndex.find(*trackID);
+        if (it == idToIndex.end())
+            return sidechainFail("unknown track", error);
+        destIndex = it->second;
+    }
+    else if (trackId.has_value())
+    {
+        if (*trackId < 0 || *trackId >= numTracks)
+            return sidechainFail("unknown track", error);
+        destIndex = *trackId;
+    }
+    else
+    {
+        return sidechainFail("unknown track", error);
+    }
+
+    // Source resolution: clear ONLY when (stable provided AND ==0) or (neither
+    // spelling provided). The stable spelling, when present, wins outright
+    // (allocated trackIDs are >= 1, so stable 0 unambiguously means "clear").
+    // A positional 0 is a VALID source (track 0, e.g. the kick track) and is
+    // resolved through the normal range check.
+    bool clearSource = true;
+    int sourceIndex = -1;
+    if (sourceTrackID.has_value())
+    {
+        if (*sourceTrackID != 0)
+        {
+            const auto it = idToIndex.find(*sourceTrackID);
+            if (it == idToIndex.end())
+                return sidechainFail("source track not found: " + std::to_string(*sourceTrackID), error);
+            sourceIndex = it->second;
+            clearSource = false;
+        }
+    }
+    else if (sourceTrackId.has_value())
+    {
+        if (*sourceTrackId < 0 || *sourceTrackId >= numTracks)
+            return sidechainFail("source track not found: " + std::to_string(*sourceTrackId), error);
+        sourceIndex = *sourceTrackId;
+        clearSource = false;
+    }
+
+    if (!clearSource && sourceIndex == destIndex)
+        return sidechainFail("self-sidechain refused (acyclic graph)", error);
+
+    // Slot resolution + type gate.
+    auto slot = findFxSlot(destIndex, slotIndex);
+    if (!slot.isValid())
+        return sidechainFail("slotIndex out of range", error);
+    if (slot.getProperty(IDs::fxType).toString() != "compressor")
+        return sidechainFail("sidechain requires a compressor FX slot", error);
+
+    // Level range: refuse, never clamp (lesson 38 — silent acceptance class).
+    if (level.has_value() && (*level < 0.0f || *level > 1.0f))
+        return sidechainFail("level out of range: " + std::to_string(*level) + " (expected 0..1)", error);
+
+    // Acyclic-graph gate: refuse a stored edge that would CLOSE A CYCLE among
+    // the existing sidechain edges (A→B then B→A must not pass self-edge-only
+    // validation). Purely a tree read — no mutation on refusal.
+    if (!clearSource)
+    {
+        const int destStableID = static_cast<int>(
+            trackList.getChild(destIndex).getProperty(IDs::trackID, 0));
+        const int sourceStableIDForCycle = static_cast<int>(
+            trackList.getChild(sourceIndex).getProperty(IDs::trackID, 0));
+        std::vector<int> cyclePath;
+        if (destStableID > 0 && sourceStableIDForCycle > 0
+            && sidechainReaches(trackList, destStableID, sourceStableIDForCycle, &cyclePath))
+        {
+            std::string msg = "sidechain cycle refused:";
+            for (const int id : cyclePath)
+                msg += " " + std::to_string(id) + " ->";
+            msg += " " + std::to_string(destStableID);
+            return sidechainFail(msg, error);
+        }
+    }
+
+    // ── One undo transaction (same convention as setFxSlotBypassed above:
+    // all writes share the model's undo manager). ──
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int sourceStableID = 0;
+    if (!clearSource)
+        sourceStableID = static_cast<int>(
+            trackList.getChild(sourceIndex).getProperty(IDs::trackID, 0));
+
+    const int prevSourceStableID =
+        static_cast<int>(slot.getProperty(IDs::sidechainSource, 0));
+
+    if (clearSource)
+    {
+        slot.removeProperty(IDs::sidechainSource, &um);
+        slot.removeProperty(IDs::sidechainLevel, &um);
+        slot.removeProperty(IDs::sidechainEnabled, &um);
+    }
+    else
+    {
+        slot.setProperty(IDs::sidechainSource, sourceStableID, &um);
+        if (level.has_value())
+            slot.setProperty(IDs::sidechainLevel, static_cast<double>(*level), &um);
+        if (enabled.has_value())
+            slot.setProperty(IDs::sidechainEnabled, *enabled, &um);
+    }
+
+    const float levelOut = [&]() -> float {
+        if (level.has_value()) return *level;
+        return clearSource ? 0.0f
+            : static_cast<float>((double) slot.getProperty(IDs::sidechainLevel, 1.0));
+    }();
+    const bool enabledOut = enabled.has_value() ? *enabled
+        : (clearSource ? false : static_cast<bool>(slot.getProperty(IDs::sidechainEnabled, true)));
+
+    // Live graph update: source set/clear changes TOPOLOGY → the same full
+    // rebuild the FX-structure commands ride; level/enabled-only →
+    // incremental atomic push, no rebuild.
+    const bool sourceChanged = prevSourceStableID != (clearSource ? 0 : sourceStableID);
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        if (sourceChanged)
+        {
+            proc->rebuildRoutingGraph();
+        }
+        else if (auto* rm = proc->getRoutingManager())
+        {
+            if (level.has_value())
+                rm->setSidechainLevel(destIndex, slotIndex, *level);
+            if (enabled.has_value())
+                rm->setSidechainEnabled(destIndex, slotIndex, *enabled);
+        }
+    }
+
+    juce::DynamicObject::Ptr out = new juce::DynamicObject();
+    out->setProperty("ok", true);
+    out->setProperty("trackId", destIndex);
+    out->setProperty("slotIndex", slotIndex);
+    out->setProperty("sourceTrackId", clearSource ? 0 : sourceIndex);
+    out->setProperty("level", (double) levelOut);
+    out->setProperty("enabled", enabledOut);
+    return juce::JSON::toString(juce::var(out.get())).toStdString();
+}
+
 float AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex,
                                           int paramIndex, float value)
 {
@@ -497,7 +733,16 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
         // request is the same control path the save flow uses mid-playback.
         const int ti = trackIndex;
         const int si = slotIndex;
-        juce::Timer::callAfterDelay(captureDelayMs, [this, ti, si]() {
+        // UAF guard (same idiom as CLAPPluginInstance::alive): callAfterDelay
+        // cannot be cancelled, and this lambda's sleeps let it run seconds
+        // after it was posted — by then this object (and engine_) may be gone.
+        // A shared_ptr COPY of the token keeps it readable; every dereference
+        // of this/engine_ is gated on it reading true.
+        juce::Timer::callAfterDelay(captureDelayMs, [this, alive = alive_, ti, si]() {
+            auto stillAlive = [&alive]() {
+                return alive != nullptr && alive->load(std::memory_order_acquire);
+            };
+            if (!stillAlive()) return;                 // commands object already gone
             auto slotTree = engine_.getProjectModel().getTrackListTree()
                                 .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
             auto* proc = engine_.getMainProcessor();
@@ -517,6 +762,7 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
             bool lastUnchanged = false;
             for (int attempt = 0; attempt < kCaptureRetries; ++attempt)
             {
+                if (!stillAlive()) return;         // the ~750 ms sleeps open a wide window
                 mb.reset();
                 inst->getStateInformation(mb);
                 // An empty snapshot means the child is mid-boot/restart (the
@@ -539,6 +785,7 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
                 if (attempt + 1 < kCaptureRetries)
                     juce::Thread::sleep(750);
             }
+            if (!stillAlive()) return;             // before the receipt writes
             if (mb.getSize() == 0)
             {
                 writeFxCaptureReceipt(slotTree, "failed: empty state", 0);

@@ -25,15 +25,16 @@
    "name": "Drive dB",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:215",
+   "source": "src/engine/TrackFXSlot.h:233",
    "sources": [
-    "src/engine/TrackFXSlot.h:215"
+    "src/engine/TrackFXSlot.h:233"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "db"
   },
   {
    "category": "saturator",
@@ -53,15 +54,16 @@
    "name": "Type",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:216",
+   "source": "src/engine/TrackFXSlot.h:234",
    "sources": [
-    "src/engine/TrackFXSlot.h:216"
+    "src/engine/TrackFXSlot.h:234"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "enum"
   },
   {
    "category": "saturator",
@@ -75,15 +77,16 @@
    "name": "Asymmetry",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:217",
+   "source": "src/engine/TrackFXSlot.h:235",
    "sources": [
-    "src/engine/TrackFXSlot.h:217"
+    "src/engine/TrackFXSlot.h:235"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "saturator",
@@ -97,15 +100,16 @@
    "name": "Mix",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:218",
+   "source": "src/engine/TrackFXSlot.h:236",
    "sources": [
-    "src/engine/TrackFXSlot.h:218"
+    "src/engine/TrackFXSlot.h:236"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "saturator",
@@ -120,15 +124,16 @@
    "note": "Trims the WET path only.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:219",
+   "source": "src/engine/TrackFXSlot.h:237",
    "sources": [
-    "src/engine/TrackFXSlot.h:219"
+    "src/engine/TrackFXSlot.h:237"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "db"
   },
   {
    "category": "saturator",
@@ -143,15 +148,16 @@
    "note": "Applies to the Bitcrush curve only.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:220",
+   "source": "src/engine/TrackFXSlot.h:238",
    "sources": [
-    "src/engine/TrackFXSlot.h:220"
+    "src/engine/TrackFXSlot.h:238"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

@@ -448,6 +448,25 @@ void Track::setBusRegistry(const std::map<int, FxBusProcessor*>* registry)
     busRegistry = registry;
 }
 
+void Track::registerSidechainBus(int slotIndex, std::shared_ptr<SidechainBus> bus)
+{
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(fxChain.size())) return;
+    // stateLock: rebuildFXChain / prepareToPlay recreate the slot objects under
+    // this lock (see setFxSlotInternalParam) — same discipline as the send
+    // handles. Bounds + null slot guard (Gate 9).
+    juce::SpinLock::ScopedLockType lock(stateLock);
+    if (auto& slot = fxChain[static_cast<size_t>(slotIndex)])
+        slot->setSidechainBus(std::move(bus));
+}
+
+SidechainBus* Track::getSidechainBus(int slotIndex) const
+{
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(fxChain.size())) return nullptr;
+    if (const auto& slot = fxChain[static_cast<size_t>(slotIndex)])
+        return slot->getSidechainBusForTest();
+    return nullptr;
+}
+
 SendProcessor* Track::sendForPid(int sendIndex) const
 {
     if (sendIndex < 0) return nullptr;

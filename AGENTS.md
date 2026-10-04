@@ -230,6 +230,25 @@ separate project and is no longer a delivery target.
   sour?"*.
 - **Modulation-first**: device's own matrix → onboard FX → HDAW automation/track
   LFO → HDAW internal FX → third-party plugin last.
+- **FX-chain construction**: DEFAULT order is source → shape → glue → space →
+  level (deviate for a role-specific/measured reason). On an instrument/MIDI
+  track, build the instrument slot FIRST (internal synths ARE FX slots) — an
+  audio-clip track has no instrument slot and starts with processing FX, and a
+  bus/return uses `add_bus {fxType}`. Then
+  `load_fx_chain` a factory roster chain (it PRESERVES instrument slots and
+  replaces the FX slots after them) or hand-build with `add_fx` batched in one
+  `begin_batch`/`end_batch` (stdio) — N `add_fx` calls are N rebuilds; MIDI FX
+  (`add_midi_fx`) sit before the audio chain; shared delay/reverb goes on a
+  bus/send with **Mix = 1.0**; params in REAL units (`list_fx_params {trackId,
+  slotIndex}` readback — carries `valueNormalized` too — `set_internal_fx_param`
+  write), addressed by `paramIndex`/`paramName`/**`intent`** (the Device
+  Parameter Map's intent id; ambiguous intents are refused with candidates, and
+  `unit` on a device-map row says what the number means — units/ranges are
+  per-device, never portable across engines). Routed **sidechain**
+  (`set_fx_sidechain`,
+  compressor slots only, one source, acyclic) is the real kick→bass ducking pump —
+  use it INSTEAD of a Volume-lane pump, not both. Recipe + sidechain detail:
+  [`docs/psytrance-va-and-production.md`](docs/psytrance-va-and-production.md) §5.
 - **Verification-first**: `param_verity` (audibility), `tone_verity` (envelope/pitch/AM),
   `mix_report {fromPlan:true}` (structure + loudness gates), `verify_window` (render
   the whole project, gate ONE beat window's promoted stats), `render_and_verify`

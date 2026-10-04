@@ -26,15 +26,16 @@
    "note": "32 DX7-style operator arrangements (0..31); individual arrangements are not enumerated in source (PsyFmAlgorithms covers the psy_fm sibling, not this engine).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:237",
+   "source": "src/engine/TrackFXSlot.h:255",
    "sources": [
-    "src/engine/TrackFXSlot.h:237"
+    "src/engine/TrackFXSlot.h:255"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "enum"
   },
   {
    "category": "fm-synth",
@@ -48,15 +49,16 @@
    "name": "Feedback",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:238",
+   "source": "src/engine/TrackFXSlot.h:256",
    "sources": [
-    "src/engine/TrackFXSlot.h:238"
+    "src/engine/TrackFXSlot.h:256"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -70,15 +72,16 @@
    "name": "Output Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:239",
+   "source": "src/engine/TrackFXSlot.h:257",
    "sources": [
-    "src/engine/TrackFXSlot.h:239"
+    "src/engine/TrackFXSlot.h:257"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -92,15 +95,16 @@
    "name": "OP1 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:240",
+   "source": "src/engine/TrackFXSlot.h:258",
    "sources": [
-    "src/engine/TrackFXSlot.h:240"
+    "src/engine/TrackFXSlot.h:258"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -114,15 +118,16 @@
    "name": "OP2 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:241",
+   "source": "src/engine/TrackFXSlot.h:259",
    "sources": [
-    "src/engine/TrackFXSlot.h:241"
+    "src/engine/TrackFXSlot.h:259"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -136,15 +141,16 @@
    "name": "OP3 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:242",
+   "source": "src/engine/TrackFXSlot.h:260",
    "sources": [
-    "src/engine/TrackFXSlot.h:242"
+    "src/engine/TrackFXSlot.h:260"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -158,15 +164,16 @@
    "name": "OP4 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:243",
+   "source": "src/engine/TrackFXSlot.h:261",
    "sources": [
-    "src/engine/TrackFXSlot.h:243"
+    "src/engine/TrackFXSlot.h:261"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -180,15 +187,16 @@
    "name": "OP5 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:244",
+   "source": "src/engine/TrackFXSlot.h:262",
    "sources": [
-    "src/engine/TrackFXSlot.h:244"
+    "src/engine/TrackFXSlot.h:262"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -202,15 +210,16 @@
    "name": "OP6 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:245",
+   "source": "src/engine/TrackFXSlot.h:263",
    "sources": [
-    "src/engine/TrackFXSlot.h:245"
+    "src/engine/TrackFXSlot.h:263"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -224,15 +233,16 @@
    "name": "OP1 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:246",
+   "source": "src/engine/TrackFXSlot.h:264",
    "sources": [
-    "src/engine/TrackFXSlot.h:246"
+    "src/engine/TrackFXSlot.h:264"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -246,15 +256,16 @@
    "name": "OP2 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:247",
+   "source": "src/engine/TrackFXSlot.h:265",
    "sources": [
-    "src/engine/TrackFXSlot.h:247"
+    "src/engine/TrackFXSlot.h:265"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -268,15 +279,16 @@
    "name": "OP3 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:248",
+   "source": "src/engine/TrackFXSlot.h:266",
    "sources": [
-    "src/engine/TrackFXSlot.h:248"
+    "src/engine/TrackFXSlot.h:266"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -290,15 +302,16 @@
    "name": "OP4 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:249",
+   "source": "src/engine/TrackFXSlot.h:267",
    "sources": [
-    "src/engine/TrackFXSlot.h:249"
+    "src/engine/TrackFXSlot.h:267"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -312,15 +325,16 @@
    "name": "OP5 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:250",
+   "source": "src/engine/TrackFXSlot.h:268",
    "sources": [
-    "src/engine/TrackFXSlot.h:250"
+    "src/engine/TrackFXSlot.h:268"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -334,15 +348,16 @@
    "name": "OP6 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:251",
+   "source": "src/engine/TrackFXSlot.h:269",
    "sources": [
-    "src/engine/TrackFXSlot.h:251"
+    "src/engine/TrackFXSlot.h:269"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -356,15 +371,16 @@
    "name": "OP1 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:252",
+   "source": "src/engine/TrackFXSlot.h:270",
    "sources": [
-    "src/engine/TrackFXSlot.h:252"
+    "src/engine/TrackFXSlot.h:270"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -378,15 +394,16 @@
    "name": "OP2 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:253",
+   "source": "src/engine/TrackFXSlot.h:271",
    "sources": [
-    "src/engine/TrackFXSlot.h:253"
+    "src/engine/TrackFXSlot.h:271"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -400,15 +417,16 @@
    "name": "OP3 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:254",
+   "source": "src/engine/TrackFXSlot.h:272",
    "sources": [
-    "src/engine/TrackFXSlot.h:254"
+    "src/engine/TrackFXSlot.h:272"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -422,15 +440,16 @@
    "name": "OP4 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:255",
+   "source": "src/engine/TrackFXSlot.h:273",
    "sources": [
-    "src/engine/TrackFXSlot.h:255"
+    "src/engine/TrackFXSlot.h:273"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -444,15 +463,16 @@
    "name": "OP5 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:256",
+   "source": "src/engine/TrackFXSlot.h:274",
    "sources": [
-    "src/engine/TrackFXSlot.h:256"
+    "src/engine/TrackFXSlot.h:274"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -466,15 +486,16 @@
    "name": "OP6 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:257",
+   "source": "src/engine/TrackFXSlot.h:275",
    "sources": [
-    "src/engine/TrackFXSlot.h:257"
+    "src/engine/TrackFXSlot.h:275"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ratio"
   },
   {
    "category": "fm-synth",
@@ -488,15 +509,16 @@
    "name": "LFO Rate",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:258",
+   "source": "src/engine/TrackFXSlot.h:276",
    "sources": [
-    "src/engine/TrackFXSlot.h:258"
+    "src/engine/TrackFXSlot.h:276"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -510,15 +532,16 @@
    "name": "LFO Delay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:259",
+   "source": "src/engine/TrackFXSlot.h:277",
    "sources": [
-    "src/engine/TrackFXSlot.h:259"
+    "src/engine/TrackFXSlot.h:277"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -532,15 +555,16 @@
    "name": "LFO Pitch Depth",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:260",
+   "source": "src/engine/TrackFXSlot.h:278",
    "sources": [
-    "src/engine/TrackFXSlot.h:260"
+    "src/engine/TrackFXSlot.h:278"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -554,15 +578,16 @@
    "name": "LFO Amp Depth",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:261",
+   "source": "src/engine/TrackFXSlot.h:279",
    "sources": [
-    "src/engine/TrackFXSlot.h:261"
+    "src/engine/TrackFXSlot.h:279"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "fm-synth",
@@ -577,15 +602,16 @@
    "note": "0..3 enum; values are not enumerated in FmSynthEngine source - treat as undocumented.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:262",
+   "source": "src/engine/TrackFXSlot.h:280",
    "sources": [
-    "src/engine/TrackFXSlot.h:262"
+    "src/engine/TrackFXSlot.h:280"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "enum"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

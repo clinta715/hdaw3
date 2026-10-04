@@ -25,15 +25,16 @@
    "name": "Frequency",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:137",
+   "source": "src/engine/TrackFXSlot.h:155",
    "sources": [
-    "src/engine/TrackFXSlot.h:137"
+    "src/engine/TrackFXSlot.h:155"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "eq",
@@ -47,15 +48,16 @@
    "name": "Q",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:138",
+   "source": "src/engine/TrackFXSlot.h:156",
    "sources": [
-    "src/engine/TrackFXSlot.h:138"
+    "src/engine/TrackFXSlot.h:156"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "eq",
@@ -69,15 +71,16 @@
    "name": "Gain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:139",
+   "source": "src/engine/TrackFXSlot.h:157",
    "sources": [
-    "src/engine/TrackFXSlot.h:139"
+    "src/engine/TrackFXSlot.h:157"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "db"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

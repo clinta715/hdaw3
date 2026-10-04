@@ -23,6 +23,14 @@
 #include "../../common/AutomationPresetRequest.h"
 #include "../../common/MasterFxAccess.h"
 #include "../../common/MovementPlanJson.h"
+// TRACK-FX-SLOT compressor sidechain v1: the ONE reader/body/command call the
+// project.setFxSidechain route shares with the MCP set_fx_sidechain tool, so
+// the payload and every refusal are byte-identical by construction.
+#include "../../common/FxSidechain.h"
+// Slice C (2026-10-02): the ONE intent resolver the MCP setters
+// (set_internal_fx_param / set_fx_param) also call, so project.setFxSlotParam
+// resolves — and refuses — with byte-identical text.
+#include "../../common/IntentResolve.h"
 // The two engine-context routes below (removeTrack's dryRun/force guard,
 // addTrackWithFx's composite) run the SAME shared bodies the MCP tools run, so
 // both surfaces agree by construction:
@@ -606,7 +614,44 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
     }
     if (m == "removeFxSlot")        { int i, s; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required"); c.removeFxSlot(i, s); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotBypassed")   { int i, s; bool b; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
-    if (m == "setFxSlotParam")      { int i, s, p; float v; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr) || !requireInt(o, "paramIndex", p, nullptr) || !requireFloat(o, "value", v, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, paramIndex, value required"); c.setFxSlotParam(i, s, p, v); return { false, QJsonValue::Null }; }
+    if (m == "setFxSlotParam") {
+        int i, s; float v; DispatchResult err;
+        if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
+            || !requireInt(o, "slotIndex", s, nullptr)
+            || !requireFloat(o, "value", v, nullptr))
+            return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, paramIndex, value required");
+        // Slice C: an intent is an ALTERNATIVE to paramIndex (real units, the
+        // MCP set_internal_fx_param twin). The slot's fxType is read off the FX
+        // node (the route holds ProjectCommands&, not a ReadModel) and the SAME
+        // shared resolver + the SAME refusal strings as
+        // HDAW::resolveInternalFxIntent / mcp::set_internal_fx_param run here, so
+        // both surfaces agree by construction. Nothing is written on a refusal.
+        const bool hasIntent = o.contains("intent") && !o.value("intent").toString().isEmpty();
+        if (hasIntent && !o.contains("paramIndex")) {
+            juce::String fxType;
+            if (i >= 0 && i < trackList.getNumChildren()) {
+                const auto chain = trackList.getChild(i).getChildWithName(IDs::FX_CHAIN);
+                if (s >= 0 && s < chain.getNumChildren())
+                    fxType = chain.getChild(s).getProperty(IDs::fxType, "").toString();
+            }
+            if (fxType.isEmpty())      return makeError(-32602, "slot not found");
+            if (fxType == "plugin" || fxType == "none")
+                return makeError(-32602, "slot is not an internal FX");
+            const auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxType);
+            const auto res  = HDAW::resolveInternalFxIntent(
+                fxType.toStdString(), o.value("intent").toString().toStdString());
+            if (!res.ok)               return makeError(-32602, QString::fromStdString(res.error));
+            if (res.paramIndex < 0 || res.paramIndex >= static_cast<int>(defs.size()))
+                return makeError(-32602, "param index out of range");
+            c.setFxSlotParam(i, s, res.paramIndex, v);
+            return { false, QJsonValue::Null };
+        }
+        int p;
+        if (!requireInt(o, "paramIndex", p, nullptr))
+            return makeError(-32602, "trackIndex, slotIndex, paramIndex, value required");
+        c.setFxSlotParam(i, s, p, v);
+        return { false, QJsonValue::Null };
+    }
     if (m == "clearPluginParamOverrides") {
         int i, s; DispatchResult err;
         if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"})
@@ -1338,6 +1383,23 @@ DispatchResult dispatchEndBatch(AudioEngine& engine, const QJsonValue& params)
     if (!r.ok)
         return makeError(r.errorCode, r.error);
     return { false, r.payload };
+}
+
+// project.setFxSidechain — the RPC twin of the MCP set_fx_sidechain tool
+// (TRACK-FX-SLOT compressor sidechain v1). It needs engine context because the
+// command is AudioEngineCommands::setFxSidechain (the concrete layer, not the
+// abstract ProjectCommands dispatchProject receives), so FrontendRouter routes
+// the method here BEFORE dispatchProject — the addTrackWithFx / removeTrack
+// precedent. The body is the SAME ONE shared reader the tool calls
+// (common/FxSidechain.h): read the argument object → call the command → hand
+// back its compact JSON payload or its refusal VERBATIM, so the surfaces cannot
+// drift on either. The refusal maps onto -32602 with the engine's own text
+// (never a reworded one), which is what the twin test compares byte for byte.
+DispatchResult dispatchSetFxSidechain(AudioEngine& engine, const QJsonValue& params)
+{
+    const auto r = HDAW::fxSidechainToolText(engine, paramsObject(params));
+    if (!r.ok) return makeError(-32602, r.text);
+    return { false, QJsonDocument::fromJson(r.text.toUtf8()).object() };
 }
 
 // project.addTrackWithFx {name, fxType?, pluginId?, color?, parentBus?} — the

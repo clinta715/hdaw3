@@ -25,15 +25,16 @@
    "name": "Output Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:407",
+   "source": "src/engine/TrackFXSlot.h:425",
    "sources": [
-    "src/engine/TrackFXSlot.h:407"
+    "src/engine/TrackFXSlot.h:425"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -47,15 +48,16 @@
    "name": "Kit Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:408",
+   "source": "src/engine/TrackFXSlot.h:426",
    "sources": [
-    "src/engine/TrackFXSlot.h:408"
+    "src/engine/TrackFXSlot.h:426"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -69,15 +71,16 @@
    "name": "Decay Scale",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:409",
+   "source": "src/engine/TrackFXSlot.h:427",
    "sources": [
-    "src/engine/TrackFXSlot.h:409"
+    "src/engine/TrackFXSlot.h:427"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -91,15 +94,16 @@
    "name": "Accent",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:410",
+   "source": "src/engine/TrackFXSlot.h:428",
    "sources": [
-    "src/engine/TrackFXSlot.h:410"
+    "src/engine/TrackFXSlot.h:428"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -127,15 +131,16 @@
    "note": "DrumSynthEngine::Instrument order; used when Note Map = Fixed (0).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:411",
+   "source": "src/engine/TrackFXSlot.h:429",
    "sources": [
-    "src/engine/TrackFXSlot.h:411"
+    "src/engine/TrackFXSlot.h:429"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "enum"
   },
   {
    "category": "drum-synth",
@@ -154,15 +159,16 @@
    "note": "Fixed is the DEFAULT: HDAW's own generators emit a key-derived kick pitch (diaRoot(keyRoot,2) = 36..47) and put one role per track, so GM resolution would misroute those notes. GM is for a single track carrying a real GM drum clip.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:412",
+   "source": "src/engine/TrackFXSlot.h:430",
    "sources": [
-    "src/engine/TrackFXSlot.h:412"
+    "src/engine/TrackFXSlot.h:430"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "boolean"
   },
   {
    "category": "drum-synth",
@@ -177,15 +183,16 @@
    "note": "0 = pitched voices (Kick/Tom Low/Tom Mid/Tom High) use their fixed base frequency; 1 = they follow the incoming note, so a key-derived kick tunes to the key.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:413",
+   "source": "src/engine/TrackFXSlot.h:431",
    "sources": [
-    "src/engine/TrackFXSlot.h:413"
+    "src/engine/TrackFXSlot.h:431"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "boolean"
   },
   {
    "category": "drum-synth",
@@ -199,15 +206,16 @@
    "name": "Kick Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:415",
+   "source": "src/engine/TrackFXSlot.h:433",
    "sources": [
-    "src/engine/TrackFXSlot.h:415"
+    "src/engine/TrackFXSlot.h:433"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -221,15 +229,16 @@
    "name": "Kick Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:416",
+   "source": "src/engine/TrackFXSlot.h:434",
    "sources": [
-    "src/engine/TrackFXSlot.h:416"
+    "src/engine/TrackFXSlot.h:434"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -243,15 +252,16 @@
    "name": "Kick Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:417",
+   "source": "src/engine/TrackFXSlot.h:435",
    "sources": [
-    "src/engine/TrackFXSlot.h:417"
+    "src/engine/TrackFXSlot.h:435"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -265,15 +275,16 @@
    "name": "Kick Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:418",
+   "source": "src/engine/TrackFXSlot.h:436",
    "sources": [
-    "src/engine/TrackFXSlot.h:418"
+    "src/engine/TrackFXSlot.h:436"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -287,15 +298,16 @@
    "name": "Snare Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:420",
+   "source": "src/engine/TrackFXSlot.h:438",
    "sources": [
-    "src/engine/TrackFXSlot.h:420"
+    "src/engine/TrackFXSlot.h:438"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -309,15 +321,16 @@
    "name": "Snare Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:421",
+   "source": "src/engine/TrackFXSlot.h:439",
    "sources": [
-    "src/engine/TrackFXSlot.h:421"
+    "src/engine/TrackFXSlot.h:439"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -331,15 +344,16 @@
    "name": "Snare Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:422",
+   "source": "src/engine/TrackFXSlot.h:440",
    "sources": [
-    "src/engine/TrackFXSlot.h:422"
+    "src/engine/TrackFXSlot.h:440"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -353,15 +367,16 @@
    "name": "Snare Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:423",
+   "source": "src/engine/TrackFXSlot.h:441",
    "sources": [
-    "src/engine/TrackFXSlot.h:423"
+    "src/engine/TrackFXSlot.h:441"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -375,15 +390,16 @@
    "name": "Clap Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:425",
+   "source": "src/engine/TrackFXSlot.h:443",
    "sources": [
-    "src/engine/TrackFXSlot.h:425"
+    "src/engine/TrackFXSlot.h:443"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -397,15 +413,16 @@
    "name": "Clap Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:426",
+   "source": "src/engine/TrackFXSlot.h:444",
    "sources": [
-    "src/engine/TrackFXSlot.h:426"
+    "src/engine/TrackFXSlot.h:444"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -419,15 +436,16 @@
    "name": "Clap Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:427",
+   "source": "src/engine/TrackFXSlot.h:445",
    "sources": [
-    "src/engine/TrackFXSlot.h:427"
+    "src/engine/TrackFXSlot.h:445"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -441,15 +459,16 @@
    "name": "Clap Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:428",
+   "source": "src/engine/TrackFXSlot.h:446",
    "sources": [
-    "src/engine/TrackFXSlot.h:428"
+    "src/engine/TrackFXSlot.h:446"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -463,15 +482,16 @@
    "name": "Rim Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:430",
+   "source": "src/engine/TrackFXSlot.h:448",
    "sources": [
-    "src/engine/TrackFXSlot.h:430"
+    "src/engine/TrackFXSlot.h:448"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -485,15 +505,16 @@
    "name": "Rim Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:431",
+   "source": "src/engine/TrackFXSlot.h:449",
    "sources": [
-    "src/engine/TrackFXSlot.h:431"
+    "src/engine/TrackFXSlot.h:449"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -507,15 +528,16 @@
    "name": "Rim Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:432",
+   "source": "src/engine/TrackFXSlot.h:450",
    "sources": [
-    "src/engine/TrackFXSlot.h:432"
+    "src/engine/TrackFXSlot.h:450"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -529,15 +551,16 @@
    "name": "Rim Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:433",
+   "source": "src/engine/TrackFXSlot.h:451",
    "sources": [
-    "src/engine/TrackFXSlot.h:433"
+    "src/engine/TrackFXSlot.h:451"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -551,15 +574,16 @@
    "name": "TomLow Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:435",
+   "source": "src/engine/TrackFXSlot.h:453",
    "sources": [
-    "src/engine/TrackFXSlot.h:435"
+    "src/engine/TrackFXSlot.h:453"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -573,15 +597,16 @@
    "name": "TomLow Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:436",
+   "source": "src/engine/TrackFXSlot.h:454",
    "sources": [
-    "src/engine/TrackFXSlot.h:436"
+    "src/engine/TrackFXSlot.h:454"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -595,15 +620,16 @@
    "name": "TomLow Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:437",
+   "source": "src/engine/TrackFXSlot.h:455",
    "sources": [
-    "src/engine/TrackFXSlot.h:437"
+    "src/engine/TrackFXSlot.h:455"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -617,15 +643,16 @@
    "name": "TomLow Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:438",
+   "source": "src/engine/TrackFXSlot.h:456",
    "sources": [
-    "src/engine/TrackFXSlot.h:438"
+    "src/engine/TrackFXSlot.h:456"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -639,15 +666,16 @@
    "name": "TomMid Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:440",
+   "source": "src/engine/TrackFXSlot.h:458",
    "sources": [
-    "src/engine/TrackFXSlot.h:440"
+    "src/engine/TrackFXSlot.h:458"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -661,15 +689,16 @@
    "name": "TomMid Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:441",
+   "source": "src/engine/TrackFXSlot.h:459",
    "sources": [
-    "src/engine/TrackFXSlot.h:441"
+    "src/engine/TrackFXSlot.h:459"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -683,15 +712,16 @@
    "name": "TomMid Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:442",
+   "source": "src/engine/TrackFXSlot.h:460",
    "sources": [
-    "src/engine/TrackFXSlot.h:442"
+    "src/engine/TrackFXSlot.h:460"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -705,15 +735,16 @@
    "name": "TomMid Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:443",
+   "source": "src/engine/TrackFXSlot.h:461",
    "sources": [
-    "src/engine/TrackFXSlot.h:443"
+    "src/engine/TrackFXSlot.h:461"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -727,15 +758,16 @@
    "name": "TomHigh Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:445",
+   "source": "src/engine/TrackFXSlot.h:463",
    "sources": [
-    "src/engine/TrackFXSlot.h:445"
+    "src/engine/TrackFXSlot.h:463"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -749,15 +781,16 @@
    "name": "TomHigh Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:446",
+   "source": "src/engine/TrackFXSlot.h:464",
    "sources": [
-    "src/engine/TrackFXSlot.h:446"
+    "src/engine/TrackFXSlot.h:464"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -771,15 +804,16 @@
    "name": "TomHigh Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:447",
+   "source": "src/engine/TrackFXSlot.h:465",
    "sources": [
-    "src/engine/TrackFXSlot.h:447"
+    "src/engine/TrackFXSlot.h:465"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -793,15 +827,16 @@
    "name": "TomHigh Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:448",
+   "source": "src/engine/TrackFXSlot.h:466",
    "sources": [
-    "src/engine/TrackFXSlot.h:448"
+    "src/engine/TrackFXSlot.h:466"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -815,15 +850,16 @@
    "name": "ClosedHat Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:450",
+   "source": "src/engine/TrackFXSlot.h:468",
    "sources": [
-    "src/engine/TrackFXSlot.h:450"
+    "src/engine/TrackFXSlot.h:468"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -837,15 +873,16 @@
    "name": "ClosedHat Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:451",
+   "source": "src/engine/TrackFXSlot.h:469",
    "sources": [
-    "src/engine/TrackFXSlot.h:451"
+    "src/engine/TrackFXSlot.h:469"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -859,15 +896,16 @@
    "name": "ClosedHat Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:452",
+   "source": "src/engine/TrackFXSlot.h:470",
    "sources": [
-    "src/engine/TrackFXSlot.h:452"
+    "src/engine/TrackFXSlot.h:470"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -881,15 +919,16 @@
    "name": "ClosedHat Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:453",
+   "source": "src/engine/TrackFXSlot.h:471",
    "sources": [
-    "src/engine/TrackFXSlot.h:453"
+    "src/engine/TrackFXSlot.h:471"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -903,15 +942,16 @@
    "name": "OpenHat Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:455",
+   "source": "src/engine/TrackFXSlot.h:473",
    "sources": [
-    "src/engine/TrackFXSlot.h:455"
+    "src/engine/TrackFXSlot.h:473"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -925,15 +965,16 @@
    "name": "OpenHat Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:456",
+   "source": "src/engine/TrackFXSlot.h:474",
    "sources": [
-    "src/engine/TrackFXSlot.h:456"
+    "src/engine/TrackFXSlot.h:474"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -947,15 +988,16 @@
    "name": "OpenHat Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:457",
+   "source": "src/engine/TrackFXSlot.h:475",
    "sources": [
-    "src/engine/TrackFXSlot.h:457"
+    "src/engine/TrackFXSlot.h:475"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -969,15 +1011,16 @@
    "name": "OpenHat Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:458",
+   "source": "src/engine/TrackFXSlot.h:476",
    "sources": [
-    "src/engine/TrackFXSlot.h:458"
+    "src/engine/TrackFXSlot.h:476"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -991,15 +1034,16 @@
    "name": "Crash Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:460",
+   "source": "src/engine/TrackFXSlot.h:478",
    "sources": [
-    "src/engine/TrackFXSlot.h:460"
+    "src/engine/TrackFXSlot.h:478"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1013,15 +1057,16 @@
    "name": "Crash Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:461",
+   "source": "src/engine/TrackFXSlot.h:479",
    "sources": [
-    "src/engine/TrackFXSlot.h:461"
+    "src/engine/TrackFXSlot.h:479"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -1035,15 +1080,16 @@
    "name": "Crash Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:462",
+   "source": "src/engine/TrackFXSlot.h:480",
    "sources": [
-    "src/engine/TrackFXSlot.h:462"
+    "src/engine/TrackFXSlot.h:480"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1057,15 +1103,16 @@
    "name": "Crash Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:463",
+   "source": "src/engine/TrackFXSlot.h:481",
    "sources": [
-    "src/engine/TrackFXSlot.h:463"
+    "src/engine/TrackFXSlot.h:481"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1079,15 +1126,16 @@
    "name": "Ride Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:465",
+   "source": "src/engine/TrackFXSlot.h:483",
    "sources": [
-    "src/engine/TrackFXSlot.h:465"
+    "src/engine/TrackFXSlot.h:483"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1101,15 +1149,16 @@
    "name": "Ride Tune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:466",
+   "source": "src/engine/TrackFXSlot.h:484",
    "sources": [
-    "src/engine/TrackFXSlot.h:466"
+    "src/engine/TrackFXSlot.h:484"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "semitones"
   },
   {
    "category": "drum-synth",
@@ -1123,15 +1172,16 @@
    "name": "Ride Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:467",
+   "source": "src/engine/TrackFXSlot.h:485",
    "sources": [
-    "src/engine/TrackFXSlot.h:467"
+    "src/engine/TrackFXSlot.h:485"
    ],
    "stages": [
     "sound-selector"
    ],
    "tier": "identity",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1145,15 +1195,16 @@
    "name": "Ride Tone",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:468",
+   "source": "src/engine/TrackFXSlot.h:486",
    "sources": [
-    "src/engine/TrackFXSlot.h:468"
+    "src/engine/TrackFXSlot.h:486"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1167,15 +1218,16 @@
    "name": "Kick Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:471",
+   "source": "src/engine/TrackFXSlot.h:489",
    "sources": [
-    "src/engine/TrackFXSlot.h:471"
+    "src/engine/TrackFXSlot.h:489"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1189,15 +1241,16 @@
    "name": "Snare Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:472",
+   "source": "src/engine/TrackFXSlot.h:490",
    "sources": [
-    "src/engine/TrackFXSlot.h:472"
+    "src/engine/TrackFXSlot.h:490"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1211,15 +1264,16 @@
    "name": "Clap Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:473",
+   "source": "src/engine/TrackFXSlot.h:491",
    "sources": [
-    "src/engine/TrackFXSlot.h:473"
+    "src/engine/TrackFXSlot.h:491"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1233,15 +1287,16 @@
    "name": "Rim Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:474",
+   "source": "src/engine/TrackFXSlot.h:492",
    "sources": [
-    "src/engine/TrackFXSlot.h:474"
+    "src/engine/TrackFXSlot.h:492"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1255,15 +1310,16 @@
    "name": "Tom Low Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:475",
+   "source": "src/engine/TrackFXSlot.h:493",
    "sources": [
-    "src/engine/TrackFXSlot.h:475"
+    "src/engine/TrackFXSlot.h:493"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1277,15 +1333,16 @@
    "name": "Tom Mid Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:476",
+   "source": "src/engine/TrackFXSlot.h:494",
    "sources": [
-    "src/engine/TrackFXSlot.h:476"
+    "src/engine/TrackFXSlot.h:494"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1299,15 +1356,16 @@
    "name": "Tom High Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:477",
+   "source": "src/engine/TrackFXSlot.h:495",
    "sources": [
-    "src/engine/TrackFXSlot.h:477"
+    "src/engine/TrackFXSlot.h:495"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1321,15 +1379,16 @@
    "name": "Closed Hat Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:478",
+   "source": "src/engine/TrackFXSlot.h:496",
    "sources": [
-    "src/engine/TrackFXSlot.h:478"
+    "src/engine/TrackFXSlot.h:496"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1343,15 +1402,16 @@
    "name": "Open Hat Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:479",
+   "source": "src/engine/TrackFXSlot.h:497",
    "sources": [
-    "src/engine/TrackFXSlot.h:479"
+    "src/engine/TrackFXSlot.h:497"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1365,15 +1425,16 @@
    "name": "Crash Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:480",
+   "source": "src/engine/TrackFXSlot.h:498",
    "sources": [
-    "src/engine/TrackFXSlot.h:480"
+    "src/engine/TrackFXSlot.h:498"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1387,15 +1448,16 @@
    "name": "Ride Send",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:481",
+   "source": "src/engine/TrackFXSlot.h:499",
    "sources": [
-    "src/engine/TrackFXSlot.h:481"
+    "src/engine/TrackFXSlot.h:499"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1410,15 +1472,16 @@
    "name": "Send Delay Time (beats)",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:483",
+   "source": "src/engine/TrackFXSlot.h:501",
    "sources": [
-    "src/engine/TrackFXSlot.h:483"
+    "src/engine/TrackFXSlot.h:501"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "beats"
   },
   {
    "category": "drum-synth",
@@ -1433,15 +1496,16 @@
    "name": "Send Delay Feedback",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:484",
+   "source": "src/engine/TrackFXSlot.h:502",
    "sources": [
-    "src/engine/TrackFXSlot.h:484"
+    "src/engine/TrackFXSlot.h:502"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1456,15 +1520,16 @@
    "name": "Send Delay Mix",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:485",
+   "source": "src/engine/TrackFXSlot.h:503",
    "sources": [
-    "src/engine/TrackFXSlot.h:485"
+    "src/engine/TrackFXSlot.h:503"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "drum-synth",
@@ -1479,15 +1544,16 @@
    "name": "Send Reverb Size",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:486",
+   "source": "src/engine/TrackFXSlot.h:504",
    "sources": [
-    "src/engine/TrackFXSlot.h:486"
+    "src/engine/TrackFXSlot.h:504"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "seconds"
   },
   {
    "category": "drum-synth",
@@ -1502,15 +1568,16 @@
    "name": "Send Reverb Mix",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:487",
+   "source": "src/engine/TrackFXSlot.h:505",
    "sources": [
-    "src/engine/TrackFXSlot.h:487"
+    "src/engine/TrackFXSlot.h:505"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

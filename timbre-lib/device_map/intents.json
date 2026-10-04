@@ -127,6 +127,23 @@
     { "id": "unnamed-dump-field", "regex": "^off_[0-9]+$", "reason": "unnamed-dump-field", "note": "Harvested matrix-sheet placeholder for an unnamed dump offset; no decoder name or intent is known for it." }
   ],
 
+  "unitVocabulary": ["scalar", "boolean", "enum", "seconds", "ms", "hz", "cents", "semitones", "db", "ratio", "beats"],
+  "unitVocabularyNote": "Closed vocabulary for a device param's `unit` (slice B of the device-param standardization). `scalar` = a dimensionless 0..1-ish control or an unclassified real. INTERNAL engines only: VA engines (je8086, nodalred2x, xenia, virus, vavra) carry no `unit` key, so their payloads stay byte-stable. The unit is a DECLARED convention derived from the param name/table, NOT a re-derivation of engine ranges.",
+
+  "unitRules": [
+    { "id": "beats",     "match": ["(beats)"] },
+    { "id": "db",        "match": [" db", "db)"] },
+    { "id": "hz",        "match": ["cutoff", "fundamental hz", "rate hz", "frequency"] },
+    { "id": "cents",     "match": ["detune"] },
+    { "id": "semitones", "match": ["tune"] },
+    { "id": "ratio",     "match": ["ratio"] },
+    { "id": "ms",        "match": [" ms", "ms)"] },
+    { "id": "seconds",   "match": ["attack", "decay", "release", "portamento", "glide", "delay time", "reverb size", "hold"] },
+    { "id": "enum",      "match": ["wave", "type", "mode", "division", "shape", "algorithm", "voice", "note map", "step rate"] },
+    { "id": "boolean",   "match": ["enable", "legato", "polyphony", "reverse", "key track", "sync", "slope", "ping-pong", "ping pong", "switch"] }
+  ],
+  "unitRulesNote": "DEFAULT name grammar, evaluated in order (first match wins); `match` is a case-insensitive substring of the param name. Engine `unitRules` are evaluated BEFORE these (per-engine exceptions), and `paramUnitOverrides` beat both. Anything unmatched is `scalar`. Two matches are SPACE-anchored on purpose: `db` is \" db\"/\"db)\" so it cannot match \"feeDBack\" (Feedback is a 0..1 scalar), and `ms` is \" ms\"/\"ms)\" so it cannot match \"Bars\"/\"...Motif\" while still catching \"Attack ms\". The `ms` rule precedes `seconds` so a millisecond envelope stage wins over the generic attack/decay/release rule.",
+
   "engineOverrides": {
     "je8086": {
       "appliesVia": "set_fx_param",
@@ -187,6 +204,10 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "eq", "match": ["frequency", "q", "gain"], "category": "eq" }],
         "categoryDefaults": { "eq": { "tier": "identity", "intents": ["eq-shape"] } },
+        "unitRules": [
+          { "id": "eq-Q",    "match": ["q"],     "unit": "scalar" },
+          { "id": "eq-gain", "match": ["gain"],  "unit": "db" }
+        ],
         "intentRules": [
           { "id": "eq-freq", "match": ["frequency"], "intents": ["filter-sweep"], "tier": "movement" },
           { "id": "eq-gain", "match": ["gain"], "intents": ["filter-sweep"], "tier": "movement" }
@@ -198,6 +219,12 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "comp", "match": ["threshold", "ratio", "attack", "release"], "category": "compressor" }],
         "categoryDefaults": { "compressor": { "tier": "movement", "intents": ["compressor-shape"] } },
+        "unitRules": [
+          { "id": "comp-threshold", "match": ["threshold"], "unit": "db" },
+          { "id": "comp-ratio",     "match": ["ratio"],     "unit": "ratio" },
+          { "id": "comp-attack-ms", "match": ["attack"],    "unit": "ms" },
+          { "id": "comp-release-ms","match": ["release"],   "unit": "ms" }
+        ],
         "intentRules": []
       },
       "reverb": {
@@ -236,6 +263,10 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "cho", "match": ["rate", "depth", "delay", "feedback", "mix"], "category": "chorus" }],
         "categoryDefaults": { "chorus": { "tier": "movement", "intents": ["chorus-motion"] } },
+        "unitRules": [
+          { "id": "cho-rate",  "match": ["rate"],         "unit": "hz" },
+          { "id": "cho-delay", "match": ["centre delay"], "unit": "ms" }
+        ],
         "intentRules": [
           { "id": "cho-mix", "match": ["mix"], "intents": ["fx-mix"], "tier": "movement" }
         ]
@@ -246,6 +277,10 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "fla", "match": ["rate", "depth", "delay", "feedback", "mix"], "category": "flanger" }],
         "categoryDefaults": { "flanger": { "tier": "movement", "intents": ["chorus-motion"] } },
+        "unitRules": [
+          { "id": "fla-rate",  "match": ["rate"],         "unit": "hz" },
+          { "id": "fla-delay", "match": ["centre delay"], "unit": "ms" }
+        ],
         "intentRules": [
           { "id": "fla-mix", "match": ["mix"], "intents": ["fx-mix"], "tier": "movement" }
         ]
@@ -256,6 +291,9 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "pha", "match": ["rate", "depth", "frequency", "feedback", "mix"], "category": "phaser" }],
         "categoryDefaults": { "phaser": { "tier": "movement", "intents": ["phaser-sweep"] } },
+        "unitRules": [
+          { "id": "pha-rate", "match": ["rate"], "unit": "hz" }
+        ],
         "intentRules": [
           { "id": "pha-mix", "match": ["mix"], "intents": ["fx-mix"], "tier": "movement" }
         ]
@@ -297,6 +335,9 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "smp", "match": ["attack", "decay", "sustain", "release", "hold", "transpose", "samplestart", "sampleend", "glide", "reverse"], "category": "sampler" }],
         "categoryDefaults": { "sampler": { "tier": "identity", "intents": ["amp-env"] } },
+        "unitRules": [
+          { "id": "smp-transpose", "match": ["transpose"], "unit": "semitones" }
+        ],
         "intentRules": [
           { "id": "smp-transpose", "match": ["transpose"], "intents": ["sample-transpose"], "tier": "identity" },
           { "id": "smp-region", "match": ["samplestart", "sampleend"], "intents": ["sample-region"], "tier": "identity" },
@@ -314,6 +355,14 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render. Raw DX7 patches additionally load via fm_synth_import_sysex / load_preset.",
         "categoryRules": [{ "id": "fm", "match": ["algorithm", "feedback", "op", "level", "coarse", "fine", "lfo"], "category": "fm-synth" }],
         "categoryDefaults": { "fm-synth": { "tier": "movement", "intents": ["fm-metal"] } },
+        "unitRules": [
+          { "id": "fm-coarse",     "match": ["coarse"],          "unit": "ratio" },
+          { "id": "fm-fine",       "match": ["fine"],            "unit": "ratio" },
+          { "id": "fm-lfo-rate",   "match": ["lfo rate"],        "unit": "scalar" },
+          { "id": "fm-lfo-delay",  "match": ["lfo delay"],       "unit": "scalar" },
+          { "id": "fm-lfo-pitch",  "match": ["lfo pitch depth"], "unit": "scalar" },
+          { "id": "fm-lfo-amp",    "match": ["lfo amp depth"],   "unit": "scalar" }
+        ],
         "intentRules": [
           { "id": "fm-alg", "match": ["algorithm"], "intents": ["fm-metal"], "tier": "movement" },
           { "id": "fm-fb", "match": ["feedback"], "intents": ["fm-metal"], "tier": "movement" },
@@ -335,6 +384,11 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "gb", "match": ["hz", "mod", "clip", "drive", "asymmetry", "bits", "filter", "attack", "decay", "sustain", "release", "output", "unison", "jitter", "formant", "sidechain"], "category": "growl-bass" }],
         "categoryDefaults": { "growl-bass": { "tier": "movement", "intents": ["fm-metal"] } },
+        "unitRules": [
+          { "id": "gb-unison-voices", "match": ["unison voices"], "unit": "scalar" },
+          { "id": "gb-ratio-jitter",  "match": ["ratio jitter"],  "unit": "scalar" },
+          { "id": "gb-sc-drive",      "match": ["sidechain drive"], "unit": "boolean" }
+        ],
         "intentRules": [
           { "id": "gb-fund", "match": ["fundamental hz"], "intents": ["osc-mix"], "tier": "identity" },
           { "id": "gb-clip", "match": ["clip type"], "intents": ["distortion-drive"], "tier": "movement" },
@@ -362,6 +416,10 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "pa", "match": ["osc", "unison", "pattern", "octave", "bars", "filter", "delay", "reverb", "phaser", "output", "step"], "category": "psyarp" }],
         "categoryDefaults": { "psyarp": { "tier": "movement", "intents": ["filter-sweep"] } },
+        "unitRules": [
+          { "id": "pa-unison-voices", "match": ["unison voices"], "unit": "scalar" },
+          { "id": "pa-phaser-rate",   "match": ["phaser rate"],   "unit": "hz" }
+        ],
         "intentRules": [
           { "id": "pa-shape", "match": ["osc shape"], "intents": ["osc-wave"], "tier": "identity" },
           { "id": "pa-unison", "match": ["unison"], "intents": ["detune-width"], "tier": "identity" },
@@ -392,6 +450,10 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "pf", "match": ["op", "feedback", "output", "algorithm"], "category": "psy-fm" }],
         "categoryDefaults": { "psy-fm": { "tier": "movement", "intents": ["fm-metal"] } },
+        "unitRules": [],
+        "paramUnitOverrides": {
+          "Feedback": { "unit": "scalar", "note": "Feedback is the 0..1 waveshaper amount (not decibels), pinned explicitly because feedback names collide with the `db` substring rule." }
+        },
         "intentRules": [
           { "id": "pf-alg", "match": ["algorithm preset"], "intents": ["fx-type"], "tier": "identity" },
           { "id": "pf-fb", "match": ["feedback"], "intents": ["fm-metal"], "tier": "movement" },
@@ -410,6 +472,10 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render. Virus SysEx patches additionally load via sub_synth_import_sysex.",
         "categoryRules": [{ "id": "ss", "match": ["osc", "sub", "cutoff", "resonance", "drive", "attack", "decay", "sustain", "release", "output", "legato", "portamento", "filter", "pitch", "polyphony", "lfo"], "category": "sub-synth" }],
         "categoryDefaults": { "sub-synth": { "tier": "identity", "intents": ["osc-mix"] } },
+        "unitRules": [
+          { "id": "ss-lfo-rate", "match": ["lfo rate"], "unit": "hz" },
+          { "id": "ss-lfo-amt-scalar", "match": ["lfo cutoff amt", "lfo pitch amt", "lfo amp amt", "lfo fm amt"], "unit": "scalar" }
+        ],
         "intentRules": [
           { "id": "ss-wave", "match": ["osc1 wave", "osc2 wave"], "intents": ["osc-wave"], "tier": "identity" },
           { "id": "ss-level", "match": ["osc1 level", "osc2 level", "sub level", "sub octave"], "intents": ["osc-mix"], "tier": "identity" },
@@ -450,6 +516,11 @@
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
         "categoryRules": [{ "id": "ds", "match": ["level", "tune", "decay", "tone", "accent", "voice", "note map", "key track", "output", "send", "delay", "reverb"], "category": "drum-synth" }],
         "categoryDefaults": { "drum-synth": { "tier": "identity", "intents": ["amp-env"] } },
+        "unitRules": [
+          { "id": "ds-decay-tone-scalar", "match": ["decay", "tone"], "unit": "scalar" },
+          { "id": "ds-tune-semitones",    "match": ["tune"],          "unit": "semitones" },
+          { "id": "ds-note-map-bool",     "match": ["note map"],      "unit": "boolean" }
+        ],
         "intentRules": [
           { "id": "ds-level", "match": ["level", "accent"], "intents": ["mix-balance"], "tier": "identity" },
           { "id": "ds-tune", "match": ["tune"], "intents": ["sample-transpose"], "tier": "identity" },

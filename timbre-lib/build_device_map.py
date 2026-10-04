@@ -260,6 +260,24 @@ def classify(name: str, cat_rules, intent_rules, category_defaults):
     return category, intents, tier, matched_rules
 
 
+def resolve_unit(name: str, engine_rules, overrides, default_rules):
+    """Unit for an INTERNAL-engine param, declared by name convention:
+    explicit paramUnitOverrides[name] > first matching per-engine unitRules
+    entry > first matching top-level unitRules entry > "scalar". Rules are
+    ordered; `match` is a case-insensitive substring. This is a CONVENTION
+    layer (slice B) — it never re-derives or changes an engine's range."""
+    if name in overrides:
+        spec = overrides[name]
+        return spec["unit"] if isinstance(spec, dict) else spec
+    lc = name.lower()
+    for rule in list(engine_rules) + list(default_rules):
+        if match_any(lc, rule.get("match", [])):
+            # Top-level grammar rules are `{ "id": "<unit>", "match": [...] }`
+            # (id IS the unit); per-engine rules carry an explicit `unit`.
+            return rule.get("unit") or rule["id"]
+    return "scalar"
+
+
 def build_engine(engine: str, intent_cfg: dict):
     sheet_names, roles, patch_count = load_sheet(engine)
     index_map, unmatched = load_index_map(engine)
@@ -359,6 +377,9 @@ def build_internal_engine(engine: str, spec: dict, slot_tables: dict,
     intent_rules = cfg.get("intentRules") or []
     category_defaults = cfg.get("categoryDefaults") or {}
     param_notes = cfg.get("paramNotes") or {}
+    unit_rules = cfg.get("unitRules") or []
+    unit_default_rules = intent_cfg.get("unitRules") or []
+    unit_overrides = cfg.get("paramUnitOverrides") or {}
 
     rows = parse_internal_table(engine, spec, slot_tables)
     entries = []
@@ -377,6 +398,8 @@ def build_internal_engine(engine: str, spec: dict, slot_tables: dict,
             "offset": None,
             "category": category,
             "tier": tier,
+            "unit": resolve_unit(name, unit_rules, unit_overrides,
+                                 unit_default_rules),
             "intents": intents,
             "stages": STAGE_BY_TIER[tier],
             "roles": [],
@@ -444,10 +467,16 @@ def build_index(docs, intent_cfg):
     }
 
 
-def validate(doc):
+def validate(doc, unit_vocab=None):
     errs = []
     if doc["schema"] != MAP_SCHEMA:
         errs.append("bad schema")
+    # Internal-engine docs are generated from the static C++ tables; they MUST
+    # declare a unit per param, from the closed unitVocabulary. VA docs are
+    # corpus-derived and stay unit-free (byte-stability by construction).
+    is_internal = "tables" in (doc.get("source") or {})
+    if is_internal and not unit_vocab:
+        errs.append("no unitVocabulary available for an internal-engine doc")
     for e in doc["params"]:
         if not e["name"]:
             errs.append("empty name")
@@ -462,6 +491,13 @@ def validate(doc):
         if "default" in e and not (e["min"] <= e["default"] <= e["max"]):
             errs.append(f"{e['name']}: default {e['default']} outside"
                         f" [{e['min']}, {e['max']}]")
+        if is_internal:
+            unit = e.get("unit")
+            if not unit:
+                errs.append(f"{e['name']}: missing unit")
+            elif unit not in unit_vocab:
+                errs.append(f"{e['name']}: unknown unit '{unit}'"
+                            f" (not in unitVocabulary)")
     return errs
 
 
@@ -487,8 +523,12 @@ def main():
     for engine, spec in INTERNAL_ENGINES.items():
         docs.append(build_internal_engine(engine, spec, slot_tables,
                                           intent_cfg, tables_cfg))
+    unit_vocab = set(intent_cfg.get("unitVocabulary") or [])
+    if not unit_vocab:
+        print("VALIDATION FAIL: intents.json has no unitVocabulary", file=sys.stderr)
+        return 1
     for d in docs:
-        errs = validate(d)
+        errs = validate(d, unit_vocab)
         if errs:
             for e in errs:
                 print(f"VALIDATION FAIL {d['engine']}: {e}", file=sys.stderr)

@@ -315,6 +315,11 @@ inline QJsonObject toJson(const InternalFxParamSnapshot& p) {
         { "minValue",      static_cast<double>(p.minValue) },
         { "maxValue",      static_cast<double>(p.maxValue) },
         { "defaultValue",  static_cast<double>(p.defaultValue) },
+        // Slice A: the same values on the 0..1 axis the setters accept
+        // (set_fx_param / project.setFxSlotParam's normalized twin). Additive —
+        // every real-unit field above keeps its name and units.
+        { "valueNormalized",   static_cast<double>(p.valueNormalized) },
+        { "defaultNormalized", static_cast<double>(p.defaultNormalized) },
     };
 }
 

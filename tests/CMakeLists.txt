@@ -185,6 +185,7 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/meter_test.cpp
     unit/engine/punch_test.cpp
     unit/engine/send_test.cpp
+    unit/engine/sidechain_test.cpp
     unit/engine/file_library_test.cpp
     unit/engine/file_library_patch_test.cpp
     unit/engine/library_clusterer_test.cpp
@@ -216,6 +217,8 @@ hdaw_test_exe(hdaw_tests_mcp SOURCES
     integration/mcp/matrix_presets_rpc_test.cpp
     integration/mcp/plugin_param_persist_test.cpp
     integration/mcp/device_params_test.cpp
+    integration/mcp/sidechain_parity_test.cpp
+    integration/mcp/internal_fx_intent_test.cpp
 )
 
 # frontend: 22 TUs — JSON-RPC router surface + parity ratchets.
@@ -228,6 +231,7 @@ hdaw_test_exe(hdaw_tests_frontend SOURCES
     unit/frontend/rhythm_generation_rpc_test.cpp
     unit/frontend/rave_rpc_test.cpp
     unit/frontend/device_params_rpc_test.cpp
+    unit/frontend/internal_fx_intent_rpc_test.cpp
     unit/frontend/psy_fm_rpc_test.cpp
     unit/frontend/song_plan_rpc_test.cpp
     unit/frontend/tuning_rpc_test.cpp

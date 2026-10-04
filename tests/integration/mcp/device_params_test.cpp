@@ -489,6 +489,119 @@ TEST_F(DeviceParamsInternalTest, DelayDivisionCarriesEnumDoc)
     EXPECT_EQ(fb.value("index").toInt(), 1);
 }
 
+// Slice B: every internal-engine param carries a declared `unit` drawn from
+// the closed unitVocabulary. The SAME conceptual parameter has DIFFERENT units
+// across engines (Attack is seconds on sub_synth, Decay is scalar on
+// drum_synth, Feedback is scalar on psy_fm) — that contrast is the point.
+TEST_F(DeviceParamsInternalTest, InternalParamsDeclareVocabularyUnit)
+{
+    const QStringList vocab {
+        "scalar", "boolean", "enum", "seconds", "ms", "hz",
+        "cents", "semitones", "db", "ratio", "beats" };
+    for (const char* id : { "eq", "compressor", "reverb", "delay", "chorus",
+                            "flanger", "phaser", "filter", "saturator",
+                            "sampler", "fm_synth", "growl_bass", "psyarp",
+                            "psy_fm", "sub_synth", "drum_synth" })
+    {
+        const auto o = callJson("list_device_params",
+                                { { "engine", QString::fromLatin1(id) } });
+        ASSERT_FALSE(o.isEmpty()) << id;
+        const auto params = o.value("params").toArray();
+        ASSERT_FALSE(params.isEmpty()) << id;
+        for (const auto& pv : params)
+        {
+            const auto p = pv.toObject();
+            const QString unit = p.value("unit").toString();
+            EXPECT_FALSE(unit.isEmpty())
+                << id << " " << p.value("name").toString().toStdString()
+                << " has no unit";
+            EXPECT_TRUE(vocab.contains(unit))
+                << id << " " << p.value("name").toString().toStdString()
+                << " unit '" << unit.toStdString() << "' not in vocabulary";
+        }
+    }
+}
+
+// Unit contrasts across engines: seconds vs scalar vs scalar for the same
+// conceptual stage, plus a ratio-not-hz oscillator ratio.
+TEST_F(DeviceParamsInternalTest, UnitContrastsAcrossEngines)
+{
+    const auto sub = callJson("list_device_params", { { "engine", "sub_synth" } });
+    ASSERT_FALSE(sub.isEmpty());
+    EXPECT_EQ(findParam(sub, "Attack").value("unit").toString(), QString("seconds"));
+    EXPECT_EQ(findParam(sub, "Sustain").value("unit").toString(), QString("scalar"));
+    EXPECT_EQ(findParam(sub, "Portamento").value("unit").toString(), QString("seconds"));
+    EXPECT_EQ(findParam(sub, "Cutoff").value("unit").toString(), QString("hz"));
+    EXPECT_EQ(findParam(sub, "Osc2 Detune").value("unit").toString(), QString("cents"));
+    EXPECT_EQ(findParam(sub, "LFO Rate").value("unit").toString(), QString("hz"));
+    EXPECT_EQ(findParam(sub, "LFO Pitch Amt").value("unit").toString(), QString("scalar"));
+
+    const auto drum = callJson("list_device_params", { { "engine", "drum_synth" } });
+    ASSERT_FALSE(drum.isEmpty());
+    // 0..1 per-voice decay/tone are NOT seconds — the classic trap.
+    EXPECT_EQ(findParam(drum, "Kick Decay").value("unit").toString(), QString("scalar"));
+    EXPECT_EQ(findParam(drum, "Kick Tone").value("unit").toString(), QString("scalar"));
+    EXPECT_EQ(findParam(drum, "Kit Tune").value("unit").toString(), QString("semitones"));
+    EXPECT_EQ(findParam(drum, "Key Track").value("unit").toString(), QString("boolean"));
+    EXPECT_EQ(findParam(drum, "Voice").value("unit").toString(), QString("enum"));
+    EXPECT_EQ(findParam(drum, "Send Delay Time (beats)").value("unit").toString(),
+              QString("beats"));
+    EXPECT_EQ(findParam(drum, "Send Reverb Size").value("unit").toString(),
+              QString("seconds"));
+
+    const auto pf = callJson("list_device_params", { { "engine", "psy_fm" } });
+    ASSERT_FALSE(pf.isEmpty());
+    EXPECT_EQ(findParam(pf, "Output Level").value("unit").toString(), QString("scalar"));
+    EXPECT_EQ(findParam(pf, "Feedback").value("unit").toString(), QString("scalar"));
+    EXPECT_EQ(findParam(pf, "OP1 Ratio").value("unit").toString(), QString("ratio"));
+    EXPECT_EQ(findParam(pf, "OP1 Attack").value("unit").toString(), QString("seconds"));
+    EXPECT_EQ(findParam(pf, "OP1 Sustain").value("unit").toString(), QString("scalar"));
+
+    // Same CONCEPT (an amp-envelope stage), DIFFERENT units across engines:
+    // sub_synth's Attack is seconds, drum_synth's per-voice Kick Decay is a
+    // 0..1 scalar. That difference is exactly what the unit field must expose.
+    EXPECT_EQ(findParam(sub, "Attack").value("unit").toString(), QString("seconds"));
+    EXPECT_EQ(findParam(drum, "Kick Decay").value("unit").toString(), QString("scalar"));
+    EXPECT_NE(findParam(sub, "Attack").value("unit").toString(),
+              findParam(drum, "Kick Decay").value("unit").toString());
+
+    // `Feedback` is a 0..1 scalar on delay too — never `db`, despite the
+    // substring collision the grammar's `db` rule had to be anchored against.
+    const auto dly = callJson("list_device_params", { { "engine", "delay" } });
+    ASSERT_FALSE(dly.isEmpty());
+    EXPECT_EQ(findParam(dly, "Feedback").value("unit").toString(), QString("scalar"));
+
+    // Compressor timing is MILLISECONDS (Attack 0.1..100, Release 1..2000) —
+    // not seconds, and not the same unit as the synth envelope Attacks above.
+    const auto comp = callJson("list_device_params", { { "engine", "compressor" } });
+    ASSERT_FALSE(comp.isEmpty());
+    EXPECT_EQ(findParam(comp, "Attack").value("unit").toString(), QString("ms"));
+    EXPECT_EQ(findParam(comp, "Release").value("unit").toString(), QString("ms"));
+    EXPECT_EQ(findParam(comp, "Threshold").value("unit").toString(), QString("db"));
+    EXPECT_EQ(findParam(comp, "Ratio").value("unit").toString(), QString("ratio"));
+}
+
+// VA engines (corpus route) must NOT gain a unit key: their payloads are
+// byte-stable and carry no `unit`, even though internal engines now do.
+TEST_F(DeviceParamsInternalTest, VaParamsCarryNoUnit)
+{
+    for (const char* id : { "je8086", "nodalred2x", "xenia", "virus", "vavra" })
+    {
+        const auto o = callJson("list_device_params",
+                                { { "engine", QString::fromLatin1(id) } });
+        ASSERT_FALSE(o.isEmpty()) << id;
+        const auto params = o.value("params").toArray();
+        ASSERT_FALSE(params.isEmpty()) << id;
+        for (const auto& pv : params)
+        {
+            const auto p = pv.toObject();
+            EXPECT_FALSE(p.contains("unit"))
+                << id << " " << p.value("name").toString().toStdString()
+                << " must NOT carry a unit (VA payloads are byte-stable)";
+        }
+    }
+}
+
 // Root metadata on ALL 16 internal maps: they must carry the internal route
 // (set_internal_fx_param + valuetree), never the VA plugin routes.
 TEST_F(DeviceParamsInternalTest, InternalMapsCarryInternalRoute)

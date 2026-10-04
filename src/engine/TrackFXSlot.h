@@ -28,6 +28,8 @@
 #include "PsyFmState.h"
 #include "InternalDelay.h"
 #include "InternalFilter.h"
+#include "SidechainBus.h"
+#include "SidechainCompressor.h"
 
 namespace HDAW {
 
@@ -88,6 +90,22 @@ public:
         float minValue;
         float maxValue;
     };
+
+    // The ONE real<->normalized mapping for internal FX params, shared by the
+    // automation/modulation path and the readback shapers (ReadModelImpl emits
+    // valueNormalized/defaultNormalized through these). Pure + static, no state.
+    // Linear over the def's [min,max]; a degenerate range maps to 0.
+    static float normalizeParam(float realValue, const InternalParamDef& def)
+    {
+        float range = def.maxValue - def.minValue;
+        if (range <= 0.0f) return 0.0f;
+        return (realValue - def.minValue) / range;
+    }
+
+    static float denormalizeParam(float normalizedValue, const InternalParamDef& def)
+    {
+        return def.minValue + normalizedValue * (def.maxValue - def.minValue);
+    }
 
     // The internal (non-plugin) fxType vocabulary, in ONE place right beside
     // the if-chain in getParamDefsForType() that implements it: applyFxChain's
@@ -263,7 +281,7 @@ public:
             };
         if (type == "growl_bass")
             return {
-                { 0, "Fundamental Hz", 55.0f,  20.0f,  200.0f },
+                { 0, "Fundamental Hz", 55.0f,   0.0f,  200.0f },  // 0 = follow MIDI note
                 { 1, "Mod Ratio",       1.5f,   0.5f,    8.0f },
                 { 2, "Mod Depth",       0.6f,   0.0f,    1.0f },
                 { 3, "Mod Shape",       0.0f,   0.0f,    2.0f },  // 0=Sine, 1=Tri, 2=Square
@@ -597,6 +615,19 @@ public:
     // setTempo. Default false keeps standalone callers (warmup loops, tests)
     // on the exact replace behavior a lone sampler always had.
     void setSamplerAccumulate(bool accumulate) { samplerAccumulate_ = accumulate; }
+
+    // Compressor sidechain v1: RoutingManager registers the shared bus
+    // (message thread, under Track::stateLock via Track::registerSidechainBus
+    // — the sendHandles precedent). Keeps the shared_ptr for lifetime and a
+    // raw cached pointer for the audio path. Pass nullptr to unregister.
+    void setSidechainBus(std::shared_ptr<SidechainBus> bus)
+    {
+        sidechainBus_ = std::move(bus);
+        sidechainBusRaw = sidechainBus_.get();
+    }
+
+    // Test/readback probe: the LIVE bus behind this slot (nullptr when none).
+    SidechainBus* getSidechainBusForTest() const { return sidechainBusRaw; }
 
     // Chain-order bookkeeping for the multi-sampler SUM: true when this slot
     // is a sampler that process() will actually render this block (engine
@@ -942,7 +973,7 @@ public:
             }
             case ActiveType::Compressor:
             {
-                comp = std::make_unique<juce::dsp::Compressor<float>>();
+                comp = std::make_unique<SidechainCompressor>();
                 comp->prepare(spec);
                 if (internalParamValues.size() > 0) comp->setThreshold(internalParamValues[0]);
                 if (internalParamValues.size() > 1) comp->setRatio(internalParamValues[1]);
@@ -1440,7 +1471,41 @@ public:
                 break;
             }
             case ActiveType::EQ:          if (eq)     eq->process(context);      break;
-            case ActiveType::Compressor:  if (comp)   comp->process(context);    break;
+            case ActiveType::Compressor:
+            {
+                if (comp)
+                {
+                    // Sidechain v1: the TAP is the single level-application
+                    // point (SidechainTapProcessor::processBlock writes
+                    // level-gained frames into the bus). The slot reads the
+                    // bus DIRECTLY — no second gain, no copy. Topological
+                    // order source→tap→dest (guaranteed by the tap→dest graph
+                    // edges) makes the bus frames fresh for THIS block;
+                    // framesWritten min() is the fail-safe against a short or
+                    // unwritten bus. No allocation, no locks, one .get() —
+                    // Gate 3/9. Without an enabled bus this is the stock
+                    // compressor path untouched.
+                    bool fed = false;
+                    if (sidechainBusRaw != nullptr
+                        && sidechainBusRaw->enabled.load(std::memory_order_relaxed))
+                    {
+                        const int frames = juce::jmin(buffer.getNumSamples(),
+                            juce::jmin(sidechainBusRaw->capacity,
+                                       sidechainBusRaw->framesWritten.load(std::memory_order_relaxed)));
+                        if (frames > 0)
+                        {
+                            const float* scChans[2] = { sidechainBusRaw->data[0],
+                                                        sidechainBusRaw->data[1] };
+                            comp->setSidechainSource(scChans, 2, frames);
+                            fed = true;
+                        }
+                    }
+                    comp->process(context);
+                    if (fed)
+                        comp->setSidechainSource(nullptr, 0, 0);
+                }
+                break;
+            }
             case ActiveType::Filter:
             {
                 {
@@ -1888,7 +1953,12 @@ private:
     // use, so the track delay's arithmetic exists once (slice C3).
     InternalDelay delay;
     std::unique_ptr<EQProcessor> eq;
-    std::unique_ptr<juce::dsp::Compressor<float>> comp;
+    std::unique_ptr<SidechainCompressor> comp;
+    // Track-FX-slot compressor sidechain v1: shared bus handle registered by
+    // RoutingManager (shared_ptr kept for lifetime, raw pointer for the
+    // audio path — no shared_ptr copies in process(), Gate 3).
+    std::shared_ptr<SidechainBus> sidechainBus_;
+    SidechainBus* sidechainBusRaw = nullptr;
     std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
     std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
     // Shared internal state-variable filter DSP (InternalFilter.h): the same
@@ -1979,20 +2049,6 @@ private:
     }
 
     void wireEditorClosedCallback();
-
-    // Normalize a real param value to 0..1 for automation/modulation.
-    static float normalizeParam(float realValue, const InternalParamDef& def)
-    {
-        float range = def.maxValue - def.minValue;
-        if (range <= 0.0f) return 0.0f;
-        return (realValue - def.minValue) / range;
-    }
-
-    // Denormalize a 0..1 automation/modulation value to the real param range.
-    static float denormalizeParam(float normalizedValue, const InternalParamDef& def)
-    {
-        return def.minValue + normalizedValue * (def.maxValue - def.minValue);
-    }
 
     // (kDelayDivisionBeats, isDelaySyncOn() and computeDelaySeconds() are
     // InternalDelay's now — the tempo-sync derivation lives with the DSP that

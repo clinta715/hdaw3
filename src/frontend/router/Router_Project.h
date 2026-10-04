@@ -22,6 +22,12 @@ DispatchResult dispatchProject(ProjectCommands& cmds, const juce::ValueTree& tra
 // dispatchProject (see the definitions in Router_Project.cpp).
 DispatchResult dispatchRemoveTrack(AudioEngine& engine, const QJsonValue& params);
 DispatchResult dispatchAddTrackWithFx(AudioEngine& engine, const QJsonValue& params);
+// project.setFxSidechain also needs engine context: the command lives on the
+// concrete AudioEngineCommands (Track-FX-slot compressor sidechain v1) and not
+// on the abstract ProjectCommands this file otherwise receives. Runs the SAME
+// shared reader/body as the MCP set_fx_sidechain tool
+// (src/common/FxSidechain.h) — identical payload and refusals.
+DispatchResult dispatchSetFxSidechain(AudioEngine& engine, const QJsonValue& params);
 // project.endBatch also needs engine context: its optional verify hook runs the
 // shared render→verdict path (common/BatchEnd.h).
 DispatchResult dispatchEndBatch(AudioEngine& engine, const QJsonValue& params);

@@ -200,6 +200,16 @@ track). Note an enabled Volume lane makes automation authoritative for that trac
 it then appears in `audit_modulation_coverage`'s `faderOverriddenIds` and
 `set_track` volume writes are overridden.
 
+**Routed sidechain (2026-10-02)** is the other per-track movement tool: a
+`compressor` slot's detector can be keyed from ANOTHER track's output
+(`set_fx_sidechain {trackId, slotIndex, sourceTrackId|sourceTrackID, level,
+enabled}`) — the real kick→bass ducking pump. It is a routed connection, distinct
+from the Volume-lane `pump` preset, and the two should NOT both run on the same
+track (they fight). Compressor slots only, one source per slot, acyclic (self-edges
+and cycle-closing edits are refused); read it back on the `list_fx` compressor row
+(`sidechainSource`/`sidechainLevel`/`sidechainEnabled`). Construction recipe:
+`docs/psytrance-va-and-production.md` §5 "Routed sidechain".
+
 **Guideline: when adding a feature, ask whether the generative/random/modulation
 toolkit applies.** New note or parameter editing should offer humanize/randomize;
 new content types should consider a generative path; new modulatable parameters

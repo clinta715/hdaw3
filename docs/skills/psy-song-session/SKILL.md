@@ -12,7 +12,8 @@ Brief, machine-verifiable gates between roles.
 
 **Shared reference**: `reference.md` (modulation-first, depth targets, render
 variance, hardware loader status, 10 s timeout discipline, unit-tagged time
-windows, the 2026-09-28 mechanization tools). Role files link to
+windows, the 2026-09-28 mechanization tools, the 2026-10-02 routed
+sidechain). Role files link to
 it on demand — do NOT include it in dispatch prompts.
 
 ## Role files

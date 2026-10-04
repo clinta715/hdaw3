@@ -237,7 +237,7 @@ TEST(OperatorIntegration, SeedDeterminism)
     tm.setBPM(120.0);
 
     auto clip = makeMidiClipWithNote(60, 0.8f, 0.0, 1.0, 0.5f, 0, 0.25f, 0.0f, 0, 0);
-    clip.setProperty(IDs::seed, static_cast<int64_t>(42), nullptr);
+    clip.setProperty(IDs::seed, static_cast<juce::int64>(42), nullptr);
 
     auto runAndCount = [&]() -> std::vector<bool> {
         HDAW::MidiClipProcessor proc(tm);
@@ -271,7 +271,7 @@ TEST(OperatorIntegration, OccurrenceMaskBlocksOnSpecificLoops)
     tm.setBPM(120.0);
 
     auto clip = makeMidiClipWithNote(60, 0.8f, 0.0, 4.0, 1.0f, 0, 0.25f, 0.0f, 0b101, 0);
-    clip.setProperty(IDs::seed, static_cast<int64_t>(0), nullptr);
+    clip.setProperty(IDs::seed, static_cast<juce::int64>(0), nullptr);
 
     HDAW::MidiClipProcessor proc(tm);
     proc.setClipTree(clip);
@@ -304,7 +304,7 @@ TEST(OperatorIntegration, OccurrenceMaskBlocksNote)
     tm.setBPM(120.0);
 
     auto clip = makeMidiClipWithNote(60, 0.8f, 0.0, 0.5, 1.0f, 0, 0.25f, 0.0f, 0b010, 0);
-    clip.setProperty(IDs::seed, static_cast<int64_t>(0), nullptr);
+    clip.setProperty(IDs::seed, static_cast<juce::int64>(0), nullptr);
 
     HDAW::MidiClipProcessor proc(tm);
     proc.setClipTree(clip);
@@ -327,7 +327,7 @@ TEST(OperatorIntegration, RepeatCountGeneratesMultipleNoteOns)
     tm.setBPM(120.0);
 
     auto clip = makeMidiClipWithNote(60, 0.8f, 0.0, 2.0, 1.0f, 3, 0.25f, 0.0f, 0, 0);
-    clip.setProperty(IDs::seed, static_cast<int64_t>(0), nullptr);
+    clip.setProperty(IDs::seed, static_cast<juce::int64>(0), nullptr);
 
     HDAW::MidiClipProcessor proc(tm);
     proc.setClipTree(clip);
@@ -539,7 +539,7 @@ TEST(OperatorRpc, SetClipSeed)
             auto clip = clipList.getChild(c);
             if (static_cast<int>(clip.getProperty(IDs::clipID, 0)) == clipId)
             {
-                EXPECT_EQ(static_cast<int64_t>(clip.getProperty(IDs::seed, 0)), 12345);
+                EXPECT_EQ(clip.getProperty(IDs::seed, 0).toString().getLargeIntValue(), static_cast<juce::int64>(12345));
                 return;
             }
         }

@@ -111,6 +111,9 @@ bool defaultDeviceTypeHasInputs(juce::AudioDeviceManager& dm)
 AudioEngine::AudioEngine()
     : sessionManager(transportManager, projectModel)
 {
+    // UAF guard (see alive_ in the header): armed before any callback can be
+    // installed, so the MIDI-input callback always has a live token to check.
+    alive_ = std::make_shared<std::atomic<bool>>(true);
     mainProcessor = std::make_unique<MainAudioProcessor>();
     projectModel.getTree().addListener(this);
 }
@@ -121,6 +124,14 @@ AudioEngine::~AudioEngine()
 }
 void AudioEngine::initialize()
 {
+    // Re-arm the UAF guard (see alive_ in the header): a shutdown() followed by
+    // initialize() on the same object must re-enable the MIDI-input callback,
+    // which bails on a cleared token. Idempotent on the first initialize().
+    if (alive_ == nullptr)
+        alive_ = std::make_shared<std::atomic<bool>>(true);
+    else
+        alive_->store(true, std::memory_order_release);
+
     // Incremental routing mode (Tasks 3/4): read ONCE at startup, default ON.
     // Precedent: FrontendTreeWatcher.cpp:25-29 / PluginManager.cpp:34,68.
     // Escape hatch: HDAW_FORCE_INCREMENTAL_ROUTING=0 (or false/FALSE) restores
@@ -339,7 +350,14 @@ void AudioEngine::initialize()
     previewPlayer->setTransportManager(&transportManager);
 
     // Wire MIDI input to processor
-    midiInputManager.setNoteCallback([this](const juce::MidiMessage& msg) {
+    midiInputManager.setNoteCallback([this, alive = alive_](const juce::MidiMessage& msg) {
+        // UAF guard (see alive_): this runs on the MIDI input thread, which
+        // JUCE's WinMM stop() does not join, so it can fire while shutdown()
+        // (called FIRST from ~AudioEngine) is nulling mainProcessor and
+        // destroying everything below. Bail before touching `this`.
+        if (alive == nullptr || !alive->load(std::memory_order_acquire))
+            return;
+
         // If CC recording is armed and the transport is playing, capture
         // controller events and dispatch them to the main thread. The audio
         // thread is never allowed to touch the ValueTree, so we route through
@@ -350,7 +368,9 @@ void AudioEngine::initialize()
             int channel = msg.getChannel();
             int controller = msg.getControllerNumber();
             int value = msg.getControllerValue();
-            juce::MessageManager::callAsync([this, channel, controller, value]() {
+            juce::MessageManager::callAsync([this, alive = alive_, channel, controller, value]() {
+                if (alive == nullptr || !alive->load(std::memory_order_acquire))
+                    return;
                 if (midiCcCallback)
                     midiCcCallback(channel, controller, value);
             });
@@ -363,11 +383,16 @@ void AudioEngine::initialize()
             int vel = msg.getVelocity();
             bool noteOn = msg.isNoteOn();
             int64_t sample = transportManager.getCurrentSample();
-            juce::MessageManager::callAsync([this, channel, note, vel, noteOn, sample]() {
+            juce::MessageManager::callAsync([this, alive = alive_, channel, note, vel, noteOn, sample]() {
+                if (alive == nullptr || !alive->load(std::memory_order_acquire))
+                    return;
                 recordMidiNoteEvent(channel, note, vel, noteOn, sample);
             });
         }
-        mainProcessor->addExternalMidiMessage(msg);
+        // Null-guard: there is a genuine TOCTOU between the alive check above
+        // and shutdown()'s mainProcessor.reset().
+        if (mainProcessor != nullptr)
+            mainProcessor->addExternalMidiMessage(msg);
     });
 
     commands = std::make_unique<AudioEngineCommands>(*this);
@@ -742,7 +767,15 @@ void AudioEngine::finalizeMidiRecClips()
 
 void AudioEngine::shutdown()
 {
-    // Stop the auto-stop/punch-out poll timer FIRST. Without this, a
+    // Clear the UAF guard FIRST. A MIDI-input callback can be in flight on the
+    // MIDI thread at this exact moment (and JUCE's WinMM stop() does not join
+    // that thread), and everything below nulls/destroys objects that callback
+    // and its queued MessageManager::callAsync lambdas touch. The holders test
+    // this token before dereferencing `this`.
+    if (alive_ != nullptr)
+        alive_->store(false, std::memory_order_release);
+
+    // Stop the auto-stop/punch-out poll timer next. Without this, a
     // CallTimersMessage already queued by TimerThread can be dispatched on the
     // message pump thread after the AudioEngine (and its MainAudioProcessor /
     // AudioRecorder) is destroyed, dereferencing a dangling `this`.
@@ -957,7 +990,7 @@ AudioEngine::WavePeaks AudioEngine::getWaveformPeaks(int clipId, int numBins)
     for (int i = 0; i < numBins; ++i)
     {
         int64_t startSample = static_cast<int64_t>(i) * samplesPerBin;
-        int numToRead = static_cast<int>((std::min)(samplesPerBin, totalSamples - startSample));
+        int numToRead = static_cast<int>((std::min)(samplesPerBin, static_cast<int64_t>(totalSamples - startSample)));
         if (numToRead <= 0)
         {
             result.peaks.push_back(0.0);
@@ -1365,7 +1398,17 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
         const bool isParam = propStr.startsWith("param_");
         const bool isMatrix = (propStr == "psyFmMatrix");
         const bool isSweep = (propStr == "psyFmSweepRate");
-        if (!isParam && !isMatrix && !isSweep) return;
+        // Compressor sidechain v1: sidechainSource is deliberately NOT rebuilt
+        // here. setFxSidechain issues the ONE rebuildRoutingGraph() for a
+        // source change itself (mirroring the bus/send command contract), and
+        // undo() already issues its own full rebuild
+        // (AudioEngineCommands_Undo.cpp) — a second synchronous full rebuild
+        // from this listener raced/double-parked the pump (BlockingMessage +
+        // settle-drive handshake deadlock). level/enabled below are lock-free
+        // atomic pushes and stay incremental.
+        const bool isScLevel = (propStr == IDs::sidechainLevel.toString());
+        const bool isScEnabled = (propStr == IDs::sidechainEnabled.toString());
+        if (!isParam && !isMatrix && !isSweep && !isScLevel && !isScEnabled) return;
 
         // Find track index and slot index by walking the tree
         auto fxChain = treeWhosePropertyHasChanged.getParent();
@@ -1431,6 +1474,20 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
         {
             float hz = static_cast<float>(static_cast<double>(treeWhosePropertyHasChanged.getProperty(property)));
             track->setFxSlotPsyFmSweepRate(slotIdx, hz);
+        }
+        else if (isScLevel || isScEnabled)
+        {
+            // Incremental sidechain push — no rebuild (see the early branch
+            // above for the source/topology case).
+            if (auto* rm = mainProcessor->getRoutingManager())
+            {
+                if (isScLevel)
+                    rm->setSidechainLevel(trackIdx, slotIdx,
+                        static_cast<float>(static_cast<double>(treeWhosePropertyHasChanged.getProperty(property))));
+                else
+                    rm->setSidechainEnabled(trackIdx, slotIdx,
+                        static_cast<bool>(treeWhosePropertyHasChanged.getProperty(property)));
+            }
         }
     }
 }

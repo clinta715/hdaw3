@@ -60,9 +60,15 @@ void registerDeviceTools(McpServer& s, AudioEngine* e)
         " the index: available engines + the intent vocabulary + stage ownership."
         " With `engine`, returns filtered params: {engine, appliesVia,"
         " durability, durabilityNote, counts, matched, params:[{name,category,"
-        "tier,intents,stages,index?,offset?,trapReason?,note?}]}. tier is"
+        "tier,intents,stages,index?,offset?,trapReason?,note?,source?,default?"
+        ",min?,max?,enum?,unit?}]}. tier is"
         " identity | movement | trap; trapReason names WHY a param is unusable"
         " (bit-alias, unmatched-index, unnamed-dump-field, unclassified)."
+        " `unit` (internal engines only) is the DECLARED meaning of the value"
+        " (one of scalar|boolean|enum|seconds|ms|hz|cents|semitones|db|ratio"
+        "|beats) — the same conceptual param can differ across engines"
+        " (drum_synth Kick Decay is a 0..1 scalar, sub_synth Attack is seconds"
+        "); VA engine params carry no unit."
         " Audibility is not yet probed (slice 2) — do not read absence of a trap"
         " as proof a param is audible/durable; check `durability`.",
         objSchema({ { "engine",   QJsonObject{ { "type", "string" } } },

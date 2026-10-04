@@ -375,9 +375,113 @@ deletable). `list_fx_chains` returns them with `source:"factory"` and ids
 | `fm_synth_load_preset` / `fm_synth_import_sysex` | DX7 voice bank load / SysEx import |
 | `list_cluster_presets` / `get_cluster_preset` | saved `cluster_library` presets |
 
-Workflow: compose (markov/phrases) → `load_fx_chain` per role from the
-factory roster above → tweak individual knobs (`set_fx_param` normalized /
-`set_internal_fx_param` real units) → `save_fx_chain` the variant.
+### Constructing a chain (the ordered recipe)
+
+The roster above is the *what*; this is the *how*, in the order that avoids
+rebuild churn and dead slots. A **default starting order** is source → shape →
+glue → space → level (instrument, then tone shaping, then compression, then
+delay/reverb, then the fader) — deviate for a role-specific or measured reason
+(corrective EQ before a compressor, creative filtering after saturation, a
+parallel/send space instead of an insert), not by accident.
+
+1. **Instrument slot FIRST — on instrument/MIDI tracks only.** Internal
+   instruments are FX slots (`psy_fm`, `sub_synth`, `growl_bass`, `psyarp`,
+   `fm_synth`, `sampler`, `drum_synth`), so a *synth* track's chain starts with
+   one (`add_track_with_fx {name, fxType}` or `add_track` + `add_fx {trackId,
+   fxType}` — both take the SAME internal vocabulary: eq / compressor / reverb /
+   delay / chorus / flanger / phaser / filter / saturator / sampler / fm_synth /
+   growl_bass / psyarp / psy_fm / sub_synth / drum_synth; use `pluginId` for a
+   hosted VST3/CLAP). An **audio-clip track has no instrument slot** and starts
+   directly with processing FX; **buses/returns use their own bus-FX path**
+   (`add_bus {fxType}`, five types only). Slot order IS the signal order.
+2. **Prefer a factory chain over hand-building**, and batch what you do build.
+   `list_fx_chains` then `load_fx_chain {trackId, name|id}` from the roster
+   above — it **preserves the instrument slots and replaces/appends the FX slots
+   after them** (one undo unit, one rebuild). Hand-building N slots with N
+   `add_fx` calls is N synchronous rebuilds: wrap them in ONE
+   `begin_batch {name}` / `end_batch` session (stdio transport; HTTP/CLI refuse
+   it) so it is a single undo unit — or insert each at its final `position`
+   rather than "append then reorder".
+3. **Audition before trusting.** For a hosted plugin slot,
+   `audition_plugin {trackIndex, slotIndex, pluginId}` solo-renders with a probe
+   clip. For internal instruments/FX there is no probe-clip variant —
+   `audition_plugin` on an EXISTING slot renders the track's OWN clips (empty
+   track ⇒ silence, which is not evidence); use a temporary note or
+   `verify_part`/`tone_verity` once the part exists. A silent-at-default preset
+   is rejected, not shipped. (`audition_plugin`/`verify_part` take positional
+   `trackIndex`, never `trackID`.)
+4. **Set params in REAL units.** `list_fx_params {trackId, slotIndex}` is
+   SLOT-scoped (`slotIndex` required) and returns each param's
+   `index`/`name`/`minValue`/`maxValue`/`defaultValue`/`value` in real units (Hz,
+   dB, ratio, seconds) **plus `valueNormalized`/`defaultNormalized`** (the 0..1
+   projection — the same arithmetic the automation/LFO path uses); write with
+   `set_internal_fx_param` (real units).
+   `set_fx_param` is the NORMALIZED 0..1 setter — for plugins, and for exactly
+   reproducing a stored value. **Lesson 23: one out-of-range raw value poisons a
+   saved project** — read the range back before writing.
+   **Address by name or intent, never by a remembered index.** All three setters
+   accept `paramIndex`, `paramName`, or `intent` (a musical-intent id from the
+   Device Parameter Map — `list_device_params {engine}` / `device.listParams`),
+   with precedence `paramIndex` > `paramName` > `intent`; an AMBIGUOUS intent is
+   REFUSED with its candidate list rather than guessed, and an unknown one is
+   refused with the engine's vocabulary. **Units and ranges are per-device, not
+   shared**: `unit` on a device-map row says what the number means (`seconds` vs
+   `ms` vs `scalar`), and the SAME conceptual param differs across engines — e.g.
+   amp `Attack` is `seconds` on `sub_synth` but `ms` on the `compressor`, and a
+   per-voice `Decay` on `drum_synth` is a 0..1 `scalar`. Check `unit` in
+   `list_device_params` before porting a value (or an index) between engines.
+5. **MIDI FX sit before the audio chain.** `add_midi_fx {trackId, fxType}`
+   inserts a MIDI-FX slot (arp, transpose etc.); MIDI FX transform incoming MIDI
+   *before* the audio chain sees it, so they are not part of audio slot order.
+6. **Shared returns instead of per-track duplicates.** A delay/reverb used by
+   several roles belongs on a bus: `add_bus {busType:"fx", name, fxType}` +
+   `add_send {trackId, busTarget, level}`, **Mix = 1.0 on the return** (the
+   default 0.5 re-adds a doubled dry signal). Ride it per phrase (paramID
+   `2000 + sendIndex`). Recipes: `composition-toolkit.md` § "Bus/send
+   architecture".
+7. **Read the chain back.** `list_fx {trackId}` lists
+   `slotIndex`/`fxType`/`paramCount`/`bypassed` (and, for a `compressor` slot,
+   its sidechain fields) — assert the final shape instead of guessing.
+8. **Save the variant.** `save_fx_chain {trackId, name}` writes the whole chain
+   (types, order, params, bypass, plugin/sampler state); `delete_fx_chain`
+   refuses factory ids (user presets only).
+
+**Order matters — the drive recipe is the proof:** shape at the source first,
+saturate second, level last (growl clip → saturator SoftTanh ~18 dB Mix 1 →
+compressor 4:1). A saturator placed before a filter that removes the harmonics
+it just made is wasted work.
+
+### Routed sidechain (kick → bass ducking)
+
+The classic psytrance pump is a **routed sidechain**: the kick track's signal
+drives a bass compressor's detector, so the bass dips on every kick.
+
+```python
+await mcp_call("add_fx", {"trackId": bass, "fxType": "compressor"})  # detector slot
+await mcp_call("set_fx_sidechain", {"trackId": bass, "slotIndex": <that slot>,
+                                    "sourceTrackId": kick, "level": 1.0})
+```
+
+- `set_fx_sidechain` works on **compressor FX slots only**; any other slot type
+  is refused. One source per slot.
+- Keys: `trackId`/`trackID` (destination, stable wins), `slotIndex`,
+  `sourceTrackId`/`sourceTrackID` (source; stable id `0`, or both absent,
+  CLEARS), `level` (0..1, **refused outside the range — never clamped**),
+  `enabled`.
+- **Acyclic**: a self-edge and any edit that would close a cycle among the stored
+  sidechain edges are refused (A→B then B→A fails; A→B→C is fine).
+- Read it back on the compressor row of `list_fx` (or `read.getFxSlots`):
+  `sidechainSource` / `sidechainLevel` / `sidechainEnabled`.
+- Distinct from `growl_bass` params 24/25 (`Sidechain Drive`/`Sidechain Amt`),
+  which are an INTERNAL self-modulation of that instrument, not a routed link.
+- Prove it with PAIRED renders, since the route is a routing property, not a
+  parameter (`param_verity` sweeps a param and cannot toggle it): render the bass
+  with the sidechain active and again after `set_fx_sidechain {…, enabled:false}`
+  (or with the source level at 0), and compare with `mix_diff` / `verify_part` —
+  the duck shows as an RMS dip on the kick-aligned windows. Without the pair
+  there is no evidence.
+- **Use it instead of, not on top of, a Volume-lane `pump`** on the same track;
+  two pumps fight.
 
 ## 5a. Reusable FX chain preset: Jordan cave-dub
 
@@ -539,7 +643,7 @@ set_internal_fx_param { trackId, slotIndex, paramIndex: N, value: V }
 
 | Index | Name | Range | Role in §0.5 canon |
 | ------- | ------ | ------- | -------------------- |
-| 0 | Fundamental Hz | 20–200 (def 55) | Bass register |
+| 0 | Fundamental Hz | 0–200 (def 55) — `0` = follow the MIDI note | Bass register |
 | 1 | Mod Ratio | 0.5–8 (def 1.5) | FM depth/grit |
 | 2 | Mod Depth | 0–1 (def 0.6) | FM intensity |
 | 3 | Mod Shape | 0=Sin,1=Tri,2=Sq | Waveform color |

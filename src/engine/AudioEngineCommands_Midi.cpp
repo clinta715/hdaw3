@@ -238,7 +238,7 @@ void AudioEngineCommands::setClipSeed(int clipId, uint64_t seed)
     int trackIdx = -1;
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
-    clip.setProperty(IDs::seed, static_cast<int64_t>(seed), &um);
+    clip.setProperty(IDs::seed, juce::var(static_cast<juce::int64>(seed)), &um);
 }
 
 void AudioEngineCommands::setNotesOperator(int clipId, int noteId, float chance, int repeatCount, float repeatRate, float repeatCurve, int occurrence, int recurrence)

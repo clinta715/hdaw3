@@ -61,7 +61,7 @@ public:
     void setClipTree(juce::ValueTree tree)
     {
         clipTree = tree;
-        clipSeed.store(static_cast<uint64_t>(static_cast<int64_t>(tree.getProperty(IDs::seed, 0))), std::memory_order_relaxed);
+        clipSeed.store(static_cast<uint64_t>(static_cast<int64_t>(static_cast<juce::int64>(tree.getProperty(IDs::seed, 0)))), std::memory_order_relaxed);
         std::fill(previousNotePlayed.begin(), previousNotePlayed.end(), false);
         rebuildNoteCache();
         rebuildCcCache();

@@ -25,15 +25,16 @@
    "name": "Rate",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:167",
+   "source": "src/engine/TrackFXSlot.h:185",
    "sources": [
-    "src/engine/TrackFXSlot.h:167"
+    "src/engine/TrackFXSlot.h:185"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "hz"
   },
   {
    "category": "chorus",
@@ -47,15 +48,16 @@
    "name": "Depth",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:168",
+   "source": "src/engine/TrackFXSlot.h:186",
    "sources": [
-    "src/engine/TrackFXSlot.h:168"
+    "src/engine/TrackFXSlot.h:186"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "chorus",
@@ -69,15 +71,16 @@
    "name": "Centre Delay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:169",
+   "source": "src/engine/TrackFXSlot.h:187",
    "sources": [
-    "src/engine/TrackFXSlot.h:169"
+    "src/engine/TrackFXSlot.h:187"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "ms"
   },
   {
    "category": "chorus",
@@ -91,15 +94,16 @@
    "name": "Feedback",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:170",
+   "source": "src/engine/TrackFXSlot.h:188",
    "sources": [
-    "src/engine/TrackFXSlot.h:170"
+    "src/engine/TrackFXSlot.h:188"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   },
   {
    "category": "chorus",
@@ -113,15 +117,16 @@
    "name": "Mix",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:171",
+   "source": "src/engine/TrackFXSlot.h:189",
    "sources": [
-    "src/engine/TrackFXSlot.h:171"
+    "src/engine/TrackFXSlot.h:189"
    ],
    "stages": [
     "fx-automation-engineer"
    ],
    "tier": "movement",
-   "trapReason": null
+   "trapReason": null,
+   "unit": "scalar"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

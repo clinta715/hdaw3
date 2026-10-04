@@ -71,6 +71,7 @@ void RoutingManager::rebuildFromValueTree()
     groupBuses.clear();
     fxBusProcessors.clear();
     sendConnections.clear();
+    sidechainConnections.clear();
     audioClipNodes.clear();
     audioClipSources.clear();
     midiClipNodes.clear();
@@ -135,6 +136,11 @@ void RoutingManager::rebuildFromValueTree()
         if (isFolderTrack(trackTree)) continue; // Folders are visual-only, no audio routing
         addTrack(t, trackTree);
     }
+
+    // Compressor sidechain v1: the graph was cleared above, so recreate every
+    // connection the FX_CHAIN trees describe (tap nodes, edges, dest-slot bus
+    // registration — Gate 1/10 restore).
+    rebuildAllSidechains();
 
     HDAW_LOG("RoutingDiag", "rebuildFromValueTree: tracks=" + juce::String(static_cast<int>(trackNodes.size()))
         + " midiClips=" + juce::String(static_cast<int>(midiClipNodes.size()))
@@ -317,6 +323,10 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
 
 void RoutingManager::removeTrack(int trackIndex)
 {
+    // Compressor sidechain teardown BEFORE the track node dies: drops
+    // connections where this track is the dest (unregistering the bus) and
+    // where it is the source (its tap edges point at a node about to vanish).
+    removeSidechainsForTrack(trackIndex);
     removeSendsForTrack(trackIndex);
     removeClipsForTrack(trackIndex);
     auto nodeIt = trackNodes.find(trackIndex);
@@ -528,6 +538,282 @@ SendProcessor* RoutingManager::getSend(int trackIndex, int sendIndex) const
 {
     const auto it = sendConnections.find({trackIndex, sendIndex});
     return it != sendConnections.end() ? it->second.processor : nullptr;
+}
+
+// ── Compressor sidechain v1 (see RoutingManager.h contract) ─────────────────
+
+namespace {
+
+// BFS reachability over the STORED sidechain edges (adjacency
+// sourceStableID -> destTrackID, one per FX_SLOT carrying sidechainSource > 0).
+// The rebuild-path twin of the command layer's cycle gate: an edge that would
+// close a cycle among stored edges is skipped, never wired.
+bool sidechainReachesInTree(const juce::ValueTree& trackList, int from, int to)
+{
+    std::map<int, std::vector<int>> adj;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        const int destID =
+            static_cast<int>(trackList.getChild(t).getProperty(IDs::trackID, 0));
+        if (destID <= 0) continue;
+        const auto fxChain = trackList.getChild(t).getChildWithName(IDs::FX_CHAIN);
+        if (!fxChain.isValid()) continue;
+        for (int s = 0; s < fxChain.getNumChildren(); ++s)
+        {
+            const int src = static_cast<int>(
+                fxChain.getChild(s).getProperty(IDs::sidechainSource, 0));
+            if (src > 0)
+                adj[src].push_back(destID);
+        }
+    }
+
+    std::vector<int> queue { from };
+    std::map<int, bool> seen { { from, true } };
+    for (size_t qi = 0; qi < queue.size(); ++qi)
+    {
+        const int cur = queue[qi];
+        if (cur == to) return true;
+        const auto it = adj.find(cur);
+        if (it == adj.end()) continue;
+        for (const int next : it->second)
+        {
+            if (seen.count(next) != 0) continue;
+            seen[next] = true;
+            queue.push_back(next);
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+bool RoutingManager::createSidechainConnection(int destTrackIndex, int slotIndex,
+                                               int sourceTrackIndex, float level,
+                                               bool enabled)
+{
+    // Gate 9 guards: live nodes for both ends, no self-sidechain (the
+    // command refuses it with a clear error; this is the graph-level guard).
+    const auto destIt = trackNodes.find(destTrackIndex);
+    const auto srcIt = trackNodes.find(sourceTrackIndex);
+    if (destIt == trackNodes.end() || srcIt == trackNodes.end())
+        return false;
+    if (destTrackIndex == sourceTrackIndex)
+        return false;
+
+    auto bus = std::make_shared<SidechainBus>();
+    bus->prepare(blockSize);
+    bus->level.store(level, std::memory_order_relaxed);
+    bus->enabled.store(enabled, std::memory_order_relaxed);
+
+    auto tapProc = std::make_unique<SidechainTapProcessor>();
+    auto* liveTap = tapProc.get();
+    liveTap->setBus(bus);
+
+    auto tapNode = graph.addNode(std::move(tapProc));
+    if (tapNode == nullptr)
+        return false;
+
+    // source → tap → dest edges. The tap→dest edges are the graph dependency
+    // that sequences the bus write before the dest slot's read inside ONE
+    // render block; the tap outputs digital silence (bit-safe sum). Every
+    // addConnection result is CHECKED: on any refusal, roll back the edges
+    // that landed, leave the slot unregistered and the map empty — a half-
+    // wired connection must never survive (Gate 2/9).
+    struct Edge { juce::AudioProcessorGraph::NodeID src; int srcCh; juce::AudioProcessorGraph::NodeID dst; int dstCh; };
+    const Edge edges[4] = {
+        { srcIt->second->nodeID, 0, tapNode->nodeID, 0 },
+        { srcIt->second->nodeID, 1, tapNode->nodeID, 1 },
+        { tapNode->nodeID, 0, destIt->second->nodeID, 0 },
+        { tapNode->nodeID, 1, destIt->second->nodeID, 1 },
+    };
+    for (int i = 0; i < 4; ++i)
+    {
+        if (!graph.addConnection({ { edges[i].src, edges[i].srcCh },
+                                   { edges[i].dst, edges[i].dstCh } }))
+        {
+            for (int j = 0; j < i; ++j)
+                graph.removeConnection({ { edges[j].src, edges[j].srcCh },
+                                         { edges[j].dst, edges[j].dstCh } });
+            // No map entry was inserted (it happens below, after ALL edges
+            // succeeded) — kill the orphaned tap node so a later rebuild
+            // attempt cannot leak it.
+            graph.removeNode(tapNode.get());
+            HDAW_LOG("Sidechain", "createSidechainConnection: edge "
+                + std::to_string(i) + " refused by the graph (dest=" +
+                std::to_string(destTrackIndex) + " slot=" + std::to_string(slotIndex)
+                + " source=" + std::to_string(sourceTrackIndex) + ") — connection skipped");
+            return false;
+        }
+    }
+
+    sidechainConnections[{destTrackIndex, slotIndex}] =
+        { tapNode, liveTap, bus, sourceTrackIndex };
+
+    // Register the bus onto the DEST track's live FX slot (registration
+    // contract: see Track::registerSidechainBus — message thread during
+    // rebuild, Track::stateLock inside, same locking conditions as addSend's
+    // registerSendProcessor call).
+    if (auto tIt = trackProcessors.find(destTrackIndex);
+        tIt != trackProcessors.end() && tIt->second != nullptr)
+        tIt->second->registerSidechainBus(slotIndex, bus);
+
+    return true;
+}
+
+void RoutingManager::rebuildSidechainsForTrack(int destTrackIndex)
+{
+    auto trackList = projectModel.getTrackListTree();
+    if (destTrackIndex < 0 || destTrackIndex >= trackList.getNumChildren())
+    {
+        // Track gone: tear everything pointing at/through it.
+        removeSidechainsForTrack(destTrackIndex);
+        return;
+    }
+
+    // Stable trackID → position map (B1/B2 convention; sidechainSource stores
+    // the STABLE source track id, 0 = none).
+    std::unordered_map<int, int> idToIndex;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        const int id = static_cast<int>(trackList.getChild(t).getProperty(IDs::trackID, 0));
+        if (id > 0)
+            idToIndex[id] = t;
+    }
+
+    // Desired set for THIS dest track: (slotIndex -> (sourceTrackIndex, level, enabled)).
+    struct Desired { int sourceTrackIndex; float level; bool enabled; };
+    std::map<int, Desired> desired;
+    const auto fxChain = trackList.getChild(destTrackIndex).getChildWithName(IDs::FX_CHAIN);
+    if (fxChain.isValid())
+    {
+        for (int s = 0; s < fxChain.getNumChildren(); ++s)
+        {
+            const auto slot = fxChain.getChild(s);
+            const int srcID = static_cast<int>(slot.getProperty(IDs::sidechainSource, 0));
+            if (srcID <= 0) continue;
+            const auto idIt = idToIndex.find(srcID);
+            if (idIt == idToIndex.end()) continue; // source gone: connection dropped
+            desired[s] = { idIt->second,
+                           static_cast<float>((double) slot.getProperty(IDs::sidechainLevel, 1.0)),
+                           static_cast<bool>(slot.getProperty(IDs::sidechainEnabled, true)) };
+        }
+    }
+
+    // Tear down live connections no longer desired (slot removed, source
+    // cleared, or slot key out of range after a chain splice).
+    for (auto it = sidechainConnections.begin(); it != sidechainConnections.end();)
+    {
+        if (it->first.first != destTrackIndex)
+        {
+            ++it;
+            continue;
+        }
+        if (desired.count(it->first.second) == 0)
+        {
+            graph.removeNode(it->second.node.get());
+            if (auto tIt = trackProcessors.find(destTrackIndex);
+                tIt != trackProcessors.end() && tIt->second != nullptr)
+                tIt->second->registerSidechainBus(it->first.second, nullptr);
+            it = sidechainConnections.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    // Create missing + refresh live registrations/atomics. An unchanged,
+    // already-live config re-registers the bus onto the (recreated) slot and
+    // re-pushes atomics but touches NO graph nodes — idempotent.
+    for (const auto& [slotIndex, d] : desired)
+    {
+        const auto key = std::make_pair(destTrackIndex, slotIndex);
+        const auto existing = sidechainConnections.find(key);
+        if (existing == sidechainConnections.end())
+        {
+            // Rebuild-path consistency gate (same rule setFxSidechain enforces
+            // at the command layer): an edge that would close a cycle among
+            // the STORED edges is skipped with a log — a hand-edited/legacy
+            // project file must not poison the graph, and the other
+            // sidechains still build.
+            const auto destIt = trackNodes.find(destTrackIndex);
+            const auto srcIt = trackNodes.find(d.sourceTrackIndex);
+            if (destIt == trackNodes.end() || srcIt == trackNodes.end()
+                || destTrackIndex == d.sourceTrackIndex)
+                continue;
+            const int destID = static_cast<int>(
+                trackList.getChild(destTrackIndex).getProperty(IDs::trackID, 0));
+            const int srcID = static_cast<int>(
+                trackList.getChild(d.sourceTrackIndex).getProperty(IDs::trackID, 0));
+            if (destID > 0 && srcID > 0
+                && sidechainReachesInTree(trackList, destID, srcID))
+            {
+                HDAW_LOG("Sidechain", "rebuild: sidechain edge " + std::to_string(srcID)
+                    + " -> " + std::to_string(destID)
+                    + " would close a cycle — skipped");
+                continue;
+            }
+            createSidechainConnection(destTrackIndex, slotIndex, d.sourceTrackIndex,
+                                      d.level, d.enabled);
+        }
+        else
+        {
+            if (existing->second.bus)
+            {
+                existing->second.bus->level.store(d.level, std::memory_order_relaxed);
+                existing->second.bus->enabled.store(d.enabled, std::memory_order_relaxed);
+            }
+            if (auto tIt = trackProcessors.find(destTrackIndex);
+                tIt != trackProcessors.end() && tIt->second != nullptr)
+                tIt->second->registerSidechainBus(slotIndex, existing->second.bus);
+        }
+    }
+}
+
+void RoutingManager::rebuildAllSidechains()
+{
+    const auto trackList = projectModel.getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+        rebuildSidechainsForTrack(t);
+}
+
+void RoutingManager::removeSidechainsForTrack(int trackIndex)
+{
+    for (auto it = sidechainConnections.begin(); it != sidechainConnections.end();)
+    {
+        const bool isDest = it->first.first == trackIndex;
+        const bool isSource = it->second.sourceTrackIndex == trackIndex;
+        if (!isDest && !isSource)
+        {
+            ++it;
+            continue;
+        }
+        graph.removeNode(it->second.node.get());
+        if (isDest)
+        {
+            // Keep the Track's registration in step (contract: see
+            // Track::registerSidechainBus) — no-op when the Track is already
+            // gone (the full-rebuild path re-registers everything).
+            if (auto tIt = trackProcessors.find(trackIndex);
+                tIt != trackProcessors.end() && tIt->second != nullptr)
+                tIt->second->registerSidechainBus(it->first.second, nullptr);
+        }
+        it = sidechainConnections.erase(it);
+    }
+}
+
+void RoutingManager::setSidechainLevel(int destTrackIndex, int slotIndex, float level)
+{
+    const auto it = sidechainConnections.find({destTrackIndex, slotIndex});
+    if (it != sidechainConnections.end() && it->second.bus)
+        it->second.bus->level.store(level, std::memory_order_relaxed);
+}
+
+void RoutingManager::setSidechainEnabled(int destTrackIndex, int slotIndex, bool enabled)
+{
+    const auto it = sidechainConnections.find({destTrackIndex, slotIndex});
+    if (it != sidechainConnections.end() && it->second.bus)
+        it->second.bus->enabled.store(enabled, std::memory_order_relaxed);
 }
 
 void RoutingManager::setSendLevel(int trackIndex, int sendIndex, float level)
@@ -1013,6 +1299,13 @@ void RoutingManager::rebuildTrackFX(int trackIndex)
     trackIt->second->rebuildMidiFXChain(trackTree.getChildWithName(IDs::MIDI_FX_CHAIN));
     auto modulationListTree = trackTree.getChildWithName(IDs::MODULATION_LIST);
     trackIt->second->rebuildModulation(modulationListTree);
+
+    // Compressor sidechain v1: rebuildFXChain recreated the TrackFXSlot
+    // objects, so the bus registrations died with them — and slot indices may
+    // have shifted (add/remove). Refresh: idempotent for an unchanged config
+    // (no graph mutation), tears down stale keys and (re)creates missing ones,
+    // always re-registering the bus onto the live slot (Gate 1/10).
+    rebuildSidechainsForTrack(trackIndex);
 }
 
 void RoutingManager::rebuildMidiTrackFX(int trackIndex)

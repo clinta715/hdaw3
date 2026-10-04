@@ -36,6 +36,17 @@
 //      {"slotIndex":1,"fxType":"plugin","pluginId":"/x.vst3","pluginName":"Delay",
 //       "pluginFormat":"VST3","paramCount":4,"bypassed":false}]
 //
+//                       Compressor-sidechain v1: a slot whose fxType is
+//                       "compressor" ALSO carries the three sidechain fields
+//                       set_fx_sidechain writes, under that tool's own argument
+//                       names — sidechainSource (int STABLE source trackID, 0 =
+//                       none/unset), sidechainLevel (number) and sidechainEnabled
+//                       (bool). No other type emits them (a sidechain belongs to a
+//                       compressor's detector alone, and the fields would read as
+//                       noise on the rest of the chain):
+//     [{"slotIndex":0,"fxType":"compressor","paramCount":4,"bypassed":false,
+//       "sidechainSource":1,"sidechainLevel":0.5,"sidechainEnabled":true}]
+//
 // Evidence for the FX-slot vocabulary (2026-09-23): the RPC shape (slotIndex / fxType /
 // pluginId / pluginName / pluginFormat / bypassed / paramCount) is what the live
 // consumers read — tests/unit/frontend/frontend_server_test.cpp locates slots by
@@ -99,6 +110,17 @@ inline std::string shapeFxSlotsJson(const std::vector<FxSlotSnapshot>& fxSlots)
             o->setProperty("pluginId", juce::String(s.pluginId));
             o->setProperty("pluginName", juce::String(s.pluginName));
             o->setProperty("pluginFormat", juce::String(s.pluginFormat));
+        }
+        // Compressor-sidechain v1: the ONLY slots that can carry a sidechain
+        // expose the three fields set_fx_sidechain writes — the exact key names
+        // and JSON types of that tool's argument vocabulary. Every other type
+        // keeps the row it always had (a sidechain would read as noise, and
+        // only a compressor's detector is driven by one).
+        if (s.fxType == "compressor")
+        {
+            o->setProperty("sidechainSource", s.sidechainSource);
+            o->setProperty("sidechainLevel", static_cast<double>(s.sidechainLevel));
+            o->setProperty("sidechainEnabled", s.sidechainEnabled);
         }
         o->setProperty("bypassed", s.bypassed);
         arr.add(juce::var(o.get()));

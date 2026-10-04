@@ -18,6 +18,7 @@ namespace HDAW {
 class DecodedSoundPool;
 class SendProcessor;
 class FxBusProcessor;
+class SidechainBus;
 
 class Track : public juce::AudioProcessor
 {
@@ -97,6 +98,17 @@ public:
     // another pid range (Gates 2/9).
     void registerSendProcessor(int sendIndex, SendProcessor* send);
     void setBusRegistry(const std::map<int, FxBusProcessor*>* registry);
+
+    // Compressor sidechain v1 (contract mirrored on registerSendProcessor):
+    // RoutingManager registers the shared SidechainBus onto the DEST track's
+    // compressor FX slot on every rebuild and every incremental sidechain
+    // change, message thread under stateLock (same locking conditions as
+    // addSend's registration). Bounds-guarded (Gate 9): an out-of-range slot
+    // or a null slot is a silent no-op. `bus` may be nullptr (unregister).
+    void registerSidechainBus(int slotIndex, std::shared_ptr<SidechainBus> bus);
+    // Live-processor probe for tests/readback: the bus behind an FX slot
+    // (nullptr when absent / out of range).
+    SidechainBus* getSidechainBus(int slotIndex) const;
 
     // Live-processor probes for tests/readback (unlocked; call after a drained
     // rebuild).

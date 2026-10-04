@@ -14,6 +14,14 @@
 #include "../common/ParamVerity.h"
 #include "../common/FxCaptureStatus.h"
 #include "../common/FxPluginIdCheck.h"
+// TRACK-FX-SLOT compressor sidechain v1: the ONE request reader /
+// command call / payload the set_fx_sidechain tool and the
+// project.setFxSidechain JSON-RPC route share (identical text by construction).
+#include "../common/FxSidechain.h"
+// Slice C (2026-10-02): intent-based param addressing. The ONE resolver the
+// JSON-RPC twin (project.setFxSlotParam, Router_Project.cpp) also calls, so both
+// surfaces resolve — and REFUSE — with byte-identical text.
+#include "../common/IntentResolve.h"
 // P3-b: the bounded plugin-boot wait (a booting child is not a broken one).
 #include "../common/PluginBootGate.h"
 #include "../engine/AudioEngine.h"
@@ -212,6 +220,48 @@ s.registerTool({"set_fx_bypass", "Bypass or unbypass an FX slot. " +
             return McpToolResult::text("ok");
         }});
 
+// TRACK-FX-SLOT compressor sidechain v1. Argument names are the CONTRACT and
+// are the command's OWN parameter names — deliberately NOT the `trackIndex`
+// spelling the rest of this family uses, because the payload IS
+// AudioEngineCommands::setFxSidechain's compact JSON and its keys
+// (trackId/trackID/slotIndex/sourceTrackId/sourceTrackID/level/enabled) travel
+// verbatim on BOTH surfaces. The body is ONE shared reader
+// (src/common/FxSidechain.h) the JSON-RPC route project.setFxSidechain calls
+// too, so the success payload and every refusal are byte-identical by
+// construction (the twin test pins them: tests/integration/mcp/
+// sidechain_parity_test.cpp). Note the ONE place the stable-ref rule differs
+// from the rest of the family: a disagreement is NOT refused — the stable id
+// simply WINS (the frozen engine rule), and a stable `sourceTrackID: 0` clears
+// while a positional `sourceTrackId: 0` is a real source (track 0).
+s.registerTool({"set_fx_sidechain",
+        "Set or clear a COMPRESSOR FX slot's sidechain (TRACK-FX-SLOT compressor "
+        "sidechain v1): sourceTrackId/sourceTrackID name the SOURCE track whose "
+        "signal drives the destination slot's detector. trackID is the stable id "
+        "of the destination and wins over trackId when both are given "
+        "(likewise sourceTrackID over sourceTrackId); a disagreement is NOT an "
+        "error here, the stable id simply wins. Neither source spelling given "
+        "clears the sidechain, and an explicit stable sourceTrackID 0 also "
+        "clears — while a positional sourceTrackId 0 is a REAL source (track 0). "
+        "level (0..1; outside the range it is REFUSED, never clamped) and enabled "
+        "are optional: absent leaves the stored value unchanged. Refused with the "
+        "tree untouched for an unknown track, a slotIndex out of range, a "
+        "non-compressor slot, a self-sidechain, an unknown source track, a level "
+        "out of range, or an edit that would close a cycle among the stored "
+        "sidechain edges. Returns compact JSON "
+        "{ok,trackId,slotIndex,sourceTrackId,level,enabled}.",
+        objSchema({{"trackId",      QJsonObject{{"type","integer"}}},
+                  {"trackID",      QJsonObject{{"type","integer"}}},
+                  {"slotIndex",    QJsonObject{{"type","integer"}}},
+                  {"sourceTrackId",QJsonObject{{"type","integer"}}},
+                  {"sourceTrackID",QJsonObject{{"type","integer"}}},
+                  {"level",        QJsonObject{{"type","number"}}},
+                  {"enabled",      QJsonObject{{"type","boolean"}}}}, {"slotIndex"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const auto r = HDAW::fxSidechainToolText(*e, a);
+            return McpToolResult::text(r.text, !r.ok);
+        }});
+
 s.registerTool({"toggle_plugin_editor", "Open or close the plugin editor window for an FX slot (toggles). Use with windows-mcp/cua-driver to drive the plugin's own UI. " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
@@ -337,9 +387,28 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                     o["index"] = def.index;
                     o["name"] = QString::fromUtf8(def.name.toRawUTF8());
                     o["automatable"] = true;
+                    // Slice A: the 0..1 projection of the CURRENT + DEFAULT
+                    // values, from the same snapshot the value comes from (the
+                    // one shared formula: TrackFXSlot::normalizeParam). A slot
+                    // whose tree node did not resolve falls back to the def
+                    // default, so the two new keys are ALWAYS present — never a
+                    // partial row.
+                    const InternalFxParamSnapshot* snapFor = nullptr;
                     for (const auto& snap : snaps)
                         if (snap.paramIndex == def.index)
-                            { o["value"] = static_cast<double>(snap.value); break; }
+                            { snapFor = &snap; break; }
+                    if (snapFor != nullptr)
+                    {
+                        o["value"] = static_cast<double>(snapFor->value);
+                        o["valueNormalized"] = static_cast<double>(snapFor->valueNormalized);
+                        o["defaultNormalized"] = static_cast<double>(snapFor->defaultNormalized);
+                    }
+                    else
+                    {
+                        o["valueNormalized"] = static_cast<double>(juce::jlimit(0.0f, 1.0f,
+                            HDAW::TrackFXSlot::normalizeParam(def.defaultValue, def)));
+                        o["defaultNormalized"] = o["valueNormalized"];
+                    }
                     o["minValue"] = static_cast<double>(def.minValue);
                     o["maxValue"] = static_cast<double>(def.maxValue);
                     o["defaultValue"] = static_cast<double>(def.defaultValue);
@@ -351,13 +420,14 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
-s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex or paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth). For PLUGIN slots the write is live AND persisted as a slot-level offline-replay override (returned as 'ok overrides=N'), so it also reaches export_audio / audition_plugin / verify_part renders and save/load; list_fx_params marks such params 'overridden', clear_fx_param_overrides removes them. For INTERNAL FX the ValueTree param_N property is the durable source. " +
+s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex, paramName, or intent (the param's musical intent id from the Device Parameter Map — list_device_params / device.listParams; INTERNAL FX only). Precedence: paramIndex/paramName first (unchanged — paramName wins over paramIndex when both are given), intent is consulted only when neither is given. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth). For PLUGIN slots the write is live AND persisted as a slot-level offline-replay override (returned as 'ok overrides=N'), so it also reaches export_audio / audition_plugin / verify_part renders and save/load; list_fx_params marks such params 'overridden', clear_fx_param_overrides removes them. For INTERNAL FX the ValueTree param_N property is the durable source. " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
                   {"paramName", QJsonObject{{"type","string"}}},
+                  {"intent",    QJsonObject{{"type","string"}}},
                   {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","value"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
@@ -371,8 +441,15 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by 
             if (fxSlots[si].fxType == "none")
                 return McpToolResult::text("slot is empty", true);
             const bool hasName = a.contains("paramName") && !a.value("paramName").toString().isEmpty();
-            if (!hasName && !a.contains("paramIndex"))
-                return McpToolResult::text("paramIndex or paramName required", true);
+            const bool hasIntent = a.contains("intent") && !a.value("intent").toString().isEmpty();
+            // A plugin slot has no Device Parameter Map to resolve an intent
+            // against — refused up front, with the shared text (nothing written).
+            if (hasIntent && !hasName && !a.contains("paramIndex")
+                && fxSlots[si].fxType == "plugin")
+                return McpToolResult::text(
+                    QString::fromStdString(HDAW::pluginIntentRefusalText()), true);
+            if (!hasName && !hasIntent && !a.contains("paramIndex"))
+                return McpToolResult::text("paramIndex, paramName or intent required", true);
             int pi = a.value("paramIndex").toInt();
             float v = static_cast<float>(a.value("value").toDouble());
             v = std::clamp(v, 0.0f, 1.0f);
@@ -418,6 +495,17 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by 
                     pi = internalParamIndexByName(defs, a.value("paramName").toString());
                     if (pi < 0)
                         return McpToolResult::text("unknown paramName: " + a.value("paramName").toString(), true);
+                }
+                else if (hasIntent && !a.contains("paramIndex"))
+                {
+                    // Slice C: address by musical intent through the ONE shared
+                    // resolver (the same text the RPC twin reports). A refusal
+                    // (unknown / ambiguous / no map) returns BEFORE any write.
+                    const HDAW::IntentResolution res = HDAW::resolveInternalFxIntent(
+                        fxSlots[si].fxType, a.value("intent").toString().toStdString());
+                    if (!res.ok)
+                        return McpToolResult::text(QString::fromStdString(res.error), true);
+                    pi = res.paramIndex;
                 }
                 if (pi < 0 || pi >= static_cast<int>(defs.size()))
                     return McpToolResult::text("param index out of range", true);
@@ -735,13 +823,14 @@ s.registerTool({"get_master_fx_params",
         }});
 
 s.registerTool({"set_internal_fx_param",
-        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, and drum_synth. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex, or pass paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given) — out-of-range values are silently clamped (lesson 23). " +
+        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, and drum_synth. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Address the param by paramIndex, paramName (the name list_fx_params returns; case-insensitive), or intent (the param's musical intent id from the Device Parameter Map — see list_device_params). Precedence: paramIndex/paramName first (unchanged — paramName wins over paramIndex when both are given), intent is consulted only when neither is given. An intent that matches no param, or MORE than one, is refused with the candidates — never guessed. Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex — out-of-range values are silently clamped (lesson 23). " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"trackID",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
                   {"paramName", QJsonObject{{"type","string"}}},
+                  {"intent",    QJsonObject{{"type","string"}}},
                   {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","value"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
@@ -760,13 +849,24 @@ s.registerTool({"set_internal_fx_param",
             // property write (existing set_fx_param behavior).
             auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
             const bool hasName = a.contains("paramName") && !a.value("paramName").toString().isEmpty();
-            if (!hasName && !a.contains("paramIndex"))
-                return McpToolResult::text("paramIndex or paramName required", true);
+            const bool hasIntent = a.contains("intent") && !a.value("intent").toString().isEmpty();
+            if (!hasName && !hasIntent && !a.contains("paramIndex"))
+                return McpToolResult::text("paramIndex, paramName or intent required", true);
             if (hasName)
             {
                 pi = internalParamIndexByName(defs, a.value("paramName").toString());
                 if (pi < 0)
                     return McpToolResult::text("unknown paramName: " + a.value("paramName").toString(), true);
+            }
+            else if (hasIntent && !a.contains("paramIndex"))
+            {
+                // Slice C: the ONE shared resolver (same text on the RPC twin).
+                // Nothing is written on a refusal — this runs before the write.
+                const HDAW::IntentResolution res = HDAW::resolveInternalFxIntent(
+                    fxSlots[si].fxType, a.value("intent").toString().toStdString());
+                if (!res.ok)
+                    return McpToolResult::text(QString::fromStdString(res.error), true);
+                pi = res.paramIndex;
             }
             if (pi < 0 || pi >= static_cast<int>(defs.size()))
                 return McpToolResult::text("param index out of range", true);
@@ -810,7 +910,7 @@ s.registerTool({"apply_sub_synth_mod_preset",
         }});
 
 s.registerTool({"get_internal_fx_param",
-        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units â€” the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, and drum_synth. Returns {params:[{index,name,value,defaultValue,minValue,maxValue}]}; untouched params report their default value. Reads the project ValueTree (source of truth â€” no render, no DSP access, read-only). " +
+        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units â€” the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, and drum_synth. Returns {params:[{index,name,value,defaultValue,minValue,maxValue,valueNormalized,defaultNormalized}]}; untouched params report their default value. valueNormalized/defaultNormalized are the SAME values on the 0..1 axis set_fx_param accepts. Reads the project ValueTree (source of truth â€” no render, no DSP access, read-only). " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"trackID",   QJsonObject{{"type","integer"}}},
@@ -840,6 +940,10 @@ s.registerTool({"get_internal_fx_param",
                 o["defaultValue"]  = static_cast<double>(s.defaultValue);
                 o["minValue"]      = static_cast<double>(s.minValue);
                 o["maxValue"]      = static_cast<double>(s.maxValue);
+                // Slice A: the 0..1 projection, identical to list_fx_params'
+                // internal rows and to read.getInternalFxParams (toJson).
+                o["valueNormalized"]   = static_cast<double>(s.valueNormalized);
+                o["defaultNormalized"] = static_cast<double>(s.defaultNormalized);
                 arr.append(o);
             }
             return McpToolResult::text(QString::fromUtf8(

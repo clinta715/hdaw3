@@ -535,7 +535,7 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto& um = e->getProjectModel().getUndoManager();
-            c.setProperty(IDs::seed, static_cast<int64_t>(a.value("seed").toDouble()), &um);
+            c.setProperty(IDs::seed, static_cast<juce::int64>(a.value("seed").toDouble()), &um);
             return McpToolResult::text("ok");
         }});
 

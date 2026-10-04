@@ -11,7 +11,7 @@
 #include <map>
 #include <cstring>
 #include <cstdlib>
-#include <process.h>   // _getpid() — the parent trace file is per-pid (ParamTrace)
+#include <unistd.h>    // getpid() — the parent trace file is per-pid (ParamTrace)
 #include <vector>
 
 #include "engine/AudioEngine.h"
@@ -1205,7 +1205,7 @@ TEST(FxMidiInjection, VavraHostParamsLiveReachability)
     // can then never satisfy the assertion.
     const juce::File tracePath = juce::File::getSpecialLocation(juce::File::tempDirectory)
                                      .getChildFile("hdaw_paramtrace_"
-                                                   + juce::String(static_cast<int>(::_getpid())) + ".log");
+                                                   + juce::String(static_cast<int>(::getpid())) + ".log");
     const juce::int64 traceMark = (paramtrace::paramTraceEnabled() && tracePath.existsAsFile())
                                       ? tracePath.getSize() : 0;
 

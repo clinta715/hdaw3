@@ -533,6 +533,10 @@ std::vector<FxSlotSnapshot> ReadModelImpl::getFxSlots(int trackIndex) const
         s.pluginName = slot.getProperty(IDs::name, "").toString().toStdString();
         s.pluginFormat = slot.getProperty(IDs::pluginFormat, "").toString().toStdString();
         s.bypassed = slot.getProperty(IDs::bypassed, false);
+        // Compressor sidechain v1 (same tree fields setFxSidechain writes).
+        s.sidechainSource = static_cast<int>(slot.getProperty(IDs::sidechainSource, 0));
+        s.sidechainLevel = static_cast<float>((double) slot.getProperty(IDs::sidechainLevel, 1.0));
+        s.sidechainEnabled = static_cast<bool>(slot.getProperty(IDs::sidechainEnabled, true));
         if (liveChain != nullptr && i < static_cast<int>(liveChain->size()) && (*liveChain)[i])
             s.paramCount = (*liveChain)[i]->paramCount();
         result.push_back(s);
@@ -607,6 +611,15 @@ std::vector<InternalFxParamSnapshot> ReadModelImpl::getInternalFxParams(int trac
             snap.value = static_cast<float>(slotTree.getProperty(juce::Identifier(propName)));
         else
             snap.value = def.defaultValue;
+
+        // Slice A: the 0..1 projection of both real values, through the SAME
+        // formula the slot uses for automation/modulation (normalizeParam —
+        // range <= 0 -> 0.0f), then clamped so a hand-edited/legacy
+        // out-of-range param_N cannot publish a >1 or <0 "normalized" value.
+        snap.valueNormalized =
+            juce::jlimit(0.0f, 1.0f, HDAW::TrackFXSlot::normalizeParam(snap.value, def));
+        snap.defaultNormalized =
+            juce::jlimit(0.0f, 1.0f, HDAW::TrackFXSlot::normalizeParam(snap.defaultValue, def));
 
         result.push_back(snap);
     }
