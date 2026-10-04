@@ -49,7 +49,8 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    subtle safe modulation available and report it.
 4. **Configure in REAL units**: `set_internal_fx_param` writes real def ranges
    (cutoff is Hz, drive is dB) — lesson 23: one out-of-range value can poison a
-   saved project. Verify with `list_fx_params` (reads back REAL units).
+   saved project. Verify with `list_fx_params {trackId, slotIndex}` (slot-scoped;
+   `slotIndex` is REQUIRED — it reads back REAL units).
 5. **Filter-ready voices**: every melodic role that will be filtered gets a stacked
    basis — chord, or note + octave-down + 7th-up + octave-up (see Arranger). Your
    job is the timbre that makes those stacks audible: presence EQ in the role's
@@ -68,12 +69,20 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    Virus patch with a closed filter imports at 20 Hz and renders near-silent while
    the import reports success (see the trap in `docs/psytrance-va-and-production.md` §5c).
 7. **Load per-role FX chains** from `list_fx_chains` factory presets when they fit
-   the role ("Kick Punch", "Bass Glue", "Acid Lead", ...). Load them BEFORE
-   auditioning so the audition hears the sound through its role processing.
+   the role ("Kick Punch", "Bass Glue", "Acid Lead", ...). `load_fx_chain`
+   **preserves instrument slots and replaces the FX slots after them**, so load
+   the instrument first, then the chain (ordered construction recipe:
+   `docs/psytrance-va-and-production.md` §5 "Constructing a chain").
+   Audition with `audition_plugin` where it applies — a hosted plugin slot, or an
+   existing slot WITH clips. A generic internal FX chain on a clip-less track
+   cannot be heard through `audition_plugin` (it renders the track's own clips, so
+   an empty track is silent); chain audibility is confirmed later by
+   `verify_part`/`tone_verity` once the part exists.
    **Load-and-audition only** — refinement (tuning what got too dark/loud, EQ
-   centers around the loudest sections) and all FX-parameter automation belong
-   to the FX & Automation Engineer, who runs after the Arranger. Record the
-   loaded FX chain in the audition evidence.
+   centers around the loudest sections), all FX-parameter automation, and the
+   ROUTED kick→bass sidechain (`set_fx_sidechain`) belong to the FX & Automation
+   Engineer, who runs after the Arranger. Record the loaded FX chain in the
+   audition evidence.
 8. **Record the palette + shortlists**: for each role — trackIndex, instrument,
    committed default preset/chain, 2–3 alternate candidates, modulation default,
    and audition evidence — into the brief's `palette` section and
@@ -88,8 +97,11 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
   the one-object `examples` array), so "is it `trackIndex` or `trackId`?" is ONE
   read-only call instead of a failed write. `whoami` first proves which
   engine/transport/project you are attached to.
-- `add_track_with_fx` enum EXCLUDES `sub_synth` — create a generic track
-  (`fxType:'filter'`) then `add_fx {fxType:'sub_synth'}` + `remove_fx` the carrier.
+- `add_track_with_fx` takes the full internal instrument enum (schema-enforced:
+  eq/compressor/reverb/delay/chorus/flanger/phaser/filter/saturator/sampler/
+  fm_synth/growl_bass/psyarp/psy_fm/sub_synth/drum_synth); `add_fx` takes the SAME
+  set. A hosted plugin needs a resolvable `pluginId` on either tool — there is no
+  type "outside the enum" that a plain `add_fx` can admit.
 - `apply_sub_synth_mod_preset` is all-or-nothing: a bad presetId or a
   non-sub_synth slot writes NOTHING. Never emulate it with six
   `set_internal_fx_param` calls — that is six round-trips and no atomic undo.

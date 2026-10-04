@@ -57,7 +57,10 @@ since 2026-09-22".
 ## Surface area
 `list_device_params` (device parameter map — engines, intent vocabulary, tier,
 durability; call this FIRST to pick a target), `list_fx_chains`, `load_fx_chain`,
-`add_fx`, `remove_fx`, `set_fx_param`,
+`add_fx`, `remove_fx`, `set_fx_param`, `list_fx` (read the final chain shape:
+`slotIndex`/`fxType`/`paramCount`/`bypassed` + a compressor's sidechain fields),
+`set_fx_sidechain` (ROUTED kick→bass ducking on a compressor slot),
+`save_fx_chain` (persist a tuned variant),
 `apply_movement_plan` (batch section-aware movement across tracks in ONE undo unit),
 `set_internal_fx_param`, `list_fx_params`, `capture_fx_snapshot`,
 `swap_fx_snapshot`, `add_automation_lane`, `set_automation_points`,
@@ -106,6 +109,16 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
    per musical section — one cycle per 4–8 bars, S-curve, HEARABLE depth.
 4. **Pump** (bass, drops only): `automation_preset {preset:'pump', startValue:0.7,
    endValue:1.0}` on the Volume lane over the drop windows; NOT during breakdowns.
+   The **routed** alternative is a real kick→bass sidechain — `add_fx
+   {trackId:bass, fxType:'compressor'}` then `set_fx_sidechain {trackId:bass,
+   slotIndex:<that slot>, sourceTrackId:kick, level:1.0}`. Prove it with PAIRED
+   renders (`param_verity` sweeps a param and cannot toggle a routing property):
+   render the bass with the route active and again after `enabled:false`, compare
+   with `mix_diff` / `verify_part` — the duck shows as an RMS dip on kick-aligned
+   windows. Use ONE of the
+   two pump mechanisms per track — a Volume-lane pump AND a sidechain on the same
+   bass fight. Recipe: `docs/psytrance-va-and-production.md` §5 "Routed
+   sidechain".
 5. **Riser curves**: riser preset across each build window; `sine` wobble on pad
    cutoff in breakdowns (slow, one cycle per 4 beats).
 6. **Verify**: for each lane, `verify_part {trackIndex}` with the lane enabled —

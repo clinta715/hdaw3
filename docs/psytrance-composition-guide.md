@@ -87,6 +87,48 @@ Seven principles from the production sessions. They extend §0 and inform
 
 ---
 
+## 0.6 Instrument + routing traps (measured 2026-10-03)
+
+Five traps that cost real debugging time in the `psy_demo` drum-machine session.
+Each is verified against the running engine, not folklore.
+
+1. **`drum_synth` is one kit per slot — set `Note Map` + `Key Track` first.**
+   In `Note Map = 0 (Fixed)` every note triggers the single `Voice` instrument.
+   For a full kit set `Note Map = 1 (GM)` (kick 36, snare 38, clap 39,
+   closed hat 42, open hat 46, ride 51, …) **and `Key Track = 0`** — with
+   Key Track on, the pitched voices (kick/toms) detune by note, so the kit
+   goes out of tune across the map. The per-voice send bus (params 51–61
+   + 62–66) is the TR-909-style send *inside one slot*: a snare can echo
+   into a dotted-8th delay while the kick stays dry, with no bus.
+
+2. **`growl_bass` is fixed-pitch by default.** `Fundamental Hz` (param 0)
+   pins the oscillator; MIDI notes only gate/trigger it. As of 2026-10-03
+   the range is **0–200 (def 55)** and **`0` = follow the MIDI note** — use
+   0 for a melodic bass, or a positive Hz for the classic fixed rolling
+   growl. (Before this, the min was 20 Hz and the MIDI-follow branch was
+   unreachable, so every note rendered at 55 Hz.)
+
+3. **`sub_synth` defaults to MONO.** `Polyphony` (param 24) defaults to 0;
+   a chord written as simultaneous notes collapses to one voice. Set
+   `Polyphony = 1` before writing pad/chord material.
+
+4. **`apply_movement_plan` defaults to Volume (`paramID 1`).** With only
+   `preset` + a beat window, every event automates the fader, which then
+   fights gain-staging. Pass an explicit non-volume `paramID` per event
+   (e.g. bass `Filter Cutoff`, pad `Cutoff`, lead filter `Cutoff`, kick
+   `Drive dB`) and keep the ranges subtle.
+
+5. **Structure gates read a track's ROLE, not its notes.** The drop
+   backbeat gate (`audit_song_structure`) classifies a track by its
+   `layerRole` / name (`clap|snare|backbeat`), and every clip overlapping a
+   drop section counts — so a clap on a track named "Perc" is invisible
+   until you `set_layer_handoff {role:"clap"}`. Also, `finale` is a
+   drop-kind section (`isDropKind = maina|mainb|finale|drop`), so an
+   outro typed `finale` is audited as a drop — type it `other` unless it
+   really is a payoff drop.
+
+---
+
 ## 1. The 7-step workflow
 
 1. **Index libraries** — make the sample packs HDAW-registered + analyzed.

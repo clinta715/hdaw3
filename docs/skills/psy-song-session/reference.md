@@ -93,10 +93,60 @@ small; `save_project` IMMEDIATELY after each mutation group; never
 blind-retry a timed-out call (the first is still running engine-side).
 `scripts/crash-diag.ps1 report` gives exit codes + dump inventory.
 
-## Engine contract deltas (2026-09-25/26, 2026-09-28)
+## Engine contract deltas (2026-09-25/26, 2026-09-28, 2026-10-02)
 
 Tool-contract changes since the role files were written. Role guidance assumes
 these.
+
+### Internal-FX param addressing + units — standardized 2026-10-02
+Three ways to address an internal-FX param, all accepted by
+`set_internal_fx_param` (REAL units), `set_fx_param` (normalized 0..1), and the
+RPC twin `project.setFxSlotParam`: `paramIndex`, `paramName` (case-insensitive),
+and **`intent`** — a musical-intent id from the Device Parameter Map
+(`list_device_params {engine}` / `device.listParams`). Precedence is
+`paramIndex` > `paramName` > `intent`. An **ambiguous** intent (e.g.
+`filter-sweep` on `sub_synth` — Cutoff, Filter Env Amount, LFO Cutoff Amt) is
+**REFUSED with its candidate list**, never guessed; an unknown intent is refused
+with the engine's available vocabulary; a plugin slot + intent is refused. Both
+surfaces return byte-identical text (one shared resolver,
+`src/common/IntentResolve.h`).
+
+`list_fx_params` / `get_internal_fx_param` now also publish
+`valueNormalized` / `defaultNormalized` (the same 0..1 projection the
+automation/LFO path uses), alongside the real-unit `value`/`minValue`/`maxValue`
+/`defaultValue`.
+
+**Units are declared, and they are PER-DEVICE.** Every internal-engine row of the
+device map now carries `unit` (closed vocabulary: scalar, boolean, enum, seconds,
+ms, hz, cents, semitones, db, ratio, beats; VA engines deliberately carry none).
+The SAME conceptual parameter differs across engines — amp `Attack` is `seconds`
+on `sub_synth`/`psy_fm` but `ms` on the `compressor` (0.1..100 ms); `drum_synth`'s
+per-voice `Decay`/`Tone` are 0..1 `scalar`, not seconds; `Kit Tune` is
+`semitones`; `SubSynth Osc2 Detune` is `cents`. **Never copy an index or a
+normalized value from one engine to another** — read `unit` + the range first.
+
+### Routed compressor sidechain (`set_fx_sidechain`) — NEW 2026-10-02
+A TRACK's signal can drive a **compressor FX slot's** detector on ANOTHER track —
+the real kick→bass ducking pump, as a first-class chain element.
+
+- `set_fx_sidechain {trackId|trackID, slotIndex, sourceTrackId|sourceTrackID,
+  level?, enabled?}`. Destination is the compressor's track; the source is the
+  keying track. Works on **compressor slots only**; one source per slot.
+- Stable `trackID` wins over positional `trackId` when both are given. An
+  explicit positional `sourceTrackId: 0` is a **real source (track 0)** — only the
+  stable `sourceTrackID: 0`, or BOTH spellings absent, CLEARS.
+- `level` is 0..1 and is **refused outside the range, never clamped** (lesson 38).
+- **Acyclic by construction**: self-edges and any edit that would close a cycle
+  among the stored sidechain edges are refused; A→B→C chains are legal.
+- Readback: the `compressor` row of `list_fx` / `read.getFxSlots` now carries
+  `sidechainSource` (int, 0 = none), `sidechainLevel`, `sidechainEnabled`.
+- RPC twin: `project.setFxSidechain`. Argument names are the contract and are
+  identical on both surfaces (unknown keys are refused identically).
+- NOT the same thing as `growl_bass` params 24/25 (`Sidechain Drive`/`Amt`),
+  which are that instrument's internal self-modulation.
+- Full construction recipe + when to prefer it over a Volume-lane `pump`:
+  `docs/psytrance-va-and-production.md` §5 "Constructing a chain" / "Routed
+  sidechain".
 
 ### Stable track refs (`trackID`)
 ~49 MCP tools in the fx/automation/plugin families
@@ -127,7 +177,9 @@ Evidence: 09-26 handoff §2 + 09-25 handoff §4d RESOLVED.
 (`src/model/ProjectModel.cpp:157-170`), so a fresh project's first track gets
 stable id **1**, not 0: N tracks created in order get stable ids **1..N** while
 positional indices are **0..N-1** — **stable trackID = positional index + 1**.
-Measured on a 13-track project (indices 0..12), same instant, same slot:
+Measured on a 13-track project (indices 0..12), same instant, same slot
+(`list_fx_params` requires `slotIndex` — shown here from the original probe,
+which logged only the track spelling):
 
 - `list_fx_params {trackId:7}` → psy_fm (`OP1 Ratio…`) = index 7 — CORRECT.
 - `list_fx_params {trackID:7}` → a SAMPLER (`Attack…`) = index **6** — WRONG TRACK.

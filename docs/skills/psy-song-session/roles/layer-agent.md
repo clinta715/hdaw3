@@ -27,7 +27,7 @@ BEFORE writing (G1-G4 below), then write, then self-gate.
 | --- | --- |
 | Reads | `get_project_summary`, `list_tracks`, `list_fx_params`, `get_internal_fx_param`, `get_song_plan`, `get_cells`, `list_clips`, `list_notes`, `snapshot_project`, `engine_info`, `list_fx`, `query_notes`, `query_clips`, `whoami`, `tool_help` |
 | Measurement | `export_audio` (async — poll the job with `poll_job` / `engine_info` while exporting), `mix_report` (`{filePath, fromPlan: true, wait: false}` + `poll_job`), `analyze_tuning` (`{wavPath, role, wait: false}` + `poll_job`), `get_waveform_peaks` (`{path}`), `validate_sample`, `verify_part`, `verify_window` (render the WHOLE project, gate ONE beat window's promoted stats — ≈ one full export) |
-| Writes | `add_track_with_fx`, `add_fx`, `remove_fx`, `set_internal_fx_param`, `set_fx_param`, `list_fx_params` (verify after write), `sampler_set_sample`, `psy_fm_load_preset`, `apply_sub_synth_mod_preset`, `set_track` (volume / mute / pan ONLY), `add_midi_clip`, `add_notes` (batch), `set_note_velocities`, `set_notes_gain` (batch), `set_clips_edit` (batch), `add_automation_lane`, `set_automation_points`, `automation_preset`, `add_lfo`, `set_lfo_param`, `set_fader_authoritative`, `add_midi_fx` (transpose etc.) |
+| Writes | `add_track_with_fx`, `add_fx`, `remove_fx`, `set_fx_sidechain` (routed compressor key — your slot only), `set_internal_fx_param`, `set_fx_param`, `list_fx_params` (verify after write), `sampler_set_sample`, `psy_fm_load_preset`, `apply_sub_synth_mod_preset`, `set_track` (volume / mute / pan ONLY), `add_midi_clip`, `add_notes` (batch), `set_note_velocities`, `set_notes_gain` (batch), `set_clips_edit` (batch), `add_automation_lane`, `set_automation_points`, `automation_preset`, `add_lfo`, `set_lfo_param`, `set_fader_authoritative`, `add_midi_fx` (transpose etc.) |
 
 **FORBIDDEN:** `export_audio` is allowed for MEASUREMENT renders only (your
 gates, your temp wavs). NEVER call `load_project` / `save_project` — the
@@ -79,7 +79,15 @@ measured. Never fix the mix by editing someone else's layer.
   motion + ghost rim`; lead = `call-response acid hook`.
 - **Local FX/modulation belongs here:** add the FX needed for this part's identity
   (phaser, filter, delay, drive, pan/stereo, subtleLife fallback) and verify it
-  on this layer before handoff.
+  on this layer before handoff. The DEFAULT starting order is instrument slot
+  first, then shape → glue → space (deviate for a role-specific or measured
+  reason): prefer `load_fx_chain` (it preserves the instrument
+  slot and replaces the FX after it) or `add_fx` at a position. Ordered recipe:
+  `docs/psytrance-va-and-production.md` §5 "Constructing a chain". For a bass
+  pump, the routed `set_fx_sidechain` (your compressor slot keyed from the kick)
+  is available — it writes ONLY your slot — but use it INSTEAD of a Volume-lane
+  pump, never both; project-level pump choreography is the FX & Automation
+  Engineer's (§ Pump in that role file).
 - **psy_fm / sub_synth output levels:** OUTPUT LEVEL 0.15..0.22 and fader
   0.7..0.8 — never 0.3+ (the overdriven region that masked the rhythm bed on
   Neon Mycelium 2026-09). Write in REAL units via `set_internal_fx_param` and
