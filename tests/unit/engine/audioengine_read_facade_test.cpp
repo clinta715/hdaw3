@@ -225,12 +225,20 @@ TEST(AudioEngineReadFacadeTest, CapturelessDeviceTypeOpensOutputOnlyAndEngineIsU
     EXPECT_NE(proc->getRoutingManager(), nullptr);
 }
 
+// Windows CRT _putenv_s / POSIX setenv (key must be unset with an empty value
+// on POSIX — the name= form, not removal, is what the engine checks).
+#ifdef _WIN32
+static void setTestEnv(const char* k, const char* v) { _putenv_s(k, v); }
+#else
+static void setTestEnv(const char* k, const char* v) { setenv(k, v, 1); }
+#endif
+
 // Force the capture-less branch (this dev box currently exposes a Focusrite
 // capture endpoint, so the natural path is the "inputs present" one) and prove
 // the engine opens output-only directly and still reaches a usable state.
 TEST(AudioEngineReadFacadeTest, ForcedCapturelessOpensOutputOnly)
 {
-    _putenv_s("HDAW_TEST_FORCE_NO_CAPTURE", "1");
+    setTestEnv("HDAW_TEST_FORCE_NO_CAPTURE", "1");
     {
         AudioEngine engine;
         engine.initialize();
@@ -247,5 +255,5 @@ TEST(AudioEngineReadFacadeTest, ForcedCapturelessOpensOutputOnly)
         }
         EXPECT_NE(proc->getRoutingManager(), nullptr);
     }
-    _putenv_s("HDAW_TEST_FORCE_NO_CAPTURE", "");
+    setTestEnv("HDAW_TEST_FORCE_NO_CAPTURE", "");
 }

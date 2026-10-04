@@ -7,8 +7,14 @@
 #include "engine/Track.h"
 #include "engine/PluginManager.h"
 #include "model/ProjectModel.h"
+#ifdef _WIN32
 #include <windows.h>
 #include <tlhelp32.h>
+#else
+#include <dirent.h>
+#include <signal.h>
+#include <unistd.h>
+#endif
 #include <chrono>
 #include <thread>
 #include <set>
@@ -18,11 +24,29 @@
 namespace
 {
 
-// Count live hdaw_plugin_host.exe processes via a Toolhelp32 snapshot.
+// Count live hdaw_plugin_host processes. Windows: Toolhelp32 snapshot.
+// Linux: /proc scan of /proc/<pid>/exe (basename match on the host binary).
 // Returns the set of PIDs so callers can diff before/after.
-static std::set<DWORD> countHostProcesses()
+#ifdef _WIN32
+using HostPid = DWORD;
+#else
+using HostPid = pid_t;
+#endif
+
+static void killHost(HostPid pid)
 {
-    std::set<DWORD> pids;
+#ifdef _WIN32
+    HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+    if (h) { TerminateProcess(h, 0); CloseHandle(h); }
+#else
+    kill(pid, SIGKILL);
+#endif
+}
+
+static std::set<HostPid> countHostProcesses()
+{
+    std::set<HostPid> pids;
+#ifdef _WIN32
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) return pids;
     PROCESSENTRY32 pe{};
@@ -36,21 +60,33 @@ static std::set<DWORD> countHostProcesses()
         } while (Process32Next(snap, &pe));
     }
     CloseHandle(snap);
+#else
+    if (DIR* d = opendir("/proc"))
+    {
+        while (auto* e = readdir(d))
+        {
+            if (e->d_name[0] < '0' || e->d_name[0] > '9') continue;
+            char link[64];
+            char target[512];
+            snprintf(link, sizeof(link), "/proc/%s/exe", e->d_name);
+            ssize_t n = readlink(link, target, sizeof(target) - 1);
+            if (n <= 0) continue;
+            target[n] = '\0';
+            if (strstr(target, "hdaw_plugin_host") != nullptr)
+                pids.insert(static_cast<pid_t>(atoi(e->d_name)));
+        }
+        closedir(d);
+    }
+#endif
     return pids;
 }
 
-// Kill all hdaw_plugin_host.exe children not in the keepSet (baseline).
-static void killNewHosts(const std::set<DWORD>& keepSet)
+// Kill all hdaw_plugin_host children not in the keepSet (baseline).
+static void killNewHosts(const std::set<HostPid>& keepSet)
 {
-    auto now = countHostProcesses();
-    for (auto pid : now)
-    {
+    for (auto pid : countHostProcesses())
         if (keepSet.find(pid) == keepSet.end())
-        {
-            HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-            if (h) { TerminateProcess(h, 0); CloseHandle(h); }
-        }
-    }
+            killHost(pid);
 }
 
 // Directly add an isolated __passthrough__ FX to a track's ValueTree,
@@ -104,10 +140,7 @@ TEST(RenderSequenceRelease, RebuildReleasesPreviousGraphChildren)
     // Ensure no stale children from a previous test (lesson 20).
     auto baseline = countHostProcesses();
     for (auto pid : baseline)
-    {
-        HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-        if (h) { TerminateProcess(h, 0); CloseHandle(h); }
-    }
+        killHost(pid);
     // Wait for cleanup to settle.
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     baseline = countHostProcesses();
@@ -237,10 +270,7 @@ TEST(RenderSequenceRelease, RebuildWithoutPlayDoesNotLeak)
     // Clean slate.
     auto baseline = countHostProcesses();
     for (auto pid : baseline)
-    {
-        HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-        if (h) { TerminateProcess(h, 0); CloseHandle(h); }
-    }
+        killHost(pid);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     baseline = countHostProcesses();
 

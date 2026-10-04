@@ -97,7 +97,7 @@ static QJsonObject computeWaveformPeaks(const juce::File& file, juce::AudioForma
     for (int i = 0; i < numBins; ++i) {
         int64_t startSample = static_cast<int64_t>(i) * samplesPerBin;
         int numToRead = static_cast<int>(
-            (std::min)(samplesPerBin, totalSamples - startSample));
+            (std::min)(samplesPerBin, static_cast<int64_t>(totalSamples - startSample)));
         if (numToRead <= 0) {
             peaks.append(0.0f);
             peaks.append(0.0f);

@@ -20,11 +20,11 @@ struct EnvGuard {
         const char* cur = std::getenv(k);
         had = (cur != nullptr);
         if (had) old = cur;
-        _putenv((key + "=" + v).c_str());
+        setenv(key.c_str(), v.c_str(), 1);
     }
     ~EnvGuard() {
-        if (had) _putenv((key + "=" + old).c_str());
-        else _putenv((key + "=").c_str());
+        if (had) setenv(key.c_str(), old.c_str(), 1);
+        else unsetenv(key.c_str());
     }
 };
 

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <vector>
+#include "repo_root.h"
 
 // JungleComposition suite: the verified 2026-08-29 amen-jungle recipe
 // (docs/jungle-dnb-composition-guide.md §4-§6) as a permanent engine-side
@@ -529,7 +530,7 @@ TEST(JungleComposition, AmenFminFullArcWithAccumulation)
     const juce::File tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
     static const bool keep = std::getenv("HDAW_KEEP_JUNGLE_RENDERS") != nullptr;
     const juce::File outDir = keep
-        ? juce::File("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme")
+        ? hdawRepoFile(".tmp_dnb_theme")
         : tempDir;
 
     bool allOk = true;
@@ -563,7 +564,7 @@ TEST(JungleComposition, DminSubVariantRenders)
     const juce::File tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
     static const bool keep = std::getenv("HDAW_KEEP_JUNGLE_RENDERS") != nullptr;
     const juce::File outDir = keep
-        ? juce::File("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme")
+        ? hdawRepoFile(".tmp_dnb_theme")
         : tempDir;
 
     bool allOk = true;

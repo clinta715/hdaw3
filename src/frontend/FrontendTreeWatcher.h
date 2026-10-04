@@ -6,6 +6,10 @@
 
 class AudioEngine;
 
+// Global-scope forward decl: must NOT live inside namespace frontend, or it
+// declares a phantom frontend::QTimer that shadows Qt's global one.
+class QTimer;
+
 namespace frontend {
 
 class FrontendServer;
@@ -46,7 +50,9 @@ private:
 
     AudioEngine& engine_;
     FrontendServer& server_;
-    class QTimer* debounceTimer_ = nullptr;
+    // ::-qualified: an unqualified `class QTimer*` here declares a phantom
+    // frontend::QTimer that shadows Qt's global QTimer (GCC: incomplete type).
+    ::QTimer* debounceTimer_ = nullptr;
     TreeDeltaAccumulator accumulator_;
 
     // Kill-switch (HDAW_FORCE_FULL_SYNC): when armed, every snapshot-relevant

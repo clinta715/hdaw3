@@ -54,11 +54,14 @@ struct ScopedIncrementalFlag
     explicit ScopedIncrementalFlag(const char* value)
         : saved(currentIncrementalEnv())
     {
-        _putenv_s(kIncrementalEnv, value != nullptr ? value : "");
+        if (value != nullptr)
+            setenv(kIncrementalEnv, value, 1);
+        else
+            unsetenv(kIncrementalEnv);
     }
     ~ScopedIncrementalFlag()
     {
-        _putenv_s(kIncrementalEnv, saved.c_str());
+        setenv(kIncrementalEnv, saved.c_str(), 1);
     }
 };
 

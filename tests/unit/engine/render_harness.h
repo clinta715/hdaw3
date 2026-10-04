@@ -34,12 +34,64 @@
 
 namespace {
 
-// Writes a stereo sine .wav to a temp file and returns its path.
+// Repo-anchored scratch dir for test fixture files: <repo>/.tmp_tests derived
+// from __FILE__ (three getParentDirectory() up from tests/unit/engine/…), same
+// idiom as file_library_patch_test.cpp's virusFixture(). The default OS temp
+// dir is not writable from the test exe on every box (sandbox denies it), and
+// a failed open MUST surface as an empty File(), never a null-writer
+// dereference (writeSineWav AV, 2026-10-02).
+inline juce::File testScratchDir()
+{
+    // Candidate scratch locations, probed with a REAL file open (a directory
+    // can exist yet still deny file creation to this process — EACCES 13
+    // observed 2026-10-02): HDAW_TEST_TMP override first (test_main honours it
+    // too), then <repo>/.tmp_tests derived from __FILE__ (four parents up from
+    // tests/unit/engine/), then <cwd>/.tmp_tests, then the OS temp dir.
+    // Self-checking: the __FILE__ derivation must sit next to the repo-root
+    // marker (CMakeLists.txt) to be considered at all.
+    std::vector<juce::File> candidates;
+    if (const char* overrideDir = std::getenv("HDAW_TEST_TMP"))
+        candidates.push_back(juce::File(juce::String(overrideDir)));
+
+    juce::File self(__FILE__);
+    if (juce::File::isAbsolutePath(__FILE__))
+    {
+        juce::File repoDerived = self.getParentDirectory().getParentDirectory()
+                                     .getParentDirectory().getParentDirectory()
+                                     .getChildFile(".tmp_tests");
+        if (repoDerived.getParentDirectory().getChildFile("CMakeLists.txt").existsAsFile())
+            candidates.push_back(repoDerived);
+    }
+    candidates.push_back(juce::File::getCurrentWorkingDirectory().getChildFile(".tmp_tests"));
+    candidates.push_back(juce::File::getSpecialLocation(juce::File::tempDirectory));
+
+    for (const auto& dir : candidates)
+    {
+        if (dir == juce::File() || !dir.createDirectory()) // no-op when it exists
+            continue;
+        // Probe with a REAL file create+delete: directory existence alone is
+        // not writability.
+        auto probe = dir.getNonexistentChildFile("hdaw_scratch_probe", ".tmp");
+        {
+            juce::FileOutputStream out(probe);
+            if (! out.openedOk())
+                continue;
+            out.writeText("probe", false, false, "\n");
+        }
+        probe.deleteFile();
+        return dir;
+    }
+    return {};
+}
+
+// Writes a stereo sine .wav to the repo-anchored scratch dir and returns its
+// path (empty File() when the open failed — callers must check existsAsFile).
 juce::File writeSineWav(int lengthSamples, double sr)
 {
-    juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                       .getChildFile("hdaw_incremental_routing_spike.wav");
-    f.deleteFile();
+    juce::File dir = testScratchDir();
+    if (!dir.isDirectory())
+        return {};
+    juce::File f = dir.getNonexistentChildFile("hdaw_incremental_routing_spike", ".wav");
     juce::AudioBuffer<float> buf(2, lengthSamples);
     for (int s = 0; s < lengthSamples; ++s)
     {
@@ -53,6 +105,8 @@ juce::File writeSineWav(int lengthSamples, double sr)
         std::unique_ptr<juce::AudioFormatWriter> writer(
             wav.createWriterFor(out.get(), sr, 2, 16, {}, 0));
         out.release();
+        if (writer == nullptr)
+            return {};
         writer->writeFromAudioSampleBuffer(buf, 0, lengthSamples);
     }
     return f;

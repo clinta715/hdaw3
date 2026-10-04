@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <iostream>
-#include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include "engine/AudioEngine.h"
 #include "engine/MainAudioProcessor.h"
@@ -8,6 +8,7 @@
 #include "engine/Track.h"
 #include "model/ProjectModel.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include "repo_root.h"
 
 // Reproduction harness for the export volume-bypass bug: with the real
 // polywave_shift.hdaw project loaded, exporting at track volume 0.001 and at
@@ -75,8 +76,8 @@ TEST(ExportVolumeBypass, RealProjectVolumeSensitivity)
     // The render-sequence bake for a 771-clip graph exceeds the 15 s default
     // bake window in Debug builds; the production export scripts set this to
     // 120 s. Set it here too so the render can actually start.
-    _putenv_s("HDAW_EXPORT_BAKE_TIMEOUT_MS", "120000");
-    const juce::File proj("D:\\pdf\\roo projects\\hdaw3\\projects\\polywave_shift.hdaw");
+    setenv("HDAW_EXPORT_BAKE_TIMEOUT_MS", "120000", 1);
+    const juce::File proj(hdawRepoFile("projects/polywave_shift.hdaw"));
     if (!proj.existsAsFile())
         GTEST_SKIP() << "project file not present";
 
@@ -163,7 +164,7 @@ TEST(ExportVolumeBypass, VolumeAutomationOverridesTreeFader)
 {
     // The render-sequence bake can exceed the 15 s default bake window; the
     // production export scripts set 120 s.
-    _putenv_s("HDAW_EXPORT_BAKE_TIMEOUT_MS", "120000");
+    setenv("HDAW_EXPORT_BAKE_TIMEOUT_MS", "120000", 1);
 
     AudioEngine engine;
     engine.initialize();
@@ -193,7 +194,7 @@ TEST(ExportVolumeBypass, VolumeAutomationOverridesTreeFader)
 
     // %TEMP% writes are denied to spawned processes on this box; the repo
     // .tmp_dnb_theme directory is the export scratch the harness owns.
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
     outDir.createDirectory();
     const juce::File outOn  = outDir.getChildFile("tmp_volauto_on.wav");
     const juce::File outOff = outDir.getChildFile("tmp_volauto_off.wav");
@@ -250,7 +251,7 @@ TEST(ExportVolumeBypass, VolumeAutomationOverridesTreeFader)
 // 1 muted), #3 (track 1 unmuted again) must show #3 == #1 and #2 well below #1.
 TEST(ExportVolumeBypass, MultiExportRereadsLiveTree)
 {
-    _putenv_s("HDAW_EXPORT_BAKE_TIMEOUT_MS", "120000");
+    setenv("HDAW_EXPORT_BAKE_TIMEOUT_MS", "120000", 1);
 
     AudioEngine engine;
     engine.initialize();
@@ -278,7 +279,7 @@ TEST(ExportVolumeBypass, MultiExportRereadsLiveTree)
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
 
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
     outDir.createDirectory();
     const juce::File outFull1 = outDir.getChildFile("tmp_multi_full_1.wav");
     const juce::File outSolo2 = outDir.getChildFile("tmp_multi_solo_2.wav");

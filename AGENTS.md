@@ -253,7 +253,11 @@ separate project and is no longer a delivery target.
 
 ## Build
 
-- **Agent builds: use `dsh-build-fast.bat [test|all|debug]`** — sandbox-safe
+- **Linux (native, 2026-10-04 port):** `./build-fast.sh [test|all|debug]` or
+  `cmake --preset linux` — full package list, layout, and platform deltas in
+  [`docs/build-and-testing.md`](docs/build-and-testing.md) § Linux. The plugin
+  isolation layer is ported (AF_UNIX SEQPACKET + shm_open), not compiled out.
+- **Agent builds (Windows): use `dsh-build-fast.bat [test|all|debug]`** — sandbox-safe
   wrapper (no PowerShell/.NET calls, auto-detects VS-bundled cmake/ninja).
   `build-fast.bat` remains for human use. Same interface.
 - **Ninja is the preferred generator** — the build dir is Ninja-configured;

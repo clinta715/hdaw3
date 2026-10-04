@@ -19,6 +19,7 @@
 #include <iostream>
 #include <tuple>
 #include <vector>
+#include "repo_root.h"
 
 // §3-context stress with the NEW psytrance packs (E:\samples, indexed
 // 2026-08-27): generate a psytrance arrangement from pack samples — sampler
@@ -60,7 +61,7 @@ void addNotes(ProjectCommands& cmds, int clipId,
 static std::vector<std::pair<juce::String, juce::String>> loadSelection(int skipPerRole)
 {
     std::vector<std::pair<juce::String, juce::String>> out;
-    const juce::File tsv("D:/pdf/roo projects/hdaw3/timbre-lib/psy_sample_selection.tsv");
+    const juce::File tsv(hdawRepoFile("timbre-lib/psy_sample_selection.tsv"));
     if (!tsv.existsAsFile()) return out;
     const juce::StringArray lines = juce::StringArray::fromLines(tsv.loadFileAsString());
     std::map<juce::String, int> perRole;
@@ -256,7 +257,7 @@ TEST(PsytranceComposition, NewPacksLongRenderWithFxAutomation)
     // .tmp_dnb_theme/ (default: temp + delete, guarding disk space).
     static const bool keep = std::getenv("HDAW_KEEP_PSY_RENDERS") != nullptr;
     const juce::File outBase = keep
-        ? juce::File("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme")
+        ? hdawRepoFile(".tmp_dnb_theme")
         : tempDir;
 
     // 3 iterations: render 90 s, save+load (full rebuilds) between — the
@@ -414,7 +415,7 @@ TEST(PsytranceComposition, VariantTwoRendersToDisk)
     auto& em = mp->getExportManager();
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
     ASSERT_TRUE(outDir.isDirectory() || outDir.createDirectory());
 
     // 2 full-length renders (160 beats @145 BPM ~ 66 s of audio per clip
@@ -496,7 +497,7 @@ TEST(PsytranceComposition, RoleIsolationDiag)
     auto& em = mp->getExportManager();
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
 
     for (const auto& role : roles)
     {
@@ -779,7 +780,7 @@ TEST(PsytranceComposition, FullProductionArrangement)
     auto& em = mp->getExportManager();
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
     const double dur = HDAW::ExportManager::calculateProjectDuration(engine.getProjectModel());
     const juce::File out = outDir.getChildFile("psytrance_production_v3.wav");
     cmds.setMasterGain(1.0f);
@@ -905,7 +906,7 @@ TEST(PsytranceComposition, FxExplosionDiag)
     auto& em = mp->getExportManager();
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
 
     struct RoleNote { const char* role; int pitch; int vel; };
     const RoleNote rn[] = { { "kick", 36, 100 }, { "bass", 36, 100 }, { "hat", 44, 90 },
@@ -998,7 +999,7 @@ TEST(PsytranceComposition, FxBinarySearchKick)
     auto& em = mp->getExportManager();
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
     cmds.setMasterGain(0.2f);
 
     auto readPeak = [&](const juce::File& f) {
@@ -1771,7 +1772,7 @@ TEST(PsytranceComposition, FullProductionV4)
     auto& em = mp->getExportManager();
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
     const double dur = HDAW::ExportManager::calculateProjectDuration(engine.getProjectModel());
     const juce::File out = outDir.getChildFile("psytrance_production_v4.wav");
     cmds.setMasterGain(1.0f);
@@ -1832,7 +1833,7 @@ TEST(PsytranceComposition, DarkForestV5)
     struct Loaded { juce::String role; juce::String path; juce::String lib; };
     std::vector<Loaded> sel;
     for (const auto& line : juce::StringArray::fromLines(
-             juce::File("D:/pdf/roo projects/hdaw3/timbre-lib/psy_sample_selection.tsv").loadFileAsString()))
+             juce::File(hdawRepoFile("timbre-lib/psy_sample_selection.tsv")).loadFileAsString()))
     {
         const int tab = line.indexOfChar('\t');
         if (tab <= 0) continue;
@@ -2186,7 +2187,7 @@ TEST(PsytranceComposition, DarkForestV5)
     auto& em = mp->getExportManager();
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
-    const juce::File outDir("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir(hdawRepoFile(".tmp_dnb_theme"));
     const double dur = HDAW::ExportManager::calculateProjectDuration(engine.getProjectModel());
     const juce::File out = outDir.getChildFile("psytrance_darkforest_v5.wav");
     cmds.setMasterGain(1.0f);
@@ -2781,8 +2782,8 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     // computeBakeWaitMs budgets only ONE virus warmup. The documented
     // overrides raise both budgets; the gtest-level export waits
     // (waitForExport 1200 s) are already generous.
-    _putenv ("HDAW_RENDER_WINDOW_WAIT_MS=240000");
-    _putenv ("HDAW_EXPORT_BAKE_TIMEOUT_MS=180000");
+    setenv("HDAW_RENDER_WINDOW_WAIT_MS", "240000", 1);
+    setenv("HDAW_EXPORT_BAKE_TIMEOUT_MS", "180000", 1);
 
     // Palette: the 2026-09-24 key-aware selector pass (select_psy_samples.py
     // --key F) picked F-minor-matched samples. v3 uses ONLY the percussion
@@ -3778,7 +3779,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
     auto& em = mp->getExportManager();
     juce::AudioFormatManager exportFm;
     exportFm.registerBasicFormats();
-    const juce::File outDir ("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme");
+    const juce::File outDir (hdawRepoFile(".tmp_dnb_theme"));
     const double dur = HDAW::ExportManager::calculateProjectDuration (engine.getProjectModel());
     const juce::File out = outDir.getChildFile ("psy_dub_test.wav");
     cmds.setMasterGain (1.0f);
@@ -3863,7 +3864,7 @@ TEST (PsytranceComposition, PsyDubFiveMinutes)
         << "700 beats @ 138 BPM + the 3 s tail ~ 307.3 s";
     // Deliverable: keep the working render in .tmp_dnb_theme and publish the
     // dated copy the v3 brief asks for.
-    const juce::File deliverable ("D:/pdf/roo projects/hdaw3/compositions/psy_dub_test_2026-09-25.wav");
+    const juce::File deliverable (hdawRepoFile("compositions/psy_dub_test_2026-09-25.wav"));
     deliverable.getParentDirectory().createDirectory();
     out.copyFileTo (deliverable);
     EXPECT_TRUE (deliverable.existsAsFile()) << "deliverable copy failed";

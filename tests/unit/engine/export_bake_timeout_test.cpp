@@ -6,6 +6,7 @@
 #include "engine/ProjectSerializer.h"
 #include "model/ProjectModel.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include "repo_root.h"
 
 // Regression coverage for the spurious
 // "Render graph bake timed out after 15000ms - export aborted." failure on
@@ -79,7 +80,7 @@ TEST(ExportBakeTimeout, LargeProjectExportsWithDefaultTimeout)
     // Guarantee the DEFAULT (env-free) bake-timeout path is exercised: a prior
     // test may have left HDAW_EXPORT_BAKE_TIMEOUT_MS set (e.g. 120000), which
     // would mask the regression this test guards against.
-    _putenv_s("HDAW_EXPORT_BAKE_TIMEOUT_MS", "");
+    unsetenv("HDAW_EXPORT_BAKE_TIMEOUT_MS");
 
     // ~800 MIDI clips across 4 tracks (200 each), staggered starts.
     const juce::ValueTree project = makeProjectWithClips(200, 4);
@@ -118,9 +119,9 @@ TEST(ExportBakeTimeout, LargeProjectExportsWithDefaultTimeout)
 // watching for debug-heap/CRT aborts.
 TEST(ExportAutomation, SeedProjectLongRenderDoesNotAbort)
 {
-    _putenv_s("HDAW_EXPORT_BAKE_TIMEOUT_MS", "");
+    unsetenv("HDAW_EXPORT_BAKE_TIMEOUT_MS");
 
-    const juce::File seed("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme/antinomy_remix_FINAL.hdaw");
+    const juce::File seed(hdawRepoFile(".tmp_dnb_theme/antinomy_remix_FINAL.hdaw"));
     if (!seed.existsAsFile())
         GTEST_SKIP() << "seed project not present";
     const juce::File outBase = juce::File::getSpecialLocation(juce::File::tempDirectory);
@@ -164,8 +165,8 @@ TEST(ExportAutomation, SeedProjectLongRenderDoesNotAbort)
 // window) and watch for the debug-CRT heap abort.
 TEST(ExportAutomation, SessionAccumulationStress)
 {
-    _putenv_s("HDAW_EXPORT_BAKE_TIMEOUT_MS", "");
-    const juce::File seed("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme/antinomy_remix_FINAL.hdaw");
+    unsetenv("HDAW_EXPORT_BAKE_TIMEOUT_MS");
+    const juce::File seed(hdawRepoFile(".tmp_dnb_theme/antinomy_remix_FINAL.hdaw"));
     if (!seed.existsAsFile())
         GTEST_SKIP() << "seed project not present";
     const juce::File tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
@@ -238,8 +239,8 @@ TEST(ExportAutomation, SessionAccumulationStress)
 // stress the session accumulated across hours of exports + rebuilds.
 TEST(ExportAutomation, LiveMutationsDuringExportStress)
 {
-    _putenv_s("HDAW_EXPORT_BAKE_TIMEOUT_MS", "");
-    const juce::File seed("D:/pdf/roo projects/hdaw3/.tmp_dnb_theme/antinomy_remix_FINAL.hdaw");
+    unsetenv("HDAW_EXPORT_BAKE_TIMEOUT_MS");
+    const juce::File seed(hdawRepoFile(".tmp_dnb_theme/antinomy_remix_FINAL.hdaw"));
     if (!seed.existsAsFile())
         GTEST_SKIP() << "seed project not present";
     const juce::File tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);

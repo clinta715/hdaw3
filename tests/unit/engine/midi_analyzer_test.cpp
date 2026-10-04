@@ -4,10 +4,23 @@
 #include "engine/RhythmPatternGenerator.h"
 #include <juce_core/juce_core.h>
 #include <fstream>
-#include <windows.h>
+#include <filesystem>
+#include <unistd.h>
 
 namespace
 {
+
+std::string makeTempMidiPath()
+{
+    const std::filesystem::path tmpl =
+        std::filesystem::temp_directory_path() / "midXXXXXX";
+    std::vector<char> buf(tmpl.string().begin(), tmpl.string().end());
+    buf.push_back('\0');
+    const int fd = mkstemp(buf.data());
+    if (fd != -1)
+        close(fd);
+    return std::string(buf.data());
+}
 
 void writeVarLen(std::vector<uint8_t>& buf, uint32_t value)
 {
@@ -29,10 +42,7 @@ void writeVarLen(std::vector<uint8_t>& buf, uint32_t value)
 std::string writeTestMidiFile(const std::vector<std::tuple<int, int, double, double>>& notes,
                                double bpm = 120.0)
 {
-    char tempPath[MAX_PATH];
-    GetTempPathA(MAX_PATH, tempPath);
-    char path[MAX_PATH];
-    GetTempFileNameA(tempPath, "mid", 0, path);
+    const std::string path = makeTempMidiPath();
 
     const int ticksPerQuarter = 480;
 
@@ -104,7 +114,7 @@ std::string writeTestMidiFile(const std::vector<std::tuple<int, int, double, dou
 
 TEST(MidiAnalyzerTest, AnalyzeNonexistentFileReturnsEmpty)
 {
-    auto result = HDAW::MidiAnalyzer::analyze(juce::File("C:/nonexistent/path.mid"));
+    auto result = HDAW::MidiAnalyzer::analyze(juce::File("/nonexistent/path.mid"));
     EXPECT_TRUE(result.fileName.isEmpty());
     EXPECT_EQ(result.trackCount, 0);
 }

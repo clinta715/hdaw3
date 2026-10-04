@@ -265,11 +265,14 @@ TuningAnalysisResult runAnalysis(const QString& wavPath, const QString& role)
     }
 
     // Try python subprocess first (timbre-lib/tune_roles.py) for highest fidelity
-    // Locate script: <appDir>/timbre-lib/tune_roles.py or cwd/timbre-lib/tune_roles.py or D:\pdf\roo projects\hdaw3\timbre-lib\tune_roles.py
+    // Locate script: <appDir>/timbre-lib/tune_roles.py, then the source tree
+    // relative to the build output (<appDir>/../ or ../../), then cwd. No
+    // absolute checkout path is baked in -- the repo can move drives.
     QStringList candidateScripts;
     candidateScripts << QCoreApplication::applicationDirPath() + "/timbre-lib/tune_roles.py";
+    candidateScripts << QCoreApplication::applicationDirPath() + "/../timbre-lib/tune_roles.py";
+    candidateScripts << QCoreApplication::applicationDirPath() + "/../../timbre-lib/tune_roles.py";
     candidateScripts << QDir::current().filePath("timbre-lib/tune_roles.py");
-    candidateScripts << "D:/pdf/roo projects/hdaw3/timbre-lib/tune_roles.py";
     candidateScripts << "timbre-lib/tune_roles.py";
     QString scriptPath;
     for (auto &c : candidateScripts) { QFileInfo fi(c); if (fi.exists()) { scriptPath = fi.absoluteFilePath(); break; } }

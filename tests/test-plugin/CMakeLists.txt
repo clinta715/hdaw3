@@ -21,6 +21,11 @@ target_include_directories(HDAWTestPlugin PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_compile_definitions(HDAWTestPlugin PRIVATE
     JUCE_VST3_CAN_REPLACE_VST2=0
+    # Match the layered-libs global defines (root CMakeLists.txt): without
+    # JUCE_WEB_BROWSER=0 the Linux juce_gui_extra module TU pulls webkit2gtk
+    # headers, and without JUCE_USE_CURL=0 juce_core pulls curl headers.
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
 )
 
 target_link_libraries(HDAWTestPlugin PRIVATE

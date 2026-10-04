@@ -3,17 +3,24 @@
 #include "engine/MidiImport.h"
 #include "model/ProjectModel.h"
 #include <juce_core/juce_core.h>
+#include <filesystem>
 #include <fstream>
+#include <unistd.h>
+#include <vector>
 
 namespace
 {
 
 std::string writeTestMidiFile()
 {
-    char tempPath[MAX_PATH];
-    GetTempPathA(MAX_PATH, tempPath);
-    char path[MAX_PATH];
-    GetTempFileNameA(tempPath, "mid", 0, path);
+    const std::filesystem::path tmpl =
+        std::filesystem::temp_directory_path() / "midXXXXXX";
+    std::vector<char> buf(tmpl.string().begin(), tmpl.string().end());
+    buf.push_back('\0');
+    const int fd = mkstemp(buf.data());
+    if (fd != -1)
+        close(fd);
+    const std::string path(buf.data());
 
     const uint8_t midiData[] = {
         'M','T','h','d', 0,0,0,6, 0,0, 0,1, 1,0xE0,

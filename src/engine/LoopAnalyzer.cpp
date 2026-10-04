@@ -41,7 +41,7 @@ LoopAnalysis LoopAnalyzer::analyze(const juce::String& sourceFile,
     if (reader->numChannels <= 0 || reader->lengthInSamples <= 0) return result;
 
     const int64_t maxSamples = static_cast<int64_t>(maxSeconds * reader->sampleRate);
-    const int64_t totalSamples = (std::min)(reader->lengthInSamples, maxSamples);
+    const int64_t totalSamples = (std::min)(static_cast<int64_t>(reader->lengthInSamples), maxSamples);
     if (totalSamples <= 0) return result;
 
     const int numSamples = static_cast<int>(totalSamples);
