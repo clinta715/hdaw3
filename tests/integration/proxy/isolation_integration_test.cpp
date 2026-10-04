@@ -12,6 +12,10 @@
 #include <thread>
 #include <atomic>
 #include <optional>
+#include <csignal>
+#include <cstdio>
+#include <unistd.h>
+#include <filesystem>
 
 using namespace proxy;
 
@@ -42,24 +46,33 @@ namespace {
 // test-only hang hook / warmup override.
 std::string setChildEnv(const char* name, const std::string& value)
 {
-    char buf[4096]{};
-    const DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
-    std::string old = (n > 0 && n < sizeof(buf)) ? std::string(buf, n) : std::string();
-    SetEnvironmentVariableA(name, value.c_str());
+    std::string old;
+    if (const char* v = std::getenv(name); v != nullptr)
+        old = v;
+    setenv(name, value.c_str(), 1);
     return old;
 }
 
 void restoreChildEnv(const char* name, const std::string& old)
 {
-    SetEnvironmentVariableA(name, old.empty() ? nullptr : old.c_str());
+    if (old.empty())
+        unsetenv(name);
+    else
+        setenv(name, old.c_str(), 1);
 }
 
 // The child watchdog writes "hdaw_plugin_host_processBlock hung for 1s.dmp"
-// into its %TEMP%. List that pattern in `dir`.
+// (Windows minidump) or "hdaw_plugin_host_processBlock_hung.crash.txt"
+// (Linux text report) into its temp dir. List that pattern in `dir`.
 int countHungDumps(const juce::File& dir, juce::StringArray& names)
 {
     names.clear();
-    for (const auto& entry : juce::RangedDirectoryIterator(dir, false, "*hung*.dmp"))
+#if defined(_WIN32)
+    const juce::String wildcard = "*hung*.dmp";
+#else
+    const juce::String wildcard = "*hung*.crash.txt";
+#endif
+    for (const auto& entry : juce::RangedDirectoryIterator(dir, false, wildcard))
     {
         auto f = entry.getFile();
         names.add(f.getFileName() + " (" + juce::String(f.getSize()) + " bytes)");
@@ -79,7 +92,13 @@ juce::File freshScratchDir(const juce::String& tag)
 TEST(PluginIsolation, HostExePathResolves) {
     auto path = ProxyProcessManager::getHostExePath();
     EXPECT_FALSE(path.empty());
+#if defined(_WIN32)
     EXPECT_TRUE(path.find("hdaw_plugin_host.exe") != std::string::npos);
+#else
+    // The Linux binary has no .exe suffix; the basename must still resolve.
+    EXPECT_TRUE(path.find("hdaw_plugin_host") != std::string::npos);
+    EXPECT_TRUE(path.find("hdaw_plugin_host.exe") == std::string::npos);
+#endif
 }
 
 // Current contract (post-e917c1f): a failed plugin load no longer exits the
@@ -182,7 +201,7 @@ TEST(PluginIsolation, CheckAllChildrenFiresCallback) {
     auto* info = mgr.getChildInfo(9004);
     ASSERT_NE(info, nullptr);
     ASSERT_NE(info->processHandle, INVALID_HANDLE_VALUE);
-    TerminateProcess(info->processHandle, 0);
+    kill(info->processHandle, SIGKILL);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
 
@@ -1512,7 +1531,7 @@ TEST(PluginIsolation, PerSlotCrashCallback) {
     auto* infoA = mgr.getChildInfo(9080);
     ASSERT_NE(infoA, nullptr);
     ASSERT_NE(infoA->processHandle, INVALID_HANDLE_VALUE);
-    TerminateProcess(infoA->processHandle, 0);
+    kill(infoA->processHandle, SIGKILL);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
     mgr.checkAllChildren();
@@ -1525,7 +1544,7 @@ TEST(PluginIsolation, PerSlotCrashCallback) {
     auto* infoB = mgr.getChildInfo(9081);
     ASSERT_NE(infoB, nullptr);
     ASSERT_NE(infoB->processHandle, INVALID_HANDLE_VALUE);
-    TerminateProcess(infoB->processHandle, 0);
+    kill(infoB->processHandle, SIGKILL);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
     mgr.checkAllChildren();
@@ -1685,7 +1704,7 @@ TEST(PluginIsolation, HardKillFiresCrashCallback) {
     auto* info = mgr.getChildInfo(9121);
     ASSERT_NE(info, nullptr);
     ASSERT_NE(info->processHandle, INVALID_HANDLE_VALUE);
-    TerminateProcess(info->processHandle, 0);
+    kill(info->processHandle, SIGKILL);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
     mgr.checkAllChildren();
@@ -2598,8 +2617,15 @@ TEST(PluginIsolation, RealHangWritesHangDump) {
     // size is the real dump, not a zero-byte placeholder.
     std::this_thread::sleep_for(std::chrono::milliseconds(2500));
     countHungDumps(scratch, dumps);
+#if defined(_WIN32)
     EXPECT_GT(scratch.getChildFile("hdaw_plugin_host_processBlock hung for 1s.dmp").getSize(), 0)
         << "minidump was created but is empty";
+#else
+    // The Linux watchdog writes a text stack report (writeCrashReport with
+    // reason "processBlock_hung") instead of a dbghelp minidump.
+    EXPECT_GT(scratch.getChildFile("hdaw_plugin_host_processBlock_hung.crash.txt").getSize(), 0)
+        << "hang report was created but is empty";
+#endif
     std::fprintf(stderr, "MARK realhang scratch=%s dumps=%s\n",
                  scratch.getFullPathName().toRawUTF8(),
                  dumps.isEmpty() ? "(none)" : dumps.joinIntoString("; ").toRawUTF8());
@@ -2771,8 +2797,26 @@ TEST(PluginIsolation, PipeHandleNotLeakedAcrossKillCycles) {
     constexpr int kCycles = 20;
     std::vector<DWORD> counts;
 
+#ifdef _WIN32
+    auto countResources = [] (DWORD* out) {
+        return GetProcessHandleCount(GetCurrentProcess(), out) != 0;
+    };
+#else
+    // Linux equivalent: count open file descriptors (/proc/self/fd). A leaked
+    // pipe fd or shm mapping shows as the same steady climb.
+    auto countResources = [] (DWORD* out) {
+        std::error_code ec;
+        auto n = static_cast<DWORD>(
+            std::distance(std::filesystem::directory_iterator("/proc/self/fd", ec),
+                          std::filesystem::directory_iterator()));
+        if (ec) return false;
+        *out = n;
+        return true;
+    };
+#endif
+
     DWORD n0 = 0;
-    ASSERT_TRUE(GetProcessHandleCount(GetCurrentProcess(), &n0));
+    ASSERT_TRUE(countResources(&n0));
     counts.push_back(n0);
 
     for (int i = 0; i < kCycles; ++i) {
@@ -2793,7 +2837,7 @@ TEST(PluginIsolation, PipeHandleNotLeakedAcrossKillCycles) {
         shmLease.reset();
 
         DWORD n = 0;
-        ASSERT_TRUE(GetProcessHandleCount(GetCurrentProcess(), &n));
+        ASSERT_TRUE(countResources(&n));
         counts.push_back(n);
     }
 
@@ -2879,8 +2923,8 @@ namespace {
 // is not reachable here and a fixed name would collide across parallel runs).
 std::string uniqueExchangeTestPipeName(const char* tag) {
     static std::atomic<uint32_t> counter{0};
-    return std::string("\\\\.\\pipe\\hdaw_test_exchange_") + tag + "_"
-        + std::to_string(static_cast<unsigned>(::GetCurrentProcessId())) + "_"
+    return std::string("hdaw_test_exchange_") + tag + "_"
+        + std::to_string(static_cast<unsigned>(::getpid())) + "_"
         + std::to_string(counter.fetch_add(1));
 }
 

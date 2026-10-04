@@ -3,6 +3,15 @@
 #include <chrono>
 #include <cstring>
 #include <cstdio>
+#if !defined(_WIN32)
+#include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <sys/prctl.h>
+#include <fcntl.h>
+#include <cerrno>
+extern char** environ;
+#endif
 
 namespace proxy {
 
@@ -15,9 +24,66 @@ ProxyProcessManager::ProxyProcessManager() {
     namePrefix = makeUniqueNamespacePrefix("");
 }
 
+#if !defined(_WIN32)
+// ── Linux process helpers ──────────────────────────────────────────────────
+// One WNOHANG waitpid. Returns true when the child is gone (reaped — the raw
+// waitpid status is cached into `info` when non-null — or already unknown),
+// false when it is still running. Reaping happens EXACTLY ONCE per pid; the
+// cached status backs every later health-sweep classification (there is no
+// STILL_ACTIVE re-query like GetExitCodeProcess).
+static bool reapOnce(pid_t pid, ChildInfo* info) {
+    int st = 0;
+    pid_t r = ::waitpid(pid, &st, WNOHANG);
+    if (r == 0) return false;
+    if (info && r > 0) {
+        info->reaped = true;
+        info->exitStatus = st;
+    }
+    return true;
+}
+
+// Blocking reap (after SIGKILL this returns promptly); caches into `info`.
+static void reapBlocking(pid_t pid, ChildInfo* info) {
+    int st = 0;
+    pid_t r = ::waitpid(pid, &st, 0);
+    if (info && r > 0) {
+        info->reaped = true;
+        info->exitStatus = st;
+    }
+}
+
+// kill SIGKILL + blocking reap — the TerminateProcess(0)+CloseHandle analog
+// for the READY-failure / legacy-v1 / version-mismatch spawn paths.
+static void hardKillAndReap(pid_t pid) {
+    ::kill(pid, SIGKILL);
+    int st = 0;
+    ::waitpid(pid, &st, 0);
+}
+
+// Graceful when the child exited normally with the shared GRACEFUL_EXIT_CODE
+// (both sides include ProxyCommon.h, so the constant cannot drift).
+static bool gracefulExit(const ChildInfo& info) {
+    return WIFEXITED(info.exitStatus)
+        && WEXITSTATUS(info.exitStatus) == proxy::GRACEFUL_EXIT_CODE;
+}
+
+// 32-bit exit-code analog for the crash log: signal deaths have no WEXITSTATUS,
+// so they map to 0x80000000|WTERMSIG (a code no graceful/normal exit can
+// produce); normal exits report WEXITSTATUS verbatim.
+static uint32_t exitCodeOf(const ChildInfo& info) {
+    if (WIFEXITED(info.exitStatus))
+        return static_cast<uint32_t>(WEXITSTATUS(info.exitStatus));
+    return 0x80000000u | static_cast<uint32_t>(WTERMSIG(info.exitStatus));
+}
+#endif
+
 std::string ProxyProcessManager::makeUniqueNamespacePrefix(const std::string& domainLabel) {
     char pidHex[16];
+#if defined(_WIN32)
     std::snprintf(pidHex, sizeof(pidHex), "%x", static_cast<unsigned>(::GetCurrentProcessId()));
+#else
+    std::snprintf(pidHex, sizeof(pidHex), "%x", static_cast<unsigned>(::getpid()));
+#endif
     return domainLabel + pidHex + "_" + std::to_string(gNamespaceInstanceCounter.fetch_add(1)) + "_";
 }
 
@@ -26,9 +92,20 @@ ProxyProcessManager::~ProxyProcessManager() {
     std::lock_guard<std::mutex> lock(mutex);
     for (auto& [id, info] : children) {
         if (info.processHandle != INVALID_HANDLE_VALUE) {
+#if defined(_WIN32)
             TerminateProcess(info.processHandle, 0);
             WaitForSingleObject(info.processHandle, 1000);
             CloseHandle(info.processHandle);
+#else
+            pid_t pid = static_cast<pid_t>(info.processHandle);
+            ::kill(pid, SIGKILL);
+            const auto deadline = std::chrono::steady_clock::now()
+                + std::chrono::milliseconds(1000);
+            while (!reapOnce(pid, &info)) {
+                if (std::chrono::steady_clock::now() >= deadline) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+#endif
         }
     }
 }
@@ -108,6 +185,9 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         }
     }
 
+    HANDLE childProc = INVALID_HANDLE_VALUE;
+
+#if defined(_WIN32)
     std::string cmdLine = "\"" + hostExe + "\""
         + " --slot=" + std::to_string(slotId)
         + " --pipe=" + pipeName
@@ -163,6 +243,8 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
 
     CloseHandle(pi.hThread);
 
+    childProc = pi.hProcess;
+
     HDAW_LOG("proxy", "spawnPluginHost: child spawned, waiting for READY");
 
     // Wait for READY outside the lock (with timeout)
@@ -216,11 +298,100 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         return false;
     }
 
+#else // !defined(_WIN32) — fork + execve child spawn
+
+    // Diagnostic stdout redirect, mirroring the Windows block above: when
+    // HDAW_PROXY_CHILD_STDOUT is set, the child's 0/1/2 all land on the file
+    // (append mode). Open failure proceeds without a redirect, exactly like a
+    // failed CreateFileA left inheritHandles FALSE above.
+    int childStdoutFd = -1;
+    if (const char* childStdoutPath = getenv("HDAW_PROXY_CHILD_STDOUT");
+        childStdoutPath != nullptr && childStdoutPath[0] != '\0')
+    {
+        childStdoutFd = ::open(childStdoutPath, O_WRONLY | O_CREAT | O_APPEND, 0640);
+    }
+
+    // Unquoted argv: the child parses the same --slot/--pipe/--shm/--plugin
+    // tokens (strncmp on the prefixes) as the Windows command line.
+    std::string slotArg = "--slot=" + std::to_string(slotId);
+    std::string pipeArg = "--pipe=" + pipeName;
+    std::string shmArg = "--shm=" + shmNameStr;
+    std::string pluginArg = "--plugin=" + pluginPath;
+
+    pid_t pid = ::fork();
+    if (pid < 0) {
+        if (childStdoutFd >= 0) ::close(childStdoutFd);
+        HDAW_LOG("proxy", "spawnPluginHost: fork FAILED errno=" + std::to_string(errno));
+        pipeServer->stop();
+        return false;
+    }
+    if (pid == 0) {
+        // Child: only async-signal-safe calls between fork and exec.
+        ::prctl(PR_SET_PDEATHSIG, SIGKILL);
+        if (::getppid() == 1) ::_exit(127);
+        if (childStdoutFd >= 0) {
+            ::dup2(childStdoutFd, STDIN_FILENO);
+            ::dup2(childStdoutFd, STDOUT_FILENO);
+            ::dup2(childStdoutFd, STDERR_FILENO);
+        }
+        char* argv[] = {
+            const_cast<char*>(hostExe.c_str()),
+            const_cast<char*>(slotArg.c_str()),
+            const_cast<char*>(pipeArg.c_str()),
+            const_cast<char*>(shmArg.c_str()),
+            const_cast<char*>(pluginArg.c_str()),
+            nullptr
+        };
+        ::execve(hostExe.c_str(), argv, environ);
+        ::_exit(127);
+    }
+    // Parent: drop the redirect fd in all paths (the child holds its dup2s).
+    if (childStdoutFd >= 0) ::close(childStdoutFd);
+
+    childProc = static_cast<HANDLE>(pid);
+
+    HDAW_LOG("proxy", "spawnPluginHost: child spawned pid=" + std::to_string(static_cast<int>(pid))
+        + ", waiting for READY");
+
+    // Wait for READY outside the lock (with timeout) — same guard-scoped
+    // handshake as the Windows branch above (see that comment for the full
+    // exchange-lock / map-lock ordering contract).
+    ProxyResponse readyResp{};
+    bool ready = false;
+    {
+        PipeServer::Exchange readyEx(*pipeServer);
+        ready = readyEx.receiveReplyReady(readyResp, MessageType::READY);
+    }
+    if (ready && pipeServer->sawLegacyProtocolReady()) {
+        HDAW_LOG("proxy", std::string(proxy::kLegacyV1Diagnosis) + " (slot "
+            + std::to_string(slotId) + ")");
+        hardKillAndReap(pid);
+        pipeServer->stop();
+        return false;
+    }
+    if (ready && !proxy::protocolVersionAccepted(readyResp.result)) {
+        HDAW_LOG("proxy", "spawnPluginHost: PROTOCOL VERSION MISMATCH for slot "
+            + std::to_string(slotId) + " — child reported " + std::to_string(readyResp.result)
+            + ", this engine requires " + std::to_string(proxy::kProtocolVersion)
+            + "; refusing to drive a child with a different framing version");
+        hardKillAndReap(pid);
+        pipeServer->stop();
+        return false;
+    }
+    if (!ready) {
+        HDAW_LOG("proxy", "spawnPluginHost: READY timeout or pipe error for slot " + std::to_string(slotId));
+        hardKillAndReap(pid);
+        pipeServer->stop();
+        return false;
+    }
+
+#endif // _WIN32
+
     HDAW_LOG("proxy", "spawnPluginHost: READY received for slot " + std::to_string(slotId));
 
     // Now take the lock to insert the child info
     ChildInfo info;
-    info.processHandle = pi.hProcess;
+    info.processHandle = childProc;
     info.pipeName = pipeName;
     info.shmName = shmNameStr;
     info.pipe = std::move(pipeServer);
@@ -259,6 +430,7 @@ bool ProxyProcessManager::killPluginHost(uint32_t slotId, KillMode mode) {
         }
     }
 
+#if defined(_WIN32)
     if (handle != INVALID_HANDLE_VALUE) {
         if (mode == KillMode::KillGraceful) {
             TerminateProcess(handle, proxy::GRACEFUL_EXIT_CODE);
@@ -269,6 +441,41 @@ bool ProxyProcessManager::killPluginHost(uint32_t slotId, KillMode mode) {
         }
         CloseHandle(handle);
     }
+#else
+    if (handle != INVALID_HANDLE_VALUE) {
+        pid_t pid = static_cast<pid_t>(handle);
+        if (mode == KillMode::KillGraceful) {
+            ::kill(pid, SIGTERM);
+            // Wait out the existing 1000ms budget in 20ms WNOHANG steps;
+            // cache the exit status into the map entry while it still exists
+            // (the graceful erase happens in the block below).
+            const auto deadline = std::chrono::steady_clock::now()
+                + std::chrono::milliseconds(1000);
+            bool gone = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                auto it = children.find(slotId);
+                ChildInfo* info = it != children.end() ? &it->second : nullptr;
+                for (;;) {
+                    if (reapOnce(pid, info)) { gone = true; break; }
+                    if (std::chrono::steady_clock::now() >= deadline) break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                }
+            }
+            if (!gone) {
+                // Escalate exactly at the WaitForSingleObject timeout: a child
+                // that ignored SIGTERM for the full budget must not leak.
+                ::kill(pid, SIGKILL);
+                reapBlocking(pid, nullptr);
+            }
+        } else {
+            ::kill(pid, SIGKILL);
+            reapBlocking(pid, nullptr);
+        }
+        // Nothing to close on Linux: the pid needs no handle; the reap above
+        // is the CloseHandle analog.
+    }
+#endif
 
     if (mode == KillMode::KillGraceful) {
         std::lock_guard<std::mutex> lock(mutex);
@@ -296,6 +503,7 @@ bool ProxyProcessManager::isAlive(uint32_t slotId) {
     auto& info = it->second;
     if (info.processHandle == INVALID_HANDLE_VALUE) return false;
 
+#if defined(_WIN32)
     DWORD exitCode = 0;
     if (!GetExitCodeProcess(info.processHandle, &exitCode)) return false;
     if (exitCode != STILL_ACTIVE) {
@@ -303,6 +511,17 @@ bool ProxyProcessManager::isAlive(uint32_t slotId) {
         return false;
     }
     return true;
+#else
+    // One WNOHANG reap; a reaped child is cached (see ChildInfo::reaped) and
+    // every later call sees it gone. waitpid failure (ECHILD — unknown pid)
+    // is treated as not-alive, like a failed GetExitCodeProcess.
+    if (reapOnce(static_cast<pid_t>(info.processHandle), &info))
+    {
+        info.alive.store(false);
+        return false;
+    }
+    return true;
+#endif
 }
 
 const ChildInfo* ProxyProcessManager::getChildInfo(uint32_t slotId) const {
@@ -311,12 +530,18 @@ const ChildInfo* ProxyProcessManager::getChildInfo(uint32_t slotId) const {
     return it != children.end() ? &it->second : nullptr;
 }
 
-bool ProxyProcessManager::terminateChild(uint32_t slotId, uint32_t exitCode) {
+bool ProxyProcessManager::terminateChild(uint32_t slotId, uint32_t /*exitCode*/) {
     std::lock_guard<std::mutex> lock(mutex);
     auto it = children.find(slotId);
     if (it == children.end()) return false;
     if (it->second.processHandle == INVALID_HANDLE_VALUE) return false;
+#if defined(_WIN32)
     return TerminateProcess(it->second.processHandle, exitCode) != 0;
+#else
+    // SIGKILL regardless of exitCode: Linux cannot inject a 32-bit exit code
+    // into a running process; the graceful path is killPluginHost(SIGTERM).
+    return ::kill(static_cast<pid_t>(it->second.processHandle), SIGKILL) == 0;
+#endif
 }
 
 std::shared_ptr<PipeServer> ProxyProcessManager::getPipe(uint32_t slotId) {
@@ -367,6 +592,7 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
         for (auto& [id, info] : children) {
             if (info.processHandle == INVALID_HANDLE_VALUE) continue;
 
+#if defined(_WIN32)
             DWORD exitCode = 0;
             if (!GetExitCodeProcess(info.processHandle, &exitCode)) {
                 const DWORD flagError = GetLastError();
@@ -396,6 +622,28 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
                 }
                 continue;
             }
+#else
+            // One WNOHANG reap (cached into ChildInfo on Linux — no
+            // STILL_ACTIVE re-query). Still running → fall through to the
+            // stall snapshot below, identical to the Windows path.
+            if (reapOnce(static_cast<pid_t>(info.processHandle), &info)) {
+                info.alive.store(false);
+                if (gracefulExit(info)) continue;
+                if (!info.crashNotified) {
+                    info.crashNotified = true;
+                    char buf[160];
+                    if (info.reaped)
+                        std::snprintf(buf, sizeof(buf), "checkAllChildren: slot %u flagged: exit code 0x%x",
+                            id, static_cast<unsigned>(exitCodeOf(info)));
+                    else
+                        std::snprintf(buf, sizeof(buf), "checkAllChildren: slot %u flagged: waitpid failed errno=%d",
+                            id, errno);
+                    HDAW_LOG("CrashRecovery", buf);
+                    crashedSlots.push_back(id);
+                }
+                continue;
+            }
+#endif
 
             uint64_t currentBlocks = 0;
             bool inputPending = false;
@@ -475,6 +723,7 @@ void ProxyProcessManager::invokeCrashCallbacks(const std::vector<uint32_t>& ids)
 }
 
 std::string ProxyProcessManager::getHostExePath() {
+#if defined(_WIN32)
     char buf[MAX_PATH]{};
     GetModuleFileNameA(nullptr, buf, MAX_PATH);
     auto path = std::string(buf);
@@ -482,6 +731,18 @@ std::string ProxyProcessManager::getHostExePath() {
     if (pos != std::string::npos)
         path = path.substr(0, pos + 1);
     return path + "hdaw_plugin_host.exe";
+#else
+    char buf[4096];
+    ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n <= 0)
+        return "hdaw_plugin_host";
+    buf[n] = '\0';
+    auto path = std::string(buf, static_cast<size_t>(n));
+    auto pos = path.find_last_of("\\/");
+    if (pos != std::string::npos)
+        path = path.substr(0, pos + 1);
+    return path + "hdaw_plugin_host";
+#endif
 }
 
 std::string ProxyProcessManager::makePipeName(uint32_t slotId) const {

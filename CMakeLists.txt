@@ -8,6 +8,13 @@ if(POLICY CMP0141)
 endif()
 project(HDAW VERSION 0.39.4 LANGUAGES C CXX)
 
+# Flat runtime layout (matches the Windows build): every executable lands in
+# build/ regardless of the defining subdirectory. Child-process executables
+# are located exe-adjacent at runtime (ProxyProcessManager::getHostExePath →
+# hdaw_plugin_host next to the running binary), so tests in build/tests/
+# would strand the host and every spawn would fail its READY handshake.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -137,6 +144,17 @@ foreach(_mod juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio
     target_compile_definitions(hdaw_juce PUBLIC $<TARGET_PROPERTY:${_mod},INTERFACE_COMPILE_DEFINITIONS>)
 endforeach()
 target_link_libraries(hdaw_juce PUBLIC clap_juce_extensions HDAW::SoundTouch HDAW::aubio)
+
+# The transplant above copies each juce:: module's sources/includes/definitions,
+# but not its INTERFACE_LINK_LIBRARIES. On Windows that loss was invisible (the
+# module set needed no extra system libs); on Linux each module carries real
+# link requirements (freetype, fontconfig, X11/Xext/Xrandr/Xinerama/Xcursor/GL,
+# asound, dl) that the hdaw_juce archive references and consumers must link.
+# Transplant the link surface too — duplicates from the six modules are
+# harmless; the flags targets JUCE references resolve as normal CMake targets.
+foreach(_mod juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_devices juce::juce_dsp juce::juce_core juce::juce_gui_basics)
+    target_link_libraries(hdaw_juce PUBLIC "$<TARGET_PROPERTY:${_mod},INTERFACE_LINK_LIBRARIES>")
+endforeach()
 
 add_library(hdaw_common STATIC
     src/common/MessagePumpThread.cpp
@@ -399,6 +417,8 @@ foreach(_lib hdaw_juce ${HDAW_LIBS})
         target_compile_options(${_lib} PRIVATE
             $<$<CONFIG:Release,RelWithDebInfo>:/O2 /Ob2 /Oi /Oy /GT>
         )
+    elseif((CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang") AND HDAW_ENABLE_AVX2)
+        target_compile_options(${_lib} PRIVATE -mavx2)
     endif()
     if(ipo_supported)
         # hdaw_juce stays IPO-off: one LTO archive for the whole JUCE module set
@@ -442,10 +462,12 @@ endif()
 # --- HDAW: main executable ---
 add_executable(HDAW
     src/main.cpp
-    src/resources/resources.rc
     src/resources/resources.qrc
     src/resources/frontend.qrc
 )
+if(WIN32)
+    target_sources(HDAW PRIVATE src/resources/resources.rc)
+endif()
 
 target_link_libraries(HDAW
     PRIVATE
@@ -479,9 +501,8 @@ if(MSVC)
     add_compile_options(/wd4996 /wd5054 /wd5055)
 
     # AVX2 for DSP-heavy code (peak calculation, waveform rendering, audio
-    # processing). Every desktop CPU from ~2013+ supports it. Disable with
-    # -DHDAW_ENABLE_AVX2=OFF if targeting older hardware.
-    option(HDAW_ENABLE_AVX2 "Enable AVX2 SIMD instructions" ON)
+    # processing). Every desktop CPU from ~2013+ supports it. Option declared
+    # at top level; disable with -DHDAW_ENABLE_AVX2=OFF for older hardware.
     if(HDAW_ENABLE_AVX2)
         target_compile_options(HDAW PRIVATE /arch:AVX2)
     endif()
@@ -491,6 +512,8 @@ if(MSVC)
     target_compile_options(HDAW PRIVATE
         $<$<CONFIG:Release,RelWithDebInfo>:/O2 /Ob2 /Oi /Oy /GT>
     )
+elseif((CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang") AND HDAW_ENABLE_AVX2)
+    target_compile_options(HDAW PRIVATE -mavx2)
 endif()
 
 set_target_properties(HDAW PROPERTIES
@@ -577,8 +600,12 @@ target_link_libraries(hdaw_plugin_scanner PRIVATE
 # to link the engine executables with /DEBUG:NONE (no PDB; debugging switches
 # to the tests binary, which keeps its PDB). Reversible and default-off.
 if(DEFINED ENV{HDAW_LINK_NO_PDB})
-    set_property(TARGET HDAW HDAW_headless APPEND PROPERTY LINK_FLAGS "/DEBUG:NONE")
-    message(STATUS "HDAW_LINK_NO_PDB: linking engine executables without PDBs")
+    if(MSVC)
+        set_property(TARGET HDAW HDAW_headless APPEND PROPERTY LINK_FLAGS "/DEBUG:NONE")
+        message(STATUS "HDAW_LINK_NO_PDB: linking engine executables without PDBs")
+    else()
+        message(STATUS "HDAW_LINK_NO_PDB: MSVC-only option, ignored on this toolchain")
+    endif()
 endif()
 
 # --- Tests (MCP pilot) ---
@@ -586,6 +613,19 @@ option(HDAW_BUILD_TESTS "Build HDAW unit/integration tests" ON)
 if(HDAW_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# Child-process freshness (Gate 15 / lesson 15): the host and scanner exes are
+# located exe-adjacent and spawned at runtime. No build-graph edge existed, so
+# a protocol/shm header change could leave a STALE child that a fresh parent
+# misparses (this exact failure mode cost a LargeStateRoundTrip debug cycle:
+# zero-patched state, byte-count matching). Every consumer gets a dependency.
+if(TARGET hdaw_plugin_host)
+    foreach(_t HDAW HDAW_headless hdaw_tests_engine hdaw_tests_mcp hdaw_tests_frontend hdaw_tests_platform)
+        if(TARGET ${_t})
+            add_dependencies(${_t} hdaw_plugin_host hdaw_plugin_scanner)
+        endif()
+    endforeach()
 endif()
 
 # --- Test VST3 plugin for plugin host isolation testing ---

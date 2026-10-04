@@ -202,9 +202,9 @@ juce::FileSearchPath CLAPPluginFormat::getDefaultLocationsToSearch()
     paths.add("/Library/Audio/Plug-Ins/CLAP");
     paths.add("~/Library/Audio/Plug-Ins/CLAP");
 #elif JUCE_LINUX
-    paths.add("/usr/lib/clap");
-    paths.add("/usr/local/lib/clap");
-    paths.add("~/.clap");
+    paths.add(juce::File("/usr/lib/clap"));
+    paths.add(juce::File("/usr/local/lib/clap"));
+    paths.add(juce::File("~/.clap"));
 #endif
 
     // CLAP_PATH env var

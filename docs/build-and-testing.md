@@ -22,6 +22,49 @@ and one-line rules; the full narratives live here.
   app" below.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
 
+## Linux (2026-10-04 port)
+
+The tree builds and tests natively on Linux (verified: Ubuntu 26.04, g++ 15.2,
+CMake 4.2, Ninja; JUCE 8 fetched via FetchContent, Qt 6.10 system packages).
+
+- **Packages:** `build-essential git cmake ninja-build qt6-base-dev
+  qt6-websockets-dev qt6-httpserver-dev libasound2-dev libx11-dev libxext-dev
+  libxrandr-dev libxinerama-dev libxcursor-dev libfreetype-dev
+  libfontconfig1-dev libgl1-mesa-dev libglib2.0-dev pkg-config`
+  (note: the dev packages are `qt6-websockets-dev` / `qt6-httpserver-dev` on
+  26.04 — the `libqt6*`-style names do not exist there).
+- **Configure/build:** `./build-fast.sh [test|all|debug]`, or
+  `cmake --preset linux` + `cmake --build build`
+  (presets: `linux` = RelWithDebInfo Ninja, `linux-debug` = Debug).
+- **Outputs are flat:** `build/HDAW`, `build/HDAW_headless`,
+  `build/hdaw_tests_{engine,mcp,frontend,platform}`,
+  `build/hdaw_plugin_host`, `build/hdaw_plugin_scanner`
+  (`CMAKE_RUNTIME_OUTPUT_DIRECTORY` is set for this — child exes are located
+  exe-adjacent at runtime; a nested `build/tests/` layout strands the host and
+  every spawn fails its READY handshake).
+- **Freshness gate:** every consumer of the child exes carries an
+  `add_dependencies` edge on `hdaw_plugin_host`/`hdaw_plugin_scanner` — a
+  protocol/SHM header change can no longer leave a stale child behind.
+- **Plugin isolation on Linux:** `src/proxy/` is ported, not compiled out.
+  Pipes → AF_UNIX SOCK_SEQPACKET (message-mode framing preserved), SHM →
+  `shm_open`+mmap (same `ShmHeader` layout), spawn → fork/exec with
+  `PR_SET_PDEATHSIG`, crash artifacts → async-signal-safe text reports
+  (`*hung*.crash.txt`, `$TMPDIR`→`/tmp` convention) instead of dbghelp
+  minidumps. The child serializes lifecycle marshaling with
+  `PluginHost::lifecycleMutex_` (it runs two dispatch pumps on Linux).
+  Windows code paths are unchanged (`#ifdef` branches in the same files).
+- **Known deltas vs Windows:** no SEH fault containment inside plugin
+  `processBlock` (faults kill the child; the parent's watchdog + respawn
+  ladder handle it — lessons 21/28 semantics); crash artifacts are text
+  reports, not minidumps. The four `PluginIsolation.DLL*` suites skip
+  themselves (Windows-DLL targeted).
+- **Concurrent `ninja` on the same `build/` corrupts `.ninja_deps`** exactly
+  as the hard-kill trap below — two racing builds produced a permanent
+  per-run recompile of `juce_gui_basics` + test relinks (diagnosed via
+  `ninja -d explain` → "stored deps info out of date" + the
+  `premature end of file` warning). Repair: `rm build/.ninja_deps
+  build/.ninja_log`, one full rebuild.
+
 ### Build speed: the `.ninja_deps` trap (2026-09-21) — 285 s → 2 s
 
 A **truncated `build/.ninja_deps`** (from a hard-killed Ninja build) makes Ninja

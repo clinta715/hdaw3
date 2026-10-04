@@ -2,6 +2,10 @@
 #include "../common/DebugLog.h"
 #include <cassert>
 #include <cstring>
+#if !defined(_WIN32)
+#include <cerrno>
+#include <chrono>
+#endif
 
 namespace proxy {
 
@@ -43,8 +47,17 @@ const char* replyTypeName(MessageType t) {
 } // namespace
 
 // --- PipeServer ---
+//
+// PLATFORM SPLIT: the raw transport layer (dtor/start/stop, the overlapped*
+// helpers and the raw ops) exists in two same-file branches. The Windows
+// branch (message-mode named pipe + overlapped I/O) is VERBATIM; the Linux
+// branch below implements the decided AF_UNIX SOCK_SEQPACKET mapping.
+// Everything after the matching #endif (desync bookkeeping, single-op
+// wrappers, Exchange correlation) is platform-neutral and shared unchanged.
 
 PipeServer::PipeServer(const std::string& pipeName) : name(pipeName) {}
+
+#if defined(_WIN32)
 
 PipeServer::~PipeServer() {
     // THE ONLY CLOSER. This runs at the LAST lease release, so by construction
@@ -328,6 +341,299 @@ bool PipeServer::receiveRespBoundedRaw(ProxyResponse& resp, DWORD timeoutMs) {
     return bytesRead >= sizeof(ProxyResponse) - sizeof(resp.data);
 }
 
+#else
+// ---------------------------------------------------------------------------
+// LINUX BRANCH — AF_UNIX SOCK_SEQPACKET transport.
+//
+// Mapping from the Win32 message-mode named pipe (the Windows branch above
+// stays verbatim):
+//   * SOCK_SEQPACKET preserves the 256-byte frame boundaries exactly like
+//     PIPE_TYPE_MESSAGE: one frame per send/recv — never split, never
+//     coalesced. A discarded 256-byte record therefore cannot corrupt the
+//     framing, so the platform-neutral Exchange discard loop stays correct
+//     unchanged.
+//   * start() = socket() + bind(socketPathForPipeName(name)) + listen(1)
+//     (single instance — the analogue of a single-instance named pipe). The
+//     listen fd lives in hPipe until overlappedConnect() accepts; then the
+//     ACCEPTED fd replaces it and the listen fd is closed. Both writes happen
+//     here, under the exchange lock the raw ops hold.
+//   * overlappedConnect = accept() with a bounded poll(); overlappedRead/
+//     Write = poll() + recv()/send(MSG_NOSIGNAL) of ONE whole frame.
+//   * INFINITE (0xFFFFFFFF) maps to poll(-1) blocking.
+//   * stop() = shutdown(fd, SHUT_RDWR), which unblocks a poll/recv/accept in
+//     flight — the CancelIoEx role. ~PipeServer remains the ONLY closer.
+// ---------------------------------------------------------------------------
+namespace {
+constexpr DWORD kInfiniteTimeoutMs = 0xFFFFFFFF;
+// The Linux raw ops keep the Windows branch's literal `INFINITE` call sites
+// verbatim, so the constant keeps its name here (0xFFFFFFFF == blocking).
+constexpr DWORD INFINITE = kInfiniteTimeoutMs;
+
+// poll() against a steady_clock deadline taken at entry. EINTR retries
+// recompute the remaining time from the ORIGINAL budget, so an interrupted
+// wait can never exceed the caller's timeout. Returns >0 when ready, 0 on
+// timeout, <0 on a real poll error.
+int pollDeadline(int fd, short events, DWORD timeoutMs) {
+    const auto start = std::chrono::steady_clock::now();
+    for (;;) {
+        int timeoutMsec = -1; // INFINITE: block.
+        if (timeoutMs != kInfiniteTimeoutMs) {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::steady_clock::now() - start)
+                                     .count();
+            if (elapsed >= static_cast<long long>(timeoutMs)) return 0;
+            timeoutMsec = static_cast<int>(timeoutMs - elapsed);
+        }
+        pollfd pfd{};
+        pfd.fd = fd;
+        pfd.events = events;
+        const int rc = ::poll(&pfd, 1, timeoutMsec);
+        if (rc >= 0)
+            return (rc > 0 && (pfd.revents & POLLNVAL)) ? -1 : rc;
+        if (errno != EINTR) return -1;
+    }
+}
+} // namespace
+
+PipeServer::~PipeServer() {
+    // THE ONLY CLOSER (lesson 40) — same contract as the Windows branch: this
+    // runs at the LAST lease release, so by construction no pipe operation can
+    // still be in flight on this fd. Handles the INVALID_HANDLE_VALUE (-1)
+    // sentinel.
+    stop();
+    if (HANDLE h = hPipe.exchange(INVALID_HANDLE_VALUE); h != INVALID_HANDLE_VALUE) {
+        ::close(h);
+    }
+}
+
+bool PipeServer::start(DWORD* errorOut) {
+    const std::string path = socketPathForPipeName(name);
+    HANDLE h = ::socket(AF_UNIX, SOCK_SEQPACKET, 0);
+    if (h == INVALID_HANDLE_VALUE) {
+        if (errorOut) *errorOut = static_cast<DWORD>(errno);
+        return false;
+    }
+    // A stale socket file left by a previous crashed session would fail
+    // bind() (the analogue of the pipe NAME still being owned); unlink it
+    // first so a fresh start() on a reclaimed slot name works.
+    ::unlink(path.c_str());
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    // sun_path is bounded; a pathological name must fail start() (==
+    // CreateNamedPipeA failing on Windows), never truncate into another path.
+    if (path.size() >= sizeof(addr.sun_path)) {
+        if (errorOut) *errorOut = static_cast<DWORD>(ENAMETOOLONG);
+        ::close(h);
+        return false;
+    }
+    std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+    if (::bind(h, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0) {
+        if (errorOut) *errorOut = static_cast<DWORD>(errno);
+        ::close(h);
+        return false;
+    }
+    // User-only: the socket carries the plugin control protocol.
+    ::chmod(path.c_str(), 0600);
+    if (::listen(h, 1) != 0) {
+        if (errorOut) *errorOut = static_cast<DWORD>(errno);
+        ::close(h);
+        return false;
+    }
+    // start() runs before the server is published to any other thread (the
+    // manager stores the lease only after the child answers READY), so this
+    // store cannot race a concurrent stop()/~PipeServer.
+    hPipe.store(h, std::memory_order_release);
+    running.store(true, std::memory_order_relaxed);
+    return true;
+}
+
+void PipeServer::stop() {
+    // Signal + cancel ONLY, same contract as the Windows branch: the fd is
+    // deliberately NOT closed here (hPipe is NOT written) — ~PipeServer is
+    // the single closer, and it never takes the exchange lock, so a
+    // transaction blocked in I/O can always be unblocked and then release its
+    // own guard. shutdown(SHUT_RDWR) unblocks a poll/recv/accept in flight on
+    // the fd (the CancelIoEx role); on a still-listening fd it is a harmless
+    // no-op error. A PipeServer is single-use: start() is never called after
+    // stop().
+    stopped_.store(true, std::memory_order_relaxed);
+    running.store(false, std::memory_order_relaxed);
+    connected.store(false, std::memory_order_relaxed);
+    if (HANDLE h = hPipe.load(std::memory_order_acquire); h != INVALID_HANDLE_VALUE) {
+        ::shutdown(h, SHUT_RDWR);
+    }
+}
+
+bool PipeServer::overlappedConnect(DWORD timeoutMs) {
+    // stopped_ FIRST: a killed pipe must make new I/O bail immediately.
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    // Load the handle ONCE: stop() may cancel (never close) from another
+    // thread, and re-reading the member after a multi-second wait is exactly
+    // the stale-handle hazard under fix.
+    HANDLE listenFd = hPipe.load(std::memory_order_acquire);
+    if (listenFd == INVALID_HANDLE_VALUE) return false;
+
+    if (pollDeadline(listenFd, POLLIN, timeoutMs) <= 0)
+        return false; // timeout or poll error — still listening, nothing to clean up
+    HANDLE accepted = INVALID_HANDLE_VALUE;
+    for (;;) {
+        accepted = ::accept(listenFd, nullptr, nullptr);
+        if (accepted != INVALID_HANDLE_VALUE) break;
+        if (errno != EINTR) return false;
+    }
+    // hPipe transitions LISTEN fd -> ACCEPTED fd (the I/O fd). Single instance
+    // = backlog 1, so this happens once; the listen fd is closed immediately
+    // after the accept succeeds. Both writes happen here, under the exchange
+    // lock every raw op holds.
+    hPipe.store(accepted, std::memory_order_release);
+    ::close(listenFd);
+    return true;
+}
+
+bool PipeServer::overlappedRead(void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesRead,
+                                bool* timedOut) {
+    bytesRead = 0;
+    if (timedOut) *timedOut = false;
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    HANDLE h = hPipe.load(std::memory_order_acquire);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    if (pollDeadline(h, POLLIN, timeoutMs) <= 0) {
+        // Timeout (or poll error): a bounded-receive timeout must NOT mark the
+        // pipe disconnected — report it distinctly and fail.
+        if (timedOut) *timedOut = true;
+        return false;
+    }
+    // SEQPACKET: one recv returns exactly one whole 256-byte record (or a
+    // peer close, or an error).
+    const ssize_t n = ::recv(h, buf, size, 0);
+    if (n <= 0) {
+        // 0 = orderly peer close (the ERROR_BROKEN_PIPE analogue);
+        // EAGAIN/EWOULDBLOCK/EINTR-after-deadline = budget exhausted, which is
+        // a timeout, not a broken pipe. Anything else is a real error.
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+            && timedOut)
+            *timedOut = true;
+        return false;
+    }
+    bytesRead = static_cast<DWORD>(n);
+    // A short SEQPACKET frame (possible only for payload > 240 B, which the
+    // fixed 256-byte framing makes impossible) fails right here — the same
+    // all-or-nothing guarantee the Windows message-mode read had.
+    return n == static_cast<ssize_t>(size);
+}
+
+bool PipeServer::overlappedWrite(const void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesWritten) {
+    bytesWritten = 0;
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    HANDLE h = hPipe.load(std::memory_order_acquire);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    if (pollDeadline(h, POLLOUT, timeoutMs) <= 0)
+        return false; // timeout or poll error
+    // MSG_NOSIGNAL: a dead child must surface as a false return (EPIPE), not
+    // as SIGPIPE taking the engine down.
+    const ssize_t n = ::send(h, buf, size, MSG_NOSIGNAL);
+    if (n <= 0) return false;
+    bytesWritten = static_cast<DWORD>(n);
+    // A SEQPACKET record is sent whole or not at all; a partial send can only
+    // be a real error surface, which the == check treats as failure.
+    return n == static_cast<ssize_t>(size);
+}
+
+// ---------------------------------------------------------------------------
+// RAW OPERATIONS (no lock — the caller holds exchangeMutex_). The connect
+// gating, the stopped_/INVALID_HANDLE_VALUE checks and the size checks are
+// the same shape as the Windows branch; only the transport calls differ.
+// ---------------------------------------------------------------------------
+
+bool PipeServer::receiveRaw(ProxyMessage& msg) {
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    if (hPipe.load(std::memory_order_acquire) == INVALID_HANDLE_VALUE) return false;
+    if (!connected.load(std::memory_order_relaxed)) {
+        if (!overlappedConnect(INFINITE)) {
+            connected.store(false, std::memory_order_relaxed);
+            return false;
+        }
+        connected.store(true, std::memory_order_relaxed);
+    }
+    DWORD bytesRead = 0;
+    if (!overlappedRead(&msg, sizeof(ProxyMessage), INFINITE, bytesRead)) {
+        connected.store(false, std::memory_order_relaxed);
+        return false;
+    }
+    return bytesRead >= sizeof(ProxyMessage) - sizeof(msg.data);
+}
+
+bool PipeServer::sendRaw(const ProxyResponse& resp) {
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    if (hPipe.load(std::memory_order_acquire) == INVALID_HANDLE_VALUE
+        || !connected.load(std::memory_order_relaxed)) return false;
+    DWORD bytesWritten = 0;
+    return overlappedWrite(&resp, sizeof(ProxyResponse), INFINITE, bytesWritten);
+}
+
+bool PipeServer::sendMsgRaw(const ProxyMessage& msg) {
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    if (hPipe.load(std::memory_order_acquire) == INVALID_HANDLE_VALUE
+        || !connected.load(std::memory_order_relaxed)) return false;
+    DWORD bytesWritten = 0;
+    return overlappedWrite(&msg, sizeof(ProxyMessage), INFINITE, bytesWritten);
+}
+
+bool PipeServer::sendMsgBoundedRaw(const ProxyMessage& msg, DWORD timeoutMs) {
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    if (hPipe.load(std::memory_order_acquire) == INVALID_HANDLE_VALUE
+        || !connected.load(std::memory_order_relaxed)) return false;
+    DWORD bytesWritten = 0;
+    return overlappedWrite(&msg, sizeof(ProxyMessage), timeoutMs, bytesWritten);
+}
+
+bool PipeServer::receiveRespRaw(ProxyResponse& resp) {
+    // Bounded READY wait: a hung child must not hang the engine forever.
+    // Connect is normally near-instant (child connects right after spawn); the
+    // dominant cost is the child's plugin init before it writes READY, so the
+    // read gets the full kReadyTimeoutMs budget.
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    if (hPipe.load(std::memory_order_acquire) == INVALID_HANDLE_VALUE) return false;
+    if (!connected.load(std::memory_order_relaxed)) {
+        if (!overlappedConnect(kReadyTimeoutMs)) {
+            connected.store(false, std::memory_order_relaxed);
+            return false;
+        }
+        connected.store(true, std::memory_order_relaxed);
+    }
+    DWORD bytesRead = 0;
+    if (!overlappedRead(&resp, sizeof(ProxyResponse), kReadyTimeoutMs, bytesRead)) {
+        connected.store(false, std::memory_order_relaxed);
+        return false;
+    }
+    return bytesRead >= sizeof(ProxyResponse) - sizeof(resp.data);
+}
+
+bool PipeServer::receiveRespBoundedRaw(ProxyResponse& resp, DWORD timeoutMs) {
+    if (stopped_.load(std::memory_order_relaxed)) return false;
+    if (hPipe.load(std::memory_order_acquire) == INVALID_HANDLE_VALUE) return false;
+    if (!connected.load(std::memory_order_relaxed)) {
+        if (!overlappedConnect(timeoutMs)) {
+            connected.store(false, std::memory_order_relaxed);
+            return false;
+        }
+        connected.store(true, std::memory_order_relaxed);
+    }
+    DWORD bytesRead = 0;
+    bool timedOut = false;
+    if (!overlappedRead(&resp, sizeof(ProxyResponse), timeoutMs, bytesRead, &timedOut)) {
+        // A bounded-receive TIMEOUT is not a broken pipe: the child is still
+        // there and its late response stays queued in the message-mode pipe.
+        // Only a genuine read error tears the connection state down.
+        if (!timedOut)
+            connected.store(false, std::memory_order_relaxed);
+        return false;
+    }
+    return bytesRead >= sizeof(ProxyResponse) - sizeof(resp.data);
+}
+
+#endif // defined(_WIN32)
+
 // ---------------------------------------------------------------------------
 // DESYNC BOOKKEEPING (callers hold exchangeMutex_)
 // ---------------------------------------------------------------------------
@@ -586,6 +892,8 @@ bool PipeServer::Exchange::receiveReplyImpl(ProxyResponse& out, MessageType expe
 
 // --- PipeClient ---
 
+#if defined(_WIN32)
+
 PipeClient::PipeClient(const std::string& pipeName) : name(pipeName) {}
 
 PipeClient::~PipeClient() { disconnect(); }
@@ -636,5 +944,68 @@ bool PipeClient::receiveMsg(ProxyMessage& msg) {
     DWORD bytesRead = 0;
     return ReadFile(hPipe, &msg, sizeof(ProxyMessage), &bytesRead, nullptr);
 }
+
+#else
+// LINUX BRANCH — the child side of the AF_UNIX SOCK_SEQPACKET transport.
+// connect() maps CreateFileA: socket() + connect() to
+// socketPathForPipeName(name); ECONNREFUSED/ENOENT simply return false, the
+// same "server not there yet" outcome a failed CreateFileA produced. Each
+// send/recv moves exactly one whole 256-byte frame (SEQPACKET record).
+PipeClient::PipeClient(const std::string& pipeName) : name(pipeName) {}
+
+PipeClient::~PipeClient() { disconnect(); }
+
+bool PipeClient::connect() {
+    disconnect();
+    HANDLE h = ::socket(AF_UNIX, SOCK_SEQPACKET, 0);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    const std::string path = socketPathForPipeName(name);
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    if (path.size() >= sizeof(addr.sun_path)) {
+        ::close(h);
+        return false;
+    }
+    std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+    if (::connect(h, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0) {
+        ::close(h);
+        return false;
+    }
+    hPipe = h;
+    return true;
+}
+
+void PipeClient::disconnect() {
+    if (hPipe != INVALID_HANDLE_VALUE) {
+        ::close(hPipe);
+        hPipe = INVALID_HANDLE_VALUE;
+    }
+}
+
+bool PipeClient::send(const ProxyMessage& msg) {
+    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    return ::send(hPipe, &msg, sizeof(ProxyMessage), MSG_NOSIGNAL)
+           == static_cast<ssize_t>(sizeof(ProxyMessage));
+}
+
+bool PipeClient::receive(ProxyResponse& resp) {
+    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    const ssize_t n = ::recv(hPipe, &resp, sizeof(ProxyResponse), 0);
+    return n == static_cast<ssize_t>(sizeof(ProxyResponse));
+}
+
+bool PipeClient::sendResp(const ProxyResponse& resp) {
+    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    return ::send(hPipe, &resp, sizeof(ProxyResponse), MSG_NOSIGNAL)
+           == static_cast<ssize_t>(sizeof(ProxyResponse));
+}
+
+bool PipeClient::receiveMsg(ProxyMessage& msg) {
+    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    const ssize_t n = ::recv(hPipe, &msg, sizeof(ProxyMessage), 0);
+    return n == static_cast<ssize_t>(sizeof(ProxyMessage));
+}
+
+#endif // defined(_WIN32)
 
 } // namespace proxy

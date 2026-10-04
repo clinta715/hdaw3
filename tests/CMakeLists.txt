@@ -29,7 +29,11 @@ function(hdaw_test_exe name)
         ${ARG_SOURCES}
     )
     target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_options(${name} PRIVATE /FI${CMAKE_SOURCE_DIR}/tests/cstdio_compat.h)
+    if(MSVC)
+        target_compile_options(${name} PRIVATE /FI${CMAKE_SOURCE_DIR}/tests/cstdio_compat.h)
+    else()
+        target_compile_options(${name} PRIVATE -include ${CMAKE_SOURCE_DIR}/tests/cstdio_compat.h)
+    endif()
     target_link_libraries(${name} PRIVATE
         Qt6::Core
         Qt6::Network

@@ -1,6 +1,14 @@
 #pragma once
 #include "ProxyCommon.h"
+#if defined(_WIN32)
 #include <windows.h>
+#else
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -36,9 +44,11 @@ public:
     //    dtor runs at the last lease release, no operation can be in flight
     //    against a closed handle by construction.
     //  * stop() only signals + cancels: it sets stopped_ (every subsequent I/O
-    //    call bails immediately) and CancelIoEx's any in-flight overlapped I/O
-    //    so an in-progress read/write returns false promptly. It NEVER writes
-    //    hPipe, NEVER calls CloseHandle, and — deliberately — NEVER takes the
+    //    call bails immediately) and cancels any in-flight I/O so an
+    //    in-progress read/write returns false promptly (CancelIoEx on Windows;
+    //    shutdown(fd, SHUT_RDWR) on Linux — it unblocks a poll/accept/recv
+    //    in flight, and a pending connect on the listen fd likewise). It NEVER
+    //    writes hPipe, NEVER calls CloseHandle/close, and — deliberately — NEVER takes the
     //    exchange lock: an exchange blocked in I/O is released by the cancel
     //    and then drops its own guard.
     void stop();
@@ -191,7 +201,12 @@ private:
     // Each I/O helper loads this ONCE into a local at entry and never re-reads
     // the member mid-operation: stop() may run concurrently on another thread
     // (cancel-only, so the loaded handle stays valid for the whole operation).
-    // The HANDLE is written only by start() and ~PipeServer (the single closer).
+    // The HANDLE is written only by start() and ~PipeServer (the single
+    // closer) — except on Linux, where overlappedConnect additionally swaps
+    // the LISTEN fd for the ACCEPTED fd on the first successful connect; that
+    // write happens under the exchange lock (all raw ops hold it), matching
+    // the rule that connection establishment is owned by the serialized
+    // transaction.
     std::atomic<HANDLE> hPipe{ INVALID_HANDLE_VALUE };
     // Set by stop(): every new I/O call bails immediately. Distinct from
     // `connected`, which is a transport state that a bounded-receive timeout

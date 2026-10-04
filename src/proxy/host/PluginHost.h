@@ -83,6 +83,16 @@ private:
     // on timeout.
     bool runLifecycleOnMessageThread(const std::function<void()>& fn, int timeoutMs);
 
+    // Serializes every marshaled lifecycle call (see
+    // runLifecycleOnMessageThread): the child runs TWO concurrent dispatch
+    // pumps (the main thread's runDispatchLoopUntil(-1) and
+    // messagePumpThread), so JUCE can execute two queued callbacks on
+    // DIFFERENT threads at the same time. Without this, e.g. the ring
+    // SET_STATE apply and a GET_STATE read can touch the plugin's state
+    // concurrently and tear it (observed: a 100 kB state round-trip came back
+    // zero-patched while both sizes agreed).
+    std::mutex lifecycleMutex_;
+
     // Correlation-id echo: stamps `requestId` into `resp` and sends it. EVERY
     // child response — single replies AND every multi-chunk continuation —
     // goes through here, so the echo cannot be forgotten at a site. The parent

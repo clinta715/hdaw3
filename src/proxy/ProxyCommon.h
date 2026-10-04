@@ -1,8 +1,73 @@
 #pragma once
 #include <cstdint>
 #include <atomic>
+#include <string>
+#include <cstdlib>
+
+// ---------------------------------------------------------------------------
+// PLATFORM SHIM (Linux branch). The proxy public API is DWORD/HANDLE-stable by
+// design (mechanical API stability for PluginProxySlot.cpp etc.), so on Linux
+// DWORD and HANDLE keep their names: HANDLE is an fd-compatible int alias.
+// Windows includes <windows.h>; Linux gets the minimal equivalents here so the
+// per-file `#if defined(_WIN32) #include <windows.h>` branches elsewhere stay
+// self-contained.
+// ---------------------------------------------------------------------------
+#if defined(_WIN32)
+#include <windows.h>
+#else
+namespace proxy {
+using DWORD = uint32_t;
+// On Linux a "handle" is a file descriptor (pipe socket fd, shm fd) or a pid.
+using HANDLE = int;
+} // namespace proxy
+// Matches every `x == INVALID_HANDLE_VALUE` pattern in the Win32 branch.
+#define INVALID_HANDLE_VALUE (-1)
+#endif
 
 namespace proxy {
+
+#if defined(_WIN32)
+inline constexpr uint32_t GRACEFUL_EXIT_CODE = 0xC0DE0001;
+#else
+// Linux waitpid reports an 8-bit WEXITSTATUS, so a graceful shutdown cannot
+// carry the Windows 32-bit code. The child _Exit()s with this constant and the
+// parent maps WIFEXITED(status) && WEXITSTATUS(status) == GRACEFUL_EXIT_CODE
+// to a graceful stop; WIFSIGNALED is a crash. BOTH sides include this header,
+// so the two processes cannot drift.
+inline constexpr uint32_t GRACEFUL_EXIT_CODE = 0xC1;
+#endif
+
+#if !defined(_WIN32)
+// Directory for the per-instance AF_UNIX socket paths and shm objects.
+// $XDG_RUNTIME_DIR when set (user-owned, tmpfs), else /tmp.
+inline std::string proxyRuntimeDir() {
+    if (const char* xdg = std::getenv("XDG_RUNTIME_DIR"); xdg && xdg[0] != '\0')
+        return xdg;
+    return "/tmp";
+}
+
+// Map a Win32-style pipe name (`\\.\pipe\NAME`, or the bare logical NAME the
+// manager generates) onto an abstract-namespace-free socket path. Callers
+// already guarantee uniqueness per slot (pid-hex + instance counter prefix).
+inline std::string socketPathForPipeName(std::string name) {
+    const std::string prefix = "\\\\.\\pipe\\";
+    if (name.rfind(prefix, 0) == 0) name.erase(0, prefix.size());
+    std::string sanitized;
+    sanitized.reserve(name.size());
+    for (char c : name)
+        sanitized.push_back((c == '/' || c == '\\') ? '_' : c);
+    return proxyRuntimeDir() + "/hdaw-" + sanitized + ".sock";
+}
+
+// shm_open requires a leading '/' and no further slashes.
+inline std::string shmObjectForName(std::string name) {
+    std::string sanitized;
+    sanitized.reserve(name.size());
+    for (char c : name)
+        sanitized.push_back((c == '/' || c == '\\') ? '_' : c);
+    return "/" + sanitized;
+}
+#endif
 
 constexpr uint32_t SHM_MAGIC = 0x4844415D; // bumped 2026-09-20 for the stateSet ring (parent->child plugin state over shm; was 0x4844415C for the output-resync handshake)
 
@@ -16,8 +81,6 @@ constexpr uint32_t PARAM_RING_SIZE = 256;
 // never reached the plugin (finding F-A). 1 MiB covers the largest states
 // measured (OsTIrus ~177 KB arrangement + ~76 KB params).
 constexpr uint32_t STATE_RING_SIZE = 1u << 20;
-
-constexpr uint32_t GRACEFUL_EXIT_CODE = 0xC0DE0001;
 
 constexpr uint32_t SYSEX_BUFFER_SIZE = 128 * 1024;
 

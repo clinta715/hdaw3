@@ -11,6 +11,8 @@
 #include <windows.h>
 #include <crtdbg.h>
 #include <eh.h>
+#else
+#include <csignal>
 #endif
 
 // CLAP format is compiled into HDAW_lib; the scanner links against it.
@@ -62,6 +64,18 @@ static void configureCrashProtection()
     _set_purecall_handler(scannerPurecallHandler);
     SetUnhandledExceptionFilter(scannerExceptionFilter);
     _set_se_translator(seTranslator);
+}
+#else
+// Linux parity: a plugin that faults during the scan must die with the same
+// exit code the Windows SEH filter used (3 = crash during load) so the
+// parent's dead-man's-pedal handling cannot tell the platforms apart.
+static void configureCrashProtection()
+{
+    struct sigaction sa{};
+    sa.sa_handler = [](int) { std::_Exit(3); };
+    sigemptyset(&sa.sa_mask);
+    for (int sig : { SIGSEGV, SIGBUS, SIGFPE, SIGABRT })
+        ::sigaction(sig, &sa, nullptr);
 }
 #endif
 
@@ -230,12 +244,14 @@ static int scanPlugin(const char* pluginPath, const char* pedalFile)
         }
         return 1;
     }
+#if _WIN32
     catch (const SehException&)
     {
         // Plugin crashed during load/instantiation. The pedal file
         // already contains the culprit plugin path. Exit cleanly.
         return 2;
     }
+#endif
     catch (...)
     {
         // Unexpected C++ exception from a plugin.

@@ -2,7 +2,9 @@
 #include "ProxyCommon.h"
 #include "ProxyPipe.h"
 #include "ProxySharedMemory.h"
+#if defined(_WIN32)
 #include <windows.h>
+#endif
 #include <string>
 #include <unordered_map>
 #include <atomic>
@@ -31,6 +33,14 @@ struct ChildInfo {
     uint64_t lastBlocksSnapshot{0};
     uint64_t lastSnapshotMs{0};
     bool crashNotified = false;
+#if !defined(_WIN32)
+    // Linux: waitpid() REAPS the child, so the exit classification is latched
+    // at first observation (reaped=true + raw waitpid status) and reused by
+    // later health sweeps — there is no STILL_ACTIVE re-query like
+    // GetExitCodeProcess.
+    bool reaped = false;
+    int exitStatus = 0;
+#endif
 
     ChildInfo() = default;
     ChildInfo(ChildInfo&& o) noexcept
@@ -43,6 +53,10 @@ struct ChildInfo {
         , lastBlocksSnapshot(o.lastBlocksSnapshot)
         , lastSnapshotMs(o.lastSnapshotMs)
         , crashNotified(o.crashNotified)
+#if !defined(_WIN32)
+        , reaped(o.reaped)
+        , exitStatus(o.exitStatus)
+#endif
     {
         o.processHandle = INVALID_HANDLE_VALUE;
     }
@@ -57,6 +71,10 @@ struct ChildInfo {
             lastBlocksSnapshot = o.lastBlocksSnapshot;
             lastSnapshotMs = o.lastSnapshotMs;
             crashNotified = o.crashNotified;
+#if !defined(_WIN32)
+            reaped = o.reaped;
+            exitStatus = o.exitStatus;
+#endif
             o.processHandle = INVALID_HANDLE_VALUE;
         }
         return *this;

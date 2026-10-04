@@ -19,6 +19,24 @@
         "CMAKE_PREFIX_PATH": "C:/Qt/6.11.2/msvc2022_64",
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
+    },
+    {
+      "name": "linux",
+      "displayName": "HDAW (Linux, Ninja, system Qt 6)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "HDAW (Linux, Ninja, Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
     }
   ],
   "buildPresets": [
@@ -49,6 +67,16 @@
       "name": "ninja-relwithdebinfo",
       "displayName": "Ninja RelWithDebInfo",
       "configurePreset": "ninja"
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux RelWithDebInfo",
+      "configurePreset": "linux"
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug",
+      "configurePreset": "linux-debug"
     }
   ]
 }

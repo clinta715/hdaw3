@@ -13,6 +13,9 @@
 #include <cstdlib>
 #include <fstream>
 #include <string>
+#include <csignal>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #if HDAW_PLUGIN_ISOLATION
 
@@ -392,8 +395,17 @@ TEST(CrashRecovery, CrashCallbackFiresOncePerDeath) {
     auto* info = ppm.getChildInfo(slotId);
     ASSERT_NE(info, nullptr);
     ASSERT_NE(info->processHandle, INVALID_HANDLE_VALUE);
+#ifdef _WIN32
     TerminateProcess(info->processHandle, 0);
     WaitForSingleObject(info->processHandle, 1000);
+#else
+    kill(info->processHandle, SIGKILL);
+    for (int waitedMs = 0; waitedMs < 1000; waitedMs += 10) {
+        if (waitpid(info->processHandle, nullptr, WNOHANG) == info->processHandle)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+#endif
 
     ppm.checkAllChildren(2000);
     ppm.checkAllChildren(2000);
@@ -677,8 +689,8 @@ TEST(CrashRecovery, StormBreakerCapsRespawnsWithinBudget) {
 // T2b: custom budget via env override (reads once in constructor).
 TEST(CrashRecovery, StormBreakerRespectsBudgetOverride) {
     // Set the env var before constructing (read-once in constructor).
-    SetEnvironmentVariableA("HDAW_RESPAWN_BUDGET", "3");
-    SetEnvironmentVariableA("HDAW_RESPAWN_WINDOW_MS", "60000");
+    setenv("HDAW_RESPAWN_BUDGET", "3", 1);
+    setenv("HDAW_RESPAWN_WINDOW_MS", "60000", 1);
 
     HDAW::CrashRecoveryManager crm;
 
@@ -701,8 +713,8 @@ TEST(CrashRecovery, StormBreakerRespectsBudgetOverride) {
         << "Entries beyond the custom budget should remain pending";
 
     // Restore defaults for subsequent tests.
-    SetEnvironmentVariableA("HDAW_RESPAWN_BUDGET", nullptr);
-    SetEnvironmentVariableA("HDAW_RESPAWN_WINDOW_MS", nullptr);
+    unsetenv("HDAW_RESPAWN_BUDGET");
+    unsetenv("HDAW_RESPAWN_WINDOW_MS");
 }
 
 // T3 (Fix C): resolveRespawnPath resolves known identifiers and rejects

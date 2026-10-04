@@ -1,6 +1,8 @@
 #pragma once
 #include "ProxyCommon.h"
+#if defined(_WIN32)
 #include <windows.h>
+#endif
 #include <string>
 
 namespace proxy {
@@ -35,6 +37,15 @@ public:
 
 private:
     HANDLE hMap = INVALID_HANDLE_VALUE;
+#if !defined(_WIN32)
+    // Linux: hMap is the shm_open fd. The object name and owner flag back the
+    // shm_unlink in close() (owner side) / at first child open (Windows'
+    // last-handle-close semantics).
+    std::string objName;
+    bool ownerCreated = false;
+    size_t mappedLen = 0; // exact mmap length (parent maps max size; the
+                          // header-derived totalSize can be smaller)
+#endif
     void* basePtr = nullptr;
     uint32_t totalSize = 0;
 };

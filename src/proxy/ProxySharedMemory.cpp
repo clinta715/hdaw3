@@ -1,10 +1,18 @@
 #include "ProxySharedMemory.h"
 #include <cstring>
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <cerrno>
+#endif
 
 namespace proxy {
 
 ShmRegion::~ShmRegion() { close(); }
 
+#if defined(_WIN32)
 bool ShmRegion::create(const std::string& name, uint32_t size) {
     // Clear the last-error slot first so the ERROR_ALREADY_EXISTS check below
     // is deterministic: GetLastError is only guaranteed meaningful when it
@@ -77,6 +85,116 @@ void ShmRegion::close() {
         hMap = INVALID_HANDLE_VALUE;
     }
 }
+
+#else // !defined(_WIN32) — POSIX shared memory (shm_open + mmap)
+
+bool ShmRegion::create(const std::string& name, uint32_t size) {
+    // O_CREAT|O_EXCL reproduces the CreateFileMappingA ERROR_ALREADY_EXISTS
+    // semantics above: an existing region (a stale orphan or a same-slot
+    // squatter) is a HARD failure so the caller retries with a fresh name
+    // instead of memsetting another domain's live rings.
+    objName = shmObjectForName(name);
+    hMap = ::shm_open(objName.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600);
+    if (hMap == INVALID_HANDLE_VALUE) {
+        objName.clear();
+        return false;
+    }
+    ownerCreated = true;
+
+    if (::ftruncate(hMap, static_cast<off_t>(size)) != 0) {
+        ::close(hMap);
+        hMap = INVALID_HANDLE_VALUE;
+        ::shm_unlink(objName.c_str());
+        objName.clear();
+        ownerCreated = false;
+        return false;
+    }
+
+    basePtr = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, hMap, 0);
+    if (basePtr == MAP_FAILED) {
+        basePtr = nullptr;
+        ::close(hMap);
+        hMap = INVALID_HANDLE_VALUE;
+        ::shm_unlink(objName.c_str());
+        objName.clear();
+        ownerCreated = false;
+        return false;
+    }
+
+    totalSize = size;
+    mappedLen = size;
+    std::memset(basePtr, 0, size);
+
+    auto* hdr = static_cast<ShmHeader*>(basePtr);
+    hdr->magic = SHM_MAGIC;
+    return true;
+}
+
+bool ShmRegion::open(const std::string& name) {
+    objName = shmObjectForName(name);
+    hMap = ::shm_open(objName.c_str(), O_RDWR, 0600);
+    if (hMap == INVALID_HANDLE_VALUE) {
+        objName.clear();
+        return false;
+    }
+
+    struct stat st{};
+    if (::fstat(hMap, &st) != 0 || st.st_size <= 0) {
+        ::close(hMap);
+        hMap = INVALID_HANDLE_VALUE;
+        objName.clear();
+        return false;
+    }
+
+    basePtr = ::mmap(nullptr, static_cast<size_t>(st.st_size),
+                     PROT_READ | PROT_WRITE, MAP_SHARED, hMap, 0);
+    if (basePtr == MAP_FAILED) {
+        basePtr = nullptr;
+        ::close(hMap);
+        hMap = INVALID_HANDLE_VALUE;
+        objName.clear();
+        return false;
+    }
+
+    auto* hdr = static_cast<ShmHeader*>(basePtr);
+    mappedLen = static_cast<size_t>(st.st_size);
+    if (hdr->magic != SHM_MAGIC) {
+        close();
+        return false;
+    }
+
+    // UNLINK-AT-FIRST-OPEN: the mapping survives via both processes' mmaps, so
+    // removing the /dev/shm object here emulates Windows' last-handle-close —
+    // a crashed parent cannot leak a stale object that would collide with the
+    // next spawn's O_EXCL create.
+    ::shm_unlink(objName.c_str());
+    objName.clear();
+    ownerCreated = false;
+
+    totalSize = computeShmSize(hdr->numChannels, hdr->blockSize);
+    return true;
+}
+
+void ShmRegion::close() {
+    if (basePtr) {
+        // Unmap the EXACT mapped length: the parent maps the worst-case size
+        // while totalSize may be recomputed smaller on open.
+        ::munmap(basePtr, mappedLen);
+        basePtr = nullptr;
+        mappedLen = 0;
+    }
+    if (hMap != INVALID_HANDLE_VALUE) {
+        ::close(hMap);
+        hMap = INVALID_HANDLE_VALUE;
+    }
+    if (ownerCreated) {
+        ::shm_unlink(objName.c_str());
+        ownerCreated = false;
+    }
+    objName.clear();
+}
+
+#endif // _WIN32
 
 ShmHeader* ShmRegion::getHeader() const {
     return static_cast<ShmHeader*>(basePtr);

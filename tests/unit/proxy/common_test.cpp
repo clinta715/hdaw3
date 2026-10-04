@@ -41,6 +41,7 @@ TEST(RingBuffer, ComputeShmSize) {
 // the full-memory dump it always had. This pins the policy, which is the whole
 // fix — the WHEN (thresholds) is untouched, so a real hang is still captured.
 TEST(DumpPolicy, HangDumpIsStackOnlyWhileTheCrashDumpKeepsFullMemory) {
+#if defined(_WIN32)
     EXPECT_EQ(HDAW::minidumpTypeFor(HDAW::DumpKind::Hang), MiniDumpNormal);
     EXPECT_FALSE(HDAW::dumpCapturesFullMemory(HDAW::minidumpTypeFor(HDAW::DumpKind::Hang)))
         << "the hang dump must not carry the whole address space";
@@ -53,4 +54,13 @@ TEST(DumpPolicy, HangDumpIsStackOnlyWhileTheCrashDumpKeepsFullMemory) {
     const uint32_t hang = static_cast<uint32_t>(HDAW::kHangDumpType);
     EXPECT_EQ(hang & static_cast<uint32_t>(MiniDumpWithIndirectlyReferencedMemory), 0u);
     EXPECT_EQ(hang & static_cast<uint32_t>(MiniDumpWithPrivateReadWriteMemory), 0u);
+#else
+    // Linux: artifacts are kilobyte-scale text reports (signal + registers +
+    // backtrace) written by async-signal-safe handlers. The full-address-space
+    // artifact class does not exist on this platform, for EITHER kind — the
+    // invariant that matters (no 2 GB dumps on the hang path) holds by
+    // construction. The report surface must exist for both kinds.
+    EXPECT_FALSE(HDAW::dumpCapturesFullMemory(HDAW::DumpKind::Hang));
+    EXPECT_FALSE(HDAW::dumpCapturesFullMemory(HDAW::DumpKind::Crash));
+#endif
 }

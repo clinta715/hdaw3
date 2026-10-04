@@ -14,9 +14,28 @@
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
 #include "../DumpPolicy.h"   // P2-b: hang dumps stay stack-only (see the header)
+#else
+#include "../DumpPolicy.h"   // Linux: signal-handler crash reports (SIGSEGV/SIGBUS/SIGFPE/SIGABRT)
+#include <csignal>
+#include <ctime>
+#include <unistd.h>
 #endif
 
 namespace {
+
+// Portable millisecond sleep. Sleep(0) keeps its Win32 semantics on Linux
+// (yield the timeslice) rather than a zero-length nanosleep.
+#if JUCE_WINDOWS
+void proxySleepMs(DWORD ms) { Sleep(ms); }
+#else
+void proxySleepMs(uint64_t ms) {
+    if (ms == 0) { std::this_thread::yield(); return; }
+    timespec ts{};
+    ts.tv_sec = static_cast<time_t>(ms / 1000u);
+    ts.tv_nsec = static_cast<long>((ms % 1000u) * 1000000L);
+    nanosleep(&ts, nullptr);
+}
+#endif
 
 // SysEx drops are rare; log the first and every 256th so a stuck lane
 // can't spam the log from the audio thread.
@@ -266,7 +285,7 @@ public:
     void releaseResources() override {}
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
     {
-        Sleep(250);
+        proxySleepMs(250);
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
             for (int s = 0; s < buffer.getNumSamples(); ++s)
                 buffer.setSample(ch, s, buffer.getSample(ch, s));
@@ -391,7 +410,7 @@ public:
     {
         // 5 s > the 3 s GET_STATE marshal timeout: the host's
         // runLifecycleOnMessageThread must give up while this sleeps.
-        Sleep(5000);
+        proxySleepMs(5000);
         dest.setSize(state.getSize(), false);
         if (state.getSize() > 0)
             std::memcpy(dest.getData(), state.getData(), state.getSize());
@@ -468,7 +487,7 @@ public:
             state.setSize(static_cast<size_t>(sizeInBytes), false);
             std::memcpy(state.getData(), data, static_cast<size_t>(sizeInBytes));
         }
-        Sleep(3200);
+        proxySleepMs(3200);
     }
     void fillInPluginDescription(juce::PluginDescription& d) const override
     {
@@ -945,6 +964,28 @@ int PluginHost::run()
     }
 #endif
 
+    // Linux graceful-stop + crash-capture setup. The parent's KillGraceful
+    // sends SIGTERM and expects the child gone with proxy::GRACEFUL_EXIT_CODE
+    // (the 8-bit Linux encoding, see ProxyCommon.h) — matching the Windows
+    // semantics where TerminateProcess(handle, GRACEFUL_EXIT_CODE) stops the
+    // child abruptly but marks the exit non-crash. Handler body is
+    // async-signal-safe (_Exit).
+#if !JUCE_WINDOWS
+    {
+        struct sigaction sa{};
+        sa.sa_handler = [](int) { std::_Exit(proxy::GRACEFUL_EXIT_CODE); };
+        sigemptyset(&sa.sa_mask);
+        ::sigaction(SIGTERM, &sa, nullptr);
+        // Crash capture: a hardware fault on ANY thread writes a text report
+        // (signal, ucontext registers, backtrace) to the capture directory,
+        // then re-raises for the default disposition / core. The Windows
+        // swallow-and-continue SEH containment has no safe Linux equivalent
+        // (no siglongjmp resurrection of the audio loop); the parent's health
+        // sweep maps WIFSIGNALED to a crash and respawns instead.
+        HDAW::installCrashSignalHandlers();
+    }
+#endif
+
     if (!pipe.connect()) return 1;
     if (!shm.open(shmName)) return 1;
 
@@ -978,7 +1019,7 @@ int PluginHost::run()
         messagePumpThread = std::thread([this]() {
         while (running.load()) {
             juce::MessageManager::getInstance()->runDispatchLoopUntil(0);
-            Sleep(1);
+            proxySleepMs(1);
         }
     });
 
@@ -991,7 +1032,7 @@ int PluginHost::run()
         bool inWarmupPrev = false;
         uint32_t warmupEpochPrev = warmupEpoch.load(std::memory_order_acquire);
         while (running.load()) {
-            Sleep(250);
+            proxySleepMs(250);
             const bool active = processBlockActive.load(std::memory_order_acquire);
             const bool inWarmup = warmupActive.load(std::memory_order_acquire);
             // P2-b: a NEW warmup started since the last tick. Two warmups can be
@@ -1037,7 +1078,16 @@ int PluginHost::run()
                         + juce::String(hangMs) + " ms (threshold " + juce::String(thresholdMs)
                         + " ms, warmup=" + (inWarmup ? "yes" : "no")
                         + ") - writing a stack-only dump");
+#if JUCE_WINDOWS
                     writeMinidump("processBlock hung for 1s");
+#else
+                    // Linux: no dbghelp — write the stack-only text report
+                    // (the watchdog is a normal thread, so the non-signal-
+                    // safe report writer is fine) into the capture dir.
+                    HDAW_LOG("plugin_host", juce::String("watchdog hang report: ")
+                        + HDAW::writeCrashReport(HDAW::DumpKind::Hang,
+                                                 "processBlock_hung"));
+#endif
                 }
             } else {
                 hangMs = 0;
@@ -1078,8 +1128,15 @@ bool PluginHost::runLifecycleOnMessageThread(const std::function<void()>& fn, in
     };
     auto state = std::make_shared<MarshalState>();
     state->fn = fn;
-    juce::MessageManager::callAsync([state]() {
-        try { state->fn(); }
+    // `this` is captured for lifecycleMutex_ ONLY (see the header note): the
+    // two dispatch pumps may otherwise run two marshaled lifecycle calls on
+    // different threads concurrently and tear the plugin's state. The same
+    // post-timeout lifetime caveat as state->fn's own captures applies.
+    juce::MessageManager::callAsync([this, state]() {
+        try {
+            std::lock_guard<std::mutex> lock(lifecycleMutex_);
+            state->fn();
+        }
         catch (...) { state->ep = std::current_exception(); }
         state->done.store(true, std::memory_order_release);
     });
@@ -1088,7 +1145,7 @@ bool PluginHost::runLifecycleOnMessageThread(const std::function<void()>& fn, in
     {
         if (juce::Time::getMillisecondCounter() >= deadline)
             return false;
-        Sleep(1);
+        proxySleepMs(1);
     }
     if (state->ep) std::rethrow_exception(state->ep);
     return true;
@@ -1274,8 +1331,27 @@ void PluginHost::controlLoop()
                                     plugin->processBlock(warmBuf, warmMidi);
                             }
 #else
-                            for (; pumped < totalBlocks; ++pumped)
-                                plugin->processBlock(warmBuf, warmMidi);
+                            // Linux: no SEH containment (C++ try/catch still
+                            // guards plugin C++ exceptions). Real-time pacing
+                            // is REQUIRED here for the same reason as the
+                            // Windows SEH path above: the emulated OS's
+                            // bring-up is wall-clock driven, and an unpaced
+                            // pump finishes 12 s of audio in milliseconds.
+                            processBlockActive.store(true, std::memory_order_release);
+                            for (; pumped < totalBlocks; ++pumped) {
+                                try {
+                                    plugin->processBlock(warmBuf, warmMidi);
+                                } catch (const std::runtime_error&) {
+                                    HDAW_LOG("SIL", "CRASH (warmup) block " + juce::String(pumped));
+                                    break;
+                                }
+                                const auto target = warmupStart
+                                    + std::chrono::nanoseconds(static_cast<long long>(
+                                          static_cast<double>(pumped + 1) * preparedBlockSize
+                                          / preparedSampleRate * 1e9));
+                                std::this_thread::sleep_until(target);
+                            }
+                            processBlockActive.store(false, std::memory_order_release);
 #endif
                             warmupActive.store(false, std::memory_order_release);
                             HDAW_LOG("plugin_host", "virus warmup done blocks=" + juce::String(pumped));
@@ -1892,10 +1968,15 @@ void PluginHost::audioLoop()
                                 plugin->processBlock(inputBuffer, midiBuffer);
                             }
 #else
+                            // Linux: no SEH, but the watchdog contract still
+                            // requires processBlockActive around every
+                            // processBlock call (see the Windows path).
+                            processBlockActive.store(true, std::memory_order_release);
                             plugin->processBlock(inputBuffer, midiBuffer);
+                            processBlockActive.store(false, std::memory_order_release);
 #endif
                             midiBuffer.clear();
-                            Sleep(1);
+                            proxySleepMs(1);
                         }
                         PARAM_TRACE("C1 WARM done blocks=%d", kIdleWarmBlocks);
                     }
@@ -2012,7 +2093,7 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
                     if (elapsedNs < static_cast<uint64_t>(blockDurationNs)) {
                         uint64_t sleepNs = static_cast<uint64_t>(blockDurationNs) - elapsedNs;
                         if (sleepNs > 1000000) // only sleep if > 1ms
-                            Sleep(static_cast<DWORD>(sleepNs / 1000000));
+                            proxySleepMs(static_cast<uint32_t>(sleepNs / 1000000));
                     }
                     lastPaceTimeNs = static_cast<uint64_t>(
                         std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -2077,7 +2158,11 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
                 ++blockNum;
             }
 #else
+            // Linux: no SEH swallow-and-continue (see run()); the watchdog
+            // contract still requires processBlockActive around the call.
+            processBlockActive.store(true, std::memory_order_release);
             plugin->processBlock(inputBuffer, midiBuffer);
+            processBlockActive.store(false, std::memory_order_release);
 #endif
             }
 
@@ -2149,7 +2234,7 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
             // callbacks. During export the audio loop runs at CPU speed and
             // the main thread (which dispatches request_callback via
             // AsyncUpdate → on_main_thread) can starve without this.
-            Sleep(0);
+            proxySleepMs(0);
         } else {
             // C2b idle clock: the parent can stage params while the
             // transport is stopped (its message-thread flush writes the
@@ -2190,19 +2275,23 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
                     plugin->processBlock(inputBuffer, midiBuffer);
                 }
 #else
+                // Linux: no SEH; keep the watchdog's processBlockActive
+                // contract (mirrors the Windows path above).
+                processBlockActive.store(true, std::memory_order_release);
                 plugin->processBlock(inputBuffer, midiBuffer);
+                processBlockActive.store(false, std::memory_order_release);
 #endif
                 if (++idleClockBlocks >= kIdleClockMaxBlocks) {
                     idleClockRequested = false;
                     idleClockBlocks = 0;
                     PARAM_TRACE("C1 IDLE clock done blocks=%d", kIdleClockMaxBlocks);
                 }
-                Sleep(1); // pace ~real-time so the wrapper's message-thread param delivery keeps up
+                proxySleepMs(1); // pace ~real-time so the wrapper's message-thread param delivery keeps up
             } else {
                 idleClockBlocks = 0;
                 static thread_local int spinCount = 0;
                 if ((++spinCount & 63) == 0)
-                    Sleep(0);
+                    proxySleepMs(0);
                 else
                     std::this_thread::yield();
             }
