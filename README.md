@@ -236,6 +236,15 @@ never builds it.
   detected plugins. Plugin search filter in FX slot combo box.
 - Plugin delay compensation (PDC) — track latency is computed
   from the FX chain and compensated automatically.
+- **Compressor sidechain (track FX slots)**: any track's output can drive a
+  `compressor` FX slot's detector on another track — real kick→bass ducking.
+  Wired as a dedicated tap node + shared lock-free bus (source → tap →
+  dest order edge; the tap outputs digital silence), so it stays inside the
+  normal routing graph with no channel-layout changes. Acyclic by
+  construction (self-edges and cycles are refused). Set/clear via the MCP
+  tool `set_fx_sidechain` or the RPC route `project.setFxSidechain`
+  (`sourceTrackId`/`sourceTrackID`, `level` 0..1, `enabled`); one source per
+  slot. Hosted-plugin aux inputs are NOT part of v1 (internal compressor only).
 - Audio file import (WAV, AIFF, MP3, FLAC, OGG) into a project
   pool with thumbnail caching. BPM metadata extracted on import;
   optional auto tempo-match places imported clips at the project

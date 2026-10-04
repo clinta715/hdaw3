@@ -14,7 +14,7 @@ import hashlib
 import wave
 
 URL = 'http://127.0.0.1:18765/mcp'
-SCR = '/mnt/d/pdf/roo projects/hdaw3/probe-c2a'
+SCR = 'E:/build/hdaw3/probe-c2a'
 WINOUT = 'C:\\temp'
 
 # (live index, normalized value, name) — Phase C verified live indices.

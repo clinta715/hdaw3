@@ -15,11 +15,14 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawn, execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const PROJECT = "/mnt/d/pdf/roo projects/hdaw3";
-const GRAPHIFY = process.env.GRAPHIFY_BIN ?? "/home/hapbt/.local/bin/graphify";
+// Repo root derived from THIS file's location (.pi/extensions/<file>), so the
+// checkout can move drives without the watcher pointing at a dead path.
+const PROJECT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const GRAPHIFY = process.env.GRAPHIFY_BIN ?? "graphify";
 
 export default function (pi: ExtensionAPI): void {
   pi.on("session_start", async () => {

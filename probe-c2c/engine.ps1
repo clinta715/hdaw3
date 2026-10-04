@@ -6,7 +6,7 @@
   Native Windows replacement for the retired probe-c2c/engine.sh — a WSL-only
   orchestrator that reached the build tree through /mnt/d/... paths and shelled
   out to cmd.exe. Pure PowerShell with native paths now; the repo root is
-  derived from this script's location (D:\pdf\roo projects\hdaw3 on the dev box).
+  derived from this script's location (E:\build\hdaw3 on the dev box).
 
   Subcommands (first positional argument; default is `launch`, as in the .sh):
 

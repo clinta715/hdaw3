@@ -869,3 +869,61 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     explicit names when an instance is not guaranteed — the entry points now do
     (`QSettings(QStringLiteral("HDAW"), QStringLiteral("HDAW"))`). That is a correctness habit, not
     the root cause of this drop: the store was unwritable regardless of the names.
+
+49. **A broadband envelope follower with a global-peak threshold finds NOTHING on real
+    material — and its own test will pin the failure as correct.** `SliceDetector::transient`
+    (env = 0.999·env + 0.001·|x[i]|, thresh = (1−sensitivity)·globalPeak·0.5, minGap = len/64,
+    env reset to 0 after each hit, trigger on |x[i]| > |x[i−1]|) found 0 interior onsets on three
+    of four real library loops (ground truth = smoothed-envelope peaks > 25 % of max, 90 ms
+    refractory): a full 140bpm drum loop (51 hits), a hats-only loop (26) and a single hi-hat
+    one-shot; a glitch loop scored 23 %. Root causes: (a) the global peak sets the threshold, so a
+    quiet hat (0.15) sits under 0.25·maxv from a loud kick (1.0); (b) the envelope reset after
+    each hit makes a loud hit emit TWO points (~14 ms and ~46 ms late) while masking everything
+    quieter; (c) the 0.001 coefficient needs ~1000 samples of sustained energy, so short
+    percussive hits (20–60 ms) never cross. **Rules:** (a) band-split before onset detection —
+    a quiet element must be judged against its own band's statistics, not the global peak; (b)
+    never reset the envelope after a detection — use a refractory window instead; (c) test with
+    real material, not a sustained tone. The old test only exercised a 440 Hz sine and PINNED the
+    lateness as expected (an onset at frame 500 found near 1003). Pinned by 8 tests in
+    `slice_detector_test.cpp`.
+
+50. **Comparing recall over a MISMATCHED analysis window produces chance-level numbers that look
+    plausible.** A ground-truth generator capped its analysis at 8 s while two library files were
+    13.7 s; the engine analysed the whole file, so `slicePoints_normalized × capped_len`
+    compressed the engine's timeline by 1.71× and the recall/precision for those two files were
+    chance-level: a dense 272-onset train scored ~85 % "recall" by luck, while a correct
+    70-onset train would have scored ~30 %. Found because 127 of 272 onsets had normalized
+    position > 0.5833 (beyond 8 s of a 13.7 s file). **Rules:** (a) the ground-truth window MUST
+    match the analysed window exactly; (b) when a measurement disagrees with an expectation, check
+    the window/scale first — a dense train scoring high "recall" by luck is a sign the scales
+    disagree; (c) always report the interior count alongside recall/precision — a count outside
+    the expected band invalidates the ratio.
+
+49. **A broadband envelope follower with a global-peak threshold finds NOTHING on real
+    material — and its own test pins the failure as correct.** `SliceDetector::transient`
+    (env = 0.999·env + 0.001·|x[i]|, thresh = (1−sensitivity)·globalPeak·0.5, minGap = len/64,
+    env reset to 0 after each hit, trigger on |x[i]| > |x[i−1]|) found 0 interior onsets on three
+    of four real library loops (ground truth = smoothed-envelope peaks > 25 % of max, 90 ms
+    refractory): a full 140bpm drum loop (51 hits), a hats-only loop (26) and a single hi-hat
+    one-shot; a glitch loop scored 23 %. Root causes: (a) the global peak sets the threshold, so a
+    quiet hat (0.15) sits under 0.25·maxv from a loud kick (1.0); (b) the envelope reset after
+    each hit makes a loud hit emit TWO points (~14 ms and ~46 ms late) while masking everything
+    quieter; (c) the 0.001 coefficient needs ~1000 samples of sustained energy, so short
+    percussive hits (20–60 ms) never cross. **Rules:** (a) band-split before onset detection —
+    a quiet element must be judged against its own band's statistics, not the global peak; (b)
+    never reset the envelope after a detection — use a refractory window instead; (c) test with
+    real material, not a sustained tone. The old test only exercised a 440 Hz sine and PINNED the
+    lateness as expected (an onset at frame 500 found near 1003). Pinned by 8 tests in
+    `slice_detector_test.cpp`.
+
+50. **Comparing recall over a MISMATCHED analysis window produces chance-level numbers that look
+    plausible.** A ground-truth generator capped its analysis at 8 s while two library files were
+    13.7 s; the engine analysed the whole file, so `slicePoints_normalized × capped_len`
+    compressed the engine's timeline by 1.71× and the recall/precision for those two files were
+    chance-level: a dense 272-onset train scored ~85 % "recall" by luck, while a correct
+    70-onset train would have scored ~30 %. Found because 127 of 272 onsets had normalized
+    position > 0.5833 (beyond 8 s of a 13.7 s file). **Rules:** (a) the ground-truth window MUST
+    match the analysed window exactly; (b) when a measurement disagrees with an expectation, check
+    the window/scale first — a dense train scoring "high recall" by luck is a sign the scales
+    disagree; (c) always report the interior count alongside recall/precision — a count outside
+    the expected band invalidates the ratio.

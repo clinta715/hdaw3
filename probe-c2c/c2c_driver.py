@@ -17,7 +17,7 @@ import json, os, re, sys, time, urllib.request, hashlib
 URL = 'http://127.0.0.1:18765/mcp'
 # Native Windows scratch dir: this directory (probe-c2c next to c2c_driver.py).
 # The launcher is probe-c2c/engine.ps1 (native PowerShell; the WSL engine.sh it
-# replaced hardcoded /mnt/d/pdf/roo projects/hdaw3/probe-c2c).
+# replaced a hardcoded probe-c2c path).
 SCR  = os.path.dirname(os.path.abspath(__file__))
 WINOUT = 'C:\\temp'
 SETTLE = 12        # bake settle after apply (warm 800 blocks ~1.6s + idle ~2.5s + margin)

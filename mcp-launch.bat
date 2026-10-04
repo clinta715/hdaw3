@@ -26,7 +26,7 @@
 :: across configs (Qt6Core.dll vs Qt6Cored.dll).
 ::
 :: Usage (in opencode.jsonc mcpServers):
-::   "command": "D:\\pdf\\roo projects\\hdaw3\\mcp-launch.bat"
+::   "command": "E:\\build\\hdaw3\\mcp-launch.bat"
 ::   "args": []
 
 setlocal

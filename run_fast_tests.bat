@@ -19,7 +19,7 @@ REM _mcp / _frontend / _platform). The same exclusion filter is applied to each;
 REM a gtest filter that matches nothing in an exe is a no-op, so one filter fits
 REM all four. The exes run SEQUENTIALLY here (conservative tier); use
 REM run-tests-sharded.ps1 for parallel execution.
-cd /d "D:\pdf\roo projects\hdaw3"
+cd /d "%~dp0"
 call build-fast.bat test
 if errorlevel 1 exit /b 1
 set "HDAW_FAST_FILTER=--gtest_filter=-PsytranceComposition.*:ExportAutomation.*:CrashRecovery.*:PluginIsolation.*:RenderSequenceRelease.*"
