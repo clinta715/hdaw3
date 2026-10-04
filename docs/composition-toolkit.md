@@ -10,7 +10,8 @@ This file preserves the toolkit overview + loader status verbatim.
 **Render output convention (standing):** all composition renders — final
 track exports, verification windows, and the WAVs fed to `mix_report` /
 `analyze_tuning` — go to the repo-root `compositions/` directory
-(`D:\pdf\roo projects\hdaw3\compositions\`, gitignored via `/compositions/`).
+(`E:\build\hdaw3\compositions\` on the Windows box, `/mnt/nvme2/build/hdaw3/compositions/`
+on Linux, gitignored via `/compositions/`).
 Do not write render output into `tools/`, the home dir, or other scratch
 locations; MRT2 one-shot *sound design* samples (the raw sound palette)
 stay in `tools/mrt2/sounds/`, but anything rendered from a project goes to
@@ -71,7 +72,8 @@ product pillar and should be reached for wherever it fits:
 - **Hardware VA suite (gearmulator CLAPs)** — OsTIrus (Virus TI), Osirus
   (Virus A/B/C), Vavra (microQ), Xenia (Microwave), JE8086 (JP-8000),
   NodalRed2x (Nord Lead 2x), Dexed (DX7) run as isolated CLAPs with their real
-  firmware (installed in `C:\Program Files\Common Files\CLAP\` with ROMs).
+  firmware (installed in `C:\Program Files\Common Files\CLAP\` with ROMs — Windows dev
+  box only; the Linux box has no VA suite).
   Injection tools: `send_fx_midi` (PC/CC/note/sysEx), `load_virus_preset`
   (CC0 bank + PC). (The Dexed `.syx` route `load_dexed_cartridge` was removed
   2026-09-14 — use the internal `fm_synth` + `fm_synth_import_sysex`.) Per-plugin **matrix presets + morph chains** exist
@@ -376,5 +378,6 @@ python scripts\hdaw_mcp_http.py call tool_help '{"name":"verify_window"}'
 `hdaw_mcp_http.py` talks to an ALREADY-RUNNING engine (MCP over HTTP,
 `http://127.0.0.1:18765/mcp`), so nothing is spawned or killed; the stdio twin
 `scripts/mcp_call.py` starts a FRESH stateless engine per `call` — use `run <steps.json>`
-for a multi-step proof in one engine lifetime.
+for a multi-step proof in one engine lifetime. On Linux there is no PowerShell layer:
+same helper under `python3`, endpoint override `HDAW_MCP_URL=http://127.0.0.1:<port>/mcp`.
 

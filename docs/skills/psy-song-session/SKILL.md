@@ -47,7 +47,9 @@ songs. Vary the section layout per style/brief, not one template.
 ## Dispatch — shared-engine contract (CRITICAL)
 
 The engine is a PER-SESSION SINGLETON: mcp-launch.bat kills any running
-engine on launch. Role subagents MUST reach that ONE engine and never spawn
+engine on launch (Linux box: no `mcp-launch.bat` — kill the old `HDAW_headless`
+process, start `./build/HDAW_headless --mcp-http --mcp-http-port <port>`, and point
+agents at it with `HDAW_MCP_URL=http://127.0.0.1:<port>/mcp`). Role subagents MUST reach that ONE engine and never spawn
 their own stdio server. Three call shapes, same tool names: pi-hosted agents
 use the mcp proxy (`await mcp({server:'hdaw-http', tool:..., args:...})`),
 omp-harness agents write to `xd://mcp__hdaw_<tool>`, and DSH-hosted agents use
@@ -123,4 +125,6 @@ A/B; the probe's baseline spread is the trust threshold.
   NOT a timeout: re-load the checkpoint and continue. A request TIMEOUT never
   yields 42 — it discards the connection, and the next call relaunches the
   engine onto a fresh empty project. Real crashes land a WER dump — check
-  `scripts/crash-diag.ps1 report` for exit codes + dumps before debugging.
+  `scripts/crash-diag.ps1 report` for exit codes + dumps before debugging
+  (Windows; on Linux a crashed/hung child leaves async-signal-safe text
+  reports `*hung*.crash.txt` under `$TMPDIR` — no minidumps).

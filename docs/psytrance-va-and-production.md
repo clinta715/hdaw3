@@ -10,6 +10,10 @@ where §0 style canon, §0.5 sound-design canon and §1–§4 workflow/scoring l
 Real synth firmware running as isolated CLAP plugins — installed in
 `C:\Program Files\Common Files\CLAP\` with their ROMs:
 
+**Windows dev box only (2026-10-04):** these CLAPs are Windows binaries — the Linux box
+(2026-10-04 port) has no VA suite; compose there with the internal devices + the
+sample/MIDI corpus (composition guide §2).
+
 **Patch pipelines + loader reality (2026-09-16).** Every bank library now has a
 decoder writing searchable sidecars: JP-8080 `timbre-lib/je8086_patch.py` (4983
 entries / 2676 usable patches, plus an exploded per-patch tree), microQ

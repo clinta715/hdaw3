@@ -188,7 +188,7 @@ key/BPM filters therefore match analyzed pads/loops directly.
 - Pack filenames inside `E:\samples` are reliable role hints; analysis CLAP
   tags + DSP descriptors back them up (see `select_psy_samples.py`).
 
-### Source material locations (dev box, verified 2026-09-22)
+### Source material locations (Windows dev box, verified 2026-09-22; Linux box 2026-10-04)
 
 | What | Root | Files | Sidecars |
 | --- | --- | --- | --- |
@@ -200,6 +200,15 @@ key/BPM filters therefore match analyzed pads/loops directly.
 | Waldorf Microwave XT | `D:\pdf\microwave` | 116 | 34 `.xenia.json` |
 | Nord Lead 2x banks | `D:\pdf\NL2x Banks` | 13,739 | 6,841 `.nl2x.json` |
 | DX7 cartridges (fm_synth) | `D:\pdf\Dexed Presets` | **19,197 `.syx`** | — (load with `fm_synth_import_sysex`, 32-voice carts; `voiceIndex` picks the voice, e.g. `1980 Sounds\Keys.syx` v3 = "RHODES EGH") |
+
+**Linux box (2026-10-04 port):** the corpus is only PARTIALLY migrated —
+`/mnt/nvme2/samples` (121 packs, just **742 `.timbre.json` sidecars** — most packs are
+UNANALYZED, so the register-per-pack + `scan_library` rule is mandatory there) and
+`/mnt/nvme2/midi` (17,046 files). Nothing else moved: the `D:\pdf` patch banks and the
+VA-suite CLAPs/ROMs are Windows binaries and do not exist on Linux — the hardware VA
+suite is UNAVAILABLE there (palette = internal devices + the sample/MIDI corpus). Engine
+user data lives under `~/.config/HDAW/` (a default `MIDI Collection` library
+auto-registers from `~/.config/HDAW/MIDI`).
 
 **MIDI snippet labels are NOT trustworthy — analyse them.** `E:\midi` pack filenames carry
 `[root] [mode]` tags (e.g. `18 - [RIFF] [C] [Natural Minor] [8bars].mid`). Measured

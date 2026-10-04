@@ -217,7 +217,8 @@ separate project and is no longer a delivery target.
   `D:\pdf\rhythm-lab.com_waldorf_micro_q` — counts, sidecar state, which packs are
   genre-relevant, and the register-per-pack rule:
   [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) §2
-  ("Source material locations").
+  ("Source material locations"). **Linux box (2026-10-04):** `/mnt/nvme2/samples` +
+  `/mnt/nvme2/midi` only — no patch banks, no VA-suite CLAPs (§2 has the counts).
 - **Key-fit gate**: `key_check` (RPC `composition.keyCheck`) compares a candidate key against
   the project's current scale — it defaults to `get_scale` — and returns
   `unison | relative | parallel | consonant | neutral | conflicting` plus the pitch-class
