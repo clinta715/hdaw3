@@ -550,6 +550,14 @@ definition, so it reads like a broken gtest rather than a name collision.
 QtCore, grep it for the four Qt keywords (`slots`, `signals`, `emit`, `foreach`) and
 rename any that are not actual Qt signal/slot machinery.
 
+**Second instance (2026-10-04, Linux build):** the same trap in `tests/unit/engine/midi_fx_test.cpp`
+(`AcidStep` suite): `const auto slots = engine.getReadModel().getMidiFxSlots(0);`. On Linux the
+macro comes from `/usr/include/x86_64-linux-gnu/qt6/QtCore/qtmetamacros.h`, pulled in
+transitively by the engine headers (the TU never includes Qt directly). GCC reported
+`expected unqualified-id before '='` plus `has no member named 'fxType'/'params'` — the vanished
+identifier makes the following member accesses parse as numeric/anonymous nonsense. Renamed to
+`slotSnaps`. Transitive inclusion means "this file doesn't use Qt" is not a defence.
+
 ## Windows `rpcndr.h` `small` collides with a JUCE enum — include ORDER breaks the build (2026-09-28)
 
 **Symptom:** a new `src/common` translation unit that includes Qt headers first and
@@ -592,3 +600,38 @@ JUCE-heavy `.cpp` whose includes are ordered JUCE/engine before Qt — and when 
 error names a JUCE declaration that reads as syntactically absurd (an enum member
 becoming `char`), suspect a Windows/Qt macro on the include path before blaming the
 JUCE source. See lesson 35.
+
+## AudioDeviceManager must be constructed ON the JUCE message thread — in headless/test processes that is the pump thread (2026-10-05)
+
+**Symptom:** nondeterministic heap corruption in anything that constructs an
+`AudioEngine` — wild writes into unrelated `.rodata`, `String`/`Identifier` pool
+damage, `free(): invalid size`, SIGSEGV at apparently random points (including inside
+`juce::MidiDeviceListConnectionBroadcaster::notify` on the pump thread). A **Debug**
+build instead traps, and gdb shows:
+
+```
+#1 juce::MidiDeviceListConnectionBroadcaster::add   juce_MidiDevices.cpp:48
+#2 juce::MidiDeviceListConnection::make
+#3 juce::AudioDeviceManager::AudioDeviceManager     juce_AudioDeviceManager.cpp:125
+#4 AudioEngine::AudioEngine                         src/engine/AudioEngine.cpp:112
+```
+
+**Cause:** `AudioDeviceManager`'s constructor registers a `MidiDeviceListConnection`,
+and `add()` asserts `JUCE_ASSERT_MESSAGE_THREAD`. In a headless/test process the JUCE
+message thread is `MessagePumpThread`, NOT the thread constructing the engine. The
+assert is compiled out in release, so the call went ahead and mutated the
+broadcaster's callback map from the caller's thread while the pump ran `notify()` on
+the same state.
+
+**Fix pattern:** construct the manager on the message thread through
+`common/RunOnMessageThreadBounded.h` (the `PluginHost::runLifecycleOnMessageThread`
+shape, lesson 16), with an inline fallback when no pump/message thread exists.
+`AudioEngine` holds it as a `unique_ptr` so the ctor can marshal;
+`getDeviceManager()` still returns a reference. This is an app-level contract too:
+`main.cpp` constructs `AudioEngine` on the Qt main thread.
+
+**Rule:** any JUCE call that asserts `JUCE_ASSERT_MESSAGE_THREAD`
+(`AudioDeviceManager` ctor, `MidiDeviceListConnection::make`, graph topology changes)
+must be marshalled onto the pump thread in headless processes. A release-only data
+race has no assert to point at it — when a Debug build traps where release corrupts,
+believe the trap.

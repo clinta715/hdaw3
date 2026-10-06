@@ -582,3 +582,108 @@ reconfigure — do not "fix" it by editing `dsh-build-fast.bat`/`build-fast.bat`
     with Playwright's `expect.toPass()` polling, not a one-shot read:
     `await expect(async () => { expect(await clipLeft(...)).toBeGreaterThan(...); }).toPass({ timeout: 10000 });`
 
+## A compiler WARNING was the bug — audit `warning:`, not just `error:` (2026-10-05)
+
+`AudioEngineCommands::setMidiFxSlotParam` gained a value return type, but its success
+path fell off the end. GCC warned on **every** build:
+
+```
+src/engine/AudioEngineCommands_Fx.cpp:339:1: warning: control reaches end of non-void function [-Wreturn-type]
+```
+
+That is UB, not cosmetics: at `-O0` GCC emits `ud2` at the closing brace (SIGILL); at
+`-O2` the caller reads a garbage return value, which produced wild writes into
+`.rodata` param tables and hours of misdiagnosis. The build was treated as green
+because the audit grepped `error:` only — the warning was sitting in the log the whole
+time (see also `docs/pitfalls-juce.md`, same date, for the JUCE message-thread bug found
+in the same hunt).
+
+**Habits:** after a build, grep the log for `warning:` too, and treat
+`control reaches end of non-void function`, uninitialized-read and
+use-after-free-class warnings as failures. A cheap project-wide guard is
+`-Werror=return-type` (the tree is currently clean of it).
+
+**Debug builds are a diagnostic tool, not just a config.** `-O0` turned an invisible
+release-only data race into a `SIGTRAP` at a JUCE assert, and turned the missing return
+into a `SIGILL` at the exact function. When an optimized build corrupts memory
+nondeterministically, build the same target with `-DCMAKE_BUILD_TYPE=Debug` in a
+SEPARATE build dir and re-run the reproducer there first.
+
+## Linux test baseline — pristine tree (2026-10-05)
+
+Measured on this box (Qt 6.12.0 from `/home/clint/Qt`, **no audio device**): build with
+`./build-fast.sh test`, then run each executable directly. Recorded so a future failure
+can be told apart from a pre-existing one; AGENTS.md's authoritative numbers remain the
+Windows 2026-09-28 run.
+
+**Pre-existing failures on a CLEAN tree** — established by stashing every working-tree
+change, rebuilding, and running all four suites on the pristine tree. Capture the FULL
+`[  FAILED  ]` list: an earlier version of this table came from a `tail`-limited grep and
+reported only the last four engine names, under-stating the engine failures fourfold.
+
+Pristine totals: engine **1348 tests / 231 suites, 1289 passed, 15 failed**; frontend
+**321 ran / 319 passed / 2 failed**; platform **227 ran / 222 passed / 1 failed**, then
+aborted at exit; mcp **aborted before printing a summary** (see below).
+
+| Suite | Pristine failures |
+| --- | --- |
+| engine (15) | `PsytranceComposition.FullProductionV4`, `FullProductionArrangement`, `DarkForestV5` (silent render, `finalPeak 0`) · `MidiAnalyzerTest.AnalyzeChordReturnsHighPolyphony`, `AnalyzeRealWorldMidiFiles`, `AnalyzeSimpleScaleReturnsFingerprint`, `CreateRemixFromAnalyzedMidi`, `RepeatedBarsAppearAsPatterns`, `ToPatternJsonReturnsNonEmpty` (`C++ exception ... "cannot create std::vector larger than max_size()"`) · `MidiImportTest.ImportIntoExistingTrackCreatesClipWithNotes` · `FileLibraryTest.IncrementalScanDetectsSubSecondChange`, `SidecarMtimeBumpTriggersRescan` (sub-second mtime) · `IsolatedScanner.ScannerExePathResolves`, `PluginManagerScan.Is32BitPeImageDetected` (fixture/path) · `ProjectBackup.PrunesOldestBeyondCap` |
+| frontend (2) | `FrontendServer.AutoGainGlobalScaleRpc`, `SamplerGetStateLiveHasSoundPlusHasSampleFile` (sampler fixture: `slot = -1`) |
+| platform (1) | `ProxyNamespace.SpawnBumpsSlotWhenPipeNameHeld` |
+| mcp | not fully known — the pristine suite **aborts before printing its summary even with `McpServer.ExportAudioConsumesStaleCancelFlag` excluded**, so the bug reaches more than one export test: the pristine log's last line is `[ RUN ] McpServer.ExportAudioRendersDefaultProject`, i.e. a *second* export test dies the same way. The only mcp failures measured (per test) are `HeadlessMcpHttpPort.ServesOnTheCliPort`, `CliPortWinsOverAFreePersistedPort`, `ExitsNonZeroWhenTheCliPortIsTaken` (CLI-port area, lessons 46/48). |
+
+**What the baseline proves about the fixes made in the same session** — and why to compare
+*exit codes*, not just failure names:
+
+- Pristine `platform` ends **EXIT=139** (abort at exit), and pristine `mcp` ends
+  **EXIT=139 even with `McpServer.ExportAudioConsumesStaleCancelFlag` excluded**. With the
+  pump joined at the entry points and the export completion callback invoked through a
+  copy, both suites exit **1** with only the failures above. So the abort-at-exit heap
+  corruption and the self-destroying `std::function` (which reaches more than one export
+  test, not only the first one that crashed) are what those fixes removed; the residual
+  failures are the environmental ones tabulated here.
+- A suite that can abort hides everything after the crasher: the pristine mcp log shows no
+  summary at all, so a per-suite comparison would read as "mcp is fine". Measure failures
+  **per test**, or exclude the crasher with `--gtest_filter=-<Test>` so the rest can run.
+
+**Known flaky — pass solo, have failed inside a full run** (so a single green solo run
+does not clear them, and a red full run does not indict your change):
+`PluginIsolation.LiveDropDrainsStaleOutput` (proxy/plugin-host state, lesson 20),
+`FrontendServer.SamplerRpcFamily` (sampler fixture), and
+`PsytranceComposition.FullProductionArrangement` (long render, ~15 s). Treat these as
+environmental until a *repeat* run says otherwise, and always compare against the table
+above before attributing a failure to the working tree.
+
+**Intermittent heap corruption in the engine suite — pre-existing, and NOT attributable
+to any one test.** Full engine-suite runs abort roughly **1 in 3 times on pristine HEAD**
+and 2 in 4 with the changes made in the same session (statistically indistinguishable at
+those sample sizes), with glibc reporting `double free or corruption (out)`. The **victim
+test differs between runs** — `ExportBakeTimeout.LargeProjectExportsWithDefaultTimeout` in
+one, `PsytranceComposition.RoleIsolationDiag` in another — and glibc only detects damage at
+the *next* `free`, so the aborting test is where corruption is *noticed*, not where it is
+*caused*: an earlier test in the suite plants it.
+
+Consequences for anyone reading a run:
+
+- a single clean engine run does **not** prove the tree is corruption-free;
+- a single abort is **not** evidence that the working tree caused it;
+- to localise it, bisect the *suite* with `--gtest_filter` over halves (no rebuild needed),
+  or run a `_GLIBCXX_DEBUG`/ASan build in a **separate** build dir so the abort lands on the
+  offending write rather than the later `free` (see the Debug-build note above).
+
+Measured 2026-10-05, engine exe only, pristine `HEAD` (7b8e0be) in a git worktree versus the
+working tree.
+
+**Two things the baseline also proved about the same session's fixes:**
+
+- The exit-time heap corruption (the pump draining JUCE callbacks during static
+  destruction) appeared here as **exit 134 on several engine-creating tests**; with the
+  pump joined at the entry points those tests now fail their assertions normally (exit 1)
+  instead of aborting. The aborts were the fixable part; the assertion failures are
+  environmental.
+- `hdaw_tests_mcp` on the pristine tree is **truncated** by the export completion
+  callback's self-destroying `std::function` (SEGV in
+  `McpServer.ExportAudioConsumesStaleCancelFlag`), so every test after it — including the
+  `HeadlessMcpHttpPort` trio — never runs at all. Measuring per-test rather than
+  per-suite is what makes this baseline meaningful.
+

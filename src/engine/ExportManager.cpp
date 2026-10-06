@@ -692,8 +692,14 @@ finish:
     }
     HDAW_LOG("Export", "render finished success=" + juce::String(success ? 1 : 0)
         + " message=" + message);
-    if (onComplete)
-        onComplete(success, message);
+    // Invoke a COPY of the callback. A callback is allowed to clear onComplete
+    // from inside itself (McpExportTool's export completion does exactly that), and
+    // invoking the MEMBER directly destroyed the closure that was still executing:
+    // its captured state (QPointer<McpServer>, &em) was then read after free -
+    // a self-destroying std::function, measured as a 5/5 SEGV in the MCP suite that
+    // killed every test after it. The copy keeps the closure alive for the call.
+    if (auto cb = onComplete)
+        cb(success, message);
 }
 
 } // namespace HDAW

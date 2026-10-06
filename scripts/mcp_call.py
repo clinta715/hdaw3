@@ -22,7 +22,7 @@ import shlex
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENGINE = ROOT / "build" / "HDAW_headless.exe"
+ENGINE = ROOT / "build" / ("HDAW_headless.exe" if os.name == "nt" else "HDAW_headless")
 
 # Extra engine argv (from --engine-args), appended after "--mcp-stdio". Parsed
 # in main(); EMPTY for a plain invocation.
@@ -65,6 +65,7 @@ def spawn():
     scratch = ROOT / ".tmp_build_scratch" / "lnk"
     scratch.mkdir(parents=True, exist_ok=True)
     env["TMP"] = env["TEMP"] = str(scratch)
+    env["TMPDIR"] = str(scratch)  # Qt honors TMPDIR on Linux
     proc = subprocess.Popen(
         [str(ENGINE), "--mcp-stdio"] + ENGINE_ARGS,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -73,7 +74,7 @@ def spawn():
     return proc
 
 # The engine's HDAW_LOG file lives in the child's TMP (redirected in spawn()),
-# NOT the client's own %TEMP%.
+# NOT the client's own temp dir.
 CHILD_LOG = ROOT / ".tmp_build_scratch" / "lnk" / "hdaw_debug.log"
 
 def send(proc, payload):

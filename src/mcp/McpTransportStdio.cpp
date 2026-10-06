@@ -4,13 +4,14 @@
 #include "../common/DebugLog.h"
 #include <QCoreApplication>
 #include <QFile>
-#include <QTextStream>
 #include <QJsonDocument>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <io.h>
 #else
+#include <poll.h>
+#include <cerrno>
 #include <unistd.h>
 #endif
 
@@ -81,12 +82,43 @@ public:
             }
         }
 #else
-        QTextStream ts(&in);
+        // Linux twin of the Windows ReadFile trap documented above. Going
+        // through Qt here is the same trap: QFile's internal buffer turns a
+        // small readLine() into a 16 KB read request, which BLOCKS on a
+        // byte-mode pipe until the buffer fills or EOF. Measured with strace
+        // (2026-10-05): the client wrote a 147-byte initialize line and kept
+        // stdin open; the reader sat in read(0, "", 16237)  [16237 = 16384 -
+        // 147 buffered] for 8+ seconds with zero engine syscalls, and the line
+        // only reached handleLine at stdin EOF, where every queued response
+        // flushed at once. So poll stdin and read EXACTLY the available bytes;
+        // the bounded 50 ms timeout re-checks stopped_ and surfaces stop()'s
+        // close(STDIN_FILENO) as POLLNVAL/EBADF.
+        QByteArray buf;
         while (!parent_->stopped_.load(std::memory_order_relaxed)) {
-            const QString line = ts.readLine();
-            if (line.isNull())
-                break;
-            handleLine(line);
+            struct pollfd pfd{ STDIN_FILENO, POLLIN, 0 };
+            const int pr = ::poll(&pfd, 1, 50);
+            if (pr < 0) {
+                if (errno == EINTR)
+                    continue;
+                break;   // e.g. EBADF after stop() closed the fd
+            }
+            if (pr == 0)
+                continue;   // timeout: re-check stopped_
+            if ((pfd.revents & POLLIN) == 0)
+                break;   // POLLHUP/POLLNVAL/POLLERR: pipe closed
+            QByteArray chunk(16384, 0);
+            const ssize_t n = ::read(STDIN_FILENO, chunk.data(),
+                                     static_cast<size_t>(chunk.size()));
+            if (n <= 0)
+                break;   // EOF or read error
+            chunk.truncate(static_cast<int>(n));
+            buf.append(chunk);
+            int nl = 0;
+            while ((nl = buf.indexOf('\n')) >= 0) {
+                const QByteArray raw = buf.left(nl);
+                buf.remove(0, nl + 1);
+                handleLine(QString::fromUtf8(raw));
+            }
         }
 #endif
         if (QCoreApplication::instance()) {

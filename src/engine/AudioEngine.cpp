@@ -1,4 +1,5 @@
 #include "AudioEngine.h"
+#include "../common/RunOnMessageThreadBounded.h"
 #include "AudioEngineCommands_Helpers.h"
 #include <juce_events/juce_events.h>
 #include <QSettings>
@@ -114,6 +115,25 @@ AudioEngine::AudioEngine()
     // UAF guard (see alive_ in the header): armed before any callback can be
     // installed, so the MIDI-input callback always has a live token to check.
     alive_ = std::make_shared<std::atomic<bool>>(true);
+
+    // Build the AudioDeviceManager ON THE JUCE MESSAGE THREAD. Its ctor registers a
+    // MidiDeviceListConnection, whose add() asserts JUCE_ASSERT_MESSAGE_THREAD
+    // (juce_MidiDevices.cpp:48) - and in a headless/test process the JUCE message
+    // thread is the MessagePumpThread, not the caller. The assert is compiled out in
+    // release, so building it here left the broadcaster's callback map mutated from
+    // this thread while the pump ran notify() on the same state: measured as heap
+    // corruption and wild writes (a Debug build traps with SIGTRAP at that assert).
+    // Marshalling mirrors PluginHost::runLifecycleOnMessageThread (lesson 16).
+    const bool builtOnMessageThread = runOnMessageThreadBounded([this] {
+        deviceManager = std::make_unique<juce::AudioDeviceManager>();
+    }, 5000);
+    if (!builtOnMessageThread || deviceManager == nullptr)
+    {
+        // No pump / no message thread available: construct inline so the engine
+        // still works, and let the caller own the threading contract.
+        deviceManager = std::make_unique<juce::AudioDeviceManager>();
+    }
+
     mainProcessor = std::make_unique<MainAudioProcessor>();
     projectModel.getTree().addListener(this);
 }
@@ -223,13 +243,13 @@ void AudioEngine::initialize()
     // behaviour is unchanged: try (2,2) and fall back to output-only on any
     // other error cause (e.g. a render-only endpoint that still reports inputs).
     auto initDefaultDevice = [this]() {
-        const bool requestInputs = defaultDeviceTypeHasInputs(deviceManager);
+        const bool requestInputs = defaultDeviceTypeHasInputs(*deviceManager);
         defaultDeviceInitInputs_ = requestInputs ? 2 : 0;
 
         if (!requestInputs)
         {
             HDAW_LOG("AudioEngine", "no capture endpoint - opening default device output-only (skipping the 2-in attempt)");
-            auto err = deviceManager.initialiseWithDefaultDevices(0, 2);
+            auto err = deviceManager->initialiseWithDefaultDevices(0, 2);
             if (err.isNotEmpty())
             {
                 juce::Logger::writeToLog("AudioEngine::initialize Error: " + err);
@@ -238,12 +258,12 @@ void AudioEngine::initialize()
             return;
         }
 
-        auto err = deviceManager.initialiseWithDefaultDevices(2, 2);
+        auto err = deviceManager->initialiseWithDefaultDevices(2, 2);
         if (err.isNotEmpty())
         {
             juce::Logger::writeToLog("AudioEngine::initialize Error: " + err);
             HDAW_LOG("AudioEngine", "default device init failed: " + err + " - retrying output-only");
-            err = deviceManager.initialiseWithDefaultDevices(0, 2);
+            err = deviceManager->initialiseWithDefaultDevices(0, 2);
             if (err.isNotEmpty())
             {
                 juce::Logger::writeToLog("AudioEngine::initialize Error (output-only retry): " + err);
@@ -282,19 +302,19 @@ void AudioEngine::initialize()
             // (1) Switch driver type FIRST so the device list is re-scanned in
             //     the new type's namespace before we touch device names.
             if (!savedDriver.isEmpty())
-                deviceManager.setCurrentAudioDeviceType(
+                deviceManager->setCurrentAudioDeviceType(
                     juce::String(savedDriver.toUtf8().constData()), true);
 
             // (2) Re-fetch the setup AFTER the type switch — its device names
             //     now live in the new type's namespace.
             juce::AudioDeviceManager::AudioDeviceSetup setup
-                = deviceManager.getAudioDeviceSetup();
+                = deviceManager->getAudioDeviceSetup();
 
             // (3) Apply a saved device name ONLY when it exists in the current
             //     type's device list; otherwise keep whatever the switch
             //     already chose (empty name = JUCE type default). Never fall
             //     back to a name inherited from a different driver family.
-            if (auto* devType = deviceManager.getCurrentDeviceTypeObject())
+            if (auto* devType = deviceManager->getCurrentDeviceTypeObject())
             {
                 const auto outs = devType->getDeviceNames(false);
                 const auto ins  = devType->getDeviceNames(true);
@@ -319,7 +339,7 @@ void AudioEngine::initialize()
             if (savedRate > 0)   setup.sampleRate  = savedRate;
             if (savedBuffer > 0) setup.bufferSize  = savedBuffer;
 
-            const auto err = deviceManager.setAudioDeviceSetup(setup, true);
+            const auto err = deviceManager->setAudioDeviceSetup(setup, true);
             if (err.isNotEmpty())
             {
                 juce::Logger::writeToLog("AudioEngine: saved device restore failed: " + err
@@ -329,7 +349,7 @@ void AudioEngine::initialize()
             }
             else
             {
-                juce::String log = "saved audio device restored: driver=" + deviceManager.getCurrentAudioDeviceType();
+                juce::String log = "saved audio device restored: driver=" + deviceManager->getCurrentAudioDeviceType();
                 log << " out=\"" << setup.outputDeviceName << "\" in=\"" << setup.inputDeviceName << "\"";
                 if (savedRate > 0)   log << " rate=" << savedRate;
                 if (savedBuffer > 0) log << " buf=" << savedBuffer;
@@ -342,11 +362,11 @@ void AudioEngine::initialize()
     processorPlayer.setProcessor(mainProcessor.get());
 
     // Add player as audio callback
-    deviceManager.addAudioCallback(&processorPlayer);
+    deviceManager->addAudioCallback(&processorPlayer);
 
     // Initialize preview player for file browser audio preview
     previewPlayer = std::make_unique<HDAW::AudioPreviewPlayer>(
-        deviceManager, projectPool.getFormatManager());
+        *deviceManager, projectPool.getFormatManager());
     previewPlayer->setTransportManager(&transportManager);
 
     // Wire MIDI input to processor
@@ -805,7 +825,7 @@ void AudioEngine::shutdown()
         juce::MessageManagerLock mml(static_cast<juce::Thread*>(nullptr));
         cancelPendingUpdate(); // no deferred rebuild fires after teardown
         projectModel.getTree().removeListener(this);
-        deviceManager.removeAudioCallback(&processorPlayer);
+        deviceManager->removeAudioCallback(&processorPlayer);
         processorPlayer.setProcessor(nullptr);
         pluginManager.stopCrashMonitor();
         mainProcessor.reset(); // destroys the graph under the pump-park
@@ -814,7 +834,7 @@ void AudioEngine::shutdown()
     {
         cancelPendingUpdate();
         projectModel.getTree().removeListener(this);
-        deviceManager.removeAudioCallback(&processorPlayer);
+        deviceManager->removeAudioCallback(&processorPlayer);
         processorPlayer.setProcessor(nullptr);
         pluginManager.stopCrashMonitor();
         mainProcessor.reset();
@@ -2001,7 +2021,7 @@ void AudioEngine::timerCallback()
     {
         lastLiveClockLogMs_ = nowMs;
         auto* mainProc = getMainProcessor();
-        auto* dev = deviceManager.getCurrentAudioDevice();
+        auto* dev = deviceManager->getCurrentAudioDevice();
         const auto blocks = mainProc ? mainProc->debugProcessBlockCount() : 0;
         const auto dBlocks = blocks - lastBlocksDiag_;
         lastBlocksDiag_ = blocks;

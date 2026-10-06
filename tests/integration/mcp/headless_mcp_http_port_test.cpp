@@ -65,7 +65,13 @@ constexpr int kPollIntervalMs  = 200;
 
 QString enginePath()
 {
+    // Platform-specific engine binary name: Windows builds HDAW_headless.exe,
+    // Linux has no suffix (the Linux migration left this hard-coded and red).
+#ifdef _WIN32
     return QCoreApplication::applicationDirPath() + QStringLiteral("/HDAW_headless.exe");
+#else
+    return QCoreApplication::applicationDirPath() + QStringLiteral("/HDAW_headless");
+#endif
 }
 
 // Best-effort free-port probe: bind an ephemeral port, read the OS-assigned

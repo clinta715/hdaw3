@@ -117,49 +117,73 @@ int main(int argc, char *argv[])
         HDAW_LOG("main_headless", "--project is only honored with --mcp-stdio; ignoring it");
 
     if (mcpStdio) {
-        AudioEngine engine;
-        mcp::McpServer server;
-        server.setEngine(&engine);
-        server.setTransportName("stdio");
-        mcp::registerAllTools(server);
-        auto transport = std::make_unique<mcp::TransportStdio>();
-        server.setTransport(transport.get());
-        QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
-            server.stop();
-        });
-        server.start();
+        // Scope the engine/server so their destructors run BEFORE the pump is
+        // joined below. ~AudioEngine -> AudioEngine::shutdown() takes a
+        // juce::MessageManagerLock to park the pump while it destroys the
+        // AudioProcessorGraph; with no pump thread left to dispatch the
+        // BlockingMessage that grants that lock, tryAcquire blocks forever on
+        // its condition variable (measured: main thread wedged in
+        // MessageManagerLock::tryAcquire at exit, gdb bt from
+        // AudioEngine::shutdown line 825). Destroying the engine first lets
+        // shutdown park the LIVE pump as designed; the pump is then joined with
+        // nothing left that needs the message thread.
+        int rc = 0;
+        {
+            AudioEngine engine;
+            mcp::McpServer server;
+            server.setEngine(&engine);
+            server.setTransportName("stdio");
+            mcp::registerAllTools(server);
+            auto transport = std::make_unique<mcp::TransportStdio>();
+            server.setTransport(transport.get());
+            QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
+                server.stop();
+            });
+            server.start();
 
-        // Defer engine init + plugin scan so MCP can respond to initialize/tools/list
-        // immediately. Tools that need the engine will return errors until it's ready.
-        const QString projectToLoad = QString::fromStdString(bootArgs.projectPath);
-        QTimer::singleShot(0, [&engine, projectToLoad] {
-            engine.initialize();
-            if (engine.getPluginManager().getPlugins().empty())
-            {
-                HDAW_LOG("main_headless", "Plugin cache empty; scanning...");
-                engine.getPluginManager().scanAll();
-                HDAW_LOG("main_headless", QString("Scan complete: %1 plugins").arg(
-                    (int)engine.getPluginManager().getPlugins().size()));
-            }
-
-            // --project bootstrap: load AFTER initialize() and AFTER the plugin
-            // scan (plugin state restore needs the scanned plugins). A failed
-            // load exits 2 so the caller sees a NON-ZERO status instead of a
-            // silently empty project.
-            if (!projectToLoad.isEmpty()) {
-                const bool loaded = engine.getProjectCommands().loadProject(
-                    projectToLoad.toStdString());
-                if (!loaded) {
-                    HDAW_LOG("main_headless", QString("--project: FAILED to load %1")
-                        .arg(projectToLoad));
-                    QCoreApplication::exit(2);
-                    return;
+            // Defer engine init + plugin scan so MCP can respond to
+            // initialize/tools/list immediately. Tools that need the engine
+            // will return errors until it's ready.
+            const QString projectToLoad = QString::fromStdString(bootArgs.projectPath);
+            QTimer::singleShot(0, [&engine, projectToLoad] {
+                engine.initialize();
+                if (engine.getPluginManager().getPlugins().empty())
+                {
+                    HDAW_LOG("main_headless", "Plugin cache empty; scanning...");
+                    engine.getPluginManager().scanAll();
+                    HDAW_LOG("main_headless", QString("Scan complete: %1 plugins").arg(
+                        (int)engine.getPluginManager().getPlugins().size()));
                 }
-                HDAW_LOG("main_headless", QString("--project: loaded %1").arg(projectToLoad));
-            }
-        });
 
-        return app.exec();
+                // --project bootstrap: load AFTER initialize() and AFTER the
+                // plugin scan (plugin state restore needs the scanned plugins).
+                // A failed load exits 2 so the caller sees a NON-ZERO status
+                // instead of a silently empty project.
+                if (!projectToLoad.isEmpty()) {
+                    const bool loaded = engine.getProjectCommands().loadProject(
+                        projectToLoad.toStdString());
+                    if (!loaded) {
+                        HDAW_LOG("main_headless", QString("--project: FAILED to load %1")
+                            .arg(projectToLoad));
+                        QCoreApplication::exit(2);
+                        return;
+                    }
+                    HDAW_LOG("main_headless", QString("--project: loaded %1").arg(projectToLoad));
+                }
+            });
+
+            rc = app.exec();
+        }   // engine + server destroyed here, while the pump still runs
+
+        // Join the pump BEFORE static/stack teardown, same rationale as the
+        // frontend path further down this file: while it runs it keeps
+        // draining JUCE fd + AsyncUpdater callbacks, and JUCE's function-local
+        // statics are destroyed during static destruction - a dispatch landing
+        // after that reads freed memory. Measured: a clean stdio EOF shutdown
+        // deterministically aborted at exit (SIGABRT 134) on Linux (4/4 runs)
+        // before this join was added.
+        HDAW::MessagePumpThread::stop();
+        return rc;
     }
 
     // Headless WebSocket mode. `--port 0` (or `--port=0`) is a VALID request for
@@ -238,5 +262,16 @@ int main(int argc, char *argv[])
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
         server.stop();
     });
-    return app.exec();
+    const int rc = app.exec();
+
+    // Join the pump BEFORE static/stack teardown. While it runs it keeps
+    // draining JUCE fd + AsyncUpdater callbacks, and JUCE's function-local
+    // statics are destroyed during static destruction - a dispatch landing
+    // after that reads freed memory. Measured: a suite that PASSES then aborts
+    // at exit (SIGABRT 134; 'corrupted size vs. prev_size' / 'double free')
+    // inside juce::MidiDeviceListConnectionBroadcaster::notify on the pump
+    // thread, reproducibly for several engine-creating suites. Same class as
+    // the pin note in MessagePumpThread.h.
+    HDAW::MessagePumpThread::stop();
+    return rc;
 }

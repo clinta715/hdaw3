@@ -2,7 +2,7 @@
   "mcpServers": {
     "hdaw": {
       "type": "stdio",
-      "command": "E:\\build\\hdaw3\\mcp-launch.bat",
+      "command": "/mnt/nvme2/build/hdaw3/mcp-launch.sh",
       "args": [],
       "timeout": 900000
     },

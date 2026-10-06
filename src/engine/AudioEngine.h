@@ -65,7 +65,7 @@ public:
     HDAW::ProjectPool& getProjectPool() { return projectPool; }
     HDAW::PluginManager& getPluginManager() { return pluginManager; }
     HDAW::MidiInputManager& getMidiInputManager() { return midiInputManager; }
-    juce::AudioDeviceManager& getDeviceManager() { return deviceManager; }
+    juce::AudioDeviceManager& getDeviceManager() { return *deviceManager; }
     HDAW::StretchCache& getStretchCache() { return stretchCache; }
     HDAW::AudioPreviewPlayer& getPreviewPlayer() { return *previewPlayer; }
     HDAW::SessionManager& getSessionManager() { return sessionManager; }
@@ -290,7 +290,10 @@ private:
     int64_t lastLiveClockLogMs_ = 0;
     uint64_t lastBlocksDiag_ = 0;
 
-    juce::AudioDeviceManager deviceManager;
+    // Constructed on the JUCE message thread in the ctor (see the comment there):
+    // AudioDeviceManager's ctor registers a MidiDeviceListConnection, which asserts
+    // JUCE_ASSERT_MESSAGE_THREAD. Held by pointer so the ctor can marshal it.
+    std::unique_ptr<juce::AudioDeviceManager> deviceManager;
     juce::AudioProcessorPlayer processorPlayer;
     // PluginManager is declared BEFORE mainProcessor so destruction runs in
     // reverse: the graph (and its PluginProxySlots) is destroyed first, then

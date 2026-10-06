@@ -634,5 +634,16 @@ int main(int argc, char** argv) {
 
     QCoreApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    const int rc = RUN_ALL_TESTS();
+
+    // Join the pump BEFORE static/stack teardown. While it runs it keeps
+    // draining JUCE fd + AsyncUpdater callbacks, and JUCE's function-local
+    // statics are destroyed during static destruction - a dispatch landing
+    // after that reads freed memory. Measured: a suite that PASSES then aborts
+    // at exit (SIGABRT 134; 'corrupted size vs. prev_size' / 'double free')
+    // inside juce::MidiDeviceListConnectionBroadcaster::notify on the pump
+    // thread, reproducibly for several engine-creating suites. Same class as
+    // the pin note in MessagePumpThread.h.
+    HDAW::MessagePumpThread::stop();
+    return rc;
 }

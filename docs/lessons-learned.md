@@ -927,3 +927,16 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     the window/scale first — a dense train scoring "high recall" by luck is a sign the scales
     disagree; (c) always report the interior count alongside recall/precision — a count outside
     the expected band invalidates the ratio.
+
+51. **Qt's `QTextStream::readLine()` over a piped stdin BLOCKS until a 16 KB buffer fills — an MCP
+    stdio server built on it answers nothing while the client holds the pipe open.**
+    `McpTransportStdio`'s POSIX reader wrapped `STDIN_FILENO` in a `QFile` and called
+    `readLine()`; Qt's `QIODevice` then issues a 16 KB read, so on a byte-mode pipe the reader
+    blocked in `read(0, …, 16237)` (16237 = 16384 − 147 already buffered) for 8+ s with zero
+    engine syscalls, and the pending `initialize` line was only handled at stdin EOF, where every
+    queued response flushed at once (strace, 2026-10-05). **Rules:** (a) never read a pipe through
+    a buffering wrapper you do not control — `poll()` + a read of EXACTLY the available bytes
+    (mirroring the Windows ReadFile branch above it); (b) a bounded poll timeout (50 ms) keeps a
+    `stopped_` flag live and lets `stop()`'s `close(fd)` surface as POLLNVAL/EBADF instead of
+    blocking forever; (c) the failure is INVISIBLE to a test driver that only reads after EOF —
+    `select()` both pipes while stdin stays open.
