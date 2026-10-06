@@ -36,6 +36,34 @@ namespace HDAW {
 inline constexpr const char* kEmptyNoteIdsError = "noteIds must not be empty";
 inline constexpr const char* kEmptyEditsError   = "edits must not be empty";
 
+// The per-note gain multiplier range (0.0..2.0), pinned in ProjectCommands.h
+// (setNotesGain's contract) and the note-gain defs. set_notes_gain's `gain` is
+// CLAMPED into it at every surface (the set_fx_param / set_master_fx_param
+// precedent — a silent `gain:4` write was the 2026-10-05 defect). The clamp
+// bounds are shared so the two surfaces report the SAME clamped value.
+inline constexpr float kNoteGainMin = 0.0f;
+inline constexpr float kNoteGainMax = 2.0f;
+
+inline float clampNoteGain(float gain) noexcept
+{
+    if (gain < kNoteGainMin) return kNoteGainMin;
+    if (gain > kNoteGainMax) return kNoteGainMax;
+    return gain;
+}
+
+// The response report for an applied note-gain clamp, in the established
+// "(<arg> clamped: a -> b)" idiom (set_fx_param / set_master_fx_param). Empty
+// when no clamp was applied; both surfaces put this in an optional `clamp`
+// field so the payload bytes stay identical by construction.
+inline QString noteGainClampText(double requested, float written)
+{
+    if (static_cast<float>(requested) == written)
+        return QString();
+    return QStringLiteral("(gain clamped: %1 -> %2)")
+        .arg(QString::number(requested, 'g', 6))
+        .arg(QString::number(static_cast<double>(written), 'g', 6));
+}
+
 // The declared `edits` item property names (the schema's additionalProperties
 // set). Anything else is a typo and is rejected.
 inline const QSet<QString>& clipEditKeys()

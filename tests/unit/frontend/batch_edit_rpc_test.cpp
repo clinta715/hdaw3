@@ -368,6 +368,38 @@ TEST_F(BatchEditRpcTest, IntegralNoteIdsStillAcceptedOnBothSurfaces) {
     EXPECT_DOUBLE_EQ(noteGain(clipA, n2), 0.75);
 }
 
+// (g2) Bug fix (2026-10-05): set_notes_gain's gain is CLAMPED to the per-note
+// range 0.0..2.0 with a VISIBLE report. The MCP surface's schema validator refuses
+// an out-of-range gain before the handler (so no clamp runs there); the RPC route
+// has no validator, so the shared clamp/report helper closes the silent
+// pass-through — and both surfaces that CAN reach the handler put the identical
+// clamp report in a `clamp` field (asserted on the RPC surface directly).
+TEST_F(BatchEditRpcTest, SetNotesGainClampsOutOfRangeGainWithReport) {
+    const int depth = undoDepth();
+
+    // RPC: 4 is clamped to 2 and the clamp is reported, not swallowed.
+    const auto r = rpc("project.setNotesGain",
+                       QJsonObject{{"noteIds", QJsonArray{n1}}, {"gain", 4.0}});
+    ASSERT_FALSE(r.isError)
+        << r.payload.toObject().value("message").toString().toStdString();
+    ASSERT_TRUE(r.payload.isObject());
+    const QJsonObject o = r.payload.toObject();
+    EXPECT_TRUE(o.value("ok").toBool());
+    EXPECT_EQ(o.value("applied").toInt(), 1);
+    EXPECT_EQ(o.value("clamp").toString(), QString("(gain clamped: 4 -> 2)"))
+        << "an out-of-range gain must be reported, not silently accepted";
+    EXPECT_DOUBLE_EQ(noteGain(clipA, n1), 2.0) << "the write must use the clamped value";
+    EXPECT_EQ(undoDepth(), depth + 1) << "the clamped batch is still exactly one unit";
+
+    // An IN-RANGE value is byte-identical to before: no clamp report.
+    const auto ok = rpc("project.setNotesGain",
+                        QJsonObject{{"noteIds", QJsonArray{n2}}, {"gain", 0.5}});
+    ASSERT_FALSE(ok.isError);
+    EXPECT_EQ(ok.payload,
+              QJsonValue(QJsonObject{{"applied", 1}, {"ok", true}}))
+        << "a non-clamped write must not gain a clamp field";
+}
+
 // (h) Regression guard for the guard: requireInt's integrality rejection is
 // gated on std::is_integral<T>, so a floating instantiation still takes a
 // fractional value — and a fractional-valued route still accepts its value.

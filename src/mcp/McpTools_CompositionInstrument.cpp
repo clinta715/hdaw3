@@ -289,13 +289,13 @@ s.registerTool({"audition_plugin",
         }});
 
 s.registerTool({"verify_part",
-        "Self-verify a composed part: solo-render + full-mix render of the track's window; reports solo/mix rms+peak, nonClipping (mix peak < 1.0), audible (solo peak > -80 dBFS), bandsPresent (low/mid/high spectral energy). Read-only. Window defaults to the track's earliest clip start; provide startBeat (BEATS) — and optionally endBeat (BEATS, > startBeat; the window then spans [startBeat,endBeat) instead of using windowSeconds) — to pin an explicit window for a late-section layer without moving the playhead. Optional soloOnly (default false): skip the full-mix render; halves cost / avoids plugin-spawn warmup — mix metrics then report mixMeasured=false. Calls the same engine command as the composition.verifyPart RPC.",
+        "Self-verify a composed part: solo-render + full-mix render of the track's window; reports solo/mix rms+peak, nonClipping (the mix peak < 1.0 when a mix render ran, else the SOLO peak < 1.0 — the booleans describe whichever render exists), audible (solo peak > -80 dBFS), bandsPresent (low/mid/high spectral energy, measured on the solo render). Read-only. Window defaults to the track's earliest clip start; provide startBeat (BEATS) — and optionally endBeat (BEATS, > startBeat; the window then spans [startBeat,endBeat) instead of using windowSeconds) — to pin an explicit window for a late-section layer without moving the playhead. Optional soloOnly (default false): skip the full-mix render; halves cost / avoids plugin-spawn warmup — mix metrics then report mixMeasured=false and the mix fields stay 0, while nonClipping/bandsPresent come from the solo render. Calls the same engine command as the composition.verifyPart RPC.",
         objSchema({{"trackIndex",    QJsonObject{{"type","integer"},{"minimum",0}}},
                    {"windowSeconds", QJsonObject{{"type","number"},{"minimum",0.1}}},
                    {"startBeat",     QJsonObject{{"type","number"},{"minimum",0}}},
                    {"endBeat",       QJsonObject{{"type","number"},{"minimum",0}}},
                    {"soloOnly",      QJsonObject{{"type","boolean"},{"default",false},
-                        {"description","skip the full-mix render; halves cost / avoids plugin-spawn warmup — mix metrics then report mixMeasured=false"}}}},
+                        {"description","skip the full-mix render; halves cost / avoids plugin-spawn warmup — mix metrics then report mixMeasured=false (mix fields 0) while nonClipping/bandsPresent are taken from the solo render"}}}},
                    {"trackIndex"}),
         "composition",
         [e](const QJsonObject& a) -> McpToolResult {

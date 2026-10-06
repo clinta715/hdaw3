@@ -9,6 +9,15 @@
 #include "../model/ProjectModel.h"
 #include "../common/BusInfo.h"
 #include "../common/SendJson.h"
+// Slice 2 of docs/plans/2026-10-05-param-batch-and-bugfixes.md: the batched bus
+// param write — the SAME strict `writes` parser + payload shaper the RPC twin
+// (project.setBusFxParams) calls, so both surfaces agree byte-for-byte.
+#include "../common/FxParamBatchJson.h"
+// The deferred follow-up of that plan: the batched bus/send CREATORS — the SAME
+// strict `buses`/`sends` parser + payload shaper the RPC twins
+// (project.addBuses / project.addSends) call, so both surfaces agree
+// byte-for-byte.
+#include "../common/BusSendBatchJson.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/EnvelopeGenerator.h"
@@ -147,6 +156,38 @@ void registerSendTools(McpServer& s, AudioEngine* e)
                 {"ok", true}, {"busID", r.busID}}).toJson(QJsonDocument::Compact)));
         }});
 
+    s.registerTool({"add_buses", "Batch-create MANY buses in ONE undo unit and one round "
+        "trip (the same busType/name/fxType/busTarget semantics as add_bus). `buses` is an "
+        "array of {busType, name?, fxType?, busTarget?}; busTarget is the parent bus id "
+        "(default 0 = master). PARTIAL-APPLY: a bus that fails (bad busType, an unknown "
+        "busTarget, an unsupported fxType) is reported in `errors` (numbered by its index) "
+        "and the others still land. Returns "
+        "{\"ok\":true,\"created\":N,\"failed\":M,\"busIDs\":[...],\"errors\":[{index,error}]} — "
+        "`busIDs` carries -1 for a failed slot. One undo reverts every created bus.",
+        objSchema({{"buses", QJsonObject{
+                       {"type","array"},
+                       {"items", QJsonObject{
+                           {"type","object"},
+                           {"properties", QJsonObject{
+                               {"busType",   QJsonObject{{"type","string"}}},
+                               {"name",      QJsonObject{{"type","string"}}},
+                               {"fxType",    QJsonObject{{"type","string"}}},
+                               {"busTarget", QJsonObject{{"type","integer"},{"default",0}}}}},
+                           {"additionalProperties", false},
+                           {"required", QJsonArray{"busType"}}}}}}},
+                  {"buses"}),
+        "send",
+        [e](const QJsonObject& a) -> McpToolResult {
+            std::vector<ProjectCommands::BusCreateSpec> buses; QString perr;
+            if (!HDAW::parseBusCreates(a.value("buses"), buses, perr))
+                return McpToolResult::text(perr, true);
+            std::vector<int> ids;
+            std::vector<std::string> errs;
+            const auto r = e->getProjectCommands().createBuses(buses, &ids, &errs);
+            return McpToolResult::text(
+                HDAW::busSendBatchPayloadJson(r, ids, errs, "busIDs"));
+        }});
+
     s.registerTool({"remove_bus", "Remove a bus by id; sends targeting it are removed with it.",
         objSchema({{"busID", QJsonObject{{"type","integer"}}}}, {"busID"}),
         "send",
@@ -200,6 +241,41 @@ void registerSendTools(McpServer& s, AudioEngine* e)
             if (!r.ok) return McpToolResult::text(QString::fromStdString(r.error), true);
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
                 {"ok", true}, {"sendIndex", r.sendIndex}}).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"add_sends", "Batch-create MANY sends in ONE undo unit and one round "
+        "trip (the same semantics as add_send). `sends` is an array of "
+        "{trackId?|trackID?, busTarget, level?, isPreFader?}; level defaults 1.0 and "
+        "isPreFader false. PARTIAL-APPLY: a send that fails (an out-of-range track or an "
+        "unknown busTarget) is reported in `errors` (numbered by its index) and the others "
+        "still land. Returns "
+        "{\"ok\":true,\"created\":N,\"failed\":M,\"sendIndexes\":[...],\"errors\":[{index,error}]} — "
+        "`sendIndexes` carries -1 for a failed slot. One undo reverts every created send. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
+        objSchema({{"sends", QJsonObject{
+                       {"type","array"},
+                       {"items", QJsonObject{
+                           {"type","object"},
+                           {"properties", QJsonObject{
+                               {"trackId",    QJsonObject{{"type","integer"}}},
+                               {"trackID",    QJsonObject{{"type","integer"}}},
+                               {"busTarget",  QJsonObject{{"type","integer"}}},
+                               {"level",      QJsonObject{{"type","number"},{"default",1.0}}},
+                               {"isPreFader", QJsonObject{{"type","boolean"},{"default",false}}}}},
+                           {"additionalProperties", false},
+                           {"required", QJsonArray{"busTarget"}}}}}}},
+                  {"sends"}),
+        "send",
+        [e](const QJsonObject& a) -> McpToolResult {
+            std::vector<ProjectCommands::SendCreateSpec> sends; QString perr;
+            if (!HDAW::parseSendCreates(e->getProjectModel().getTrackListTree(),
+                                        a.value("sends"), sends, perr))
+                return McpToolResult::text(perr, true);
+            std::vector<int> ids;
+            std::vector<std::string> errs;
+            const auto r = e->getProjectCommands().createSends(sends, &ids, &errs);
+            return McpToolResult::text(
+                HDAW::busSendBatchPayloadJson(r, ids, errs, "sendIndexes"));
         }});
 
     s.registerTool({"remove_send",
@@ -296,6 +372,34 @@ void registerSendTools(McpServer& s, AudioEngine* e)
             if (!e->getProjectCommands().setBusFxParam(busID, paramIndex, value, error))
                 return McpToolResult::text(QString::fromStdString(error), true);
             return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_bus_fx_params",
+        "Batch-write MANY FX bus parameters in ONE undo unit and one round trip (the same "
+        "real-unit semantics and clamp as set_bus_fx_param). `writes` is an array of "
+        "{busID, paramIndex, value}. PARTIAL-APPLY: a write that fails (unknown busID, a "
+        "non-fx bus, or an out-of-range paramIndex) is reported in `errors` (numbered by "
+        "its index) and the others still land. Returns {ok, written, failed, "
+        "errors:[{index, error}]}.",
+        objSchema({{"writes", QJsonObject{
+                       {"type","array"},
+                       {"items", QJsonObject{
+                           {"type","object"},
+                           {"properties", QJsonObject{
+                               {"busID",      QJsonObject{{"type","integer"}}},
+                               {"paramIndex", QJsonObject{{"type","integer"}}},
+                               {"value",      QJsonObject{{"type","number"}}}}},
+                           {"additionalProperties", false},
+                           {"required", QJsonArray{"busID","paramIndex","value"}}}}}}},
+                  {"writes"}),
+        "send",
+        [e](const QJsonObject& a) -> McpToolResult {
+            std::vector<ProjectCommands::BusFxParamWrite> writes; QString perr;
+            if (!HDAW::parseBusFxParamWrites(a.value("writes"), writes, perr))
+                return McpToolResult::text(perr, true);
+            std::vector<std::string> errs;
+            const auto r = e->getProjectCommands().setBusFxParams(writes, &errs);
+            return McpToolResult::text(HDAW::fxParamBatchPayloadJson(r, errs));
         }});
 }
 

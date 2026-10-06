@@ -412,11 +412,19 @@ public:
     virtual void addFxSlot(int trackIndex, const std::string& type,
                            int position = -1, const std::string& pluginId = "") = 0;
     // MIDI FX operations (type: "arpeggiator")
-    virtual void addMidiFxSlot(int trackIndex, const std::string& type, int position = -1) = 0;
+    // REFUSES an unknown fxType: ok=false, an error naming the valid types, and NO
+    // slot created. Previously any string was accepted and an unknown type produced
+    // a slot with no effect - a silently dead slot (lesson 38).
+    virtual BatchResult addMidiFxSlot(int trackIndex, const std::string& type, int position = -1) = 0;
     virtual void removeMidiFxSlot(int trackIndex, int slotIndex) = 0;
     virtual void setMidiFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) = 0;
-    virtual void setMidiFxSlotParam(int trackIndex, int slotIndex,
-                                    const std::string& paramName, double value) = 0;
+    // REFUSES an unknown param name: ok=false with the type's available names and
+    // NOTHING written. Previously the tree got a property under the caller's string
+    // while the live effect never saw it (a silent no-op) - and for the six legacy
+    // types even a correct def-name write landed on a key the loader never read, so
+    // it reverted on save/load. Address params by def name (list_midi_fx_params).
+    virtual BatchResult setMidiFxSlotParam(int trackIndex, int slotIndex,
+                                           const std::string& paramName, double value) = 0;
     virtual void removeFxSlot(int trackIndex, int slotIndex) = 0;
     virtual void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) = 0;
     // Returns the value actually written — the def-clamped value (the
@@ -425,6 +433,117 @@ public:
     // out-of-range index) return the input value unchanged.
     virtual float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                                  float value) = 0;
+
+    // ── Batched param writes (docs/plans/2026-10-05-param-batch-and-bugfixes.md,
+    //    slice 1: the engine-layer batch foundation) ──────────────────────────
+    // ONE FX param write, resolved and applied by the engine's ONE resolver
+    // (AudioEngineCommands::writeFxParam): internal vs plugin slot, addressed by
+    // paramIndex > paramName > intent. `hasParamIndex` records whether the
+    // paramIndex key was SUPPLIED at all — an explicit paramIndex 0 is a real
+    // address, which a value test ("-1 means absent") would misread (the B2
+    // presence rule, one layer down). `normalized` is false for REAL units (the
+    // internal defs' own range — Hz, dB, Q) and true for the 0..1 axis: an
+    // internal write is denormalized through the param's def, while a plugin
+    // slot is ALWAYS normalized (the single tools' contract; there is no def
+    // table to denormalize against).
+    struct FxParamWrite {
+        int trackIndex = -1;
+        int slotIndex = -1;
+        int paramIndex = -1;
+        bool hasParamIndex = false;
+        std::string paramName;     // may be empty
+        std::string intent;        // may be empty; internal slots only
+        double value = 0.0;
+        bool normalized = false;   // false = REAL units (internal), true = 0..1
+    };
+    // What the ONE resolver reports back: `plugin` says which branch ran;
+    // `writtenValue` is the value that actually landed (post def-clamp, in REAL
+    // units for internal slots / the clamped 0..1 for a plugin slot);
+    // `overrides` is the plugin offline-replay ledger's entry count (0 for an
+    // internal slot); `error` is set iff !ok.
+    struct FxParamWriteResult {
+        bool ok = false;
+        bool plugin = false;
+        float writtenValue = 0.0f;
+        int overrides = 0;
+        std::string error;
+    };
+    // The ONE resolution + write path (internal + plugin, lesson-23 clamp kept
+    // by delegating to setFxSlotParam). Does NOT open a transaction; the caller
+    // owns it (setFxParams opens one).
+    virtual FxParamWriteResult writeFxParam(const FxParamWrite& w) = 0;
+    // N writes in ONE undo transaction — PARTIAL-APPLY with per-write errors,
+    // the set_cells precedent: one bad write must not drop the other 150.
+    // (Deliberately NOT setNotesGain's validate-then-apply: an id batch is
+    // all-or-nothing because ids reference structure, a config batch is not.)
+    // `errors`, when non-null, is sized to writes.size() and carries each
+    // failure's text in the same order (empty string for the ones that landed).
+    // The returned BatchResult is ok = at least one write landed, applied = how
+    // many did; when NONE landed `error` carries the first failure, so a lone
+    // bad write is never a bare ok:false.
+    virtual BatchResult setFxParams(const std::vector<FxParamWrite>& writes,
+                                    std::vector<std::string>* errors) = 0;
+    // One bus FX param write (busID + the bus fxType's def index + real value).
+    // Same partial-apply + one-transaction contract as setFxParams.
+    struct BusFxParamWrite {
+        int busID = -1;
+        int paramIndex = -1;
+        double value = 0.0;
+    };
+    virtual BatchResult setBusFxParams(const std::vector<BusFxParamWrite>& writes,
+                                       std::vector<std::string>* errors) = 0;
+    // One LFO param write (the vocabulary set_lfo_param documents and
+    // setLfoParam applies: waveform/rate/rateSync/depth/bipolar/phaseOffset/
+    // targetParamID/enabled). Same partial-apply + one-transaction contract.
+    struct LfoParamWrite {
+        int trackIndex = -1;
+        int lfoIndex = -1;
+        std::string paramName;
+        double value = 0.0;
+    };
+    virtual BatchResult setLfoParams(const std::vector<LfoParamWrite>& writes,
+                                     std::vector<std::string>* errors) = 0;
+
+    // ── Batched bus / send creation (the deferred follow-up of
+    //    docs/plans/2026-10-05-param-batch-and-bugfixes.md §"Not done") ──────
+    // ONE undo unit + one round trip for N creators, the setFxParams precedent:
+    // PARTIAL-APPLY with per-item errors (a bad busTarget must not drop the
+    // other buses), applied ids reported by ORIGINAL index (-1 for a failed
+    // item) and the failures listed by index.
+    //
+    // createBus opens its OWN undo unit while createSend appends to the current
+    // one (see the bus/send creation section above), so the batch MUST wrap the
+    // loop in beginBatch/endBatch: while a batch is open every internal
+    // transactionBoundary is suppressed and the writes collapse into its single
+    // named unit. beginBatch returns false when a batch is ALREADY open — the
+    // batch then just JOINS it (its writes land in that unit) and must NOT seal
+    // it, so `opened` decides whether endBatch runs.
+    struct BusCreateSpec {
+        std::string busType;   // "fx" | "group"
+        std::string name;
+        std::string fxType;    // required for busType "fx"
+        int busTarget = 0;     // parent busID; 0 = master
+    };
+    // createBuses: loop createBus, one undo unit. `busIDs`, when non-null, is
+    // sized to specs.size() with the new busID per landed item and -1 for a
+    // failed one; `errors`, when non-null, carries each failure's text in the
+    // same order (empty for the ones that landed). ok = at least one landed;
+    // when NONE landed `error` carries the first failure.
+    virtual BatchResult createBuses(const std::vector<BusCreateSpec>& buses,
+                                    std::vector<int>* busIDs,
+                                    std::vector<std::string>* errors) = 0;
+
+    struct SendCreateSpec {
+        int trackIndex = -1;   // resolved POSITIONAL TRACK_LIST index
+        int busTarget = -1;    // target busID
+        float level = 1.0f;
+        bool isPreFader = false;
+    };
+    // createSends: loop createSend, one undo unit. `sendIndexes`/`errors` mirror
+    // createBuses' contract.
+    virtual BatchResult createSends(const std::vector<SendCreateSpec>& sends,
+                                    std::vector<int>* sendIndexes,
+                                    std::vector<std::string>* errors) = 0;
 
     // ── Plugin-slot host-param persistence (2026-09-21) ──────────────────────
     // A plugin slot's host param write reaches the LIVE isolated child only;
@@ -1179,15 +1298,16 @@ public:
     // soloOnly=true skips the full-mix render — the cost that scales with plugin
     // instances (every render spawns/warms a fresh child per slot). Contract:
     // solo metrics are still measured, mixMeasured reads false, and the mix
-    // fields (mixRms/mixPeak) stay 0 with nonClipping=false — reported as NOT
-    // measured, never as a passing value. soloOnly=false (default) = both
-    // renders, unchanged.
+    // fields (mixRms/mixPeak) stay 0. The derived booleans describe the render
+    // that EXISTS: nonClipping is the mix peak when a mix render ran, else the
+    // SOLO peak; bandsPresent always comes from the solo render. soloOnly=false
+    // (default) = both renders, unchanged.
     struct VerifyPartResult {
         bool ok = false;
         float soloRms = 0.0f, soloPeak = 0.0f;
         float mixRms = 0.0f, mixPeak = 0.0f;
         bool mixMeasured = true;    // false only when soloOnly skipped the mix render
-        bool nonClipping = false;   // mixPeak < 1.0 (false when !mixMeasured)
+        bool nonClipping = false;   // (mixMeasured ? mixPeak : soloPeak) < 1.0
         bool audible = false;       // soloPeak > 1e-4 (~ -80 dBFS)
         bool bandsPresent = false;  // bandLow && bandMid && bandHigh
         bool bandLow = false, bandMid = false, bandHigh = false;

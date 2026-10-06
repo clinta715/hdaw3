@@ -52,7 +52,7 @@ void AudioEngineCommands::endTransaction()
 // old raw boundary, so today's per-command behaviour is unchanged.
 void AudioEngineCommands::transactionBoundary(const juce::String& name)
 {
-    if (batchActive_) return;
+    if (batchActive_ || paramBatchActive_) return;
     engine_.getProjectModel().getUndoManager().beginNewTransaction(name);
 }
 

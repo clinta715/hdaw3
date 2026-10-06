@@ -1,14 +1,20 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
 #include "../common/ModulationCoverage.h"
+// Slice 2 of docs/plans/2026-10-05-param-batch-and-bugfixes.md: the batched LFO
+// param write — the SAME strict `writes` parser + payload shaper the RPC twin
+// (project.setLfoParams) calls; the vocabulary comes from lfoParamNames() here.
+#include "../common/FxParamBatchJson.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+// stableRefRuleText (the `trackID`/`trackId` rule sentence) for the batched
+// tool description — the same helper every B2 tool words it with.
+#include "McpArgs.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
-#include <set>
 #include <string>
 
 namespace mcp {
@@ -57,25 +63,51 @@ void registerModulationTools(McpServer& s, AudioEngine* e)
             int lfoIndex = a.value("lfoIndex").toInt(-1);
             if (!lfoTree(e, trackId, lfoIndex).isValid())
                 return McpToolResult::text("trackId or lfoIndex out of range", true);
-            static const std::set<std::string> kParams = {
-                "waveform", "rate", "rateSync", "depth", "bipolar",
-                "phaseOffset", "targetParamID", "enabled" };
-            std::string param = a.value("param").toString().toStdString();
-            if (kParams.find(param) == kParams.end())
-            {
-                QString allowed;
-                for (const auto& p : kParams)
-                {
-                    if (!allowed.isEmpty()) allowed += ", ";
-                    allowed += QString::fromStdString(p);
-                }
+            // Slice 3: the ONE vocabulary + its one unknown-name refusal
+            // (common/FxParamBatchJson.h), shared with the batched set_lfo_params
+            // so the two surfaces cannot drift. lfoParamNames() is sorted exactly
+            // like the std::set this replaced, so the "(valid: ...)" bytes are
+            // unchanged.
+            const std::string param = a.value("param").toString().toStdString();
+            if (!HDAW::isLfoParamName(param))
                 return McpToolResult::text(
-                    QString("unknown param '%1' (valid: %2)")
-                        .arg(a.value("param").toString(), allowed), true);
-            }
+                    QString::fromStdString(HDAW::unknownLfoParamError(param)), true);
             e->getProjectCommands().setLfoParam(trackId, lfoIndex, param,
                                                 a.value("value").toDouble());
             return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_lfo_params",
+        "Batch-write MANY LFO parameters in ONE undo unit and one round trip (the same "
+        "param vocabulary and semantics as set_lfo_param: waveform, rate, rateSync, depth, "
+        "bipolar, phaseOffset, targetParamID, enabled). `writes` is an array of "
+        "{trackId?|trackID?, lfoIndex, paramName, value}. PARTIAL-APPLY: a write that fails "
+        "(unknown track/lfoIndex, or an unknown paramName — REFUSED, never a silent no-op) "
+        "is reported in `errors` (numbered by its index) and the others still land. Returns "
+        "{ok, written, failed, errors:[{index, error}]}. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
+        objSchema({{"writes", QJsonObject{
+                       {"type","array"},
+                       {"items", QJsonObject{
+                           {"type","object"},
+                           {"properties", QJsonObject{
+                               {"trackId",   QJsonObject{{"type","integer"}}},
+                               {"trackID",   QJsonObject{{"type","integer"}}},
+                               {"lfoIndex",  QJsonObject{{"type","integer"}}},
+                               {"paramName", QJsonObject{{"type","string"}}},
+                               {"value",     QJsonObject{{"type","number"}}}}},
+                           {"additionalProperties", false},
+                           {"required", QJsonArray{"lfoIndex","paramName","value"}}}}}}},
+                  {"writes"}),
+        "modulation",
+        [e](const QJsonObject& a) -> McpToolResult {
+            std::vector<ProjectCommands::LfoParamWrite> writes; QString perr;
+            if (!HDAW::parseLfoParamWrites(e->getProjectModel().getTrackListTree(),
+                                           a.value("writes"), writes, perr))
+                return McpToolResult::text(perr, true);
+            std::vector<std::string> errs;
+            const auto r = e->getProjectCommands().setLfoParams(writes, &errs);
+            return McpToolResult::text(HDAW::fxParamBatchPayloadJson(r, errs));
         }});
 
     s.registerTool({"list_lfos",

@@ -578,6 +578,146 @@ bool AudioEngineCommands::setBusFxParam(int busID, int paramIndex, float value,
     return true;
 }
 
+// N bus FX param writes in ONE undo transaction — PARTIAL-APPLY with per-write
+// errors (the setFxParams / set_cells precedent). Each write loops the single
+// setBusFxParam, so its own validation (unknown bus, non-fx bus, unknown
+// fxType, out-of-range index) and its lesson-23 clamp are unchanged;
+// paramBatchActive_ suppresses its internal transactionBoundary so all writes
+// collapse into this ONE unit.
+ProjectCommands::BatchResult
+AudioEngineCommands::setBusFxParams(const std::vector<BusFxParamWrite>& writes,
+                                    std::vector<std::string>* errors)
+{
+    BatchResult result;
+    if (errors) errors->assign(writes.size(), std::string());
+    if (writes.empty())
+    {
+        result.error = "writes must not be empty";
+        return result;
+    }
+
+    // Order matters: the batch's OWN boundary must open the unit (the flag
+    // would suppress it), so begin FIRST, then suppress the singles' internal
+    // boundaries, and clear the flag BEFORE the seal so endTransaction runs.
+    beginTransaction("Set bus FX params");
+    paramBatchActive_ = true;
+    int written = 0;
+    std::string firstError;
+    for (std::size_t i = 0; i < writes.size(); ++i)
+    {
+        std::string err;
+        if (setBusFxParam(writes[i].busID, writes[i].paramIndex,
+                          static_cast<float>(writes[i].value), err))
+        {
+            ++written;
+        }
+        else
+        {
+            if (firstError.empty()) firstError = err;
+            if (errors) (*errors)[i] = err;
+        }
+    }
+    paramBatchActive_ = false;
+    endTransaction();
+
+    result.applied = written;
+    result.ok = written > 0;
+    if (written == 0) result.error = firstError;
+    return result;
+}
+
+// N bus creations in ONE undo unit — PARTIAL-APPLY with per-bus errors (the
+// setFxParams / set_cells precedent). createBus opens its OWN transaction, so
+// the loop MUST sit inside beginBatch/endBatch: while a batch is open every
+// internal transactionBoundary is suppressed and the creations collapse into
+// the batch's single named unit. beginBatch returns false when a batch is
+// already open — this batch then JOINS it and must NOT seal it, so `opened`
+// decides whether endBatch runs.
+ProjectCommands::BatchResult
+AudioEngineCommands::createBuses(const std::vector<BusCreateSpec>& buses,
+                                 std::vector<int>* busIDs,
+                                 std::vector<std::string>* errors)
+{
+    BatchResult result;
+    if (busIDs) busIDs->assign(buses.size(), -1);
+    if (errors) errors->assign(buses.size(), std::string());
+    if (buses.empty())
+    {
+        result.error = "buses must not be empty";
+        return result;
+    }
+
+    const bool opened = beginBatch("Create buses");
+    int created = 0;
+    std::string firstError;
+    for (std::size_t i = 0; i < buses.size(); ++i)
+    {
+        const auto r = createBus(buses[i].busType, buses[i].name, buses[i].fxType,
+                                 buses[i].busTarget);
+        if (r.ok)
+        {
+            ++created;
+            if (busIDs) (*busIDs)[i] = r.busID;
+        }
+        else
+        {
+            if (firstError.empty()) firstError = r.error;
+            if (errors) (*errors)[i] = r.error;
+        }
+    }
+    if (opened) endBatch();
+
+    result.applied = created;
+    result.ok = created > 0;
+    if (created == 0) result.error = firstError;
+    return result;
+}
+
+// N send creations in ONE undo unit — the createSends twin. createSend only
+// APPENDS to the current undo unit, but it still routes its structural write
+// through transactionBoundary-adjacent plumbing, so the batch wrapper keeps the
+// contract identical to createBuses (and makes a lone batch a named unit either
+// way).
+ProjectCommands::BatchResult
+AudioEngineCommands::createSends(const std::vector<SendCreateSpec>& sends,
+                                 std::vector<int>* sendIndexes,
+                                 std::vector<std::string>* errors)
+{
+    BatchResult result;
+    if (sendIndexes) sendIndexes->assign(sends.size(), -1);
+    if (errors) errors->assign(sends.size(), std::string());
+    if (sends.empty())
+    {
+        result.error = "sends must not be empty";
+        return result;
+    }
+
+    const bool opened = beginBatch("Create sends");
+    int created = 0;
+    std::string firstError;
+    for (std::size_t i = 0; i < sends.size(); ++i)
+    {
+        const auto r = createSend(sends[i].trackIndex, sends[i].busTarget,
+                                  sends[i].level, sends[i].isPreFader);
+        if (r.ok)
+        {
+            ++created;
+            if (sendIndexes) (*sendIndexes)[i] = r.sendIndex;
+        }
+        else
+        {
+            if (firstError.empty()) firstError = r.error;
+            if (errors) (*errors)[i] = r.error;
+        }
+    }
+    if (opened) endBatch();
+
+    result.applied = created;
+    result.ok = created > 0;
+    if (created == 0) result.error = firstError;
+    return result;
+}
+
 bool AudioEngineCommands::removeSend(int trackIndex, int sendIndex, std::string& error,
                                      std::vector<std::pair<int, int>>* shifted)
 {

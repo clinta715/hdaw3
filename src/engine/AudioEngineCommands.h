@@ -244,11 +244,11 @@ public:
                    const std::string& pluginId) override;
     void addFxSlot(int trackIndex, const std::string& type,
                    int position, const std::string& pluginId) override;
-    void addMidiFxSlot(int trackIndex, const std::string& type, int position) override;
+    BatchResult addMidiFxSlot(int trackIndex, const std::string& type, int position) override;
     void removeMidiFxSlot(int trackIndex, int slotIndex) override;
     void setMidiFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
-    void setMidiFxSlotParam(int trackIndex, int slotIndex,
-                            const std::string& paramName, double value) override;
+    BatchResult setMidiFxSlotParam(int trackIndex, int slotIndex,
+                                   const std::string& paramName, double value) override;
     void removeFxSlot(int trackIndex, int slotIndex) override;
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     // ── FX_SLOT compressor sidechain v1 (engine core; MCP/RPC surfaces land
@@ -268,6 +268,23 @@ public:
                                std::string* error = nullptr);
     float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                          float value) override;
+    // ── Batched param writes (the engine-layer batch foundation; see
+    //    ProjectCommands.h for the FxParamWrite/FxParamWriteResult contract) ──
+    FxParamWriteResult writeFxParam(const FxParamWrite& w) override;
+    BatchResult setFxParams(const std::vector<FxParamWrite>& writes,
+                            std::vector<std::string>* errors) override;
+    BatchResult setBusFxParams(const std::vector<BusFxParamWrite>& writes,
+                               std::vector<std::string>* errors) override;
+    BatchResult setLfoParams(const std::vector<LfoParamWrite>& writes,
+                             std::vector<std::string>* errors) override;
+    // ── Batched bus / send creators (the deferred follow-up; see
+    //    ProjectCommands.h for the BatchResult contract) ──
+    BatchResult createBuses(const std::vector<BusCreateSpec>& buses,
+                            std::vector<int>* busIDs,
+                            std::vector<std::string>* errors) override;
+    BatchResult createSends(const std::vector<SendCreateSpec>& sends,
+                            std::vector<int>* sendIndexes,
+                            std::vector<std::string>* errors) override;
     // ── Plugin-slot host-param persistence (see ProjectCommands.h) ──
     int setPluginParam(int trackIndex, int slotIndex, int paramIndex,
                        float normalizedValue) override;
@@ -327,9 +344,10 @@ public:
                                    const std::string& filePath, int voiceIndex = 0);
 
     // ── PsyFm preset/matrix commands (tree-first, deviceless-safe) ──
-    /// Load a named psytrance preset: writes all 33 params + psyFmMatrix +
-    /// psyFmSweepRate in one undo transaction. No-op when slot is not psy_fm
-    /// or when presetName is unknown. Returns true on success.
+    /// Load a named psytrance preset: writes all 38 params (0..32 + the
+    /// post-carrier filter 33..37) + psyFmMatrix + psyFmSweepRate in one undo
+    /// transaction. No-op when slot is not psy_fm or when presetName is
+    /// unknown. Returns true on success.
     bool setFxSlotPsyFmPreset(int trackIndex, int slotIndex,
                               const std::string& presetName);
     /// Upsert a single modulation route (add-or-update by source+dest key).
@@ -627,6 +645,15 @@ private:
     // never leak it, so a batch always closes.
     bool batchActive_ = false;
     juce::String batchName_;
+
+    // True while a setBusFxParams/setLfoParams/setFxParams batch drives its
+    // writes (the batched param foundation). The three batch methods open ONE
+    // transaction and loop the SINGLE commands; a single command that opens its
+    // own boundary (setBusFxParam's transactionBoundary) would split that unit
+    // per write, so transactionBoundary returns early while this is set. The
+    // batch clears it BEFORE its own endTransaction(), so the seal still runs
+    // (the next unrelated write must start a fresh unit, not join the batch).
+    bool paramBatchActive_ = false;
 
     // True while autoGainTracks drives autoGainToTarget: suppresses each per-track undo
     // transaction so the whole batch coalesces into ONE undo unit (JUCE ends the current

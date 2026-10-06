@@ -11,6 +11,15 @@
 // S3 batch-edit verbs: the SAME `edits` parser the MCP tools call, so the twin
 // failures (empty batch, unknown id, typo'd key) are byte-identical.
 #include "../../common/BatchEditJson.h"
+// Slice 2 of docs/plans/2026-10-05-param-batch-and-bugfixes.md: the SAME strict
+// `writes` parsers + payload shaper the batched MCP tools call
+// (set_fx_params / set_bus_fx_params / set_lfo_params), so both surfaces refuse
+// and succeed with byte-identical bytes by construction.
+#include "../../common/FxParamBatchJson.h"
+// The deferred follow-up: the batched bus/send CREATORS — the SAME strict
+// `buses`/`sends` parser + payload shaper the MCP tools (add_buses / add_sends)
+// call, so both surfaces refuse and succeed with byte-identical bytes.
+#include "../../common/BusSendBatchJson.h"
 // Shared save/load filePath gate (project.saveProject / project.loadProject) —
 // the SAME refusal text the MCP save_project / load_project tools report.
 #include "../../common/ProjectPathCheck.h"
@@ -195,6 +204,19 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
         return { false, QJsonObject{{ "ok", true }, { "busID", r.busID }} };
     }
+    if (m == "addBuses") {
+        // The batched creator twin (MCP add_buses): the SAME strict `buses`
+        // parser (common/BusSendBatchJson.h) and the SAME payload shaper, so a
+        // refusal and a partial-apply result are byte-identical by construction.
+        std::vector<ProjectCommands::BusCreateSpec> buses; QString parseError;
+        if (!HDAW::parseBusCreates(o.value("buses"), buses, parseError))
+            return makeError(-32602, parseError);
+        std::vector<int> ids;
+        std::vector<std::string> errs;
+        const auto r = c.createBuses(buses, &ids, &errs);
+        return { false, QJsonDocument::fromJson(
+                     HDAW::busSendBatchPayloadJson(r, ids, errs, "busIDs").toUtf8()).object() };
+    }
     if (m == "removeBus") {
         int id; if (!requireInt(o, "busID", id, nullptr)) return makeError(-32602, "busID required");
         std::string error;
@@ -225,6 +247,19 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         auto r = c.createSend(i, busTarget, level, pre);
         if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
         return { false, QJsonObject{{ "ok", true }, { "sendIndex", r.sendIndex }} };
+    }
+    if (m == "addSends") {
+        // The batched creator twin (MCP add_sends): the SAME strict `sends`
+        // parser (common/BusSendBatchJson.h) + payload shaper. The track ref
+        // resolves through the shared rule inside the parser.
+        std::vector<ProjectCommands::SendCreateSpec> sends; QString parseError;
+        if (!HDAW::parseSendCreates(trackList, o.value("sends"), sends, parseError))
+            return makeError(-32602, parseError);
+        std::vector<int> ids;
+        std::vector<std::string> errs;
+        const auto r = c.createSends(sends, &ids, &errs);
+        return { false, QJsonDocument::fromJson(
+                     HDAW::busSendBatchPayloadJson(r, ids, errs, "sendIndexes").toUtf8()).object() };
     }
     if (m == "removeSend") {
         int i, si; DispatchResult err;
@@ -495,9 +530,18 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         DispatchResult gainErr;
         float gain = 0.0f;
         if (!requireFloat(o, "gain", gain, &gainErr)) return gainErr;
-        const auto r = c.setNotesGain(ids, gain);
+        // Range clamp + visible report, the SAME helper the MCP tool uses, so the
+        // payload bytes are identical by construction (the validator on the MCP
+        // surface already refuses an out-of-range gain; the accidental
+        // pass-through here is closed).
+        const double requestedGain = static_cast<double>(gain);
+        const float writtenGain = HDAW::clampNoteGain(gain);
+        const auto r = c.setNotesGain(ids, writtenGain);
         if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
-        return { false, QJsonObject{{"applied", r.applied}, {"ok", true}} };
+        QJsonObject payload{{"applied", r.applied}, {"ok", true}};
+        const QString clamp = HDAW::noteGainClampText(requestedGain, writtenGain);
+        if (!clamp.isEmpty()) payload.insert("clamp", clamp);
+        return { false, QJsonValue(payload) };
     }
     if (m == "setNotePan")        {
         int i; QString idErr;
@@ -598,7 +642,8 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
             return makeError(-32602, "type (or fxType) required");
         if (o.contains("position") && o.value("position").isDouble())
             pos = static_cast<int>(o.value("position").toDouble());
-        c.addMidiFxSlot(i, type, pos);
+        const auto r = c.addMidiFxSlot(i, type, pos);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
         return { false, QJsonValue::Null };
     }
     if (m == "removeMidiFxSlot")    { int i, s; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required"); c.removeMidiFxSlot(i, s); return { false, QJsonValue::Null }; }
@@ -609,7 +654,8 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
             || !requireInt(o, "slotIndex", s, nullptr)
             || !requireString(o, "paramName", paramName, nullptr) || !requireDouble(o, "value", v, nullptr))
             return err.isError ? err : makeError(-32602, "trackIndex, slotIndex, paramName, value required");
-        c.setMidiFxSlotParam(i, s, paramName, v);
+        const auto r = c.setMidiFxSlotParam(i, s, paramName, v);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
         return { false, QJsonValue::Null };
     }
     if (m == "removeFxSlot")        { int i, s; DispatchResult err; if (!trackIndexArg(o, trackList, i, &err, HDAW::StableRefKeys{"trackIndex", "trackID"}) || !requireInt(o, "slotIndex", s, nullptr)) return err.isError ? err : makeError(-32602, "trackIndex and slotIndex required"); c.removeFxSlot(i, s); return { false, QJsonValue::Null }; }
@@ -651,6 +697,45 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
             return makeError(-32602, "trackIndex, slotIndex, paramIndex, value required");
         c.setFxSlotParam(i, s, p, v);
         return { false, QJsonValue::Null };
+    }
+    // Slice 2 of docs/plans/2026-10-05-param-batch-and-bugfixes.md: the batched
+    // param writers. The MCP twins (set_fx_params / set_bus_fx_params /
+    // set_lfo_params) call the SAME strict parsers (common/FxParamBatchJson.h)
+    // and the SAME command methods, so a parser refusal is byte-identical and a
+    // partial-apply result is the SAME payload object (the tool's compact JSON,
+    // parsed here — the applyMovementPlan precedent). A batch that lands ZERO
+    // writes is still a non-error payload (ok:false + the failures list), never a
+    // JSON-RPC error, so both surfaces agree byte-for-byte on that case too.
+    if (m == "setFxParams") {
+        bool defaultNormalized = false; QString modeErr;
+        if (!HDAW::parseFxBatchMode(o, defaultNormalized, modeErr))
+            return makeError(-32602, modeErr);
+        std::vector<ProjectCommands::FxParamWrite> writes; QString parseError;
+        if (!HDAW::parseFxParamWrites(trackList, o.value("writes"), writes, parseError,
+                                      defaultNormalized))
+            return makeError(-32602, parseError);
+        std::vector<std::string> errs;
+        const auto r = c.setFxParams(writes, &errs);
+        return { false, QJsonDocument::fromJson(
+                     HDAW::fxParamBatchPayloadJson(r, errs).toUtf8()).object() };
+    }
+    if (m == "setBusFxParams") {
+        std::vector<ProjectCommands::BusFxParamWrite> writes; QString parseError;
+        if (!HDAW::parseBusFxParamWrites(o.value("writes"), writes, parseError))
+            return makeError(-32602, parseError);
+        std::vector<std::string> errs;
+        const auto r = c.setBusFxParams(writes, &errs);
+        return { false, QJsonDocument::fromJson(
+                     HDAW::fxParamBatchPayloadJson(r, errs).toUtf8()).object() };
+    }
+    if (m == "setLfoParams") {
+        std::vector<ProjectCommands::LfoParamWrite> writes; QString parseError;
+        if (!HDAW::parseLfoParamWrites(trackList, o.value("writes"), writes, parseError))
+            return makeError(-32602, parseError);
+        std::vector<std::string> errs;
+        const auto r = c.setLfoParams(writes, &errs);
+        return { false, QJsonDocument::fromJson(
+                     HDAW::fxParamBatchPayloadJson(r, errs).toUtf8()).object() };
     }
     if (m == "clearPluginParamOverrides") {
         int i, s; DispatchResult err;

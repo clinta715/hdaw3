@@ -391,9 +391,11 @@ TEST(VerifyPart, OfflineRenderDoesNotClobberClipIds)
 
 // soloOnly skips the full-mix render (the cost that scales with plugin
 // instances — every render spawns/warms a fresh child per slot) while staying
-// HONEST: solo metrics measured, mixMeasured=false, mix fields 0/false, and
-// nonClipping must NOT read as a measured pass. The default path (arg absent)
-// still measures both renders.
+// HONEST: solo metrics measured, mixMeasured=false and the mix fields 0, and
+// the DERIVED booleans describe the render that EXISTS — nonClipping is the
+// SOLO peak < 1.0, bandsPresent the solo bands. A clean part must read
+// nonClipping=true (before 2026-10-05 it read false, i.e. "it clips"). The
+// default path (arg absent) still measures both renders.
 TEST(VerifyPart, SoloOnlySkipsMixRenderHonestly)
 {
     AudioEngine engine;
@@ -417,8 +419,10 @@ TEST(VerifyPart, SoloOnlySkipsMixRenderHonestly)
     EXPECT_TRUE(d.mixMeasured);
     EXPECT_GT(d.mixPeak, 0.0f) << "default path must render the full mix";
     EXPECT_TRUE(d.nonClipping);
+    EXPECT_LT(d.soloPeak, 1.0f);
 
-    // soloOnly=true: solo measured, mix honestly NOT measured.
+    // soloOnly=true: solo measured, mix honestly NOT measured — the derived
+    // booleans now come from the solo render.
     auto v = engine.getProjectCommands().verifyPart(res.trackIndex, 4.0, 0.0, 0.0, true);
     ASSERT_TRUE(v.ok) << v.error;
     EXPECT_FALSE(v.mixMeasured);
@@ -427,5 +431,56 @@ TEST(VerifyPart, SoloOnlySkipsMixRenderHonestly)
     EXPECT_TRUE(v.bandLow) << "band analysis rides the solo render";
     EXPECT_FLOAT_EQ(v.mixRms, 0.0f);
     EXPECT_FLOAT_EQ(v.mixPeak, 0.0f);
-    EXPECT_FALSE(v.nonClipping) << "a skipped mix must never report a pass";
+    EXPECT_TRUE(v.nonClipping)
+        << "a clean part's solo peak < 1.0 must read nonClipping=true";
+}
+
+// Bug fix (2026-10-05): a soloOnly verify of a genuinely CLIPPING part must
+// still report nonClipping=false — the fix must not turn the flag into a
+// constant. Track volume > 1 drives the solo render over full scale; JUCE's
+// 24-bit WAV writer clips the sample to |x| <= 1.0, so the measured peak reads
+// back exactly 1.0 (docs/lessons-learned.md lesson 44).
+TEST(VerifyPart, SoloOnlyClippingPartReportsNonClippingFalse)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "SoloClip";
+    params.style = "Standard";
+    params.lengthBeats = 4.0;
+    params.seed = 7;
+    params.targetRms = 0.15f;
+    params.windowSeconds = 4.0;
+
+    auto res = pc.addInstrumentPart(params);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+    ASSERT_GE(res.trackIndex, 0);
+
+    // Baseline: clean part, measured peak below full scale.
+    auto clean = pc.verifyPart(res.trackIndex, 4.0, 0.0, 0.0, true);
+    ASSERT_TRUE(clean.ok) << clean.error;
+    EXPECT_TRUE(clean.nonClipping);
+    ASSERT_LT(clean.soloPeak, 1.0f);
+
+    // Drive the track fader far past full scale so the solo render clamps
+    // regardless of the fader the gain-staging left behind (the only clamp in
+    // the path is the 24-bit WAV writer, docs/lessons-learned.md lesson 44).
+    pc.setTrackVolume(res.trackIndex, 1000.0f);
+    engine.drainPendingRoutingRebuild();
+
+    auto v = pc.verifyPart(res.trackIndex, 4.0, 0.0, 0.0, true);
+    ASSERT_TRUE(v.ok) << v.error;
+    EXPECT_FALSE(v.mixMeasured) << "soloOnly must still skip the mix render";
+    EXPECT_TRUE(v.audible);
+    EXPECT_GE(v.soloPeak, 0.999f) << "the boosted solo render must reach full scale";
+    EXPECT_FALSE(v.nonClipping) << "a clipping solo part must read nonClipping=false";
+
+    // The mix mode agrees (both renders clamp): the default path is unchanged.
+    auto mix = pc.verifyPart(res.trackIndex, 4.0);
+    ASSERT_TRUE(mix.ok) << mix.error;
+    EXPECT_TRUE(mix.mixMeasured);
+    EXPECT_FALSE(mix.nonClipping);
+    EXPECT_GE(mix.mixPeak, 0.999f);
 }

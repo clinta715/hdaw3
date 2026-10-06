@@ -22,6 +22,15 @@
 // JSON-RPC twin (project.setFxSlotParam, Router_Project.cpp) also calls, so both
 // surfaces resolve — and REFUSE — with byte-identical text.
 #include "../common/IntentResolve.h"
+// Slice 2 of docs/plans/2026-10-05-param-batch-and-bugfixes.md: the batched
+// param write. The SAME strict `writes` parser + payload shaper the RPC twin
+// (project.setFxParams) calls, so both surfaces refuse — and succeed — with
+// byte-identical bytes by construction.
+#include "../common/FxParamBatchJson.h"
+// Slice 3 of docs/plans/2026-10-05-param-batch-and-bugfixes.md: THE ONE
+// parameter-address resolver, shared by the single setters (set_fx_param /
+// set_internal_fx_param) and AudioEngineCommands::writeFxParam.
+#include "../common/FxParamResolve.h"
 // P3-b: the bounded plugin-boot wait (a booting child is not a broken one).
 #include "../common/PluginBootGate.h"
 #include "../engine/AudioEngine.h"
@@ -125,19 +134,10 @@ std::vector<ProbeNote> buildPatchProbeNotes(const QString& role, int root,
     return notes;
 }
 
-// M4 (Modular Dawn audit): resolve a param NAME to its index against the
-// defs list list_fx_params exposes. Returns -1 when not found.
-int internalParamIndexByName(const std::vector<HDAW::TrackFXSlot::InternalParamDef>& defs,
-                             const QString& name)
-{
-    for (const auto& def : defs)
-        if (QString::fromUtf8(def.name.toRawUTF8()).compare(name, Qt::CaseInsensitive) == 0)
-            return def.index;
-    return -1;
-}
-
 // masterParamIndexByName moved to src/common/MasterFxAccess.h so the MCP tool
 // and the JSON-RPC route resolve master-FX param names with ONE implementation.
+// (The internal-FX param-name resolution now lives in
+// common/FxParamResolve.h, shared by writeFxParam and the single setters.)
 
 } // namespace
 
@@ -450,70 +450,100 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by 
                     QString::fromStdString(HDAW::pluginIntentRefusalText()), true);
             if (!hasName && !hasIntent && !a.contains("paramIndex"))
                 return McpToolResult::text("paramIndex, paramName or intent required", true);
-            int pi = a.value("paramIndex").toInt();
-            float v = static_cast<float>(a.value("value").toDouble());
-            v = std::clamp(v, 0.0f, 1.0f);
+            // Slice 3: ONE resolver + ONE writer (AudioEngineCommands::writeFxParam)
+            // shared with the batch path. The pre-checks above are unchanged; the
+            // addressing precedence (paramIndex > paramName > intent) lives in
+            // common/FxParamResolve.h, so this tool cannot drift from the batch.
+            ProjectCommands::FxParamWrite w;
+            w.trackIndex = ti;
+            w.slotIndex = si;
+            w.hasParamIndex = a.contains("paramIndex");
+            w.paramIndex = a.value("paramIndex").toInt();
+            if (hasName)   w.paramName = a.value("paramName").toString().toStdString();
+            if (hasIntent) w.intent = a.value("intent").toString().toStdString();
+            w.value = std::clamp(a.value("value").toDouble(), 0.0, 1.0);
+            w.normalized = true;   // this tool is the 0..1 axis for BOTH slot kinds
 
-            if (fxSlots[si].fxType == "plugin")
+            if (fxSlots[si].fxType != "plugin")
             {
-                auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
-                if (hasName)
-                {
-                    pi = -1;
-                    const QString wantName = a.value("paramName").toString();
-                    for (const auto& p : params)
-                        if (QString::fromStdString(p.name).compare(wantName, Qt::CaseInsensitive) == 0)
-                            { pi = p.index; break; }
-                    if (pi < 0)
-                        return McpToolResult::text("unknown paramName: " + wantName, true);
-                }
-                // Bounds: the live param list is authoritative when the instance
-                // resolves. An EMPTY list means no live instance (deviceless, or
-                // not settled yet): the write is then persisted for the offline
-                // replay without a range check — the replay reports out-of-range
-                // entries as skippedBeyondCache rather than dropping silently.
-                if (pi < 0 || (!params.empty() && pi >= static_cast<int>(params.size())))
-                    return McpToolResult::text("param index out of range", true);
-                // Shared command layer: live write + durable ledger so
-                // tree-copy renders and save/load see it. A bare
-                // PluginParamService::setParam reaches the LIVE child only.
-                // See docs/plans/2026-09-21-vavra-live-param-delivery.md.
-                const int overrides = e->getProjectCommands().setPluginParam(ti, si, pi, v);
-                if (overrides < 0)
-                    return McpToolResult::text("slot is not a plugin slot", true);
-                return McpToolResult::text(
-                    "ok overrides=" + QString::number(overrides));
+                // Preserve this tool's own messages for a slot whose fxType has NO
+                // param table (a hand-edited/foreign project, or the arg-less
+                // add_fx sentinel): writeFxParam answers "slot is not an internal
+                // FX" there, while this tool has always reported the resolution
+                // result (unknown paramName / intent text / out of range). One
+                // pure resolution reproduces it; the write below still goes
+                // through the ONE writer.
+                const auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
+                const auto pre = HDAW::resolveInternalFxParam(
+                    fxSlots[si].fxType, defs,
+                    HDAW::FxParamAddress{w.hasParamIndex, w.paramIndex, w.paramName, w.intent});
+                if (pre.code != HDAW::FxParamResolveCode::ok)
+                    return McpToolResult::text(QString::fromStdString(
+                        HDAW::fxParamResolveErrorText(pre.code, pre, w.paramName)), true);
+                // Address by the resolved index so the writer resolves once more
+                // against the SAME table (paramName/intent are now settled).
+                w.hasParamIndex = true;
+                w.paramIndex = pre.paramIndex;
+                w.paramName.clear();
+                w.intent.clear();
             }
-            else
-            {
-                // Internal FX: route through the command layer which sets the
-                // ValueTree property, triggering the listener to apply to DSP.
-                // The ValueTree stores real values, so denormalize first.
-                auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
-                if (hasName)
-                {
-                    pi = internalParamIndexByName(defs, a.value("paramName").toString());
-                    if (pi < 0)
-                        return McpToolResult::text("unknown paramName: " + a.value("paramName").toString(), true);
-                }
-                else if (hasIntent && !a.contains("paramIndex"))
-                {
-                    // Slice C: address by musical intent through the ONE shared
-                    // resolver (the same text the RPC twin reports). A refusal
-                    // (unknown / ambiguous / no map) returns BEFORE any write.
-                    const HDAW::IntentResolution res = HDAW::resolveInternalFxIntent(
-                        fxSlots[si].fxType, a.value("intent").toString().toStdString());
-                    if (!res.ok)
-                        return McpToolResult::text(QString::fromStdString(res.error), true);
-                    pi = res.paramIndex;
-                }
-                if (pi < 0 || pi >= static_cast<int>(defs.size()))
-                    return McpToolResult::text("param index out of range", true);
-                float realValue = defs[static_cast<size_t>(pi)].minValue
-                    + v * (defs[static_cast<size_t>(pi)].maxValue - defs[static_cast<size_t>(pi)].minValue);
-                e->getProjectCommands().setFxSlotParam(ti, si, pi, realValue);
-            }
+
+            // Shared command layer: for a PLUGIN slot this is a live write + the
+            // durable ledger so tree-copy renders and save/load see it (a bare
+            // PluginParamService::setParam reaches the LIVE child only — see
+            // docs/plans/2026-09-21-vavra-live-param-delivery.md); for an INTERNAL
+            // slot it writes the ValueTree param_N property (real units,
+            // denormalized from the 0..1 axis) and the lesson-23 clamp applies.
+            const auto wr = e->getProjectCommands().writeFxParam(w);
+            if (!wr.ok)
+                return McpToolResult::text(QString::fromStdString(wr.error), true);
+            if (wr.plugin)
+                return McpToolResult::text("ok overrides=" + QString::number(wr.overrides));
             return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_fx_params",
+        "Batch-write MANY FX parameters in ONE undo unit and one round trip (the same "
+        "resolution rules as set_fx_param: paramIndex > paramName > intent, plugin slots "
+        "always normalized). `writes` is an array of {trackId?|trackID?, slotIndex, "
+        "paramIndex?|paramName?|intent?, value, mode?}; `mode` is \"real\" (the default, "
+        "internal defs' own range) or \"normalized\" (0..1) and a per-write `mode` "
+        "overrides the top-level one. PARTIAL-APPLY: a write that fails is reported in "
+        "`errors` (numbered by its index) and the others still land — deliberately NOT "
+        "set_notes_gain's validate-then-apply. Returns "
+        "{ok, written, failed, errors:[{index, error}]}. " +
+        mcp::stableRefRuleText("trackID", "trackId"),
+        objSchema({{"mode",   QJsonObject{{"type","string"},{"enum", QJsonArray{"real","normalized"}}}},
+                  {"writes", QJsonObject{
+                       {"type","array"},
+                       {"items", QJsonObject{
+                           {"type","object"},
+                           {"properties", QJsonObject{
+                               {"trackId",    QJsonObject{{"type","integer"}}},
+                               {"trackID",    QJsonObject{{"type","integer"}}},
+                               {"slotIndex",  QJsonObject{{"type","integer"}}},
+                               {"paramIndex", QJsonObject{{"type","integer"}}},
+                               {"paramName",  QJsonObject{{"type","string"}}},
+                               {"intent",     QJsonObject{{"type","string"}}},
+                               {"value",      QJsonObject{{"type","number"}}},
+                               {"mode",       QJsonObject{{"type","string"},{"enum", QJsonArray{"real","normalized"}}}}}},
+                           {"additionalProperties", false},
+                           {"required", QJsonArray{"slotIndex","value"}}}}}}},
+                  {"writes"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            // The TOP-LEVEL mode default is parsed through the shared helper, so
+            // an unknown value refuses with the validator's exact enum bytes.
+            bool defaultNormalized = false; QString modeErr;
+            if (!HDAW::parseFxBatchMode(a, defaultNormalized, modeErr))
+                return McpToolResult::text(modeErr, true);
+            std::vector<ProjectCommands::FxParamWrite> writes; QString perr;
+            if (!HDAW::parseFxParamWrites(e->getProjectModel().getTrackListTree(),
+                                          a.value("writes"), writes, perr, defaultNormalized))
+                return McpToolResult::text(perr, true);
+            std::vector<std::string> errs;
+            const auto r = e->getProjectCommands().setFxParams(writes, &errs);
+            return McpToolResult::text(HDAW::fxParamBatchPayloadJson(r, errs));
         }});
 
 s.registerTool({"param_verity",
@@ -843,40 +873,42 @@ s.registerTool({"set_internal_fx_param",
                 return McpToolResult::text("slot not found", true);
             if (fxSlots[si].fxType == "plugin" || fxSlots[si].fxType == "none")
                 return McpToolResult::text("slot is not an internal FX", true);
-            int pi = a.value("paramIndex").toInt();
-            // Gate 9: validate against the type's real-unit defs table â€” an
+            // Gate 9: validate against the type's real-unit defs table — an
             // out-of-range index must be an error, never a stray param_N
             // property write (existing set_fx_param behavior).
-            auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
+            const auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
             const bool hasName = a.contains("paramName") && !a.value("paramName").toString().isEmpty();
             const bool hasIntent = a.contains("intent") && !a.value("intent").toString().isEmpty();
-            if (!hasName && !hasIntent && !a.contains("paramIndex"))
-                return McpToolResult::text("paramIndex, paramName or intent required", true);
-            if (hasName)
-            {
-                pi = internalParamIndexByName(defs, a.value("paramName").toString());
-                if (pi < 0)
-                    return McpToolResult::text("unknown paramName: " + a.value("paramName").toString(), true);
-            }
-            else if (hasIntent && !a.contains("paramIndex"))
-            {
-                // Slice C: the ONE shared resolver (same text on the RPC twin).
-                // Nothing is written on a refusal — this runs before the write.
-                const HDAW::IntentResolution res = HDAW::resolveInternalFxIntent(
-                    fxSlots[si].fxType, a.value("intent").toString().toStdString());
-                if (!res.ok)
-                    return McpToolResult::text(QString::fromStdString(res.error), true);
-                pi = res.paramIndex;
-            }
-            if (pi < 0 || pi >= static_cast<int>(defs.size()))
-                return McpToolResult::text("param index out of range", true);
-            float v = static_cast<float>(a.value("value").toDouble());
-            // setFxSlotParam clamps to the def range (lesson-23 guard,
-            // unchanged) and returns the value actually written â€” surface a
-            // clamp in the response so out-of-range writes are visible
-            // instead of a bare "ok" (session 2026-09: ClipType=24, valid
-            // 0-3, was silently clamped with no feedback).
-            const float written = e->getProjectCommands().setFxSlotParam(ti, si, pi, v);
+            // Slice 3: ONE resolver + ONE writer. The addressing precedence
+            // (paramIndex > paramName > intent) is common/FxParamResolve.h's,
+            // shared with the batch path and set_fx_param; the writes go through
+            // AudioEngineCommands::writeFxParam (real units, normalized=false).
+            HDAW::FxParamAddress addr;
+            addr.hasParamIndex = a.contains("paramIndex");
+            addr.paramIndex = a.value("paramIndex").toInt();
+            if (hasName)   addr.paramName = a.value("paramName").toString().toStdString();
+            if (hasIntent) addr.intent = a.value("intent").toString().toStdString();
+            const auto res = HDAW::resolveInternalFxParam(fxSlots[si].fxType, defs, addr);
+            if (res.code != HDAW::FxParamResolveCode::ok)
+                return McpToolResult::text(QString::fromStdString(
+                    HDAW::fxParamResolveErrorText(res.code, res, addr.paramName)), true);
+            const int pi = res.paramIndex;
+            const float v = static_cast<float>(a.value("value").toDouble());
+            ProjectCommands::FxParamWrite w;
+            w.trackIndex = ti;
+            w.slotIndex = si;
+            w.hasParamIndex = true;
+            w.paramIndex = pi;
+            w.value = static_cast<double>(v);
+            w.normalized = false;   // real units — the internal defs' own range
+            // writeFxParam clamps to the def range (lesson-23 guard, unchanged)
+            // and reports the value actually written — surface a clamp in the
+            // response so out-of-range writes are visible instead of a bare "ok"
+            // (session 2026-09: ClipType=24, valid 0-3, silently clamped).
+            const auto wr = e->getProjectCommands().writeFxParam(w);
+            if (!wr.ok)
+                return McpToolResult::text(QString::fromStdString(wr.error), true);
+            const float written = wr.writtenValue;
             if (written != v)
                 return McpToolResult::text(QString("ok (paramIndex %1 clamped: %2 -> %3)")
                     .arg(pi)

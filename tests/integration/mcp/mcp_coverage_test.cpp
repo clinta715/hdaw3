@@ -2466,8 +2466,10 @@ TEST_F(McpCoverageTest, AuditSongStructurePassesWithBackbeatAndLead) {
 
 // item 10 (soloOnly): MCP verify_part and RPC composition.verifyPart must report the SAME
 // behavior shape with soloOnly=true — solo metrics measured, the full-mix render skipped,
-// mix fields honestly zeroed with mixMeasured=false (nonClipping must not read as a passing
-// true from mixPeak==0) — and the default path (arg absent) must still measure both renders.
+// mix fields honestly zeroed with mixMeasured=false — and the DERIVED booleans taken from
+// the solo render (nonClipping = solo peak < 1.0). The default path (arg absent) still
+// measures both renders. Before 2026-10-05 nonClipping read false in soloOnly mode even for
+// a clean part, which read as "it clips".
 TEST_F(McpCoverageTest, VerifyPartSoloOnlyMatchesRpcTwin) {
     ProjectCommands::InstrumentPartParams params;
     params.trackName = "SoloOnly Verify";
@@ -2488,7 +2490,8 @@ TEST_F(McpCoverageTest, VerifyPartSoloOnlyMatchesRpcTwin) {
     EXPECT_TRUE(viaMcp.contains("ok=1")) << viaMcp.toStdString();
     EXPECT_TRUE(viaMcp.contains("audible=1")) << viaMcp.toStdString();
     EXPECT_TRUE(viaMcp.contains("mixRms=0 mixPeak=0")) << viaMcp.toStdString();
-    EXPECT_TRUE(viaMcp.contains("nonClipping=0")) << viaMcp.toStdString();
+    EXPECT_TRUE(viaMcp.contains("nonClipping=1"))
+        << "a clean part must read nonClipping=1 under soloOnly: " << viaMcp.toStdString();
     EXPECT_TRUE(viaMcp.contains("mixMeasured=false")) << viaMcp.toStdString();
 
     // RPC twin: the identical behavior shape.
@@ -2500,8 +2503,9 @@ TEST_F(McpCoverageTest, VerifyPartSoloOnlyMatchesRpcTwin) {
     EXPECT_FALSE(r.value("mixMeasured").toBool());
     EXPECT_DOUBLE_EQ(r.value("mixRms").toDouble(), 0.0);
     EXPECT_DOUBLE_EQ(r.value("mixPeak").toDouble(), 0.0);
-    EXPECT_FALSE(r.value("nonClipping").toBool())
-        << "a skipped mix must never read as non-clipping";
+    EXPECT_LT(r.value("soloPeak").toDouble(), 1.0);
+    EXPECT_TRUE(r.value("nonClipping").toBool())
+        << "the solo render is the render that exists; a clean solo peak must read non-clipping";
     EXPECT_TRUE(r.value("audible").toBool());
     EXPECT_GT(r.value("soloPeak").toDouble(), 1e-4) << "solo metrics must still be measured";
 

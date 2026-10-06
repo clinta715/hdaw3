@@ -18,6 +18,14 @@
 #include "../common/ParamOverrideLedger.h"
 #include "../common/LiveTrackLookupError.h"
 #include "../common/SamplerSliceModes.h"
+// Intent addressing (the ONE shared resolver — common/IntentResolve.h) and the
+// ONE shared param-name resolver (common/ParamVerity.h's paramIndexByName), used
+// by the batched write path (writeFxParam) as the single tools do.
+#include "../common/IntentResolve.h"
+#include "../common/ParamVerity.h"
+// Slice 3: THE ONE parameter-address resolver, shared by writeFxParam and the
+// single MCP tools (set_fx_param / set_internal_fx_param).
+#include "../common/FxParamResolve.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <cmath>
@@ -144,11 +152,27 @@ void AudioEngineCommands::addFxSlotInternal(int trackIndex, const std::string& t
     fxChain.addChild(slot, insertIdx, &um);
 }
 
-void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type, int position)
+ProjectCommands::BatchResult AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type, int position)
 {
+    BatchResult r;
+
+    // Refuse an unknown type BEFORE touching the tree: an unrecognised string used
+    // to create a slot whose factory produced no effect - a silently dead slot
+    // (lesson 38: the accepted arg is dropped with no signal).
+    if (!HDAW::isKnownMidiFxType(juce::String(type)))
+    {
+        r.error = ("unknown midi fx type '" + juce::String(type)
+                   + "' (known: " + HDAW::midiFxTypeList() + ")").toStdString();
+        return r;
+    }
+
     auto& um = engine_.getProjectModel().getUndoManager();
     auto trackList = engine_.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+    {
+        r.error = "track " + std::to_string(trackIndex) + " not found";
+        return r;
+    }
 
     auto track = trackList.getChild(trackIndex);
     auto chain = track.getChildWithName(IDs::MIDI_FX_CHAIN);
@@ -224,6 +248,13 @@ void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type,
         slot.setProperty(IDs::strumTime, 0.02, &um);
         slot.setProperty(IDs::strumDirection, 0, &um);
     }
+    else if (type == "acid_step")
+    {
+        // Defaults written under the param-def names (what loadParamsFromTree and
+        // Track::rebuildMidiFXChain read) — one loop, no hand-typed name drift.
+        for (const auto& def : HDAW::getMidiFxParamDefs("acid_step"))
+            slot.setProperty(juce::Identifier(def.name), static_cast<double>(def.defaultValue), &um);
+    }
 
     int n = chain.getNumChildren();
     int insertIdx = (position < 0 || position > n) ? n : position;
@@ -231,6 +262,10 @@ void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type,
 
     if (auto* proc = engine_.getMainProcessor())
         proc->rebuildMidiTrackFX(trackIndex);
+
+    r.ok = true;
+    r.applied = 1;
+    return r;
 }
 
 void AudioEngineCommands::removeMidiFxSlot(int trackIndex, int slotIndex)
@@ -253,13 +288,38 @@ void AudioEngineCommands::setMidiFxSlotBypassed(int trackIndex, int slotIndex, b
         proc->rebuildMidiTrackFX(trackIndex);
 }
 
-void AudioEngineCommands::setMidiFxSlotParam(int trackIndex, int slotIndex,
-                                              const std::string& paramName, double value)
+ProjectCommands::BatchResult AudioEngineCommands::setMidiFxSlotParam(int trackIndex, int slotIndex,
+                                                              const std::string& paramName, double value)
 {
+    BatchResult r;
     auto& um = engine_.getProjectModel().getUndoManager();
     auto slotTree = findMidiFxSlot(trackIndex, slotIndex);
-    if (!slotTree.isValid()) return;
-    slotTree.setProperty(juce::Identifier(paramName), value, &um);
+    if (!slotTree.isValid())
+    {
+        // Build the text into a named local: a chained temporary expression here
+        // was flagged by ASan (stack-use-after-scope on the temporary) and faulted
+        // in the optimized build.
+        juce::String msg;
+        msg << "midi fx slot " << slotIndex << " not found on track " << trackIndex;
+        r.error = msg.toStdString();
+        return r;
+    }
+
+    // Address the param by its DEF NAME and write the key the loader/factory read
+    // (midiFxTreeKeyForParam). An unknown name is refused with the available names
+    // instead of writing an unreachable property (lesson 38).
+    const juce::String slotType = slotTree.getProperty(IDs::fxType).toString();
+    const juce::Identifier key = HDAW::midiFxTreeKeyForParam(slotType, juce::String(paramName));
+    if (key.isNull())
+    {
+        // Same reason as above: no chained juce::String temporaries.
+        juce::String msg;
+        msg << "unknown param '" << juce::String(paramName) << "' for midi fx type '"
+            << slotType << "' (available: " << HDAW::midiFxParamNameList(slotType) << ")";
+        r.error = msg.toStdString();
+        return r;
+    }
+    slotTree.setProperty(key, value, &um);
 
     if (auto* proc = engine_.getMainProcessor())
     {
@@ -284,6 +344,14 @@ void AudioEngineCommands::setMidiFxSlotParam(int trackIndex, int slotIndex,
             }
         }
     }
+
+    // The success path must RETURN the result: a value-returning function that falls
+    // off the end is UB - at -O0 GCC emits ud2 (SIGILL), and at -O2 the caller reads a
+    // garbage BatchResult whose std::string is then built from whatever was in the
+    // return slot (measured: wild writes into .rodata param tables).
+    r.ok = true;
+    r.applied = 1;
+    return r;
 }
 
 juce::ValueTree AudioEngineCommands::findMidiFxSlot(int trackIndex, int slotIndex) const
@@ -579,6 +647,160 @@ float AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex,
     juce::String propName = "param_" + juce::String(paramIndex);
     slot.setProperty(juce::Identifier(propName), static_cast<double>(value), &um);
     return value;
+}
+
+// ── Batched param writes (the engine-layer batch foundation) ────────────────
+// docs/plans/2026-10-05-param-batch-and-bugfixes.md slice 1. ONE resolution +
+// write path so every surface that batches (and, from slice 3 on, the single
+// tools) shares it. Resolution precedence is kept LITERAL — paramIndex >
+// paramName > intent — and an internal write still goes through
+// setFxSlotParam, so the lesson-23 clamp is unchanged.
+ProjectCommands::FxParamWriteResult
+AudioEngineCommands::writeFxParam(const FxParamWrite& w)
+{
+    FxParamWriteResult r;
+
+    // Slot resolution reads the SAME model the MCP handler reads (the read
+    // model's FX-slot list) so a batch resolves what a listing reported.
+    if (w.trackIndex < 0
+        || w.trackIndex >= engine_.getProjectModel().getTrackListTree().getNumChildren())
+    {
+        r.error = "track not found";
+        return r;
+    }
+    const auto fxSlots = engine_.getReadModel().getFxSlots(w.trackIndex);
+    if (w.slotIndex < 0 || w.slotIndex >= static_cast<int>(fxSlots.size()))
+    {
+        r.error = "slot not found";
+        return r;
+    }
+    const std::string fxType = fxSlots[static_cast<size_t>(w.slotIndex)].fxType;
+    const bool isPlugin = (fxType == "plugin");
+    if (isPlugin && !w.intent.empty() && w.paramName.empty() && !w.hasParamIndex)
+    {
+        // A plugin has no Device Parameter Map to resolve an intent against —
+        // the ONE shared refusal, before anything is written.
+        r.error = HDAW::pluginIntentRefusalText();
+        return r;
+    }
+    if (fxType == "none")
+    {
+        r.error = "slot is empty";
+        return r;
+    }
+    if (w.paramName.empty() && w.intent.empty() && !w.hasParamIndex)
+    {
+        r.error = "paramIndex, paramName or intent required";
+        return r;
+    }
+
+    r.plugin = isPlugin;
+
+    // The ONE shared address resolution (common/FxParamResolve.h): paramName
+    // beats paramIndex; intent is consulted only when neither is given. The
+    // single tools call the SAME helper, so there is exactly one precedence
+    // implementation (slice 3 of the param-batch plan).
+    HDAW::FxParamAddress addr;
+    addr.hasParamIndex = w.hasParamIndex;
+    addr.paramIndex = w.paramIndex;
+    addr.paramName = w.paramName;
+    addr.intent = w.intent;
+
+    if (isPlugin)
+    {
+        const auto params =
+            engine_.getPluginParamService().getParams(w.trackIndex, fxSlots[static_cast<size_t>(w.slotIndex)].pluginId);
+        // A plugin slot is ALWAYS normalized: `w.normalized` is ignored below on
+        // purpose (there is no def table to denormalize a REAL value against),
+        // exactly as set_fx_param treats a plugin slot.
+        const HDAW::FxParamResolution res = HDAW::resolvePluginFxParam(params, addr);
+        if (res.code != HDAW::FxParamResolveCode::ok)
+        {
+            r.error = HDAW::fxParamResolveErrorText(res.code, res, w.paramName);
+            return r;
+        }
+        const int overrides = setPluginParam(w.trackIndex, w.slotIndex, res.paramIndex,
+                                             static_cast<float>(w.value));
+        if (overrides < 0)
+        {
+            r.error = "slot is not a plugin slot";
+            return r;
+        }
+        r.ok = true;
+        r.overrides = overrides;
+        r.writtenValue = juce::jlimit(0.0f, 1.0f, static_cast<float>(w.value));
+        return r;
+    }
+
+    // Internal slot: defs are the address space (Gate 9 — an out-of-range index
+    // is a refusal, never a stray param_N write). No defs = not an internal FX.
+    const auto defs = HDAW::TrackFXSlot::getParamDefsForType(juce::String(fxType));
+    if (defs.empty())
+    {
+        r.error = "slot is not an internal FX";
+        return r;
+    }
+    const HDAW::FxParamResolution res = HDAW::resolveInternalFxParam(fxType, defs, addr);
+    if (res.code != HDAW::FxParamResolveCode::ok)
+    {
+        r.error = HDAW::fxParamResolveErrorText(res.code, res, w.paramName);
+        return r;
+    }
+    const int pi = res.paramIndex;
+    // REAL units by default; a normalized write is projected through the SAME
+    // def mapping the automation/modulation path uses (TrackFXSlot), then
+    // clamped by setFxSlotParam below (lesson 23).
+    const float realValue = w.normalized
+        ? HDAW::TrackFXSlot::denormalizeParam(static_cast<float>(w.value),
+                                              defs[static_cast<size_t>(pi)])
+        : static_cast<float>(w.value);
+    r.writtenValue = setFxSlotParam(w.trackIndex, w.slotIndex, pi, realValue);
+    r.ok = true;
+    return r;
+}
+
+// N writes in ONE undo transaction, PARTIAL-APPLY with per-write errors (the
+// set_cells precedent: a bad write does not drop the good ones). `errors` is
+// sized to writes.size() and carries each failure's text in order ("" when the
+// write landed). Deliberately NOT setNotesGain's validate-then-apply — an id
+// batch is all-or-nothing because ids reference structure; a config batch is
+// not (documented on the ProjectCommands declarations).
+ProjectCommands::BatchResult
+AudioEngineCommands::setFxParams(const std::vector<FxParamWrite>& writes,
+                                 std::vector<std::string>* errors)
+{
+    BatchResult result;
+    if (errors) { errors->assign(writes.size(), std::string()); }
+    if (writes.empty())
+    {
+        result.error = "writes must not be empty";
+        return result;
+    }
+
+    beginTransaction("Set FX params");
+    int written = 0;
+    std::string firstError;
+    for (std::size_t i = 0; i < writes.size(); ++i)
+    {
+        const FxParamWriteResult wr = writeFxParam(writes[i]);
+        if (wr.ok)
+        {
+            ++written;
+        }
+        else
+        {
+            if (firstError.empty()) firstError = wr.error;
+            if (errors) (*errors)[i] = wr.error;
+        }
+    }
+    endTransaction();
+
+    result.applied = written;
+    result.ok = written > 0;
+    // When NOTHING landed the result carries the first failure, so a lone bad
+    // write is never a bare ok:false (the per-write row still travels too).
+    if (written == 0) result.error = firstError;
+    return result;
 }
 
 // ── Plugin-slot host-param persistence (2026-09-21) ─────────────────────────
@@ -1803,7 +2025,8 @@ bool AudioEngineCommands::setFxSlotPsyFmPreset(int trackIndex, int slotIndex,
     if (!slot.isValid()) return false;
     if (slot.getProperty(IDs::fxType).toString() != "psy_fm") return false;
 
-    // Write all 33 params: ratios 0â€“5, feedback 6, envelopes 7â€“30, level 31, algorithm 32
+    // Write all 38 params: ratios 0–5, feedback 6, envelopes 7–30, level 31,
+    // algorithm 32, post-carrier filter 33–37 (slice E).
     for (int i = 0; i < 6; ++i)
         slot.setProperty(juce::Identifier("param_" + juce::String(i)),
                          static_cast<double>(preset->ratios[i]), &um);
@@ -1820,6 +2043,13 @@ bool AudioEngineCommands::setFxSlotPsyFmPreset(int trackIndex, int slotIndex,
                      static_cast<double>(preset->outputLevel), &um);
     slot.setProperty(juce::Identifier("param_32"),
                      static_cast<double>(preset->algorithm), &um);
+    // Slice E: the post-carrier filter travels with the preset, so a load is
+    // the WHOLE sound. The four original rows carry the neutral filter
+    // {20000, 0.7, 0, 0, 0} — the def defaults and slice B's bypass condition —
+    // so their renders stay bit-identical; the five D rows carry real settings.
+    for (int i = 0; i < 5; ++i)
+        slot.setProperty(juce::Identifier("param_" + juce::String(33 + i)),
+                         static_cast<double>(preset->filter[i]), &um);
 
     // Matrix + sweep rate
     slot.setProperty(juce::Identifier("psyFmMatrix"),

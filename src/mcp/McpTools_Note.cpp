@@ -448,7 +448,7 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"set_notes_gain",
-        "Set the per-note gain multiplier (0.0 to 2.0) on MANY notes in ONE undo unit and one round trip. "
+        "Set the per-note gain multiplier (0.0 to 2.0; a value outside the range is CLAMPED, and the clamp is reported in the response) on MANY notes in ONE undo unit and one round trip. "
         "The WHOLE batch is refused — nothing written, no undo unit — when noteIds is empty or names an unknown note.",
         objSchema({{"noteIds", QJsonObject{{"type","array"},
                        {"items", QJsonObject{{"type","integer"}}}}},
@@ -468,12 +468,19 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
                 return McpToolResult::text(idErr, true);
             if (!a.contains("gain") || !a.value("gain").isDouble())
                 return McpToolResult::text("missing or non-numeric param: gain", true);
-            const auto r = e->getProjectCommands().setNotesGain(
-                ids, static_cast<float>(a.value("gain").toDouble()));
+            // Range clamp with a VISIBLE report (BatchEditJson.h, shared with the
+            // RPC twin): the live tool used to accept e.g. gain:4 silently. The
+            // write uses the clamped value; a clamp adds a `clamp` field so the
+            // two surfaces stay byte-identical for the same argument object.
+            const double requestedGain = a.value("gain").toDouble();
+            const float writtenGain = HDAW::clampNoteGain(static_cast<float>(requestedGain));
+            const auto r = e->getProjectCommands().setNotesGain(ids, writtenGain);
             if (!r.ok) return McpToolResult::text(QString::fromStdString(r.error), true);
-            return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(QJsonObject{{"applied", r.applied}, {"ok", true}})
-                    .toJson(QJsonDocument::Compact)));
+            QJsonObject payload{{"applied", r.applied}, {"ok", true}};
+            const QString clamp = HDAW::noteGainClampText(requestedGain, writtenGain);
+            if (!clamp.isEmpty()) payload.insert("clamp", clamp);
+            return McpToolResult::text(
+                QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"set_note_pan", "Set a note's per-note pan (-1.0 left to 1.0 right).",

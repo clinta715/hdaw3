@@ -2,6 +2,9 @@
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
 #include "../model/ProjectModel.h"
+// The LFO param vocabulary + its shared unknown-name refusal, used by the
+// batched setLfoParams (and, from slice 3 on, the single set_lfo_param tool).
+#include "../common/FxParamBatchJson.h"
 
 // ─── ProjectCommands — MIDI CC ──────────────────────────────────────────
 
@@ -132,4 +135,64 @@ void AudioEngineCommands::setLfoParam(int trackIndex, int lfoIndex,
         modTree.setProperty(IDs::targetParamID, static_cast<int>(value), &um);
     else if (paramName == "enabled")
         modTree.setProperty(IDs::enabled, value != 0.0, &um);
+}
+
+// N LFO param writes in ONE undo transaction — PARTIAL-APPLY with per-write
+// errors (the setFxParams / set_cells precedent). Each write loops the single
+// setLfoParam; the vocabulary is validated HERE (setLfoParam's if/else chain has
+// no else branch, so a typo used to be a silent no-op — lesson 38) with the
+// shared unknown-name text, and the track/LFO bounds are checked before the
+// write (setLfoParam itself silently no-ops on bad indices). paramBatchActive_
+// is set for symmetry with the bus batch and to make the ONE-unit guarantee
+// robust if setLfoParam ever gains a boundary of its own.
+ProjectCommands::BatchResult
+AudioEngineCommands::setLfoParams(const std::vector<LfoParamWrite>& writes,
+                                  std::vector<std::string>* errors)
+{
+    BatchResult result;
+    if (errors) errors->assign(writes.size(), std::string());
+    if (writes.empty())
+    {
+        result.error = "writes must not be empty";
+        return result;
+    }
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+
+    // Order matters: begin the unit BEFORE suppressing per-write boundaries,
+    // and clear the flag BEFORE the seal so endTransaction itself runs.
+    beginTransaction("Set LFO params");
+    paramBatchActive_ = true;
+    int written = 0;
+    std::string firstError;
+    for (std::size_t i = 0; i < writes.size(); ++i)
+    {
+        const LfoParamWrite& w = writes[i];
+        std::string err;
+        if (w.trackIndex < 0 || w.trackIndex >= trackList.getNumChildren())
+            err = "track not found";
+        else
+        {
+            auto modList = trackList.getChild(w.trackIndex).getChildWithName(IDs::MODULATION_LIST);
+            if (!modList.isValid() || w.lfoIndex < 0 || w.lfoIndex >= modList.getNumChildren())
+                err = "trackId or lfoIndex out of range";
+            else if (!HDAW::isLfoParamName(w.paramName))
+                err = HDAW::unknownLfoParamError(w.paramName);
+        }
+        if (!err.empty())
+        {
+            if (firstError.empty()) firstError = err;
+            if (errors) (*errors)[i] = err;
+            continue;
+        }
+        setLfoParam(w.trackIndex, w.lfoIndex, w.paramName, w.value);
+        ++written;
+    }
+    paramBatchActive_ = false;   // clear BEFORE the seal so endTransaction runs
+    endTransaction();
+
+    result.applied = written;
+    result.ok = written > 0;
+    if (written == 0) result.error = firstError;
+    return result;
 }

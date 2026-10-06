@@ -1571,8 +1571,9 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
 
     // Full-mix render of the same window — skipped under soloOnly (default
     // false = unchanged): it is the cost that scales with plugin instances,
-    // and skipping it must never masquerade as a measured pass (mixMeasured
-    // gates nonClipping below).
+    // and skipping it must never masquerade as a measured mix (mixMeasured
+    // stays false and the mix fields stay 0). The derived booleans are taken
+    // from the SOLO render instead, so soloOnly still reports them honestly.
     float mixRms = 0.0f, mixPeak = 0.0f;
     if (!soloOnly)
     {
@@ -1597,8 +1598,15 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
     result.windowStart = solo.windowStart;
     result.durationSeconds = windowSeconds;
     result.audible = (solo.peak > 1e-4f);
-    // Honesty: nonClipping is only meaningful when the mix render ran.
-    result.nonClipping = result.mixMeasured && (mixPeak < 1.0f);
+    // The booleans describe the render that EXISTS. With a mix render the clip
+    // check is the mix peak; without one (soloOnly) it is the SOLO peak, so a
+    // clean solo part reads nonClipping=true instead of the previous hard
+    // `false` (which read as "it clips" — the mangrove_dub 2026-10-05 defect).
+    // mixMeasured stays the honest "no mix render ran" signal and the mix
+    // fields stay 0; a genuinely clipping solo part still reads false.
+    result.nonClipping = (result.mixMeasured ? mixPeak : result.soloPeak) < 1.0f;
+    // Band presence always rides the SOLO render (the mix render passes no
+    // outBands), so it is valid in both modes and unchanged.
     result.bandLow = bands.low;
     result.bandMid = bands.mid;
     result.bandHigh = bands.high;

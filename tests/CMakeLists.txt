@@ -84,6 +84,10 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/growl_bass_engine_test.cpp
     unit/engine/saturator_engine_test.cpp
     unit/engine/psyarp_engine_test.cpp
+    unit/engine/psyarp_filter_test.cpp
+    unit/engine/osc_antialias_test.cpp
+    unit/engine/psyfm_filter_test.cpp
+    unit/engine/psyfm_presets_test.cpp
     unit/engine/drum_synth_test.cpp
     unit/engine/dx7_sysex_import_test.cpp
     unit/engine/virus_sysex_import_test.cpp
@@ -106,6 +110,7 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/song_structure_audit_test.cpp
     unit/engine/ves_boot_probe_test.cpp
     unit/engine/internal_fx_param_clamp_test.cpp
+    unit/engine/fx_param_batch_test.cpp
     unit/engine/render_sequence_release_test.cpp
     unit/engine/streaming_clip_source_test.cpp
     unit/engine/streaming_pool_test.cpp
@@ -221,7 +226,7 @@ hdaw_test_exe(hdaw_tests_mcp SOURCES
     integration/mcp/internal_fx_intent_test.cpp
 )
 
-# frontend: 22 TUs — JSON-RPC router surface + parity ratchets.
+# frontend: 26 TUs — JSON-RPC router surface + parity ratchets.
 hdaw_test_exe(hdaw_tests_frontend SOURCES
     unit/frontend/frontend_server_test.cpp
     unit/frontend/audio_output_device_rpc_test.cpp
@@ -241,6 +246,8 @@ hdaw_test_exe(hdaw_tests_frontend SOURCES
     unit/frontend/bus_send_rpc_test.cpp
     unit/frontend/query_notes_rpc_test.cpp
     unit/frontend/batch_edit_rpc_test.cpp
+    unit/frontend/param_batch_rpc_test.cpp
+    unit/frontend/bus_send_batch_rpc_test.cpp
     unit/frontend/opt_int_rpc_test.cpp
     unit/frontend/add_fx_parity_test.cpp
     unit/frontend/missing_route_parity_test.cpp
