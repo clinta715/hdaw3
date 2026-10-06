@@ -9,6 +9,31 @@ namespace
 constexpr int kMinSubOctave = -2;
 constexpr int kMaxSubOctave = 0;
 
+// PolyBLEP residual (slice C, 2026-10-05 — NON-ADDITIVE). `t` is the
+// normalized phase in [0,1), `dt` the phase increment in cycles/sample. The
+// step sits at the phase wrap (t = 0 == 1); the residual is a 1-sample
+// quadratic rounded over the two samples adjacent to the step, and is exactly
+// zero away from them. Pure, branch-light, allocation-free.
+inline float polyBlep(float t, float dt) noexcept
+{
+    if (dt <= 0.0f)
+        return 0.0f;
+
+    if (t < dt)
+    {
+        // Just after the step (t = 0): rising edge correction.
+        t /= dt;
+        return 2.0f * t - t * t - 1.0f;
+    }
+    if (t > 1.0f - dt)
+    {
+        // Just before the step (t -> 1): falling edge correction.
+        t = (t - 1.0f) / dt;
+        return t * t + 2.0f * t + 1.0f;
+    }
+    return 0.0f;
+}
+
 } // namespace
 
 void SubtractiveSynthEngine::prepare(double sampleRate, int maxBlockSize)
@@ -126,7 +151,7 @@ float SubtractiveSynthEngine::midiNoteToHz(int note) noexcept
     return 440.0f * std::pow(2.0f, (static_cast<float>(note) - 69.0f) / 12.0f);
 }
 
-float SubtractiveSynthEngine::phaseToSample(Waveform wave, float phase) noexcept
+float SubtractiveSynthEngine::phaseToSample(Waveform wave, float phase, float dt) noexcept
 {
     phase -= std::floor(phase);
 
@@ -135,10 +160,19 @@ float SubtractiveSynthEngine::phaseToSample(Waveform wave, float phase) noexcept
         case Waveform::Sine:
             return std::sin(phase * 2.0f * juce::MathConstants<float>::pi);
         case Waveform::Saw:
-            return 2.0f * phase - 1.0f;
+            // Slice C: band-limited in place with PolyBLEP (non-additive).
+            return 2.0f * phase - 1.0f - polyBlep(phase, dt);
         case Waveform::Square:
-            return (phase < 0.5f) ? 1.0f : -1.0f;
+            // Slice C: two step edges (phase wrap + half-cycle), so two
+            // PolyBLEP residuals. `dt` is the running phase increment — for
+            // the FM path `phase` is already modulated, but the increment is
+            // still the oscillator's own cycles/sample.
+            return (phase < 0.5f ? 1.0f : -1.0f)
+                 + polyBlep(phase, dt)
+                 - polyBlep(std::fmod(phase + 0.5f, 1.0f), dt);
         case Waveform::Triangle:
+            // No step discontinuity (piecewise linear) — untouched, so the
+            // triangle render stays byte-identical.
             return 1.0f - 4.0f * std::abs(phase - 0.5f);
     }
 
@@ -539,15 +573,22 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
         const float voiceOsc2Hz = voiceHz * osc2Ratio;
         const float voiceSubHz = voiceHz * subHzRatio;
 
-        const float osc2 = phaseToSample(osc2Wave, v.osc2Phase[static_cast<size_t>(unison)]);
+        // Slice C: per-oscillator phase increments (cycles/sample) — the
+        // PolyBLEP band-limiting `dt` is the increment the oscillator applies
+        // THIS sample (the advance below uses the same expression).
+        const float osc1Dt = voiceHz / static_cast<float>(sampleRate_);
+        const float osc2Dt = voiceOsc2Hz / static_cast<float>(sampleRate_);
+        const float subDt  = voiceSubHz / static_cast<float>(sampleRate_);
+
+        const float osc2 = phaseToSample(osc2Wave, v.osc2Phase[static_cast<size_t>(unison)], osc2Dt);
         // FM phase-modulates osc1 by the CURRENT osc2 output (pre-advance,
         // matching the oscillator phase-advance style below). The fmDepth > 0
         // branch keeps the FM=0 path bit-identical (no extra FP op).
         const float osc1Phase = (fmDepth > 0.0f)
             ? v.osc1Phase[static_cast<size_t>(unison)] + fmDepth * osc2
             : v.osc1Phase[static_cast<size_t>(unison)];
-        const float osc1 = phaseToSample(osc1Wave, osc1Phase);
-        const float sub = phaseToSample(Waveform::Square, v.subPhase[static_cast<size_t>(unison)]);
+        const float osc1 = phaseToSample(osc1Wave, osc1Phase, osc1Dt);
+        const float sub = phaseToSample(Waveform::Square, v.subPhase[static_cast<size_t>(unison)], subDt);
 
         v.osc1Phase[static_cast<size_t>(unison)] += voiceHz / static_cast<float>(sampleRate_);
         v.osc2Phase[static_cast<size_t>(unison)] += voiceOsc2Hz / static_cast<float>(sampleRate_);
@@ -749,8 +790,10 @@ float SubtractiveSynthEngine::renderOutputSample() noexcept
 float SubtractiveSynthEngine::nextModLfoSample() noexcept
 {
     const Waveform wave = static_cast<Waveform>(clampWave(modLfoWave_.load(std::memory_order_relaxed)));
-    const float sample = phaseToSample(wave, modLfoPhase_);
-    modLfoPhase_ += modLfoRateHz_.load(std::memory_order_relaxed) / static_cast<float>(sampleRate_);
+    const float dt = modLfoRateHz_.load(std::memory_order_relaxed)
+                     / static_cast<float>(sampleRate_);
+    const float sample = phaseToSample(wave, modLfoPhase_, dt);
+    modLfoPhase_ += dt;
     if (modLfoPhase_ >= 1.0f)
         modLfoPhase_ -= std::floor(modLfoPhase_);
     return sample;

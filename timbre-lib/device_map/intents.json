@@ -414,7 +414,7 @@
         "appliesVia": "set_internal_fx_param",
         "durability": "valuetree",
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
-        "categoryRules": [{ "id": "pa", "match": ["osc", "unison", "pattern", "octave", "bars", "filter", "delay", "reverb", "phaser", "output", "step"], "category": "psyarp" }],
+        "categoryRules": [{ "id": "pa", "match": ["osc", "unison", "pattern", "octave", "bars", "filter", "delay", "reverb", "phaser", "output", "step", "pulse", "noise"], "category": "psyarp" }],
         "categoryDefaults": { "psyarp": { "tier": "movement", "intents": ["filter-sweep"] } },
         "unitRules": [
           { "id": "pa-unison-voices", "match": ["unison voices"], "unit": "scalar" },
@@ -434,10 +434,14 @@
           { "id": "pa-pen", "match": ["phaser enable"], "intents": ["fx-type"], "tier": "identity" },
           { "id": "pa-prd", "match": ["phaser rate", "phaser depth"], "intents": ["phaser-sweep"], "tier": "movement" },
           { "id": "pa-out", "match": ["output level"], "intents": ["mix-balance"], "tier": "identity" },
-          { "id": "pa-step", "match": ["step rate"], "intents": ["fx-type"], "tier": "identity" }
+          { "id": "pa-step", "match": ["step rate"], "intents": ["fx-type"], "tier": "identity" },
+          { "id": "pa-ftype", "match": ["filter type"], "intents": ["filter-type"], "tier": "identity" },
+          { "id": "pa-pulse", "match": ["pulse width"], "intents": ["wave-morph"], "tier": "movement" },
+          { "id": "pa-noise", "match": ["noise level"], "intents": ["osc-mix"], "tier": "identity" }
         ],
         "paramNotes": {
-          "Osc Shape": { "enum": { "0": "Saw", "1": "Square", "2": "SuperSaw" } },
+          "Osc Shape": { "enum": { "0": "Saw", "1": "Square", "2": "SuperSaw", "3": "Pulse", "4": "Noise" } },
+          "Filter Type": { "enum": { "0": "lowpass", "1": "highpass", "2": "bandpass" } },
           "Pattern Shape": { "enum": { "0": "UpDown", "1": "Asym332", "2": "Random" } },
           "Step Rate": { "enum": { "0": "1/16", "1": "1/8", "2": "1/4" } },
           "Delay Ping-Pong": { "enum": { "0": "off", "1": "on" } },
@@ -448,7 +452,7 @@
         "appliesVia": "set_internal_fx_param",
         "durability": "valuetree",
         "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render.",
-        "categoryRules": [{ "id": "pf", "match": ["op", "feedback", "output", "algorithm"], "category": "psy-fm" }],
+        "categoryRules": [{ "id": "pf", "match": ["op", "feedback", "output", "algorithm", "filter"], "category": "psy-fm" }],
         "categoryDefaults": { "psy-fm": { "tier": "movement", "intents": ["fm-metal"] } },
         "unitRules": [],
         "paramUnitOverrides": {
@@ -459,11 +463,16 @@
           { "id": "pf-fb", "match": ["feedback"], "intents": ["fm-metal"], "tier": "movement" },
           { "id": "pf-ratio", "match": ["ratio"], "intents": ["fm-metal"], "tier": "movement" },
           { "id": "pf-env", "match": ["attack", "decay", "sustain", "release"], "intents": ["env-shape"], "tier": "identity" },
-          { "id": "pf-out", "match": ["output level"], "intents": ["mix-balance"], "tier": "identity" }
+          { "id": "pf-out", "match": ["output level"], "intents": ["mix-balance"], "tier": "identity" },
+          { "id": "pf-fcutoff", "match": ["filter cutoff", "filter env amount"], "intents": ["filter-sweep"], "tier": "movement" },
+          { "id": "pf-fres", "match": ["filter resonance"], "intents": ["resonance"], "tier": "movement" },
+          { "id": "pf-ftype", "match": ["filter type"], "intents": ["filter-type"], "tier": "identity" },
+          { "id": "pf-fkey", "match": ["filter key track"], "intents": ["key-vel-track"], "tier": "identity" }
         ],
         "paramNotes": {
-          "Algorithm Preset": { "enum": { "0": "growlBass", "1": "acidLead", "2": "metallicPluck", "3": "riser" },
-            "note": "TrackFXSlot.h:1024-1027 selects PsyFmAlgorithms' function per value." }
+          "Algorithm Preset": { "enum": { "0": "growlBass", "1": "acidLead", "2": "metallicPluck", "3": "riser", "4": "pad", "5": "bell" },
+            "note": "TrackFXSlot.h selects the PsyFmAlgorithms function per value (0..3 growlBass/acidLead/metallicPluck/riser, 4/5 pad/bell appended 2026-10-06)." },
+          "Filter Type": { "enum": { "0": "lowpass", "1": "highpass", "2": "bandpass" } }
         }
       },
       "sub_synth": {

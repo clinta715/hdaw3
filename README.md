@@ -27,6 +27,24 @@ never builds it.
 
 ## What works today (v0.39.4)
 
+### Unreleased — internal synth expansion (slice B: psy_fm filter)
+
+- **psy_fm gets a post-carrier per-voice multimode filter** (plan
+  `docs/plans/2026-10-05-internal-synth-expansion.md` section B). Five params are
+  APPENDED to the psy_fm def table (33 `Filter Cutoff` 20..20000 Hz def 20000,
+  34 `Filter Resonance` 0.1..10 def 0.7, 35 `Filter Type` 0=LP/1=HP/2=BP def LP,
+  36 `Filter Key Track` 0..1 def 0, 37 `Filter Env Amount` 0..1 def 0); existing
+  indices/ranges are untouched, so `list_device_params {engine:"psy_fm"}` rises
+  33 → 38 and an existing project re-renders **bit-identically** — the neutral
+  defaults BYPASS the filter entirely (a 20 kHz LP is not transparent). Each
+  `HDAW::InternalFilter` instance is per-voice (8), prepared once, and applied to
+  the voice's carrier output before the voice-sum; key-track scales cutoff by
+  `2^((midiNote-60)/12)` and env-amount offsets it by
+  `envAmount * (20000 - eff) * carrierEnvLevel` (the carrier's existing amp
+  envelope — no new ADSR). Engine-verified: a 400 Hz LP attenuates the >1500 Hz
+  band, key-track opens the cutoff two octaves up, env-amount opens it over the
+  note, and pre-change default renders are hash-pinned (`PsyFmBackCompat`).
+
 ### v0.39.4 — O1 device-name validation, internal-engine device maps (2026-09-30)
 
 - **O1 closed (plan Phase 6):** `set_audio_output_device` / `audio.setOutputDevice` refuse an
@@ -36,8 +54,9 @@ never builds it.
   QSettings skipped on every failure. 6 gtests, green across openable-device and
   listed-but-unopenable runs on this box (the latter exercises the rollback branch).
   (`set_audio_input_device` has the same defect — open follow-up.)
-- **`list_device_params` covers all 16 internal fxTypes** (258 params: fm_synth 26, sub_synth 33,
-  psy_fm 33, growl_bass 26, psyarp 21, sampler 10, drum_synth 67, + the core FX). Generated deterministically by
+- **`list_device_params` covers all 16 internal fxTypes** (258 params at this release — 266 now,
+  psyarp 21→24 and psy_fm 33→38 after the 2026-10-05 internal synth expansion: fm_synth 26,
+  sub_synth 33, psy_fm 38, growl_bass 26, psyarp 24, sampler 10, drum_synth 67, + the core FX). Generated deterministically by
   `timbre-lib/build_device_map.py` from the in-source C++ param tables (every entry cites
   `file:line`); the 5 VA maps are byte-unchanged. The wire carries
   `index/default/min/max/source/enum` on both surfaces (parity ledger byte-unchanged); pins assert

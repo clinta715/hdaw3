@@ -170,8 +170,11 @@ TEST_F(PsyFmRpcTest, UnknownPresetRefusalNamesValueAndSetOnBothSurfaces)
                                 QJsonObject{ { "trackIndex", 0 }, { "slotIndex", 0 },
                                              { "preset", "bogus" } });
     ASSERT_TRUE(viaRpc.isError);
+    // Slice D (2026-10-06) appended pad/bell/pluck/drone/stab, so the allowed
+    // set — read from PsyFmState's own table — is the 9-name vocabulary.
     EXPECT_EQ(viaRpc.payload.toObject().value("message").toString(),
-              "unknown preset: bogus (valid: growlBass, acidLead, metallicPluck, riser)");
+              "unknown preset: bogus (valid: growlBass, acidLead, metallicPluck, riser, "
+              "pad, bell, pluck, drone, stab)");
     EXPECT_EQ(viaRpc.payload.toObject().value("code").toInt(), -32602);
 
     const auto mcp = server.handleRequestOnTestThread(

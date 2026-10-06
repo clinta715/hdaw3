@@ -197,7 +197,12 @@ private:
     static float clampUnit(float value) noexcept;
     static float clampPositive(float value, float fallback) noexcept;
     static float midiNoteToHz(int note) noexcept;
-    static float phaseToSample(Waveform wave, float phase) noexcept;
+    // Waveform lookup: `phase` in cycles (wrapped internally), `dt` the phase
+    // increment in cycles/sample — the PolyBLEP band-limiting increment for
+    // the step-bearing shapes (slice C, 2026-10-05). Saw/Square are
+    // anti-aliased IN PLACE (non-additive); Sine/Triangle have no step and
+    // are byte-identical.
+    static float phaseToSample(Waveform wave, float phase, float dt) noexcept;
     void resetVoice(int note, int velocity) noexcept;
     void retargetVoice(int note, int velocity, bool resetEnvelope) noexcept;
     void noteOn(int note, int velocity) noexcept;

@@ -683,7 +683,7 @@ TEST (PsyArpEngine, StepRateSlotDefsAndClamp)
     // Out-of-range slot writes clamp to the def range (lesson 23).
     HDAW::TrackFXSlot slot ("psyarp");
     const auto defs = slot.getInternalParamDefs();
-    ASSERT_EQ ((int) defs.size(), 21);
+    ASSERT_EQ ((int) defs.size(), 24);
     EXPECT_EQ (defs[20].index, 20);
     EXPECT_EQ (defs[20].name, juce::String ("Step Rate"));
     EXPECT_NEAR (defs[20].defaultValue, 0.0f, 1e-5f);

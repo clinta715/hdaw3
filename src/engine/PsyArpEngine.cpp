@@ -17,6 +17,10 @@ void PsyArpEngine::prepare(double sampleRate, int /*maxBlockSize*/)
     filterSweepPhase_ = 0.0f;
     std::fill(filterState_, filterState_ + 2, 0.0f);
 
+    // Reset the white-noise generator to its seed (deterministic per prepare,
+    // same discipline as the other DSP state resets above).
+    noiseRng_ = 0x9E3779B9u;
+
     // Reset oscillator voices
     for (auto& v : oscVoices_)
         v = OscVoice{};
@@ -152,23 +156,84 @@ void PsyArpEngine::rebuildArpSequence()
 // Oscillator waveforms
 // ============================================================================
 
-float PsyArpEngine::generateOscillator(float phase, OscShape shape) const
+// Memoryless soft ceiling for the summed oscillator signal (lesson 45). It is
+// applied ONLY when Noise Level > 0, so the default noise-free path never
+// calls it and stays bit-identical to the pre-change render. The knee sits at
+// 1.0: one voice at full scale passes untouched, and only noise-augmented sums
+// above unity are shaped (asymptote 1.5). Same exponential shape as the
+// drum_synth kit ceiling.
+namespace
 {
-    const float pi2 = 2.0f * juce::MathConstants<float>::pi;
+inline float softCeilOsc(float x) noexcept
+{
+    constexpr float kKnee = 1.0f;
+    constexpr float kSpan = 0.5f;
+    const float a = std::abs(x);
+    if (a <= kKnee)
+        return x;
+    const float shaped = kKnee + kSpan * (1.0f - std::exp(-(a - kKnee) / kSpan));
+    return (x < 0.0f) ? -shaped : shaped;
+}
+
+// PolyBLEP residual. `t` is the normalized phase in [0,1), `dt` the phase
+// increment (cycles/sample). The discontinuity sits at the phase wrap
+// (t = 0 == 1): the residual is a 1-sample quadratic rounded over the two
+// samples adjacent to the step.
+inline float polyBlep(float t, float dt) noexcept
+{
+    if (dt <= 0.0f)
+        return 0.0f;
+
+    if (t < dt)
+    {
+        // Just after the step (t = 0): rising edge correction.
+        t /= dt;
+        return 2.0f * t - t * t - 1.0f;
+    }
+    if (t > 1.0f - dt)
+    {
+        // Just before the step (t -> 1): falling edge correction. `t` is
+        // negative here (t in (1-dt, 1) -> (t-1) in (-dt, 0)).
+        t = (t - 1.0f) / dt;
+        return t * t + 2.0f * t + 1.0f;
+    }
+    return 0.0f;
+}
+} // namespace
+
+// xorshift32 -> [-1, 1). Pure, branch-free, deterministic, allocation-free.
+float PsyArpEngine::whiteNoise() noexcept
+{
+    noiseRng_ ^= noiseRng_ << 13;
+    noiseRng_ ^= noiseRng_ >> 17;
+    noiseRng_ ^= noiseRng_ << 5;
+    return static_cast<float>(static_cast<int32_t>(noiseRng_)) * (1.0f / 2147483648.0f);
+}
+
+float PsyArpEngine::generateOscillator(float phase, float dt, OscShape shape)
+{
     float p = std::fmod(phase, 1.0f);
     if (p < 0.0f) p += 1.0f;
 
+    // Slice C: Saw/Square/Pulse/SuperSaw carry a step discontinuity and are
+    // band-limited IN PLACE with PolyBLEP (non-additive — naive aliasing is a
+    // defect, not a feature; no opt-out branch). `dt` is the voice's phase
+    // increment, so the correction is correct at every pitch.
     switch (shape)
     {
         case OscShape::Saw:
-            return 2.0f * p - 1.0f;  // naive saw
+            return 2.0f * p - 1.0f - polyBlep(p, dt);
 
         case OscShape::Square:
-            return p < 0.5f ? 1.0f : -1.0f;
+            return (p < 0.5f ? 1.0f : -1.0f)
+                 + polyBlep(p, dt)
+                 - polyBlep(std::fmod(p + 0.5f, 1.0f), dt);
 
         case OscShape::SuperSaw:
         {
-            // 7 detuned saws summed (Juno-style supersaw approximation)
+            // 7 detuned saws summed (Juno-style supersaw approximation). The
+            // detune is a phase OFFSET, so all 7 share the SAME `dt` — each
+            // saw gets its own PolyBLEP at its own wrapped phase.
             static constexpr int kNumVoices = 7;
             static constexpr float detuneAmounts[kNumVoices] = {
                 -0.12f, -0.06f, -0.02f, 0.0f, 0.02f, 0.06f, 0.12f
@@ -178,21 +243,37 @@ float PsyArpEngine::generateOscillator(float phase, OscShape shape) const
             {
                 float shifted = std::fmod(p + detuneAmounts[i], 1.0f);
                 if (shifted < 0.0f) shifted += 1.0f;
-                sum += 2.0f * shifted - 1.0f;
+                sum += 2.0f * shifted - 1.0f - polyBlep(shifted, dt);
             }
             return sum / static_cast<float>(kNumVoices);
         }
 
+        case OscShape::Pulse:
+        {
+            // Variable-duty pulse. Duty is clamped in the setter; the local
+            // clamp is defense in depth (lesson 23). Two step edges, so two
+            // PolyBLEP residuals: at the phase wrap and at the falling edge
+            // (t = duty), reached at wrapped phase frac(p + 1 - duty).
+            const float duty = juce::jlimit(0.05f, 0.95f,
+                                            pulseWidth_.load(std::memory_order_relaxed));
+            return (p < duty ? 1.0f : -1.0f)
+                 + polyBlep(p, dt)
+                 - polyBlep(std::fmod(p + (1.0f - duty), 1.0f), dt);
+        }
+
+        case OscShape::Noise:
+            return whiteNoise();
+
         default:
-            return 2.0f * p - 1.0f;
+            return 2.0f * p - 1.0f - polyBlep(p, dt);
     }
 }
 
 // ============================================================================
-// SVF filter (lowpass)
+// SVF filter (LP / HP / BP by mode)
 // ============================================================================
 
-float PsyArpEngine::processSVF(float input, float cutoff, float resonance, float* state)
+float PsyArpEngine::processSVF(float input, float cutoff, float resonance, float* state, int mode)
 {
     const float g = std::tan(juce::MathConstants<float>::pi
         * std::min(cutoff / static_cast<float>(sampleRate_), 0.49f));
@@ -207,7 +288,18 @@ float PsyArpEngine::processSVF(float input, float cutoff, float resonance, float
     state[0] = 2.0f * v1 - state[0];
     state[1] = 2.0f * v2 - state[1];
 
-    return v2; // lowpass
+    // The solve above is the same in every mode; only the returned
+    // combination differs. v1 is the bandpass state and v2 the lowpass state
+    // (v1 = bp, v2 = lp in InternalFilter's algebra), so HP is
+    // input - k*bp - lp — the VERIFIED InternalFilter mapping (do not
+    // "improve" it). Mode 0 returns v2 verbatim, so the default patch is
+    // bit-identical to the pre-change lowpass-only return.
+    switch (mode)
+    {
+        case 1: return input - k * v1 - v2;  // highpass
+        case 2: return v1;                   // bandpass
+        default: return v2;                  // lowpass
+    }
 }
 
 // ============================================================================
@@ -389,14 +481,21 @@ void PsyArpEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
     const int numChannels = buffer.getNumChannels();
 
     // Read atomic params once per block
-    const auto oShape = static_cast<OscShape>(oscShape_.load(std::memory_order_relaxed));
+    // Clamp the shape to the def range (0..4): a raw/hand-edited value past
+    // Noise must not select an undefined waveform (the switch's default
+    // already falls back to saw, but clamping keeps the enum honest).
+    const auto oShape = static_cast<OscShape>(juce::jlimit(0, 4,
+        oscShape_.load(std::memory_order_relaxed)));
     const int uniVoices = juce::jlimit(1, 4, oscUnisonVoices_.load(std::memory_order_relaxed));
     const float uniDetune = oscDetuneCents_.load(std::memory_order_relaxed);
     const float filtCutoff = filterCutoffHz_.load(std::memory_order_relaxed);
     const float filtRes = std::max(0.1f, filterResonance_.load(std::memory_order_relaxed));
     const float sweepBars = std::max(0.5f, filterSweepBars_.load(std::memory_order_relaxed));
+    const int filtMode = juce::jlimit(0, 2, filterMode_.load(std::memory_order_relaxed));
+    const float noiseLevel = juce::jlimit(0.0f, 1.0f, noiseLevel_.load(std::memory_order_relaxed));
     const float outLevel = outputLevel_.load(std::memory_order_relaxed);
     const bool usePhaser = phaserEnabled_.load(std::memory_order_relaxed);
+    const bool noiseActive = noiseLevel > 0.0f;
 
     // Get transport info for tempo sync
     // (bpm_ is set externally or defaults to 120)
@@ -544,9 +643,25 @@ void PsyArpEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
                 if (oscVoices_[v].phase >= 1.0f)
                     oscVoices_[v].phase -= 1.0f;
 
-                oscSample += generateOscillator(oscVoices_[v].phase, oShape);
+                // Slice C: `phaseInc` is the PolyBLEP increment (`dt`) for
+                // this voice — the exact value added to the phase above.
+                oscSample += generateOscillator(oscVoices_[v].phase, phaseInc, oShape);
             }
             oscSample /= static_cast<float>(uniVoices);
+
+            // ── Additive noise layer (param 23) ──
+            // Noise Level mixes per-sample white noise onto the oscillator sum
+            // on ANY shape, gated by the note like the oscillator. Only
+            // engaged when > 0, so the default noise-free path is untouched
+            // (bit-identical render). The memoryless soft ceiling caps the sum
+            // once the noise-augmented level can exceed unity (lesson 45: knee
+            // above the normal-voice range) — inside this branch for the same
+            // reason.
+            if (noiseActive)
+            {
+                oscSample += noiseLevel * whiteNoise();
+                oscSample = softCeilOsc(oscSample);
+            }
         }
 
         // ── Filter (slow sweep — the signature element) ──
@@ -560,7 +675,7 @@ void PsyArpEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
         sweepCutoff = std::max(20.0f, std::min(sweepCutoff,
             static_cast<float>(sampleRate_) * 0.49f));
 
-        float filtered = processSVF(oscSample, sweepCutoff, filtRes, filterState_);
+        float filtered = processSVF(oscSample, sweepCutoff, filtRes, filterState_, filtMode);
 
         // ── Phaser ──
         float phased = filtered;

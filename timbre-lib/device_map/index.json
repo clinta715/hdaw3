@@ -106,13 +106,13 @@
    "appliesVia": "set_internal_fx_param",
    "durability": "valuetree",
    "engine": "psyarp",
-   "paramCount": 21
+   "paramCount": 24
   },
   {
    "appliesVia": "set_internal_fx_param",
    "durability": "valuetree",
    "engine": "psy_fm",
-   "paramCount": 33
+   "paramCount": 38
   },
   {
    "appliesVia": "set_internal_fx_param",

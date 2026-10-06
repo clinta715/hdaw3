@@ -557,6 +557,23 @@ TEST_F(DeviceParamsInternalTest, UnitContrastsAcrossEngines)
     EXPECT_EQ(findParam(pf, "OP1 Attack").value("unit").toString(), QString("seconds"));
     EXPECT_EQ(findParam(pf, "OP1 Sustain").value("unit").toString(), QString("scalar"));
 
+    // Slice B (2026-10-05): the appended post-carrier filter rows are served
+    // with units + intents, and the index/range are the def-table values.
+    const auto pfCutoff = findParam(pf, "Filter Cutoff");
+    ASSERT_FALSE(pfCutoff.isEmpty()) << "psy_fm must serve Filter Cutoff";
+    EXPECT_EQ(pfCutoff.value("unit").toString(), QString("hz"));
+    EXPECT_EQ(pfCutoff.value("index").toInt(), 33);
+    EXPECT_DOUBLE_EQ(pfCutoff.value("default").toDouble(), 20000.0);
+    EXPECT_DOUBLE_EQ(pfCutoff.value("max").toDouble(), 20000.0);
+    EXPECT_EQ(findParam(pf, "Filter Resonance").value("unit").toString(), QString("scalar"));
+    const auto pfType = findParam(pf, "Filter Type");
+    ASSERT_FALSE(pfType.isEmpty());
+    EXPECT_EQ(pfType.value("index").toInt(), 35);
+    EXPECT_EQ(pfType.value("unit").toString(), QString("enum"));
+    EXPECT_EQ(pfType.value("enum").toObject().value("2").toString(), QString("bandpass"));
+    EXPECT_EQ(findParam(pf, "Filter Key Track").value("unit").toString(), QString("boolean"));
+    EXPECT_EQ(findParam(pf, "Filter Env Amount").value("unit").toString(), QString("scalar"));
+
     // Same CONCEPT (an amp-envelope stage), DIFFERENT units across engines:
     // sub_synth's Attack is seconds, drum_synth's per-voice Kick Decay is a
     // 0..1 scalar. That difference is exactly what the unit field must expose.

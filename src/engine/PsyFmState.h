@@ -120,14 +120,22 @@ inline std::vector<PsyFmModRoute> decodeRoutes (const std::string& encoded)
 
 // ── Preset table ──
 //
-// Single source of truth for the four psytrance presets (values ported
-// verbatim from the render-verified MCP implementation). The MCP tool and the
+// Single source of truth for the psytrance presets (values ported verbatim
+// from the render-verified MCP implementation). The MCP tool and the
 // frontend router both apply presets through AudioEngineCommands
 // (tree-first), never by touching the live engine directly.
 //
 // Param mapping (matches TrackFXSlot getParamDefsForType("psy_fm")):
 //   0..5 base ratios, 6 base feedback, 7..30 envelopes (7 + op*4 + {A,D,S,R}),
-//   31 output level, 32 algorithm index (0 growl, 1 acid, 2 pluck, 3 riser).
+//   31 output level, 32 algorithm index, 33..37 post-carrier filter
+//   (Cutoff, Resonance, Type, Key Track, Env Amount). Slice D (2026-10-06)
+//   appended five role presets (pad/bell/pluck/drone/stab) and widened param
+//   32 to 0..5 (0 growl, 1 acid, 2 pluck, 3 riser, 4 pad, 5 bell). Slice E
+//   (2026-10-06) made a preset the WHOLE sound by adding `filter` and writing
+//   it; the older four rows carry the NEUTRAL filter (see kNeutralFilter in
+//   the rows below), which is identical to the engine defaults and to slice
+//   B's bypass condition (cutoff<19999 || keyTrack!=0 || envAmount!=0), so
+//   their renders stay bit-identical.
 
 struct PresetDef
 {
@@ -139,6 +147,7 @@ struct PresetDef
     float outputLevel;
     float sweepRateHz;    // PsyFmModSourcePool::ratioSweepLFORateHz
     const char* matrix;   // encoded routes
+    float filter[5];      // param 33..37: {Cutoff, Resonance, Type, KeyTrack, EnvAmount}
 };
 
 // The preset table — ONE place. findPreset(), presetNames() and the refusal
@@ -155,7 +164,10 @@ inline const PresetDef* presetTable (std::size_t& count)
             { 0.005f, 0.4f, 0.8f, 0.1f },
             { 0.005f, 0.4f, 0.8f, 0.1f } },
           0.4f, 0.2f,
-          "feedbackLFO:op6Feedback:0.4" },
+          "feedbackLFO:op6Feedback:0.4",
+          // Slice E: neutral filter == engine defaults == slice B's bypass
+          // condition, so this row's render is bit-identical to pre-slice-E.
+          { 20000.0f, 0.7f, 0.0f, 0.0f, 0.0f } },
         { "acidLead",
           { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f }, 0.1f, 1,
           { { 0.001f, 0.5f, 0.6f, 0.3f },
@@ -165,7 +177,8 @@ inline const PresetDef* presetTable (std::size_t& count)
             { 0.001f, 0.5f, 0.6f, 0.3f },
             { 0.001f, 0.5f, 0.6f, 0.3f } },
           0.35f, 0.2f,
-          "modWheel:op6Feedback:0.9" },
+          "modWheel:op6Feedback:0.9",
+          { 20000.0f, 0.7f, 0.0f, 0.0f, 0.0f } },
         { "metallicPluck",
           { 1.0f, 1.0f, 3.14f, 1.0f, 1.41f, 1.0f }, 0.0f, 2,
           { { 0.005f, 0.8f, 0.7f, 0.3f },     // op0 carrier: slow
@@ -175,7 +188,8 @@ inline const PresetDef* presetTable (std::size_t& count)
             { 0.001f, 0.15f, 0.0f, 0.1f },    // op4 inharmonic: fast
             { 0.005f, 0.8f, 0.7f, 0.3f } },   // op5: slow
           0.3f, 0.2f,
-          "feedbackLFO:op6Feedback:0.15" },
+          "feedbackLFO:op6Feedback:0.15",
+          { 20000.0f, 0.7f, 0.0f, 0.0f, 0.0f } },
         { "riser",
           { 1.0f, 1.0f, 2.0f, 1.0f, 1.0f, 1.0f }, 0.15f, 3,
           { { 0.5f, 2.0f, 0.9f, 1.0f },
@@ -185,7 +199,80 @@ inline const PresetDef* presetTable (std::size_t& count)
             { 0.5f, 2.0f, 0.9f, 1.0f },
             { 0.5f, 2.0f, 0.9f, 1.0f } },
           0.35f, 0.2f,
-          "barClock:ratioSweepRate:1;ratioSweepLFO:op4Ratio:0.3" },
+          "barClock:ratioSweepRate:1;ratioSweepLFO:op4Ratio:0.3",
+          { 20000.0f, 0.7f, 0.0f, 0.0f, 0.0f } },
+
+        // ── Slice D (2026-10-06) role presets — APPENDED; the four rows above
+        // are untouched, so their renders stay bit-identical. Each row's
+        // `matrix` is the encoded form of the matching PsyFmPatches::make*
+        // helper (a test pins the two together, so they cannot drift).
+        // Names automatically extend psy_fm_load_preset's enum + refusal text.
+        { "pad",
+          { 1.0f, 1.005f, 1.0f, 2.0f, 1.0f, 1.0f }, 0.05f, 4,
+          { { 0.8f, 1.5f, 0.9f, 2.0f },     // op1 carrier
+            { 0.8f, 1.5f, 0.9f, 2.0f },     // op2 carrier (1.005 => slow beat)
+            { 0.8f, 1.5f, 0.9f, 2.0f },
+            { 1.2f, 2.0f, 0.9f, 2.0f },     // op4: lazy modulator
+            { 1.2f, 2.0f, 0.9f, 2.0f },     // op5: carrier modulator
+            { 0.8f, 1.5f, 0.9f, 2.0f } },
+          0.35f, 0.15f,
+          "ratioSweepLFO:op4Ratio:0.05",
+          // Slice E: warm LP + key-track + env lift (pads open slightly on
+          // attack and follow the chord register).
+          { 1200.0f, 0.7f, 0.0f, 0.3f, 0.4f } },
+        { "bell",
+          { 1.0f, 1.0f, 2.76f, 1.0f, 3.5f, 1.0f }, 0.65f, 5,
+          { { 0.001f, 1.5f, 0.0f, 0.8f },   // carrier: longest ring
+            { 0.001f, 0.6f, 0.0f, 0.3f },
+            { 0.001f, 0.4f, 0.0f, 0.2f },   // op3 (2.76, inharmonic)
+            { 0.001f, 0.5f, 0.0f, 0.25f },
+            { 0.001f, 0.2f, 0.0f, 0.12f },  // op5 (3.5, inharmonic)
+            { 0.001f, 0.15f, 0.0f, 0.1f } },// op6: strike, fastest
+          0.5f, 0.2f,
+          "feedbackLFO:op6Feedback:0.3",
+          // Slice E: bright LP with full key-track (bell pitch tracks the
+          // struck note), no env offset.
+          { 6000.0f, 1.2f, 0.0f, 1.0f, 0.0f } },
+        { "pluck",
+          { 1.0f, 5.0f, 1.0f, 9.0f, 1.0f, 1.0f }, 0.1f, 2,
+          { { 0.001f, 0.10f, 0.0f, 0.08f },
+            { 0.001f, 0.06f, 0.0f, 0.05f }, // op2 (5x): bright, fast
+            { 0.001f, 0.08f, 0.0f, 0.05f },
+            { 0.001f, 0.04f, 0.0f, 0.03f }, // op4 (9x): brightest
+            { 0.001f, 0.08f, 0.0f, 0.05f },
+            { 0.001f, 0.08f, 0.0f, 0.05f } },
+          0.45f, 0.2f,
+          "feedbackLFO:op6Feedback:0.1",
+          // Slice E: bright LP (near open), half key-track, env snap on the
+          // transient — keeps `pluck` bright while `stab` goes dark.
+          { 10000.0f, 1.0f, 0.0f, 0.5f, 0.7f } },
+        { "drone",
+          { 1.0f, 2.0f, 1.0f, 1.0f, 3.0f, 1.0f }, 0.2f, 4,
+          { { 2.0f, 5.0f, 0.95f, 3.0f },    // 2.0 = the def-table attack max
+            { 2.0f, 5.0f, 0.95f, 3.0f },
+            { 2.0f, 5.0f, 0.95f, 3.0f },
+            { 2.0f, 5.0f, 0.95f, 3.0f },
+            { 2.0f, 5.0f, 0.95f, 3.0f },
+            { 2.0f, 5.0f, 0.95f, 3.0f } },
+          0.3f, 0.08f,
+          "ratioSweepLFO:op4Ratio:0.25;modWheel:op1Ratio:0.1",
+          // Slice E: dark static LP (drones ride the mod matrix, not the
+          // filter envelope).
+          { 800.0f, 0.5f, 0.0f, 0.0f, 0.0f } },
+        { "stab",
+          { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 4.0f }, 0.75f, 1,
+          { { 0.001f, 0.09f, 0.0f, 0.06f },
+            { 0.001f, 0.09f, 0.0f, 0.06f },
+            { 0.001f, 0.09f, 0.0f, 0.06f },
+            { 0.001f, 0.09f, 0.0f, 0.06f },
+            { 0.001f, 0.09f, 0.0f, 0.06f },
+            { 0.001f, 0.05f, 0.0f, 0.04f } },// op6: hard strike
+          0.5f, 0.2f,
+          "modWheel:op6Feedback:0.9",
+          // Slice E: dark resonant LP, gentle key-track + env snap — darker
+          // than `pluck` (the two share a percussive envelope, so the filter is
+          // what keeps their spectra apart; D's distinctness gate proves it).
+          { 700.0f, 1.5f, 0.0f, 0.3f, 0.4f } },
     };
 
     count = sizeof(presets) / sizeof(presets[0]);
@@ -212,8 +299,9 @@ inline std::vector<const char*> presetNames()
     return names;
 }
 
-/// "growlBass, acidLead, metallicPluck, riser" — built from the table so it
-/// cannot drift from what findPreset() actually loads.
+/// "growlBass, acidLead, metallicPluck, riser, pad, bell, pluck, drone,
+/// stab" — built from the table so it cannot drift from what findPreset()
+/// actually loads.
 inline std::string presetNameList()
 {
     std::size_t count = 0;
@@ -233,7 +321,7 @@ inline std::string unknownPresetError (const std::string& name)
     return "unknown preset: " + name + " (valid: " + presetNameList() + ")";
 }
 
-/// True if `name` is one of the four known presets.
+/// True if `name` is one of the known preset names in presetTable().
 inline bool isKnownPreset (const std::string& name)
 {
     return findPreset (name) != nullptr;

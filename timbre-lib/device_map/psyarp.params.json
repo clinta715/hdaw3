@@ -1,11 +1,11 @@
 {
  "appliesVia": "set_internal_fx_param",
  "counts": {
-  "identity": 10,
-  "indexMapped": 21,
-  "movement": 11,
+  "identity": 12,
+  "indexMapped": 24,
+  "movement": 12,
   "offsetMapped": 0,
-  "total": 21,
+  "total": 24,
   "trap": 0,
   "unclassified": 0
  },
@@ -19,13 +19,15 @@
    "enum": {
     "0": "Saw",
     "1": "Square",
-    "2": "SuperSaw"
+    "2": "SuperSaw",
+    "3": "Pulse",
+    "4": "Noise"
    },
    "index": 0,
    "intents": [
     "osc-wave"
    ],
-   "max": 2.0,
+   "max": 4.0,
    "min": 0.0,
    "name": "Osc Shape",
    "offset": null,
@@ -518,6 +520,80 @@
    "tier": "identity",
    "trapReason": null,
    "unit": "enum"
+  },
+  {
+   "category": "psyarp",
+   "default": 0.0,
+   "enum": {
+    "0": "lowpass",
+    "1": "highpass",
+    "2": "bandpass"
+   },
+   "index": 21,
+   "intents": [
+    "filter-type"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Filter Type",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:334",
+   "sources": [
+    "src/engine/TrackFXSlot.h:334"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "enum"
+  },
+  {
+   "category": "psyarp",
+   "default": 0.5,
+   "index": 22,
+   "intents": [
+    "wave-morph"
+   ],
+   "max": 0.95,
+   "min": 0.05,
+   "name": "Pulse Width",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:335",
+   "sources": [
+    "src/engine/TrackFXSlot.h:335"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "psyarp",
+   "default": 0.0,
+   "index": 23,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Noise Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:336",
+   "sources": [
+    "src/engine/TrackFXSlot.h:336"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "scalar"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

@@ -572,6 +572,19 @@ await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
 | `acidLead` | op6→op1 | High feedback, near self-oscillation | Screaming leads, filter-sweep-style performance |
 | `metallicPluck` | op4→op2→op1 | Non-integer ratios, fast transient | Metallic stabs, alien plucks, percussive FM |
 | `riser` | op5→op3→op1 | Ratio-sweep LFO, nested modulation | Risers, FX sweeps, tension builders |
+| `pad` | op1+op2 (dual carrier) ← op5 ← op4 | Slow attack/long release, detuned carriers, drift | Pads, chords, sustained textures |
+| `bell` | op6→op5→op3→op1 | High feedback, inharmonic ratios, 3-deep chain, fast decay | Bells, struck metal, tuned percussion |
+| `pluck` | op4→op2→op1 | Very short bright envelope, 5×/9× ratios | Short plucks, bright percussive leads |
+| `drone` | op1+op2 (dual carrier) ← op5 ← op4 | 2 s attack, long release, slow sweep | Drones, evolving beds, held tones |
+| `stab` | op6→op1 | Feedback 0.75, near-instant decay | Stabs, short percussive hits, blips |
+
+`pad`/`drone` use algorithm index 4 (dual carrier); `bell` uses index 5 (deep
+feedback chain). `pluck`/`stab` reuse existing routings with different
+ratios/envelopes. Since slice E (2026-10-06) a preset is the WHOLE sound: it
+also writes the post-carrier filter (33..37: Cutoff, Resonance, Type, Key
+Track, Env Amount). The four original presets carry the NEUTRAL filter
+(20000 / 0.7 / 0 / 0 / 0 — the def defaults, where the filter is bypassed), so
+their renders are unchanged.
 
 ### Track-level modulation targets
 
@@ -676,7 +689,7 @@ set_internal_fx_param { trackId, slotIndex, paramIndex: N, value: V }
 
 | Index | Name | Range | Role |
 | ------- | ------ | ------- | ------ |
-| 0 | Osc Shape | 0=Saw,1=Sq,2=SuperSaw | Timbre |
+| 0 | Osc Shape | 0=Saw,1=Sq,2=SuperSaw,3=Pulse,4=Noise | Timbre |
 | 1 | Unison Voices | 1–4 (def 2) | Width |
 | 2 | Unison Detune | 0–50 (def 8) | Spread |
 | 3 | **Pattern Shape** | 0=UpDown,1=Asym332,2=Random | **Arp pattern** |
@@ -689,6 +702,10 @@ set_internal_fx_param { trackId, slotIndex, paramIndex: N, value: V }
 | 13–15 | Reverb | size/wet-on-dry/wet-on-delay | Space |
 | 16–18 | Phaser | enable/rate/depth | **Principle 7: L/R movement** |
 | 19 | Output Level | 0–1 (def 0.4) | Volume |
+| 20 | Step Rate | 0=1/16,1=1/8,2=1/4 (def 0) | Arp rate |
+| 21 | **Filter Type** | 0=LP,1=HP,2=BP (def 0) | **Filter mode (HP/BP sweep character)** |
+| 22 | Pulse Width | 0.05–0.95 (def 0.5) | Pulse duty (Osc Shape 3) |
+| 23 | Noise Level | 0–1 (def 0) | Additive white noise |
 
 **Key principle 5 recipe:** feed notes from `scaleNote` in F harmonic
 minor (scale mode 7). Pattern Shape=0 (UpDown) or 2 (Random). Octave
@@ -696,6 +713,12 @@ Range=2–3. Bars Per Motif=2–4. Filter Sweep Bars=4–8 (cutoff drifts
 across the motif, principle 7). Phaser Enable=1, Rate=0.1–0.5
 (principle 7: L/R phasing). Add an external `filter` FX slot after for
 the second filter pass (principle 2).
+
+**HP/BP sweeps:** Filter Type=2 (BP) with a moderate Filter Sweep Bars
+gives the rolling Astral Projection lead character; Filter Type=1 (HP)
+is the classic "lift the lows out of the arp" move before a drop.
+Osc Shape=3 (Pulse) with Pulse Width around 0.2–0.3 thins the arp;
+Osc Shape=4 (Noise) or a little Noise Level adds air/percussive edge.
 
 **Root notes for arp:** use `scaleNote(degree, octave)` from the project
 scale (F harmonic minor mode=7, root=5). Degrees 0–6 map to
@@ -905,8 +928,8 @@ bypasses the procdump attach.
     moves register). Solo-probe each synth layer (`export_audio trackIds`)
     before judging it in the full mix.
 15. ~~**`psy_fm` live-engine MCP tools fail with "track not found"**~~ **FIXED (verified
-    2026-09-24):** `psy_fm_load_preset` is tree-first (`setFxSlotPsyFmPreset` writes the 33
-    params + matrix to the slot tree, deviceless-safe); `psy_fm_get_analysis` degrades to
+    2026-09-24):** `psy_fm_load_preset` is tree-first (`setFxSlotPsyFmPreset` writes the params
+    + matrix to the slot tree, deviceless-safe); `psy_fm_get_analysis` degrades to
     `live:false` when the processor/track is unavailable; `psy_fm_mod_matrix_debug` tolerates a
     null processor. The `set_internal_fx_param` workaround is no longer needed. (The 2026-09-01
     handoff's diagnosis described a code path that has since been reworked.)

@@ -12,6 +12,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <algorithm>
 #include <vector>
 #include <set>
@@ -22,9 +23,14 @@ public:
     // ========================================================================
     // Parameter enums
     // ========================================================================
-    enum class OscShape { Saw = 0, Square, SuperSaw, NumShapes };
+    // Appended Pulse/Noise after SuperSaw: Saw/Square/SuperSaw keep indices
+    // 0/1/2, so an existing project's Osc Shape value renders as before.
+    enum class OscShape { Saw = 0, Square, SuperSaw, Pulse, Noise, NumShapes };
     enum class PatternShape { UpDown = 0, Asymmetric332, Random, NumShapes };
-    enum class FilterMode { LowPass = 0, NumModes };
+    // Mode is an int enum matching the Filter Type param. HP/BP are appended
+    // after LowPass, so LowPass stays 0 — the default and the pre-change
+    // behaviour — and a default patch keeps returning the same lowpass solve.
+    enum class FilterMode { LowPass = 0, HighPass, BandPass, NumModes };
 
     static constexpr int kMaxHeldNotes = 128;
     static constexpr int kMaxArpSeqLen = 64;  // max pattern length (octaves * notes)
@@ -43,6 +49,18 @@ public:
     void setOscShape(int v) noexcept { oscShape_.store(v, std::memory_order_relaxed); }
     void setOscUnisonVoices(int v) noexcept { oscUnisonVoices_.store(v, std::memory_order_relaxed); }
     void setOscDetuneCents(float v) noexcept { oscDetuneCents_.store(v, std::memory_order_relaxed); }
+    // Pulse duty cycle. Clamped to the def range (lesson 23) so a legacy or
+    // hand-edited value cannot drive the duty out of (0,1).
+    void setPulseWidth(float v) noexcept
+    {
+        pulseWidth_.store(juce::jlimit(0.05f, 0.95f, v), std::memory_order_relaxed);
+    }
+    // Additive white-noise mix level (0 = off/bit-identical default). Clamped
+    // to the def range (lesson 23).
+    void setNoiseLevel(float v) noexcept
+    {
+        noiseLevel_.store(juce::jlimit(0.0f, 1.0f, v), std::memory_order_relaxed);
+    }
 
     // Arp engine
     void setPatternShape(int v) noexcept { patternShape_.store(v, std::memory_order_relaxed); }
@@ -55,6 +73,12 @@ public:
     void setFilterCutoffHz(float v) noexcept { filterCutoffHz_.store(v, std::memory_order_relaxed); }
     void setFilterResonance(float v) noexcept { filterResonance_.store(v, std::memory_order_relaxed); }
     void setFilterSweepBars(float v) noexcept { filterSweepBars_.store(v, std::memory_order_relaxed); }
+    // Filter Type: 0 = LP (default), 1 = HP, 2 = BP. Clamped to the def range
+    // (lesson 23) — HP/BP are appended, so a stale 0 keeps the lowpass solve.
+    void setFilterMode(int v) noexcept
+    {
+        filterMode_.store(juce::jlimit(0, 2, v), std::memory_order_relaxed);
+    }
 
     // Delay
     void setDelayTimeBeats(float v) noexcept { delayTimeBeats_.store(v, std::memory_order_relaxed); }
@@ -148,8 +172,22 @@ private:
     // Internal methods
     // ========================================================================
     void rebuildArpSequence();
-    float generateOscillator(float phase, OscShape shape) const;
-    float processSVF(float input, float cutoff, float resonance, float* state);
+    // Pure per-sample, allocation-free waveform generation. `phase` is the
+    // voice phase in [0,1); `dt` is the phase increment (cycles/sample, the
+    // same value added to the phase each sample — needed by PolyBLEP);
+    // `shape` selects the waveform. Pulse reads the clamped pulseWidth_ and
+    // Noise reads noiseRng_ (xorshift white).
+    //
+    // Slice C (2026-10-05, NON-ADDITIVE): Saw/Square/Pulse/SuperSaw are
+    // band-limited in place with PolyBLEP — the naive step discontinuity is
+    // replaced, so an existing project's render changes. Sine/Triangle/Noise
+    // have no step and are byte-identical.
+    float generateOscillator(float phase, float dt, OscShape shape);
+    // xorshift32 white noise in [-1,1), advanced per call. No allocation.
+    float whiteNoise() noexcept;
+    // TPT state-variable filter. `mode` selects the returned output from the
+    // same solve: 0 = LP (default, the pre-change return), 1 = HP, 2 = BP.
+    float processSVF(float input, float cutoff, float resonance, float* state, int mode);
     void processDelay(float& inL, float& inR, float& outL, float& outR);
     void processReverb(float inL, float inR, float& outL, float& outR);
     float processPhaser(float input, PhaserState& state, float lfoPhase);
@@ -160,6 +198,8 @@ private:
     std::atomic<int>   oscShape_{ 0 };           // Saw
     std::atomic<int>   oscUnisonVoices_{ 2 };
     std::atomic<float> oscDetuneCents_{ 8.0f };
+    std::atomic<float> pulseWidth_{ 0.5f };      // param 22
+    std::atomic<float> noiseLevel_{ 0.0f };      // param 23 (0 = off)
 
     std::atomic<int>   patternShape_{ 0 };       // Asymmetric332
     std::atomic<int>   octaveRange_{ 3 };
@@ -169,6 +209,7 @@ private:
     std::atomic<float> filterCutoffHz_{ 600.0f };
     std::atomic<float> filterResonance_{ 7.0f };
     std::atomic<float> filterSweepBars_{ 4.0f };
+    std::atomic<int>   filterMode_{ 0 };         // param 21: 0=LP, 1=HP, 2=BP
 
     std::atomic<float> delayTimeBeats_{ 0.375f };
     std::atomic<float> delayFeedback_{ 0.55f };
@@ -193,6 +234,10 @@ private:
 
     ArpState arp_;
     OscVoice oscVoices_[4] = {};        // max 4 unison voices
+
+    // Per-sample white-noise source (xorshift32). Nonzero seed: xorshift is
+    // stuck at zero forever from a zero state. Audio-thread only.
+    uint32_t noiseRng_ = 0x9E3779B9u;
 
     // Filter state (2-pole SVF per filter)
     float filterState_[2] = { 0.0f, 0.0f };

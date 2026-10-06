@@ -1,11 +1,11 @@
 {
  "appliesVia": "set_internal_fx_param",
  "counts": {
-  "identity": 26,
-  "indexMapped": 33,
-  "movement": 7,
+  "identity": 28,
+  "indexMapped": 38,
+  "movement": 10,
   "offsetMapped": 0,
-  "total": 33,
+  "total": 38,
   "trap": 0,
   "unclassified": 0
  },
@@ -25,9 +25,9 @@
    "name": "OP1 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:337",
+   "source": "src/engine/TrackFXSlot.h:340",
    "sources": [
-    "src/engine/TrackFXSlot.h:337"
+    "src/engine/TrackFXSlot.h:340"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -48,9 +48,9 @@
    "name": "OP2 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:338",
+   "source": "src/engine/TrackFXSlot.h:341",
    "sources": [
-    "src/engine/TrackFXSlot.h:338"
+    "src/engine/TrackFXSlot.h:341"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -71,9 +71,9 @@
    "name": "OP3 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:339",
+   "source": "src/engine/TrackFXSlot.h:342",
    "sources": [
-    "src/engine/TrackFXSlot.h:339"
+    "src/engine/TrackFXSlot.h:342"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -94,9 +94,9 @@
    "name": "OP4 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:340",
+   "source": "src/engine/TrackFXSlot.h:343",
    "sources": [
-    "src/engine/TrackFXSlot.h:340"
+    "src/engine/TrackFXSlot.h:343"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -117,9 +117,9 @@
    "name": "OP5 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:341",
+   "source": "src/engine/TrackFXSlot.h:344",
    "sources": [
-    "src/engine/TrackFXSlot.h:341"
+    "src/engine/TrackFXSlot.h:344"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -140,9 +140,9 @@
    "name": "OP6 Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:342",
+   "source": "src/engine/TrackFXSlot.h:345",
    "sources": [
-    "src/engine/TrackFXSlot.h:342"
+    "src/engine/TrackFXSlot.h:345"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -163,9 +163,9 @@
    "name": "Feedback",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:343",
+   "source": "src/engine/TrackFXSlot.h:346",
    "sources": [
-    "src/engine/TrackFXSlot.h:343"
+    "src/engine/TrackFXSlot.h:346"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -186,9 +186,9 @@
    "name": "OP1 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:344",
+   "source": "src/engine/TrackFXSlot.h:347",
    "sources": [
-    "src/engine/TrackFXSlot.h:344"
+    "src/engine/TrackFXSlot.h:347"
    ],
    "stages": [
     "sound-selector"
@@ -209,9 +209,9 @@
    "name": "OP1 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:345",
+   "source": "src/engine/TrackFXSlot.h:348",
    "sources": [
-    "src/engine/TrackFXSlot.h:345"
+    "src/engine/TrackFXSlot.h:348"
    ],
    "stages": [
     "sound-selector"
@@ -232,9 +232,9 @@
    "name": "OP1 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:346",
+   "source": "src/engine/TrackFXSlot.h:349",
    "sources": [
-    "src/engine/TrackFXSlot.h:346"
+    "src/engine/TrackFXSlot.h:349"
    ],
    "stages": [
     "sound-selector"
@@ -255,9 +255,9 @@
    "name": "OP1 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:347",
+   "source": "src/engine/TrackFXSlot.h:350",
    "sources": [
-    "src/engine/TrackFXSlot.h:347"
+    "src/engine/TrackFXSlot.h:350"
    ],
    "stages": [
     "sound-selector"
@@ -278,9 +278,9 @@
    "name": "OP2 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:348",
+   "source": "src/engine/TrackFXSlot.h:351",
    "sources": [
-    "src/engine/TrackFXSlot.h:348"
+    "src/engine/TrackFXSlot.h:351"
    ],
    "stages": [
     "sound-selector"
@@ -301,9 +301,9 @@
    "name": "OP2 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:349",
+   "source": "src/engine/TrackFXSlot.h:352",
    "sources": [
-    "src/engine/TrackFXSlot.h:349"
+    "src/engine/TrackFXSlot.h:352"
    ],
    "stages": [
     "sound-selector"
@@ -324,9 +324,9 @@
    "name": "OP2 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:350",
+   "source": "src/engine/TrackFXSlot.h:353",
    "sources": [
-    "src/engine/TrackFXSlot.h:350"
+    "src/engine/TrackFXSlot.h:353"
    ],
    "stages": [
     "sound-selector"
@@ -347,9 +347,9 @@
    "name": "OP2 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:351",
+   "source": "src/engine/TrackFXSlot.h:354",
    "sources": [
-    "src/engine/TrackFXSlot.h:351"
+    "src/engine/TrackFXSlot.h:354"
    ],
    "stages": [
     "sound-selector"
@@ -370,9 +370,9 @@
    "name": "OP3 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:352",
+   "source": "src/engine/TrackFXSlot.h:355",
    "sources": [
-    "src/engine/TrackFXSlot.h:352"
+    "src/engine/TrackFXSlot.h:355"
    ],
    "stages": [
     "sound-selector"
@@ -393,9 +393,9 @@
    "name": "OP3 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:353",
+   "source": "src/engine/TrackFXSlot.h:356",
    "sources": [
-    "src/engine/TrackFXSlot.h:353"
+    "src/engine/TrackFXSlot.h:356"
    ],
    "stages": [
     "sound-selector"
@@ -416,9 +416,9 @@
    "name": "OP3 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:354",
+   "source": "src/engine/TrackFXSlot.h:357",
    "sources": [
-    "src/engine/TrackFXSlot.h:354"
+    "src/engine/TrackFXSlot.h:357"
    ],
    "stages": [
     "sound-selector"
@@ -439,9 +439,9 @@
    "name": "OP3 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:355",
+   "source": "src/engine/TrackFXSlot.h:358",
    "sources": [
-    "src/engine/TrackFXSlot.h:355"
+    "src/engine/TrackFXSlot.h:358"
    ],
    "stages": [
     "sound-selector"
@@ -462,9 +462,9 @@
    "name": "OP4 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:356",
+   "source": "src/engine/TrackFXSlot.h:359",
    "sources": [
-    "src/engine/TrackFXSlot.h:356"
+    "src/engine/TrackFXSlot.h:359"
    ],
    "stages": [
     "sound-selector"
@@ -485,9 +485,9 @@
    "name": "OP4 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:357",
+   "source": "src/engine/TrackFXSlot.h:360",
    "sources": [
-    "src/engine/TrackFXSlot.h:357"
+    "src/engine/TrackFXSlot.h:360"
    ],
    "stages": [
     "sound-selector"
@@ -508,9 +508,9 @@
    "name": "OP4 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:358",
+   "source": "src/engine/TrackFXSlot.h:361",
    "sources": [
-    "src/engine/TrackFXSlot.h:358"
+    "src/engine/TrackFXSlot.h:361"
    ],
    "stages": [
     "sound-selector"
@@ -531,9 +531,9 @@
    "name": "OP4 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:359",
+   "source": "src/engine/TrackFXSlot.h:362",
    "sources": [
-    "src/engine/TrackFXSlot.h:359"
+    "src/engine/TrackFXSlot.h:362"
    ],
    "stages": [
     "sound-selector"
@@ -554,9 +554,9 @@
    "name": "OP5 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:360",
+   "source": "src/engine/TrackFXSlot.h:363",
    "sources": [
-    "src/engine/TrackFXSlot.h:360"
+    "src/engine/TrackFXSlot.h:363"
    ],
    "stages": [
     "sound-selector"
@@ -577,9 +577,9 @@
    "name": "OP5 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:361",
+   "source": "src/engine/TrackFXSlot.h:364",
    "sources": [
-    "src/engine/TrackFXSlot.h:361"
+    "src/engine/TrackFXSlot.h:364"
    ],
    "stages": [
     "sound-selector"
@@ -600,9 +600,9 @@
    "name": "OP5 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:362",
+   "source": "src/engine/TrackFXSlot.h:365",
    "sources": [
-    "src/engine/TrackFXSlot.h:362"
+    "src/engine/TrackFXSlot.h:365"
    ],
    "stages": [
     "sound-selector"
@@ -623,9 +623,9 @@
    "name": "OP5 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:363",
+   "source": "src/engine/TrackFXSlot.h:366",
    "sources": [
-    "src/engine/TrackFXSlot.h:363"
+    "src/engine/TrackFXSlot.h:366"
    ],
    "stages": [
     "sound-selector"
@@ -646,9 +646,9 @@
    "name": "OP6 Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:364",
+   "source": "src/engine/TrackFXSlot.h:367",
    "sources": [
-    "src/engine/TrackFXSlot.h:364"
+    "src/engine/TrackFXSlot.h:367"
    ],
    "stages": [
     "sound-selector"
@@ -669,9 +669,9 @@
    "name": "OP6 Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:365",
+   "source": "src/engine/TrackFXSlot.h:368",
    "sources": [
-    "src/engine/TrackFXSlot.h:365"
+    "src/engine/TrackFXSlot.h:368"
    ],
    "stages": [
     "sound-selector"
@@ -692,9 +692,9 @@
    "name": "OP6 Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:366",
+   "source": "src/engine/TrackFXSlot.h:369",
    "sources": [
-    "src/engine/TrackFXSlot.h:366"
+    "src/engine/TrackFXSlot.h:369"
    ],
    "stages": [
     "sound-selector"
@@ -715,9 +715,9 @@
    "name": "OP6 Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:367",
+   "source": "src/engine/TrackFXSlot.h:370",
    "sources": [
-    "src/engine/TrackFXSlot.h:367"
+    "src/engine/TrackFXSlot.h:370"
    ],
    "stages": [
     "sound-selector"
@@ -738,9 +738,9 @@
    "name": "Output Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:368",
+   "source": "src/engine/TrackFXSlot.h:371",
    "sources": [
-    "src/engine/TrackFXSlot.h:368"
+    "src/engine/TrackFXSlot.h:371"
    ],
    "stages": [
     "sound-selector"
@@ -756,21 +756,23 @@
     "0": "growlBass",
     "1": "acidLead",
     "2": "metallicPluck",
-    "3": "riser"
+    "3": "riser",
+    "4": "pad",
+    "5": "bell"
    },
    "index": 32,
    "intents": [
     "fx-type"
    ],
-   "max": 3.0,
+   "max": 5.0,
    "min": 0.0,
    "name": "Algorithm Preset",
-   "note": "TrackFXSlot.h:1024-1027 selects PsyFmAlgorithms' function per value.",
+   "note": "TrackFXSlot.h selects the PsyFmAlgorithms function per value (0..3 growlBass/acidLead/metallicPluck/riser, 4/5 pad/bell appended 2026-10-06).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:369",
+   "source": "src/engine/TrackFXSlot.h:375",
    "sources": [
-    "src/engine/TrackFXSlot.h:369"
+    "src/engine/TrackFXSlot.h:375"
    ],
    "stages": [
     "sound-selector"
@@ -778,6 +780,126 @@
    "tier": "identity",
    "trapReason": null,
    "unit": "enum"
+  },
+  {
+   "category": "psy-fm",
+   "default": 20000.0,
+   "index": 33,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 20000.0,
+   "min": 20.0,
+   "name": "Filter Cutoff",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:380",
+   "sources": [
+    "src/engine/TrackFXSlot.h:380"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "hz"
+  },
+  {
+   "category": "psy-fm",
+   "default": 0.7,
+   "index": 34,
+   "intents": [
+    "resonance"
+   ],
+   "max": 10.0,
+   "min": 0.1,
+   "name": "Filter Resonance",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:381",
+   "sources": [
+    "src/engine/TrackFXSlot.h:381"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "psy-fm",
+   "default": 0.0,
+   "enum": {
+    "0": "lowpass",
+    "1": "highpass",
+    "2": "bandpass"
+   },
+   "index": 35,
+   "intents": [
+    "filter-type"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Filter Type",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:382",
+   "sources": [
+    "src/engine/TrackFXSlot.h:382"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "enum"
+  },
+  {
+   "category": "psy-fm",
+   "default": 0.0,
+   "index": 36,
+   "intents": [
+    "key-vel-track"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Key Track",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:383",
+   "sources": [
+    "src/engine/TrackFXSlot.h:383"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "boolean"
+  },
+  {
+   "category": "psy-fm",
+   "default": 0.0,
+   "index": 37,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Env Amount",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/TrackFXSlot.h:384",
+   "sources": [
+    "src/engine/TrackFXSlot.h:384"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
   }
  ],
  "schema": "hdaw.device.param.map.v1",

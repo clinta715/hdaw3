@@ -310,7 +310,7 @@ public:
             };
         if (type == "psyarp")
             return {
-                { 0, "Osc Shape",          0.0f,   0.0f,    2.0f },  // 0=Saw, 1=Square, 2=SuperSaw
+                { 0, "Osc Shape",          0.0f,   0.0f,    4.0f },  // 0=Saw, 1=Square, 2=SuperSaw, 3=Pulse, 4=Noise
                 { 1, "Unison Voices",      2.0f,   1.0f,    4.0f },
                 { 2, "Unison Detune",      8.0f,   0.0f,   50.0f },
                 { 3, "Pattern Shape",      1.0f,   0.0f,    2.0f },  // 0=UpDown, 1=Asym332, 2=Random
@@ -331,6 +331,9 @@ public:
                 {18, "Phaser Depth",       0.3f,   0.0f,   1.0f },
                 {19, "Output Level",       0.4f,   0.0f,   1.0f },
                 {20, "Step Rate",          0.0f,   0.0f,   2.0f },  // 0=1/16, 1=1/8, 2=1/4
+                {21, "Filter Type",        0.0f,   0.0f,   2.0f },  // 0=LP, 1=HP, 2=BP
+                {22, "Pulse Width",        0.5f,   0.05f,  0.95f },
+                {23, "Noise Level",        0.0f,   0.0f,   1.0f },
             };
         if (type == "psy_fm")
             return {
@@ -366,7 +369,19 @@ public:
                 {29, "OP6 Sustain",     0.7f,   0.0f,   1.0f },
                 {30, "OP6 Release",     0.2f,   0.001f, 5.0f },
                 {31, "Output Level",    0.4f,   0.0f,   1.0f },
-                {32, "Algorithm Preset",0.0f,   0.0f,   3.0f },
+                // 0..5: growlBass, acidLead, metallicPluck, riser (unchanged)
+                // + pad, bell (slice D, 2026-10-06 — appended, so the max only
+                // widens; 0..3 keep selecting the same algorithms/renders).
+                {32, "Algorithm Preset",0.0f,   0.0f,   5.0f },
+                // Post-carrier per-voice filter (slice B, 2026-10-05) — APPEND
+                // ONLY; 0..32 above stay frozen. At these defaults the filter
+                // is BYPASSED (a 20 kHz LP is not transparent), so an existing
+                // project renders bit-identically.
+                {33, "Filter Cutoff",  20000.0f,   20.0f, 20000.0f },
+                {34, "Filter Resonance",  0.7f,    0.1f,    10.0f },
+                {35, "Filter Type",       0.0f,    0.0f,     2.0f },  // 0=LP, 1=HP, 2=BP
+                {36, "Filter Key Track",  0.0f,    0.0f,     1.0f },
+                {37, "Filter Env Amount", 0.0f,    0.0f,     1.0f },
             };
         if (type == "sub_synth")
             return {
@@ -1146,6 +1161,9 @@ public:
                 if (internalParamValues.size() > 18) psyArp->setPhaserDepth(internalParamValues[18]);
                 if (internalParamValues.size() > 19) psyArp->setOutputLevel(internalParamValues[19]);
                 if (internalParamValues.size() > 20) psyArp->setStepRateIndex(static_cast<int>(internalParamValues[20]));
+                if (internalParamValues.size() > 21) psyArp->setFilterMode(static_cast<int>(internalParamValues[21]));
+                if (internalParamValues.size() > 22) psyArp->setPulseWidth(internalParamValues[22]);
+                if (internalParamValues.size() > 23) psyArp->setNoiseLevel(internalParamValues[23]);
                 break;
             }
             case ActiveType::PsyFm:
@@ -1184,12 +1202,24 @@ public:
                         case 1: psyFm->setAlgorithm(acidLeadAlgorithm); break;
                         case 2: psyFm->setAlgorithm(metallicPluckAlgorithm); break;
                         case 3: psyFm->setAlgorithm(riserAlgorithm); break;
+                        case 4: psyFm->setAlgorithm(padAlgorithm); break;
+                        case 5: psyFm->setAlgorithm(bellAlgorithm); break;
                         default: psyFm->setAlgorithm(growlBassAlgorithm); break;
                     }
                 }
                 else
                 {
                     psyFm->setAlgorithm(growlBassAlgorithm);
+                }
+                // Post-carrier filter (params 33..37) — pushed AFTER the
+                // engine's own prepare() (which seeds the filters from these
+                // same atomics), so a param written before prepare shapes the
+                // first block.
+                for (int i = 0; i < PsyFmEngine::kNumFilterParams; ++i)
+                {
+                    const size_t pi = static_cast<size_t>(33 + i);
+                    if (internalParamValues.size() > pi)
+                        psyFm->setFilterParam(i, internalParamValues[pi]);
                 }
                 break;
             }
@@ -2289,6 +2319,9 @@ private:
                     case 18: psyArp->setPhaserDepth(value); break;
                     case 19: psyArp->setOutputLevel(value); break;
                     case 20: psyArp->setStepRateIndex(static_cast<int>(value)); break;
+                    case 21: psyArp->setFilterMode(static_cast<int>(value)); break;
+                    case 22: psyArp->setPulseWidth(value); break;
+                    case 23: psyArp->setNoiseLevel(value); break;
                     default: return;
                 }
                 break;
@@ -2358,10 +2391,15 @@ private:
                             case 1: psyFm->setAlgorithm(acidLeadAlgorithm); break;
                             case 2: psyFm->setAlgorithm(metallicPluckAlgorithm); break;
                             case 3: psyFm->setAlgorithm(riserAlgorithm); break;
+                            case 4: psyFm->setAlgorithm(padAlgorithm); break;
+                            case 5: psyFm->setAlgorithm(bellAlgorithm); break;
                             default: psyFm->setAlgorithm(growlBassAlgorithm); break;
                         }
                         break;
                     }
+                    case 33: case 34: case 35: case 36: case 37:
+                        psyFm->setFilterParam(paramIndex - 33, value);
+                        break;
                     default: return;
                 }
                 break;

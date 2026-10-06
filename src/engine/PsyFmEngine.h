@@ -5,6 +5,7 @@
 #include <array>
 #include "PsyFmOperator.h"
 #include "PsyFmModMatrix.h"
+#include "InternalFilter.h"
 
 namespace HDAW {
 
@@ -38,6 +39,33 @@ public:
     void setBaseFeedback (float fb);
     void setOpEnvelope (int opIndex, const juce::ADSR::Parameters& p);
     void setOutputLevel (float v) noexcept;
+
+    // ── Post-carrier filter (slice B, docs/plans/2026-10-05-internal-synth-expansion.md) ──
+    // A per-voice multimode TPT SVF (HDAW::InternalFilter) on each voice's
+    // carrier output, before the voice-sum. Engine-local indices for the
+    // appended TrackFXSlot params 33..37 (TrackFXSlot maps param_N -> N-33).
+    // Ranges/defaults mirror the slot def table; every entry is CLAMPED there
+    // (lesson 23), so a hand-edited project cannot push a coefficient out of
+    // the numerically safe range. At the defaults (cutoff 20000, key-track 0,
+    // env-amount 0) the filter is BYPASSED — a 20 kHz LP is not transparent,
+    // so back-compat rides on an explicit skip, not on the filter math.
+    enum FilterParamIndex
+    {
+        FilterCutoff = 0,   // 20..20000 Hz, def 20000 (neutral)
+        FilterResonance,    // 0.1..10,      def 0.7
+        FilterType,         // 0=LP, 1=HP, 2=BP, def 0 (int enum, rounded)
+        FilterKeyTrack,     // 0..1,         def 0
+        FilterEnvAmount,    // 0..1,         def 0
+        kNumFilterParams
+    };
+
+    /// Audio-thread safe (plain atomic stores); clamped to the def range.
+    void setFilterParam (int index, float value) noexcept;
+    float getFilterParam (int index) const noexcept;
+
+    /// True when a new filter param deviates from its neutral default and the
+    /// per-voice filter is therefore processed (the back-compat bypass).
+    bool isFilterEngaged() const noexcept;
 
     // ── Modulation matrix ──
     /// Thread-safe: may be called from the message/command thread while the
@@ -111,6 +139,17 @@ private:
 
     std::vector<std::vector<float>> scratchBuffers_;
     std::vector<float> carrierMixBuffer_;
+
+    // Per-voice post-carrier filter (one instance per voice, prepared once in
+    // prepare(); processSample() is allocation-free). The atomics are written
+    // by the command/message thread and read by the audio thread — the benign
+    // tear class InternalFilter documents.
+    HDAW::InternalFilter voiceFilters_[kMaxVoices];
+    std::atomic<float> filterCutoff_{ 20000.0f };
+    std::atomic<float> filterResonance_{ 0.7f };
+    std::atomic<int>   filterType_{ 0 };
+    std::atomic<float> filterKeyTrack_{ 0.0f };
+    std::atomic<float> filterEnvAmount_{ 0.0f };
 
     std::atomic<float> outputLevelAtom_{ 0.4f };
     std::atomic<float> opEgLevel_[kNumOperators]{};

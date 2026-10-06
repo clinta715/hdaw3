@@ -40,7 +40,9 @@ s.registerTool({"psy_fm_load_preset",
         QString::fromStdString(std::string("Load a psytrance FM preset routing (")
             + HDAW::PsyFmState::presetNameList()
             + ") into a psy_fm FX slot. "
-              "Sets algorithm, modulation matrix, and default ratios/feedback/envelopes. ")
+              "Sets algorithm, modulation matrix, default ratios/feedback/envelopes, "
+              "and the post-carrier filter (params 33..37: Cutoff, Resonance, Type, "
+              "Key Track, Env Amount) — the preset IS the whole sound. ")
             + mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({
             {"trackId",  QJsonObject{{"type","integer"}}},

@@ -20,6 +20,21 @@ void PsyFmEngine::prepare (double sampleRate, int maxBlockSize)
         buf.resize (static_cast<size_t> (maxBlockSize), 0.0f);
     carrierMixBuffer_.resize (static_cast<size_t> (maxBlockSize), 0.0f);
 
+    // Per-voice post-carrier filters (slice B): prepared once here, so the
+    // render path only ever calls the allocation-free processSample(). The
+    // current atomics are pushed in so a param written BEFORE prepare()
+    // (the slot's prepare ordering) already shapes the first block.
+    for (auto& f : voiceFilters_)
+    {
+        f.prepare (sampleRate);
+        f.setParam (HDAW::InternalFilter::Cutoff,
+                    filterCutoff_.load (std::memory_order_relaxed));
+        f.setParam (HDAW::InternalFilter::Resonance,
+                    filterResonance_.load (std::memory_order_relaxed));
+        f.setParam (HDAW::InternalFilter::ModeParam,
+                    static_cast<float> (filterType_.load (std::memory_order_relaxed)));
+    }
+
     // Default matrix route: the feedback LFO undulates Op6 feedback, so a
     // psy_fm slot has audible feedback movement even when no explicit route
     // was configured. THIS route is what moves the feedback — the retired
@@ -61,6 +76,67 @@ void PsyFmEngine::setOpEnvelope (int opIndex, const juce::ADSR::Parameters& p)
 void PsyFmEngine::setOutputLevel (float v) noexcept
 {
     outputLevelAtom_.store (v, std::memory_order_relaxed);
+}
+
+// ── Post-carrier filter (slice B) ──
+
+void PsyFmEngine::setFilterParam (int index, float value) noexcept
+{
+    // Lesson 23: clamp at EVERY entry. A NaN would bypass jlimit's comparison
+    // chain entirely (both comparisons are false for NaN), so reject it here
+    // and keep the previous value rather than poisoning a coefficient.
+    if (! std::isfinite (value))
+        return;
+
+    switch (index)
+    {
+        case FilterCutoff:
+            filterCutoff_.store (juce::jlimit (20.0f, 20000.0f, value),
+                                 std::memory_order_relaxed);
+            break;
+        case FilterResonance:
+            filterResonance_.store (juce::jlimit (0.1f, 10.0f, value),
+                                    std::memory_order_relaxed);
+            break;
+        case FilterType:
+            // Int enum: ROUND (a fractional automation value must report what
+            // the DSP runs), the TrackFXSlot/InternalFilter contract.
+            filterType_.store (juce::jlimit (0, 2, juce::roundToInt (value)),
+                               std::memory_order_relaxed);
+            break;
+        case FilterKeyTrack:
+            filterKeyTrack_.store (juce::jlimit (0.0f, 1.0f, value),
+                                   std::memory_order_relaxed);
+            break;
+        case FilterEnvAmount:
+            filterEnvAmount_.store (juce::jlimit (0.0f, 1.0f, value),
+                                    std::memory_order_relaxed);
+            break;
+        default:
+            break;
+    }
+}
+
+float PsyFmEngine::getFilterParam (int index) const noexcept
+{
+    switch (index)
+    {
+        case FilterCutoff:    return filterCutoff_.load (std::memory_order_relaxed);
+        case FilterResonance: return filterResonance_.load (std::memory_order_relaxed);
+        case FilterType:      return static_cast<float> (filterType_.load (std::memory_order_relaxed));
+        case FilterKeyTrack:  return filterKeyTrack_.load (std::memory_order_relaxed);
+        case FilterEnvAmount: return filterEnvAmount_.load (std::memory_order_relaxed);
+        default:              return 0.0f;
+    }
+}
+
+bool PsyFmEngine::isFilterEngaged() const noexcept
+{
+    // The back-compat bypass: a 20 kHz LP is NOT transparent, so the default
+    // patch must SKIP the filter entirely rather than run a "neutral" one.
+    return filterCutoff_.load (std::memory_order_relaxed) < 19999.0f
+        || filterKeyTrack_.load (std::memory_order_relaxed) != 0.0f
+        || filterEnvAmount_.load (std::memory_order_relaxed) != 0.0f;
 }
 
 // ── Modulation matrix ──
@@ -189,6 +265,11 @@ void PsyFmEngine::noteOn (int channel, int pitch, int velocity)
     v->keydown = true;
     v->live = true;
 
+    // Clear the recycled voice's filter integrator state so the previous
+    // note's tail cannot ring into this one (a no-op at the neutral default,
+    // where the filter is bypassed and never written).
+    voiceFilters_[static_cast<size_t> (v - voices_)].reset();
+
     float freqHz = static_cast<float> (juce::MidiMessage::getMidiNoteInHertz (pitch));
     for (auto& op : v->operators)
     {
@@ -282,8 +363,19 @@ void PsyFmEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
     for (auto& v : voices_)
         if (v.live && v.keydown) ++heldCount;
 
-    for (auto& v : voices_)
+    // Post-carrier filter params (slice B), read ONCE per block from the
+    // atomics. filterEngaged is the back-compat bypass: at the neutral
+    // defaults no voice's filter is touched at all.
+    const bool  filterEngaged = isFilterEngaged();
+    const float filtBaseCutoff = filterCutoff_.load (std::memory_order_relaxed);
+    const float filtResonance  = filterResonance_.load (std::memory_order_relaxed);
+    const int   filtMode       = filterType_.load (std::memory_order_relaxed);
+    const float filtKeyTrack   = filterKeyTrack_.load (std::memory_order_relaxed);
+    const float filtEnvAmount  = filterEnvAmount_.load (std::memory_order_relaxed);
+
+    for (int vi = 0; vi < kMaxVoices; ++vi)
     {
+        auto& v = voices_[vi];
         if (! v.live)
             continue;
 
@@ -324,6 +416,38 @@ void PsyFmEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
             v.live = false;
             v.keydown = false;
             continue;
+        }
+
+        // Post-carrier filter (slice B) — per voice, on the carrier output,
+        // BEFORE the voice is summed into the buffer. Bypassed entirely at the
+        // neutral defaults (back-compat hard gate). Effective cutoff:
+        //   eff = base * 2^((midiNote-60)/12)                  [key-track]
+        //   eff += envAmount * (20000 - eff) * carrierEnvLevel [env amount]
+        // clamped to the def range; the amplitude envelope is the CARRIER's
+        // existing ADSR level (no new envelope — the plan's contract).
+        if (filterEngaged)
+        {
+            float eff = filtBaseCutoff;
+            if (filtKeyTrack != 0.0f)
+            {
+                const float semis = static_cast<float> (v.midiNote - 60);
+                eff *= std::pow (2.0f, filtKeyTrack * semis / 12.0f);
+            }
+            if (filtEnvAmount != 0.0f)
+            {
+                const float eg = juce::jlimit (0.0f, 1.0f, v.operators[0].getCurrentEnvValue());
+                eff += filtEnvAmount * (20000.0f - eff) * eg;
+            }
+            eff = juce::jlimit (20.0f, 20000.0f, eff);
+
+            auto& vf = voiceFilters_[vi];
+            vf.setParam (HDAW::InternalFilter::Cutoff, eff);
+            vf.setParam (HDAW::InternalFilter::Resonance, filtResonance);
+            vf.setParam (HDAW::InternalFilter::ModeParam, static_cast<float> (filtMode));
+
+            float* mix = carrierMixBuffer_.data();
+            for (int i = 0; i < numSamples; ++i)
+                mix[i] = vf.processSample (0, mix[i]);
         }
 
         // Accumulate into output buffer
