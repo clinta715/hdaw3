@@ -64,10 +64,109 @@ static const MidiFxParamDef strumParams[] = {
     {1, "strumDirection", 0.0f,  0.0f, 2.0f},
 };
 
+// acid_step: 12 globals (0..11) then step{N}Note/Accent/Slide/Rest at
+// 12 + (N-1)*4 + {0,1,2,3}. 76 params; every index <= 99 (pid = 1000 + slot*100 + idx).
+#define HDAW_ACID_STEP_DEFS(N, I) \
+    {(I),     "step" #N "Note",   0.0f, -24.0f, 24.0f}, \
+    {(I) + 1, "step" #N "Accent", 0.0f,   0.0f,  1.0f}, \
+    {(I) + 2, "step" #N "Slide",  0.0f,   0.0f,  1.0f}, \
+    {(I) + 3, "step" #N "Rest",   0.0f,   0.0f,  1.0f}
+
+static const MidiFxParamDef acidStepParams[] = {
+    {0,  "rate",           0.25f, 0.01f,   2.0f},
+    {1,  "steps",          16.0f, 1.0f,   16.0f},
+    {2,  "octave",         0.0f, -2.0f,    2.0f},
+    {3,  "gate",           0.5f,  0.05f,   1.0f},
+    {4,  "velocity",       96.0f, 1.0f,  127.0f},
+    {5,  "accentVelocity", 118.0f, 1.0f, 127.0f},
+    {6,  "accentAmount",   110.0f, 0.0f, 127.0f},
+    {7,  "swing",          0.0f,  0.0f,    0.6f},
+    {8,  "slideMode",      0.0f,  0.0f,    1.0f},
+    {9,  "direction",      0.0f,  0.0f,    2.0f},
+    {10, "latch",          0.0f,  0.0f,    1.0f},
+    {11, "baseNote",       36.0f, 0.0f,  127.0f},
+    HDAW_ACID_STEP_DEFS(1, 12),  HDAW_ACID_STEP_DEFS(2, 16),
+    HDAW_ACID_STEP_DEFS(3, 20),  HDAW_ACID_STEP_DEFS(4, 24),
+    HDAW_ACID_STEP_DEFS(5, 28),  HDAW_ACID_STEP_DEFS(6, 32),
+    HDAW_ACID_STEP_DEFS(7, 36),  HDAW_ACID_STEP_DEFS(8, 40),
+    HDAW_ACID_STEP_DEFS(9, 44),  HDAW_ACID_STEP_DEFS(10, 48),
+    HDAW_ACID_STEP_DEFS(11, 52), HDAW_ACID_STEP_DEFS(12, 56),
+    HDAW_ACID_STEP_DEFS(13, 60), HDAW_ACID_STEP_DEFS(14, 64),
+    HDAW_ACID_STEP_DEFS(15, 68), HDAW_ACID_STEP_DEFS(16, 72),
+};
+#undef HDAW_ACID_STEP_DEFS
+static_assert(sizeof(acidStepParams) / sizeof(acidStepParams[0]) == AcidStep::kNumParams,
+              "acid_step param table must have exactly 76 entries");
+static_assert(AcidStep::kNumParams <= 100, "MIDI-FX pid space is 1000 + slot*100 + index (index <= 99)");
+
+// Legacy tree-key aliases: def name -> the property id pre-2026-10-04 projects
+// (and addMidiFxSlot before this change) stored. Read-only compatibility; see the
+// contract note in MidiFx.h.
+struct MidiFxLegacyKey { const char* defName; const char* treeId; };
+
+static std::span<const MidiFxLegacyKey> legacyKeysForType(const juce::String& type)
+{
+    static const MidiFxLegacyKey arp[] = { { "rate", "arpRate" }, { "pattern", "arpPattern" },
+                                           { "octaves", "arpOctaves" }, { "gate", "arpGate" } };
+    static const MidiFxLegacyKey vel[] = { { "factor", "velFactor" } };
+    static const MidiFxLegacyKey scale[] = { { "root", "scaleRoot" } };
+    static const MidiFxLegacyKey len[] = { { "factor", "lengthFactor" } };
+    static const MidiFxLegacyKey kf[] = { { "root", "keyFilterRoot" }, { "scaleType", "keyFilterScale" } };
+    static const MidiFxLegacyKey delay[] = { { "feedback", "delayFeedback" }, { "mix", "delayMix" } };
+    if (type == "arpeggiator") return { arp, (size_t) juce::numElementsInArray(arp) };
+    if (type == "velocity")    return { vel, (size_t) juce::numElementsInArray(vel) };
+    if (type == "scale")       return { scale, (size_t) juce::numElementsInArray(scale) };
+    if (type == "notelength")  return { len, (size_t) juce::numElementsInArray(len) };
+    if (type == "keyfilter")   return { kf, (size_t) juce::numElementsInArray(kf) };
+    if (type == "mididelay")   return { delay, (size_t) juce::numElementsInArray(delay) };
+    return {};
+}
+
 template <size_t N>
 static std::span<const MidiFxParamDef> spanFromArray(const MidiFxParamDef (&arr)[N])
 {
     return {arr, N};
+}
+
+juce::Identifier midiFxTreeKeyForParam(const juce::String& type, const juce::String& paramName)
+{
+    const auto defs = getMidiFxParamDefs(type);
+    bool known = false;
+    for (const auto& d : defs)
+        if (paramName == d.name) { known = true; break; }
+    if (!known)
+        return {};
+
+    for (const auto& legacy : legacyKeysForType(type))
+        if (paramName == legacy.defName)
+            return juce::Identifier(legacy.treeId);
+
+    return juce::Identifier(paramName);
+}
+
+bool isKnownMidiFxType(const juce::String& type)
+{
+    if (type == "multinote") return true; // known, but publishes no numeric params
+    return !getMidiFxParamDefs(type).empty();
+}
+
+juce::String midiFxParamNameList(const juce::String& type)
+{
+    // Built directly into a String: no intermediate StringArray. (This path is a
+    // REFUSAL message - it must never be the thing that faults, and an ASan run
+    // pointed at the local StringArray's construction here.)
+    juce::String out;
+    for (const auto& d : getMidiFxParamDefs(type))
+        out += (out.isEmpty() ? juce::String() : juce::String(", ")) + juce::String(d.name);
+    return out.isEmpty() ? juce::String("(none)") : out;
+}
+
+juce::String midiFxTypeList()
+{
+    // Keep in step with getMidiFxParamDefs + the multinote special case; this is
+    // what addMidiFxSlot names when it refuses an unknown type.
+    return "arpeggiator, velocity, chord, scale, notelength, transpose, keyfilter, "
+           "multinote, velocitycurve, notechance, mididelay, humanize, strum, acid_step";
 }
 
 std::span<const MidiFxParamDef> getMidiFxParamDefs(const juce::String& type)
@@ -85,6 +184,7 @@ std::span<const MidiFxParamDef> getMidiFxParamDefs(const juce::String& type)
     if (type == "mididelay")      return spanFromArray(midiDelayParams);
     if (type == "humanize")       return spanFromArray(humanizeParams);
     if (type == "strum")          return spanFromArray(strumParams);
+    if (type == "acid_step")      return spanFromArray(acidStepParams);
     return {};
 }
 
@@ -231,6 +331,11 @@ void MidiFxSlot::applyToEffect(int paramIndex, float value)
         }
         return;
     }
+    if (auto* acid = dynamic_cast<AcidStep*>(effect_.get()))
+    {
+        acid->setParam(paramIndex, value);
+        return;
+    }
     if (auto* s = dynamic_cast<Strum*>(effect_.get()))
     {
         switch (paramIndex) {
@@ -246,8 +351,16 @@ void MidiFxSlot::loadParamsFromTree(const juce::ValueTree& slotTree)
     auto defs = getMidiFxParamDefs(slotType_);
     for (int i = 0; i < numParams_ && i < static_cast<int>(defs.size()); ++i)
     {
+        // Read through the shared name->key map: the six legacy types store
+        // prefixed ids (arpRate, velFactor, ...), so reading the bare def name
+        // returned the default and the loaded value never reached the cache.
+        // The bare def name is still accepted as a FALLBACK: the pre-2026-10-04
+        // set_midi_fx_param wrote that key (it just never reached the effect), so
+        // old projects may carry it and it costs one extra lookup to honour.
+        const juce::Identifier mappedKey = midiFxTreeKeyForParam(slotType_, defs[i].name);
         float val = static_cast<float>(
-            slotTree.getProperty(juce::Identifier(defs[i].name), defs[i].defaultValue));
+            slotTree.getProperty(mappedKey,
+                slotTree.getProperty(juce::Identifier(defs[i].name), defs[i].defaultValue)));
         float normalized = (defs[i].maxValue != defs[i].minValue)
             ? (val - defs[i].minValue) / (defs[i].maxValue - defs[i].minValue)
             : 0.0f;

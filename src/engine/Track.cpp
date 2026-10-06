@@ -326,6 +326,10 @@ void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
             arp->pattern = static_cast<int>(slotTree.getProperty(IDs::arpPattern, 0));
             arp->octaves = static_cast<int>(slotTree.getProperty(IDs::arpOctaves, 1));
             arp->gate = static_cast<double>(slotTree.getProperty(IDs::arpGate, 0.5));
+            // Def-name key (this one has no legacy alias): a set_midi_fx_param("velocity")
+            // write used to be ignored here, so it silently reverted on save/load.
+            arp->velocity = static_cast<int>(slotTree.getProperty(
+                midiFxTreeKeyForParam("arpeggiator", "velocity"), 100));
             effect = std::move(arp);
         }
         else if (type == "velocity")
@@ -414,6 +418,16 @@ void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
             st->strumTime = static_cast<double>(slotTree.getProperty(IDs::strumTime, 0.02));
             st->strumDirection = static_cast<int>(slotTree.getProperty(IDs::strumDirection, 0));
             effect = std::move(st);
+        }
+        else if (type == "acid_step")
+        {
+            // Param-def names are the ONE naming convention for this type (the same
+            // strings loadParamsFromTree / addMidiFxSlot / applyToEffect use).
+            auto acid = std::make_unique<AcidStep>();
+            for (const auto& def : getMidiFxParamDefs(type))
+                acid->setParam(def.index, static_cast<float>(
+                    slotTree.getProperty(juce::Identifier(def.name), def.defaultValue)));
+            effect = std::move(acid);
         }
         if (effect)
         {

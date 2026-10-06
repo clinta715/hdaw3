@@ -33,7 +33,8 @@ void registerMidiFxTools(McpServer& s, AudioEngine* e)
                    {"fxType", QJsonObject{{"type","string"},
                        {"enum", QJsonArray{"arpeggiator","velocity","chord","scale","notelength",
                                            "transpose","keyfilter","multinote","velocitycurve",
-                                           "notechance","mididelay","humanize","strum"}}}},
+                                           "notechance","mididelay","humanize","strum",
+                                           "acid_step"}}}},
                    {"position", QJsonObject{{"type","integer"}}}}, {"fxType"}),
         "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
@@ -45,7 +46,8 @@ void registerMidiFxTools(McpServer& s, AudioEngine* e)
                 return McpToolResult::text("track not found", true);
             std::string type = a.value("fxType").toString().toStdString();
             int pos = a.value("position").toInt(-1);
-            e->getProjectCommands().addMidiFxSlot(ti, type, pos);
+            const auto r = e->getProjectCommands().addMidiFxSlot(ti, type, pos);
+            if (!r.ok) return McpToolResult::text(QString::fromStdString(r.error), true);
             return McpToolResult::text("ok");
         }});
 
@@ -99,7 +101,8 @@ void registerMidiFxTools(McpServer& s, AudioEngine* e)
             int si = a.value("slotIndex").toInt();
             std::string pn = a.value("paramName").toString().toStdString();
             double v = a.value("value").toDouble();
-            e->getProjectCommands().setMidiFxSlotParam(ti, si, pn, v);
+            const auto r = e->getProjectCommands().setMidiFxSlotParam(ti, si, pn, v);
+            if (!r.ok) return McpToolResult::text(QString::fromStdString(r.error), true);
             return McpToolResult::text("ok");
         }});
 
