@@ -34,7 +34,8 @@ harness host, not by you.
 NEVER list or launch stdio hdaw servers — that kills the shared engine (the
 harness-owned entry above does not lift this rule for agents). The stdio client
 `scripts/mcp_call.py` is NOT an alternative for a role: each invocation spawns
-its OWN fresh `HDAW_headless.exe`, which is exactly the case this rule forbids.
+its OWN fresh engine binary (`HDAW_headless.exe` on Windows /
+`HDAW_headless` on Linux), which is exactly the case this rule forbids.
 NEVER call load_project / save_project unless the role playbook allows it.
 
 ## Pre-flight pair — run BOTH before your first real call

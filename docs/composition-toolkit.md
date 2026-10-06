@@ -123,12 +123,31 @@ documented a capability gap; it is now closed). `add_bus {busType:"fx"|"group", 
 fxType, busTarget}` creates a bus and returns its `busID`; `add_send {trackId, busTarget,
 level, isPreFader}` routes a track into it; `remove_bus` / `remove_send` tear down, and
 `remove_bus` cascades (every send targeting it goes in the same undo unit — one `undo`
-restores bus + sends). `fxType` must be one of `FxBusProcessor`'s five —
+restores bus + sends). **Batch creators (2026-10-05):** `add_buses {buses:[{busType, name?,
+fxType?, busTarget?}]}` and `add_sends {sends:[{trackId|trackID, busTarget, level?,
+isPreFader?}]}` create MANY in ONE undo unit + one round trip, PARTIAL-APPLY (a bad item is
+reported in `errors` numbered by its original index and the others still land;
+`busIDs`/`sendIndexes` carry -1 for a failed slot) — RPC twins `project.addBuses` /
+`project.addSends`. `fxType` must be one of `FxBusProcessor`'s five —
 `reverb`, `delay`, `eq`, `compressor`, **`filter`**; anything else is rejected by name (an
 unknown type would build a silent passthrough). `filter` is the state-variable filter a track's
 internal filter slot runs (`src/engine/InternalFilter.h`), with `Cutoff` / `Mode` (0=LP, 1=HP,
 2=BP) / `Resonance` — and it is what makes a return **high-passable**, which the peak-only `eq`
 cannot express.
+
+**Batch PARAMETER writers (2026-10-05).** The same one-call shape now covers
+parameter writes: `set_fx_params {mode?: "real"|"normalized", writes:[{trackId|trackID,
+slotIndex, paramIndex|paramName|intent, value, mode?}]}` (a per-write `mode` overrides
+the top-level one), `set_bus_fx_params {writes:[{busID, paramIndex, value}]}`, and
+`set_lfo_params {writes:[{trackId|trackID, lfoIndex, paramName, value}]}` — RPC twins
+`project.setFxParams` / `project.setBusFxParams` / `project.setLfoParams`. All three are
+**partial-apply** (every good write lands; each failure is reported in `errors` numbered by
+its original index, so one bad `paramName` never drops the rest) and each wraps its OWN
+transaction, so it is **ONE undo unit on EVERY transport** — unlike `begin_batch`, which is
+stdio-only. ONE call replaces N single writes: measured 2026-10-05 (`mangrove_dub`), a
+10-track voicing pass went **153 `set_internal_fx_param` calls → 10 `set_fx_params`**.
+Parse/refusal bytes are shared (`src/common/FxParamBatchJson.h`), so both surfaces agree
+by construction; full plan `docs/plans/2026-10-05-param-batch-and-bugfixes.md`.
 
 **High-passing a return = routing it through a filter bus.** Two ways: **create the filter bus
 first** (`add_bus {fxType:"filter", busTarget:0}`) then the child with `busTarget = <filter bus>`,
@@ -364,7 +383,7 @@ validator and the resolver cannot drift. Pinned by `WindowUnitParityTest.*` /
 `WindowUnitResolver.*`.
 
 **Probing the surface: the PowerShell `ConvertFrom-Json` trap (measured 2026-09-28).** The
-engine's `tools/list` body carries keys that differ only in CASE: **68 of the 319 tools
+engine's `tools/list` body carries keys that differ only in CASE: **68 of the 325 tools
 declare BOTH `trackID` and `trackId` in one `inputSchema.properties` object** (`set_track`,
 `trigger_sampler_slice`, `get_fx_capture_status`, …), and Windows PowerShell's
 `ConvertFrom-Json` fails on the WHOLE document:
@@ -375,7 +394,7 @@ the -AsHashTable switch instead. The key that was attempted to be added to the e
 'trackID' was 'trackId'.
 ```
 
-Parse with `-AsHashtable` (PowerShell 7; engine v0.39.2 answers 319 tools), or skip parsing
+Parse with `-AsHashtable` (PowerShell 7; engine v0.39.4 answers 325 tools), or skip parsing
 the raw body and drive the running engine through the helper:
 
 ```powershell

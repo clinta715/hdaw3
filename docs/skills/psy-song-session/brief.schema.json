@@ -33,7 +33,7 @@
       "patternId": {"type":"string"}, "role": {"type":"string"}, "bpm": {"type":"number"},
       "key": {"type":"string"}, "bars": {"type":"integer"}, "source": {"type":"string"} } } },
     "targets": { "type": "object", "properties": {
-      "masterRms": { "type": "number", "description": "target linear RMS of the MONO-DOWNMIX ((L+R)/2) master - exactly what mix_report's rms measures; checked within +/-5% by mix_verdict's targets gate, e.g. 0.16" },
+      "masterRms": { "type": "number", "description": "target RMS of the MONO-DOWNMIX (L+R)/2 master - LINEAR amplitude, the SAME value mix_report reports as rms (and the same convention mix_verdict/verify_window's targets gate name); checked within +/-5%. NOT a dB figure. e.g. 0.16. Loudness note: mix_report's peak is also mono-downmix, so a typical psy mix with a ~1.15 peak-to-RMS ratio reaches 0.09 RMS only at peaks ~= 0.104 (the mangrove_dub -12.8 dB master), i.e. a 0.09 target needs roughly unity-or-below peaks, not headroom-to-1.0" },
       "ceilingHitPctMax": { "type": "number", "description": "max % of frames with ANY channel |sample| >= 0.999 (per-channel FS-clamp probe - the mono peak/rms cannot see one-sided clamps), e.g. 5.0" },
       "kickProminenceMin": { "type": "number" },
       "targetDurationSeconds": { "type": "number", "description": "expected render length in seconds incl. tail (checked within +/-2 s)" } } },

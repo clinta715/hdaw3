@@ -62,13 +62,16 @@ durability; call this FIRST to pick a target), `list_fx_chains`, `load_fx_chain`
 `set_fx_sidechain` (ROUTED kick→bass ducking on a compressor slot),
 `save_fx_chain` (persist a tuned variant),
 `apply_movement_plan` (batch section-aware movement across tracks in ONE undo unit),
-`set_internal_fx_param`, `list_fx_params`, `capture_fx_snapshot`,
+`set_internal_fx_param`, `set_fx_params` (BATCH param writes), `list_fx_params`,
+`capture_fx_snapshot`,
 `swap_fx_snapshot`, `add_automation_lane`, `set_automation_points`,
 `automation_preset`, `set_automation_enabled`, `list_automation_lanes`,
 `remove_automation_lane`, `psy_fm_set_mod_route`, `psy_fm_get_analysis`,
 `apply_sub_synth_mod_preset`,
 `add_bus`, `add_send`, `remove_bus`, `remove_send`, `list_buses`,
-`list_bus_fx_params`, `set_bus_fx_param`, `set_bus_target`,
+`list_bus_fx_params`, `set_bus_fx_param`, `set_bus_fx_params` (BATCH),
+`set_lfo_params` (BATCH LFO writes: waveform/rate/depth/targetParamID/…),
+`add_lfo`, `set_lfo_param`, `set_bus_target`,
 `set_track_send_level`, `set_track_send_mode`, `set_track_send_bypassed`,
 `get_track_sends`,
 `set_fader_authoritative`, `verify_part`, `verify_window` (render the WHOLE
@@ -76,6 +79,10 @@ project, gate ONE beat window's promoted stats), `query_notes` / `query_clips`
 (read back what is actually in the window you automated), `tool_help`, `whoami`,
 `list_tracks`, `list_clips`,
 `get_project_summary`
+
+**For a multi-param voicing/movement pass use the BATCH forms** —
+`set_fx_params` / `set_lfo_params` / `set_bus_fx_params` — ONE call, ONE undo unit,
+partial-apply (per-write `errors`); do NOT loop the single-write tools.
 
 FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
 `generate_arrangement*`, `add_instrument_part`, ...), `export_audio`/`mix_report`/

@@ -283,7 +283,7 @@ Evidence: `src/common/WindowUnitArgs.h`; `docs/testing-mcp.md` § "Time windows"
 
 ### Archaeology, batch edits, discovery (2026-09-28)
 Ten tools landed in the mechanization release; all exist in the live
-`tools/list` (317 tools, engine v0.39.2).
+`tools/list` (325 tools, engine v0.39.4).
 
 | Tool | Contract |
 | --- | --- |
@@ -294,8 +294,17 @@ Ten tools landed in the mechanization release; all exist in the live
 | `set_notes_gain {noteIds:[…], gain}` | per-note gain on many ids, ONE undo unit |
 | `set_clips_edit {edits:[…]}` | per-clip PARTIAL edits (`clipId, start?, duration?, gain?, fadeIn?, fadeOut?, name?, looping?`), ONE undo unit |
 | `begin_batch {name}` / `end_batch {verify?}` | one named undo unit; STDIO transport only, one at a time |
+| `set_fx_params {mode?, writes:[{trackId\|trackID, slotIndex, paramIndex\|paramName\|intent, value, mode?}]}` | BATCH param writes, partial-apply, ONE undo unit on EVERY transport |
+| `set_bus_fx_params {writes:[{busID, paramIndex, value}]}` | BATCH bus-FX param writes, partial-apply, ONE undo unit on EVERY transport |
+| `set_lfo_params {writes:[{trackId\|trackID, lfoIndex, paramName, value}]}` | BATCH LFO writes, partial-apply, ONE undo unit on EVERY transport |
 | `verify_window {startBeat, endBeat, targets?\|expect?, outputPath?, timeoutMs?}` | render the WHOLE project, gate ONE window's promoted stats |
 | `render_and_verify {outputPath, fromPlan?, targets?, timeoutMs?}` | full render + a verdict byte-identical to `mix_verdict` |
+
+**Param/bus/LFO/send batches need NO `begin_batch`:** `set_fx_params` /
+`set_bus_fx_params` / `set_lfo_params` / `add_buses` / `add_sends` each wrap their
+OWN transaction, so they give ONE undo unit on **EVERY transport** — unlike
+`begin_batch`, which is stdio-only. On HTTP, use them instead of splitting a pass
+into small groups (they are partial-apply with per-write `errors`).
 
 **Validate-then-apply (both batch editors):** an EMPTY array (`noteIds must not
 be empty` / `edits must not be empty`) or ANY unknown id (`unknown noteId N` /

@@ -9,13 +9,18 @@ write notes, automation, or arrangement structure.
 
 ## Surface area
 `set_tempo`, `set_scale`, `add_track_with_fx`, `add_fx`, `remove_fx`, `set_fx_param`,
-`set_internal_fx_param`, `list_fx_params`, `list_fx_chains`, `load_fx_chain`,
+`set_internal_fx_param`, `set_fx_params` (BATCH param writes), `set_lfo_params`
+(BATCH), `list_fx_params`, `list_fx_chains`, `load_fx_chain`,
 `load_plugin_preset`, `load_plugin_preset_file`, `list_plugin_presets`,
 `search_plugin_presets`, `fm_synth_load_preset`, `fm_synth_import_sysex`,
 `sub_synth_import_sysex`, `apply_sub_synth_mod_preset`, `psy_fm_load_preset`, `sampler_set_sample`,
 `set_sampler_param`, `sampler_get_state`, `audition_plugin`, `audition_patch`,
 `search_library`, `get_library_entry`, `list_tracks`, `get_project_summary`,
 `set_track`, `list_plugins`, `scan_plugins`, `whoami`, `tool_help`
+
+**For a multi-param voicing/movement pass use the BATCH forms** —
+`set_fx_params` / `set_lfo_params` / `set_bus_fx_params` — ONE call, ONE undo unit,
+partial-apply (per-write `errors`); do NOT loop the single-write tools.
 
 FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
 `generate_arrangement*`, `add_instrument_part`, ...), automation writes, and

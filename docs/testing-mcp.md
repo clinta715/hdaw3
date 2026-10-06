@@ -512,6 +512,25 @@ the RPC route is the process's own UI client and is not transport-gated. Pinned
 by `BatchEditRpcTest.RpcBeginBatchHasNoTransportGateWhileTheToolHas` and
 `BatchEditRpcTest.BatchTwinRefusalsShareTheExactBytes`.
 
+### Param/bus/LFO batches: ONE undo unit on EVERY transport
+
+The parameter-write batches need no `begin_batch` and are NOT transport-gated —
+each wraps its own transaction, so a single `undo` reverts the whole call on
+stdio AND HTTP: `set_fx_params {mode?: "real"|"normalized", writes:[{trackId|trackID,
+slotIndex, paramIndex|paramName|intent, value, mode?}]}`,
+`set_bus_fx_params {writes:[{busID, paramIndex, value}]}`, `set_lfo_params
+{writes:[{trackId|trackID, lfoIndex, paramName, value}]}` (plus the batch creators
+`add_buses` / `add_sends`), with RPC twins `project.setFxParams` /
+`project.setBusFxParams` / `project.setLfoParams` / `project.addBuses` /
+`project.addSends`. All are **partial-apply**: every good write lands and each
+failure is reported in `errors` numbered by its original index — deliberately
+unlike the id batches above, because a config write does not reference structure.
+ONE shared strict parser/shaper (`src/common/FxParamBatchJson.h` /
+`src/common/BusSendBatchJson.h`) makes the two surfaces byte-identical. Measure
+them with `FxParamBatch.*` (9 engine tests) + `ParamBatchRpcTest.*` (18 twins) +
+`BusSendBatchRpcTest.*`; full plan
+`docs/plans/2026-10-05-param-batch-and-bugfixes.md`.
+
 ## Render → measure → compare: `verify_window` / `render_and_verify`
 
 Both tools render the WHOLE project through the export path on a tree copy and

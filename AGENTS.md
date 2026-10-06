@@ -18,7 +18,7 @@ SPA or Electron shell. Feature history: `README.md`; per-version changes: git lo
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 48 lessons, full narratives** (one-line index below) |
+| [`docs/lessons-learned.md`](docs/lessons-learned.md) | **All 51 lessons, full narratives** (one-line index below) |
 | [`docs/architecture.md`](docs/architecture.md) | Build details, key classes, GUI-engine decoupling, beats-vs-seconds |
 | [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread rules, hardening, plugin isolation, latency/quality |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | JUCE pitfalls (scan blacklisting, setProperty no-op, FX clamping, the `small`/`rpcndr.h` include-order macro collision, lesson 35) |
@@ -158,6 +158,7 @@ downloaded), wired into the DSH profile's `cordis.patch.yml`, and checked with
 48. **A CLI value round-tripped through a settings store you cannot WRITE is silently DROPPED** — `main_headless.cpp`/`main.cpp` wrote `mcp/httpPort` into `QSettings` (unwritable on this box: a `winreg` write returns WinError 5), so `--mcp-http-port 18841` still bound the persisted 18765 while the registry never changed. Pass CLI/API-supplied values to the API DIRECTLY (never round-trip them through a store you cannot prove is writable); a config query must report LIVE state for a running server (`getMcpHttpConfig`), not a persisted snapshot; and `--mcp-http` now fails fast (non-zero exit) when the requested port is not actually served. A CLI value accepted with no effect is the lesson-38 silent-acceptance class — assert the OBSERVABLE effect, not the parse. (Secondary, NOT the cause: Qt's default `QSettings` needs a `QCoreApplication` INSTANCE for the default names to resolve — construct `QSettings(org, app)` with explicit names.)
 49. **A broadband envelope follower with a global-peak threshold finds NOTHING on real material** — `SliceDetector::transient` found 0 onsets on 3 of 4 real library loops (a 140bpm drum loop with 51 hits, a hats-only loop with 26, a single hi-hat one-shot) and 23% on a glitch loop. Band-split before onset detection (a quiet element must be judged against its own band's statistics, not the global peak); never reset the envelope after a detection; test with real material, not a sustained tone.
 50. **Comparing recall over a MISMATCHED analysis window produces chance-level numbers.** A ground-truth generator capped at 8s while the engine analysed 13.7s compressed the timeline 1.71x and made the recall/precision for those files chance-level. The ground-truth window MUST match the analysed window exactly; report the interior count alongside the ratio.
+51. **Qt's `QTextStream::readLine()` over a piped stdin blocks until a 16 KB buffer fills, so an MCP stdio server answers nothing while the client holds the pipe open.** `McpTransportStdio`'s POSIX reader wrapped `STDIN_FILENO` in a `QFile`; Qt issued a 16 KB read and the reader sat in `read(0, …, 16237)` for 8+ s with zero engine syscalls, flushing every queued response only at stdin EOF (strace 2026-10-05). Never read a pipe through a buffering wrapper you do not control — `poll()` + read EXACTLY the available bytes (as the Windows branch already did); a bounded 50 ms timeout keeps `stopped_` live and surfaces `stop()`'s `close(fd)` as POLLNVAL/EBADF. The failure is INVISIBLE to a driver that only reads after EOF — `select()` both pipes while stdin stays open.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 
@@ -182,8 +183,11 @@ exactly; give each route a twin test asserting the same failure on both surfaces
 Adding a tool requires `node tools/rpc_parity_map.mjs` — the ratchet gate fails
 otherwise. GUI parity is NOT required; the agent/MCP surface ships first.
 
-**Parity ledger CLOSED (as of 2026-10-01): 319 tools / 421 methods / mapped 305 /
-mcp-only 14 / unresolved 0.** The route-addition recipe: one shared `src/common/`
+**Parity ledger CLOSED (updated 2026-10-06): 325 tools / 427 methods / mapped 311 /
+mcp-only 14 / unresolved 0.** (Previous entry, 2026-10-01: 319 tools / 421 methods /
+mapped 305 / mcp-only 14 / unresolved 0 — the 2026-10-05 batch-tool release added
++5 tools: `add_buses` / `add_sends` / `set_fx_params` / `set_bus_fx_params` /
+`set_lfo_params`.) The route-addition recipe: one shared `src/common/`
 shaper both surfaces call + a twin test asserting the same behaviour on both
 surfaces + `node tools/rpc_parity_map.mjs` regeneration — the ledger tracks
 names/routes only, so an argument-only change needs no regeneration but DOES
@@ -258,7 +262,9 @@ separate project and is no longer a delivery target.
   deterministic; never trust "it should work".
 - **Archaeology + batching**: `query_notes` / `query_clips` (interval-overlap
   beat windows, absolute beats, clip-clamped spans); `set_notes_gain` /
-  `set_clips_edit` (batch, one undo unit); `begin_batch` / `end_batch` (long-lived
+  `set_clips_edit` (batch, one undo unit); `set_fx_params` / `set_bus_fx_params` /
+  `set_lfo_params` (batched FX/bus/LFO param writes, PARTIAL-APPLY with per-write
+  error rows, one undo unit); `begin_batch` / `end_batch` (long-lived
   stdio session, one named undo unit); `tool_help` (one tool's exact `tools/list`
   entry); `whoami` (engine + transport + session project + batch state).
 - **Agent transport, one shared engine**: DSH-hosted agents have no `mcp()` proxy
@@ -266,7 +272,8 @@ separate project and is no longer a delivery target.
   `python scripts/hdaw_mcp_http.py {tools|whoami|desc|schemas|call|run}`
   (e.g. `call whoami '{}'`), the HTTP twin of the stdio `scripts/mcp_call.py`.
   `mcp_call.py` spawns a FRESH engine per invocation, so a role must never use
-  it; and never launch a stdio engine / `mcp-launch.bat` from a role — that kills
+  it; and never launch a stdio engine / `mcp-launch.bat` (Windows) /
+`mcp-launch.sh` (Linux) from a role — that kills
   the shared engine every other agent is attached to.
 - **Time windows in either unit**: every window-taking tool/call accepts the `*Beat`
   and `*Sec` spellings plus its own key — disagreeing spellings are refused
@@ -301,6 +308,10 @@ separate project and is no longer a delivery target.
 - **Do NOT run `build/Release/HDAW.exe`** — stale binary.
 - After editing `CMakeLists.txt` (adding sources/targets): re-run
   `cmake -S . -B build` explicitly — suppressed-regeneration trap.
+- **Skills mirror:** `.agents/skills/` (live tree the loader reads) and
+  `docs/skills/` (doc-map mirror) must stay byte-identical — enforced by the
+  `check_skills_mirror` target (`cmake/CheckSkillsMirror.cmake`, run by
+  `build-fast.sh test|all`). Edit ONE tree or the other and keep both in sync.
 - **Frontend:** `cd frontend; npm run build`, then rebuild the C++ project.
   **DEPRECATED (2026-09-23):** the Electron frontend is a separate project as of this
   date — do NOT build it (`npm run build`, `frontend\build.bat`). Engine-only

@@ -644,6 +644,18 @@ add_custom_target(check_version ALL
     COMMENT "Verifying version numbers are in sync across all build systems"
 )
 
+# --- Skills mirror check ---
+# `.agents/skills/` (live tree the skill loader reads) and `docs/skills/`
+# (doc-map mirror) must be byte-identical; they drifted silently once.
+# Run with: cmake --build build --target check_skills_mirror
+add_custom_target(check_skills_mirror ALL
+    COMMAND ${CMAKE_COMMAND} -E echo "--- Skills Mirror Check ---"
+    COMMAND ${CMAKE_COMMAND} -P
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckSkillsMirror.cmake"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Verifying .agents/skills and docs/skills are byte-identical"
+)
+
 # --- WSL time-sync hook (Windows/WSL clock drift) ---------------------------
 # WSL2 clocks drift from the Windows host; ninja/MSBuild then misjudge file
 # mtimes through drvfs/9p (stale-`.obj` / stale-bundle traps - AGENTS.md

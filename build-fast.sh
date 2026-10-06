@@ -58,7 +58,7 @@ else
 fi
 
 # -- Build dispatch -------------------------------------------------------------
-TEST_TARGETS="hdaw_tests_engine hdaw_tests_mcp hdaw_tests_frontend hdaw_tests_platform hdaw_plugin_host"
+TEST_TARGETS="check_skills_mirror hdaw_tests_engine hdaw_tests_mcp hdaw_tests_frontend hdaw_tests_platform hdaw_plugin_host"
 ALL_TARGETS="$TEST_TARGETS HDAW HDAW_headless hdaw_plugin_scanner"
 
 case "${1:-}" in
