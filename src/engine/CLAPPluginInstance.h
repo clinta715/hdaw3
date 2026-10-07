@@ -303,6 +303,23 @@ private:
     int numInputs = 0;
     int numOutputs = 0;
 
+    // Output port layout (CLAP contract): the host must pass the plugin the
+    // SAME number of audio ports it declared, each with that port's channel
+    // count. Collapsing every port into one summed port makes strict plugins
+    // (Surge XT) return CLAP_PROCESS_ERROR and render silence.
+    static constexpr int kMaxClapPorts = 8;
+    static constexpr int kMaxPortChannels = 16;
+    clap_audio_buffer_t audioOuts_[kMaxClapPorts]{};
+    float* outPortPtrs_[kMaxClapPorts][kMaxPortChannels]{};
+    int outPortWidth_[kMaxClapPorts]{};     // clamped per-port width from the plugin
+    int numOutPorts_ = 0;
+    // Preallocated destination for port channels that do not fit the host
+    // buffer (their audio is dropped, exactly as before, but the plugin must
+    // still be given valid writable memory).
+    juce::AudioBuffer<float> portScratch_;
+    float* scratchPtrs_[kMaxClapPorts * kMaxPortChannels]{};
+    int scratchChannels_ = 0;
+
     // Lifecycle state
     bool activated = false;
     bool processing = false;

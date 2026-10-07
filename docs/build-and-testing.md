@@ -632,6 +632,23 @@ aborted at exit; mcp **aborted before printing a summary** (see below).
 | platform (1) | `ProxyNamespace.SpawnBumpsSlotWhenPipeNameHeld` |
 | mcp | not fully known — the pristine suite **aborts before printing its summary even with `McpServer.ExportAudioConsumesStaleCancelFlag` excluded**, so the bug reaches more than one export test: the pristine log's last line is `[ RUN ] McpServer.ExportAudioRendersDefaultProject`, i.e. a *second* export test dies the same way. The only mcp failures measured (per test) are `HeadlessMcpHttpPort.ServesOnTheCliPort`, `CliPortWinsOverAFreePersistedPort`, `ExitsNonZeroWhenTheCliPortIsTaken` (CLI-port area, lessons 46/48). |
 
+**RESOLVED 2026-10-07 — `McpServer.ExportAudioWithClapPluginDoesNotHang` was a REAL product bug, not
+environmental.** It failed on this box for months (isolated CLAP slot, 775 params published, exported WAV
+all zeros) and was repeatedly written off as a box quirk. It was the host's audio-port contract: the engine
+collapsed every CLAP output port into ONE host port whose width was the **sum** of all of them, and Surge XT
+(3 ports: Output/Scene A/Scene B) rejects that layout with `CLAP_PROCESS_ERROR` (= 0) — writing nothing —
+while the returned status was discarded, making the failure silent. Found with a standalone no-JUCE control
+host (`tools/clap_min_host.c`), fixed by handing the plugin one host port per declared plugin port
+(`CLAPPluginInstance`), plus a throttled log on `CLAP_PROCESS_ERROR` and a null-event-list guard on
+`params->flush`. Live after the fix: Surge XT `audition_plugin` `rms=0.061 peak=0.265 audible=1`, and a full
+export measures `peak 0.264 / rms 0.053`, all four bands present, `clipping:false`. Regression net:
+`tests/unit/engine/clap_port_layout_test.cpp` (suite `CLAPPortLayout`); driver: `tools/clap_port_matrix.py`.
+Full narrative: lesson 54. **Do not re-file this as environmental.**
+
+Still genuinely open, and NOT port-layout: `Osirus` renders ~0.00014 in BOTH layouts (closed filter at boot —
+read `Cutoff` back and reopen it), and `OsTIrus` crashes inside its own emulator (`ESAI transmit underrun`)
+before any render happens, in both layouts.
+
 **What the baseline proves about the fixes made in the same session** — and why to compare
 *exit codes*, not just failure names:
 

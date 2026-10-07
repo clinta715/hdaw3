@@ -181,6 +181,7 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/offline_midi_fx_automation_test.cpp
     unit/engine/master_gain_test.cpp
     unit/engine/clap_param_event_test.cpp
+    unit/engine/clap_port_layout_test.cpp
     unit/engine/clap_preset_probe_test.cpp
     unit/engine/clap_preset_database_test.cpp
     unit/engine/clap_program_test.cpp

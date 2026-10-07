@@ -994,3 +994,38 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     per test — `saveVia` read the error via `mcpIsError` AND the payload via `mcpValue`, and each `save_patch`
     writes a NEW uniquely-suffixed preset, so every MCP save created two files and only one was tracked for
     cleanup. Call a mutating tool ONCE per assertion; assert on the single result.
+
+54. **A CLAP host that collapses N output ports into ONE summed port makes strict plugins return
+    `CLAP_PROCESS_ERROR` — and discarding the `process()` status turns that into pure silence.**
+    `McpServer.ExportAudioWithClapPluginDoesNotHang` failed on the Linux box for months: an isolated
+    CLAP slot published its full parameter set (775 params for Surge XT) yet the exported WAV was
+    all zeros, and every isolation-layer suspicion (proxy transport, state round-trip, MIDI delivery,
+    wrong-thread lifecycle calls) was either tested-and-clean or a red herring. The cause was in the
+    host's audio-port contract. `CLAPPluginInstance::buildBuses()` summed every output port's
+    `channel_count` into a single `numOutputs`, and `processBlock()` handed the plugin ONE
+    `clap_audio_buffer_t` of that summed width with `audio_outputs_count = 1`. Surge XT declares
+    **three** output ports (`Output`, `Scene A`, `Scene B` — 2ch each); given a single 6-channel port
+    it returns `CLAP_PROCESS_ERROR` (**= 0**) from every `process()` and writes nothing. HDAW never
+    looked at the return value, so the failure was invisible. **Diagnosis came from a control host,
+    not from reading HDAW:** `tools/clap_min_host.c` — ~340 lines of C against `clap/clap.h`, no JUCE,
+    no HDAW — renders one plugin for 1 s and prints the output peak *and* the `process()` status. It
+    reproduces the whole failure in one command (`MINHOST_OUTCH=6` → `status=0 PEAK=0.000`;
+    `MINHOST_MULTIPORT=1` → `status=1 PEAK=0.47`). **Rules:** (a) the host must hand a plugin
+    **exactly as many audio ports as it declared**, each with that port's channel count —
+    `audio_outputs_count == clap_plugin_audio_ports::count(plugin, false)`, never 1-with-summed-width;
+    (b) **never discard a plugin's return status** — a throttled loud log on
+    `CLAP_PROCESS_ERROR` is the difference between a five-minute diagnosis and a multi-session
+    hunt; (c) "it works for the plugins I tried" is not port-contract evidence: measured over the
+    eight installed CLAPs, the summed layout was a **no-op** for the six single-port plugins
+    (bit-identical renders: Dexed 0.13157, JE8086 0.06009, Vavra 0.04028 both shapes) and fatal for
+    exactly the one multi-port plugin that validates its layout (Surge XT 0.000 → 0.474). Per-port
+    mapping also keeps port 0 on the DAW's first channels, so single-port plugins are unaffected by
+    construction. **Companion trap (same investigation, found with the same host):** calling
+    `params->flush(plugin, nullptr, nullptr)` — which `CLAPParameter::setValue` did — passes null
+    event lists. The CLAP spec requires real lists and clap-helpers-based plugins dereference them:
+    against Surge XT the call **segfaults** (exit 139, isolated to that statement). Pass valid *empty*
+    lists (`EmptyInputEvents`/`EmptyOutputEvents` in `CLAPPluginInstance.cpp`). **Method note:** a
+    silent-render verdict from a host under test is not evidence about the plugin — build the
+    smallest possible host that exercises one plugin and vary ONE host-side variable at a time; a
+    plugin-floods-stdout hazard (NodalRed2x emits 300 KB+ of emulator logs) corrupts line-oriented
+    capture, so have that host write its verdict to a **file**.

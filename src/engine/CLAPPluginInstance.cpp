@@ -6,6 +6,36 @@
 #include <juce_core/juce_core.h>
 #include <clap/helpers/host.hxx>
 
+namespace {
+
+// CLAP requires non-null event lists for params->flush; clap-helpers based
+// plugins (Surge XT) dereference them and segfault on null (measured
+// 2026-10-07). These supply valid empty lists.
+struct EmptyInputEvents
+{
+    clap_input_events_t iface{};
+    EmptyInputEvents()
+    {
+        iface.ctx = this;
+        iface.size = sizeFn;
+        iface.get  = getFn;
+    }
+    static uint32_t CLAP_ABI sizeFn(const clap_input_events_t*) { return 0; }
+    static const clap_event_header_t* CLAP_ABI getFn(const clap_input_events_t*, uint32_t) { return nullptr; }
+};
+struct EmptyOutputEvents
+{
+    clap_output_events_t iface{};
+    EmptyOutputEvents()
+    {
+        iface.ctx = this;
+        iface.try_push = pushFn;
+    }
+    static bool CLAP_ABI pushFn(const clap_output_events_t*, const clap_event_header_t*) { return true; }
+};
+
+} // namespace
+
 // ═══════════════════════════════════════════════════════════════
 //  CLAPHost
 // ═══════════════════════════════════════════════════════════════
@@ -256,7 +286,14 @@ void CLAPParameter::setValue(float newValue)
     if (juce::MessageManager::getInstance()->isThisTheMessageThread())
     {
         if (params != nullptr)
-            params->flush(plugin, nullptr, nullptr);
+        {
+            // Null event lists are illegal for params->flush and segfault
+            // clap-helpers based plugins (Surge XT, measured 2026-10-07).
+            // Pass valid empty lists, never the instance's audio-thread ones.
+            EmptyInputEvents emptyIn;
+            EmptyOutputEvents emptyOut;
+            params->flush(plugin, &emptyIn.iface, &emptyOut.iface);
+        }
     }
     else
     {
@@ -598,6 +635,8 @@ void CLAPPluginInstance::buildBuses()
     {
         numInputs = 2;
         numOutputs = 2;
+        numOutPorts_ = 1;
+        outPortWidth_[0] = 2;
         return;
     }
 
@@ -615,22 +654,41 @@ void CLAPPluginInstance::buildBuses()
         }
     }
 
-    // Sum ALL output ports: multi-port CLAP plugins (e.g. the gearmulator
-    // Nord-2x port with "Out AB" + "Out CD") write to every declared port.
-    // Reading only the main port starves the plugin of channels and its
-    // output copy then writes past the host buffer. Single-main-port
-    // plugins (the common case) sum to their one port's width.
+    // Record EACH output port's width: the CLAP contract requires the host to
+    // pass the plugin exactly the ports it declared, each with that port's
+    // channel count. Collapsing every port into one summed port makes strict
+    // plugins fail — Surge XT declares Output(2ch) + Scene A(2ch) + Scene
+    // B(2ch) and returns CLAP_PROCESS_ERROR (status 0, silent) when handed a
+    // single 6-channel port (measured 2026-10-07). numOutputs stays the SUM
+    // (it feeds PluginDescription::numOutputChannels and the old width
+    // contract); the per-port shape is what processBlock now builds.
     numOutputs = 0;
-    uint32_t outCount = audioPortsExt->count(plugin, false);
-    for (uint32_t i = 0; i < outCount; ++i)
+    numOutPorts_ = 0;
+    const uint32_t outCount = audioPortsExt->count(plugin, false);
+    const uint32_t storedOut = (std::min)(outCount, (uint32_t) kMaxClapPorts);
+    if (outCount > storedOut)
+        HDAW_LOG("CLAPPorts", juce::String("plugin declares ") + juce::String((int) outCount)
+            + " output ports; truncating to " + juce::String(kMaxClapPorts));
+    for (uint32_t i = 0; i < storedOut; ++i)
     {
         clap_audio_port_info_t info;
         if (audioPortsExt->get(plugin, i, false, &info))
+        {
+            const int w = juce::jlimit(1, kMaxPortChannels, (int) info.channel_count);
+            outPortWidth_[numOutPorts_++] = w;
             numOutputs += static_cast<int>(info.channel_count);
+        }
     }
 
     if (numInputs == 0) numInputs = 2;
     if (numOutputs == 0) numOutputs = 2;
+    // Degenerate fallback must describe exactly one 2-channel port so
+    // processBlock still builds a valid port shape.
+    if (numOutPorts_ == 0)
+    {
+        numOutPorts_ = 1;
+        outPortWidth_[0] = 2;
+    }
 }
 
 void CLAPPluginInstance::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -648,6 +706,24 @@ void CLAPPluginInstance::prepareToPlay(double sampleRate, int samplesPerBlock)
         // spec requires it to be called on the audio thread (the thread
         // that calls process). Strict plugins (Odin2) abort if it is
         // called on the message thread — defer to the first processBlock.
+    }
+
+    // Scratch destination for output-port channels that do not fit the host
+    // buffer. processBlock must NEVER allocate: size it here. Re-preparing
+    // (a second prepareToPlay, e.g. after a sample-rate change) may
+    // reallocate on the message thread — that is the intended thread.
+    int totalWidth = 0;
+    for (int p = 0; p < numOutPorts_; ++p)
+        totalWidth += juce::jlimit(1, kMaxPortChannels, outPortWidth_[p]);
+    scratchChannels_ = numOutPorts_ > 0
+        ? (std::max)(1, (std::min)(totalWidth, kMaxClapPorts * kMaxPortChannels))
+        : 0;
+    if (scratchChannels_ > 0)
+    {
+        portScratch_.setSize(scratchChannels_, (std::max)(samplesPerBlock, 1),
+                             false, true, false);
+        for (int c = 0; c < scratchChannels_; ++c)
+            scratchPtrs_[c] = portScratch_.getWritePointer(c);
     }
 }
 
@@ -825,9 +901,14 @@ void CLAPPluginInstance::processBlock(juce::AudioBuffer<float>& buffer,
     process.steady_time = -1;
     process.frames_count = frames;
 
-    // Audio buffers
+    // Audio buffers.
+    // INPUT: deliberately a single port (numInputs channels) even when the
+    // plugin declared several — every installed plugin either matches or
+    // tolerates it (1-port plugins match; Dexed and NodalRed2x declare zero
+    // input ports and render fine with this 1-port declaration, measured in
+    // the control host). The asymmetry is UNMEASURED for a multi-input-port
+    // plugin; do not "fix" it blind.
     clap_audio_buffer_t audioIn{};
-    clap_audio_buffer_t audioOut{};
 
     if (numInputs > 0 && buffer.getNumChannels() > 0)
     {
@@ -838,17 +919,49 @@ void CLAPPluginInstance::processBlock(juce::AudioBuffer<float>& buffer,
         process.audio_inputs_count = 1;
     }
 
-    if (numOutputs > 0)
+    // OUTPUT: one clap_audio_buffer_t per declared plugin output port, in
+    // port order — the CLAP contract. Strict plugins (Surge XT) return
+    // CLAP_PROCESS_ERROR when the host collapses their ports into one.
+    int runningCh = 0;   // host-buffer channel cursor, port order
+    int scratchUsed = 0;
+    const int hostChans = buffer.getNumChannels();
+    for (int p = 0; p < numOutPorts_; ++p)
     {
-        audioOut.data32 = const_cast<float**>(buffer.getArrayOfWritePointers());
-        audioOut.channel_count = static_cast<uint32_t>(
-            (std::min)(numOutputs, buffer.getNumChannels()));
-        process.audio_outputs = &audioOut;
-        process.audio_outputs_count = 1;
-
-        for (int c = buffer.getNumChannels(); c < numOutputs; ++c)
-            buffer.clear(c, 0, static_cast<int>(frames));
+        const int w = juce::jlimit(1, kMaxPortChannels, outPortWidth_[p]);
+        for (int c = 0; c < w; ++c)
+        {
+            const int hostIdx = runningCh + c;
+            if (hostIdx < hostChans)
+                outPortPtrs_[p][c] = buffer.getWritePointer(hostIdx);
+            else if (scratchUsed < scratchChannels_)
+                outPortPtrs_[p][c] = scratchPtrs_[scratchUsed++];
+            else
+                outPortPtrs_[p][c] = scratchPtrs_[0];   // last-resort: never null
+        }
+        runningCh += w;
+        audioOuts_[p].data32        = outPortPtrs_[p];
+        audioOuts_[p].data64        = nullptr;
+        audioOuts_[p].channel_count = (uint32_t) w;
+        audioOuts_[p].latency       = 0;
+        audioOuts_[p].constant_mask = 0;
     }
+    // Ports whose channels had to go to scratch write outside the host buffer;
+    // the scratch is cleared before process() so no stale audio from the
+    // previous block can be read back by anyone.
+    for (int c = 0; c < scratchUsed; ++c)
+        juce::FloatVectorOperations::clear(scratchPtrs_[c], (int) frames);
+
+    if (numOutPorts_ > 0)
+    {
+        process.audio_outputs = audioOuts_;
+        process.audio_outputs_count = (uint32_t) numOutPorts_;
+    }
+
+    // Host buffer channels [runningCh, hostChans) belong to no plugin port —
+    // the plugin never writes them. Clear them so the caller sees silence,
+    // not stale audio. (Channels [0, runningCh) are the plugin's output.)
+    for (int c = runningCh; c < hostChans; ++c)
+        buffer.clear(c, 0, static_cast<int>(frames));
 
     // Input events
     inEvents.clear();
@@ -953,7 +1066,18 @@ void CLAPPluginInstance::processBlock(juce::AudioBuffer<float>& buffer,
     outEvents.clear();
     process.out_events = outEvents.getInterface();
 
-    auto status = plugin->process(plugin, &process);
+    const auto status = plugin->process(plugin, &process);
+
+    // A CLAP_PROCESS_ERROR (= 0) is a silent-failure class: the plugin wrote
+    // nothing and the caller hears silence. Never let it be silent here.
+    if (status == CLAP_PROCESS_ERROR)
+    {
+        static std::atomic<uint32_t> s_errCount{0};
+        const uint32_t ec = s_errCount.fetch_add(1, std::memory_order_relaxed);
+        if (ec < 5 || ec % 500 == 0)
+            HDAW_LOG("CLAPError", juce::String("plugin->process returned CLAP_PROCESS_ERROR (count=")
+                + juce::String((int) ec) + ") id=" + clapPluginId);
+    }
 
     // Output events → MIDI
     midiMessages.clear();
