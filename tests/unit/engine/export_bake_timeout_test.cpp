@@ -110,6 +110,50 @@ TEST(ExportBakeTimeout, LargeProjectExportsWithDefaultTimeout)
 }
 
 
+// Regression guard for the render-graph TEARDOWN race (lesson 52, 2026-10-06).
+// AudioProcessorGraph::clear() runs on the render thread, where
+// rebuild(UpdateKind::sync) is NOT inline -> the pump's NodeStates::applySettings
+// mutates `preparedNodes` under the class mutex while NodeStates::clear()
+// mutates it without -> the std::set corrupts and the next erase double-frees
+// ("double free or corruption (out)"). Diagnosed from a core dump and
+// reproduced by scripts/repro-render-teardown-crash.py (crashed at cycle 9
+// pre-fix). A regression ABORTS the process (like the other ExportAutomation
+// guards) rather than failing softly.
+TEST(ExportAutomation, RepeatedRenderTeardownDoesNotCorruptGraph)
+{
+    unsetenv("HDAW_EXPORT_BAKE_TIMEOUT_MS");
+
+    // Real graph (3 tracks x 4 clips) so NodeStates is populated and every
+    // export rebuilds + tears down a non-trivial topology.
+    const juce::ValueTree project = makeProjectWithClips(4, 3);
+
+    AudioEngine engine;
+    engine.initialize();
+    auto* mp = engine.getMainProcessor();
+    ASSERT_NE(mp, nullptr);
+    auto& em = mp->getExportManager();
+
+    juce::AudioFormatManager exportFm;
+    exportFm.registerBasicFormats();
+    const juce::File outBase = juce::File::getSpecialLocation(juce::File::tempDirectory);
+
+    // Back-to-back build/teardown cycles: the shape that crashed the engine.
+    for (int i = 0; i < 25; ++i)
+    {
+        const juce::File out = outBase.getChildFile("hdaw_teardown_stress_"
+                                                    + juce::String(i) + ".wav");
+        out.deleteFile();
+        ASSERT_TRUE(em.startExport(project, exportFm, &engine.getPluginManager(), out,
+                                   48000.0, 0.0, 0.25, HDAW::ExportManager::WAV, 24))
+            << "iter " << i << " startExport";
+        ASSERT_TRUE(waitForExport(em, 60000)) << "iter " << i << " render timed out";
+        EXPECT_FALSE(em.isExporting()) << "iter " << i;
+        EXPECT_GT(out.getSize(), 1000) << "iter " << i << " no/short output";
+        out.deleteFile();
+    }
+}
+
+
 // Handoff §3 repro attempt (2026-08-27): the engine aborted (MSVC dialog)
 // during the long antinomy_remix exports with 4 enabled automation lanes
 // driving internal FX (EQ freq, phaser centre-freq/depth, flanger rate)

@@ -748,6 +748,30 @@ public:
     virtual bool applyFxChain(int trackIndex, const HDAW::ChainPreset& preset,
                               juce::String* error = nullptr) = 0;
 
+    // ── Slot patches (the SLOT-SCOPED sibling of the chain pair above) ──────
+    // A PATCH is ONE slot's full state, carried as a single-slot ChainPreset
+    // (slot 0). exportFxChain/applyFxChain are CHAIN-scoped: applyFxChain
+    // preserves the target's instrument slots and APPENDS the preset's
+    // instrument as a new slot, so loading a 1-slot psy_fm chain onto a track
+    // that already has a psy_fm slot yields TWO psy_fm slots (measured defect).
+    // The chain semantics are correct for chains; a patch needs the other
+    // scoping: write INTO the addressed slot, never append, never remove.
+    //
+    // exportPatch snapshots slot `slotIndex` (params + psyFmMatrix +
+    // psyFmSweepRate + sampler/slice + plugin state) into that preset.
+    // Read-only: no undo, no rebuild. On error returns a preset with empty
+    // slots.
+    virtual HDAW::ChainPreset exportPatch(int trackIndex, int slotIndex) = 0;
+    // applyPatch writes preset.slots[0] INTO the EXISTING slot `slotIndex`,
+    // preserving every OTHER slot on the track. Refused (false + *error) when
+    // the slot index is out of range, the preset has no slot 0, or the
+    // preset's fxType differs from the target slot's fxType. ONE undo
+    // transaction and ONE rebuildTrackFX at the end. NEVER appends, NEVER
+    // removes slots.
+    virtual bool applyPatch(int trackIndex, int slotIndex,
+                            const HDAW::ChainPreset& patch,
+                            juce::String* error = nullptr) = 0;
+
     // Automation
     // addAutomationLane is create-only by default: a second lane on the same
     // paramID (or a reused name) is a conflict — two lanes cannot drive the

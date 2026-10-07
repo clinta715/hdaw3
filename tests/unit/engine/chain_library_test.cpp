@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "engine/ChainLibrary.h"
+#include "engine/TrackFXSlot.h"   // getParamDefsForType: the patch range gate
 #include <atomic>
 #include <juce_core/juce_core.h>
 #include <map>
@@ -195,12 +196,13 @@ TEST_F(ChainLibrary, TraversalAndMissingIdsRejected)
 
 TEST_F(ChainLibrary, FactorySeedingListsBothSources)
 {
-    // Fresh root: exactly the 8 built-ins, all factory-sourced, ids
+    // Fresh root: exactly the 11 built-ins, all factory-sourced, ids
     // well-formed ("_factory/<Name>.json").
     auto list = lib->listPresets();
-    ASSERT_EQ(list.size(), 8u);
+    ASSERT_EQ(list.size(), 11u);
     static const char* kFactoryNames[] = {
-        "Acid Lead", "Arp Width", "Bass Glue", "Hat Air",
+        "Acid Lead", "Arp Width", "Bass Dub Throw", "Bass Filter Sweep",
+        "Bass Glue", "Bass Mid Growl", "Hat Air",
         "Kick Punch", "Pad Shimmer", "Riser Sweep", "Stab Snip" };
     for (const auto* n : kFactoryNames)
     {
@@ -222,16 +224,16 @@ TEST_F(ChainLibrary, FactorySeedingListsBothSources)
     up.name = "My User Chain";
     ASSERT_FALSE(lib->savePreset(up).isEmpty());
     list = lib->listPresets();
-    ASSERT_EQ(list.size(), 9u);
+    ASSERT_EQ(list.size(), 12u);
     for (size_t i = 0; i < list.size(); ++i)
     {
-        if (i < 8)
+        if (i < 11)
             EXPECT_TRUE(list[i].isFactory) << list[i].id.toStdString();
         else
             EXPECT_FALSE(list[i].isFactory) << list[i].id.toStdString();
     }
     EXPECT_EQ(list.back().id, "user/My_User_Chain.json");
-    for (size_t i = 1; i < 8; ++i)
+    for (size_t i = 1; i < 11; ++i)
         EXPECT_LT(list[i - 1].id, list[i].id);
 }
 
@@ -255,6 +257,27 @@ TEST_F(ChainLibrary, FactoryPresetsLoadWithinDefRanges)
     EXPECT_EQ(riser.slots[0].fxType, "filter");
     EXPECT_EQ(riser.slots[1].fxType, "reverb");
 
+    auto bassSweep = lib->loadPreset("_factory/Bass_Filter_Sweep.json");
+    EXPECT_EQ(bassSweep.id, "_factory/Bass_Filter_Sweep.json");
+    EXPECT_EQ(bassSweep.name, "Bass Filter Sweep");
+    ASSERT_EQ(bassSweep.slots.size(), 2u);
+    EXPECT_EQ(bassSweep.slots[0].fxType, "filter");
+    EXPECT_EQ(bassSweep.slots[1].fxType, "saturator");
+
+    auto bassGrowl = lib->loadPreset("_factory/Bass_Mid_Growl.json");
+    EXPECT_EQ(bassGrowl.name, "Bass Mid Growl");
+    ASSERT_EQ(bassGrowl.slots.size(), 3u);
+    EXPECT_EQ(bassGrowl.slots[0].fxType, "eq");
+    EXPECT_EQ(bassGrowl.slots[1].fxType, "saturator");
+    EXPECT_EQ(bassGrowl.slots[2].fxType, "filter");
+
+    auto bassThrow = lib->loadPreset("_factory/Bass_Dub_Throw.json");
+    EXPECT_EQ(bassThrow.name, "Bass Dub Throw");
+    ASSERT_EQ(bassThrow.slots.size(), 3u);
+    EXPECT_EQ(bassThrow.slots[0].fxType, "eq");
+    EXPECT_EQ(bassThrow.slots[1].fxType, "delay");
+    EXPECT_EQ(bassThrow.slots[2].fxType, "reverb");
+
     // Every param of every factory chain must sit inside its TrackFXSlot
     // def range (mirror of getParamDefsForType for the roster's fxTypes —
     // a wrong index/value is a silent wrong-knob, so ranges are the
@@ -272,7 +295,7 @@ TEST_F(ChainLibrary, FactoryPresetsLoadWithinDefRanges)
     };
 
     auto all = lib->listPresets();
-    ASSERT_EQ(all.size(), 8u);
+    ASSERT_EQ(all.size(), 11u);
     for (const auto& p : all)
     {
         ASSERT_TRUE(p.isFactory) << p.id.toStdString();
@@ -328,3 +351,98 @@ TEST_F(ChainLibrary, FactorySeedNeverOverwritesUserEdits)
     EXPECT_EQ(loaded.name, "User Edited");
     ASSERT_EQ(loaded.slots.size(), 3u);
 }
+
+// --- Factory PATCH roster (Roster::Patches) ---
+
+TEST_F(ChainLibrary, FactoryPatchesLoadWithinDefRanges)
+{
+    // A PATCH roster root: exactly the 12 built-in bass patches, factory-
+    // sourced, ONE slot each, in the engine order 6 reese_bass / 4 growl_bass
+    // / 2 sub_synth.
+    std::unique_ptr<HDAW::ChainLibrary> patches;
+    {
+        juce::File patchDir = tempDir.getChildFile("patches");
+        patchDir.createDirectory();
+        patches = std::make_unique<HDAW::ChainLibrary>(
+            patchDir, HDAW::ChainLibrary::Roster::Patches);
+    }
+
+    auto all = patches->listPresets();
+    ASSERT_EQ(all.size(), 12u);
+
+    std::map<juce::String, int> fxCounts;
+    for (const auto& p : all)
+    {
+        EXPECT_TRUE(p.isFactory) << p.id.toStdString();
+        EXPECT_TRUE(p.id.startsWith("_factory/")) << p.id.toStdString();
+        ASSERT_EQ(p.slots.size(), 1u) << p.id.toStdString();
+        fxCounts[p.slots[0].fxType]++;
+    }
+    EXPECT_EQ(fxCounts["reese_bass"], 6);
+    EXPECT_EQ(fxCounts["growl_bass"], 4);
+    EXPECT_EQ(fxCounts["sub_synth"], 2);
+
+    // The key gate: EVERY param of EVERY factory patch must sit inside its
+    // fxType's TrackFXSlot::getParamDefsForType range (walked programmatically
+    // — no hand-written range list, so a table change cannot make this pass
+    // stale). A wrong index or value is a silent wrong-knob.
+    for (const auto& p : all)
+    {
+        const auto& slot = p.slots[0];
+        const auto defs = HDAW::TrackFXSlot::getParamDefsForType(slot.fxType);
+        ASSERT_FALSE(defs.empty()) << slot.fxType.toStdString();
+        for (const auto& kv : slot.params)
+        {
+            EXPECT_TRUE(kv.first.startsWith("param_")) << kv.first.toStdString();
+            const int idx = kv.first.substring(6).getIntValue();
+            ASSERT_GE(idx, 0) << p.id.toStdString();
+            ASSERT_LT(idx, (int) defs.size())
+                << p.id.toStdString() << " " << kv.first.toStdString();
+            // Compare as FLOAT, the domain the value actually lands in
+            // (loadParamsFromTree stores float): the def's min/max are floats
+            // and a JSON double at a boundary (0.001 vs 0.001f =
+            // 0.0010000000474974513) must not read as out of range.
+            const float v = (float) kv.second;
+            EXPECT_GE(v, defs[(size_t) idx].minValue)
+                << p.id.toStdString() << " " << kv.first.toStdString();
+            EXPECT_LE(v, defs[(size_t) idx].maxValue)
+                << p.id.toStdString() << " " << kv.first.toStdString();
+        }
+    }
+
+    // A Roster::None root seeds nothing at all (the fixture's own library is
+    // a CHAIN roster root, so build a bare one).
+    juce::File bareDir = tempDir.getChildFile("bare");
+    bareDir.createDirectory();
+    HDAW::ChainLibrary bare(bareDir, HDAW::ChainLibrary::Roster::None);
+    EXPECT_TRUE(bare.listPresets().empty());
+}
+
+TEST_F(ChainLibrary, FactoryPatchSeedNeverOverwritesUserEdits)
+{
+    // Mirror of FactorySeedNeverOverwritesUserEdits for the PATCH roster.
+    juce::File patchDir = tempDir.getChildFile("patches");
+    patchDir.createDirectory();
+    {
+        HDAW::ChainLibrary seeded(patchDir, HDAW::ChainLibrary::Roster::Patches);
+        ASSERT_EQ(seeded.listPresets().size(), 12u);
+    }
+
+    juce::File file = patchDir.getChildFile("_factory").getChildFile("Reese_Classic.json");
+    ASSERT_TRUE(file.existsAsFile());
+
+    // Hand-edit the on-disk factory patch (as a user customizing it).
+    auto json = juce::JSON::parse(file.loadFileAsString());
+    auto* obj = json.getDynamicObject();
+    ASSERT_NE(obj, nullptr);
+    obj->setProperty("name", "User Edited Patch");
+    ASSERT_TRUE(file.replaceWithText(juce::JSON::toString(obj, true)));
+
+    // A fresh library on the same root re-runs seeding; the edit must survive.
+    HDAW::ChainLibrary reseeded(patchDir, HDAW::ChainLibrary::Roster::Patches);
+    auto loaded = reseeded.loadPreset("_factory/Reese_Classic.json");
+    EXPECT_EQ(loaded.name, "User Edited Patch");
+    ASSERT_EQ(loaded.slots.size(), 1u);
+    EXPECT_EQ(loaded.slots[0].fxType.toStdString(), "reese_bass");
+}
+

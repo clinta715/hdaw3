@@ -3,6 +3,7 @@
 #include <atomic>
 #include <functional>
 #include <array>
+#include <limits>
 #include "PsyFmOperator.h"
 #include "PsyFmModMatrix.h"
 #include "InternalFilter.h"
@@ -92,6 +93,12 @@ public:
     // ── Bar clock (called from MutatorConductor) ──
     void onBarBoundary (int barCounter);
 
+    /// Base rate of the ratio-sweep LFO (PsyFmModSourcePool's documented
+    /// default is 0.2 Hz). Stores the base AND resets the live pool rate to it,
+    /// so onBarBoundary's rewind branch and the slot's persisted sweep rate
+    /// share one value. Message thread, like the other preset setters.
+    void setBaseRatioSweepRateHz (float hz) noexcept;
+
     // ── Inspection ──
     int activeVoiceCount() const noexcept;
     float getOpEgLevel (int op) const noexcept;
@@ -153,6 +160,14 @@ private:
 
     std::atomic<float> outputLevelAtom_{ 0.4f };
     std::atomic<float> opEgLevel_[kNumOperators]{};
+
+    // Bar clock state. Audio-thread only: onBarBoundary runs from
+    // Track::processBlock (through TrackFXSlot::setTransportBar) and
+    // setBaseRatioSweepRateHz from the message thread under stateLock, so a
+    // plain int/float is the same idiom as the pool's other fields.
+    // lastBar_ starts at INT_MIN so the first call always runs (bar 0 included).
+    int lastBar_ = std::numeric_limits<int>::min();
+    float baseRatioSweepRateHz_ = 0.2f;   // pool's documented default
 };
 
 } // namespace HDAW

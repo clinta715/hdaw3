@@ -69,6 +69,12 @@ public:
     void setStepRateIndex(int v) noexcept { arpStepRateIndex_.store(v, std::memory_order_relaxed); }
     void setBarsPerMotifLoop(float v) noexcept { barsPerMotifLoop_.store(v, std::memory_order_relaxed); }
 
+    // Project tempo, for the arp step clock's beats -> samples conversion.
+    // Called every block from the audio thread (Track::processBlock ->
+    // TrackFXSlot::setTempo), so bpm_ is plain (not atomic): writer and reader
+    // are the same thread — the same idiom as DrumSynthEngine::setTempo.
+    void setBpm(double v) noexcept { bpm_ = v; }
+
     // Filter (slow sweep)
     void setFilterCutoffHz(float v) noexcept { filterCutoffHz_.store(v, std::memory_order_relaxed); }
     void setFilterResonance(float v) noexcept { filterResonance_.store(v, std::memory_order_relaxed); }

@@ -940,3 +940,57 @@ See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
     `stopped_` flag live and lets `stop()`'s `close(fd)` surface as POLLNVAL/EBADF instead of
     blocking forever; (c) the failure is INVISIBLE to a test driver that only reads after EOF —
     `select()` both pipes while stdin stays open.
+
+52. **A JUCE `AudioProcessorGraph` torn down from a NON-message thread races its own async
+    rebuild and corrupts `NodeStates`' `std::set` — the engine SIGABRTs with `double free or
+    corruption (out)` on the RENDER thread's `clear()`.** Every `AudioProcessorGraph` topology
+    change ends in `topologyChanged → rebuild(UpdateKind::sync)`, and JUCE runs that work INLINE
+    only when the call is already on the message thread:
+    `if (updateKind == sync && MessageManager::isThisTheMessageThread()) handleAsyncUpdate(); else
+    updater.triggerAsyncUpdate();`. HDAW builds its offline render graph on a dedicated render
+    thread, so every rebuild is POSTED to the pump, where `handleAsyncUpdate →
+    NodeStates::applySettings` mutates `preparedNodes` **under** `NodeStates::mutex` — while
+    `NodeStates::clear()` and `removeNode()` mutate that SAME set **without** the mutex (JUCE
+    8.0.0, `juce_AudioProcessorGraph.cpp:495` / `:1720` / `:1761`). A `std::set` red-black tree
+    written by two unsynchronised writers corrupts, and the next erase double-frees. Core-verified
+    trace (2026-10-06): `_int_free_merge_chunk → _Rb_tree::_M_erase → NodeStates::clear() →
+    AudioProcessorGraph::clear() → ExportManager::renderThreadFunc` (`ExportManager.cpp:683`).
+    **Diagnosis rules:** (a) `hdaw_debug.log` is the map — a render that logs its last
+    `ExportDebug Block N` and never reaches `Export render finished` died IN TEARDOWN; (b) a
+    COMPLETE, undeleted temp render WAV (`/tmp/hdaw_render_p<pid>_<track>_<n>.wav`, 2,094,644 B =
+    the whole 16-beat window) proves the audio was fully written and the process aborted before
+    the post-render cleanup — read the pid to attribute the crash to a specific engine run;
+    (c) capture the dump FIRST: `kernel.core_pattern` is `core` and a non-interactive shell has
+    `ulimit -c 0`, so the real session left NOTHING — `scripts/hdaw-engine-coredump.sh` arms
+    `ulimit -c unlimited` + a `crash-captures/` CWD, and `gdb ./build/HDAW_headless
+    crash-captures/core.<pid>` then yields file:line symbols (a core whose exec is an OLDER build
+    is useless — "exec file is newer than core file"); (d) it is a RACE, so one clean run proves
+    nothing — `scripts/repro-render-teardown-crash.py` (project render + windowed-render bursts)
+    crashed at cycle 9 pre-fix and ran 600+ renders clean post-fix. **Fix:** drain the message
+    queue around teardown (`ExportManager.cpp` `finish:` — post a `CallbackMessage` probe and
+    wait, the FIFO idiom the export bake wait already uses: `CallbackMessage` and
+    `AsyncUpdaterMessage` are both `MessageManager::MessageBase` posts on one queue, so the probe
+    cannot overtake earlier work) BEFORE `releaseResources()`, again after it, and again after
+    `clear()`.
+
+53. **A test-harness environment redirect that does NOT BIND is worse than no redirect — it reports success
+    while the suite mutates REAL user data.** `tests/test_main.cpp` redirected the user-data root by setting
+    `USERPROFILE` / `APPDATA` / `LOCALAPPDATA`, and its startup line read "user data dir redirected to
+    .../userdata/AppData/Roaming" — but those variables are only the lever on **Windows**. On Linux JUCE
+    resolves `File::getSpecialLocation(userApplicationDataDirectory)` as
+    `resolveXDGFolder("XDG_CONFIG_HOME", "~/.config")` (`juce_Files_linux.cpp:135`): a **FILE** lookup (it reads
+    `~/.config/user-dirs.dirs`) that never consults the `XDG_CONFIG_HOME` environment variable, while `~` itself
+    expands from **`HOME`** (`:121`). So the redirect bound to nothing and the suite wrote into the developer's
+    actual `~/.config/HDAW` — measured: **17 test-generated patch presets** accumulated in the real
+    `HDAW/patches` library (and the harness also only redirected when the root looked *unwritable*, so on a
+    normal dev box it never redirected at all). **Rules:** (a) after adding an environment redirect, ASSERT the
+    **effective** root the code resolves to, never the intent you set — an unbound redirect is a silent failure
+    that corrupts state outside the working tree; (b) resolve the platform's real mechanism before writing the
+    lever (here: `HOME` on Linux, `USERPROFILE` on Windows) and keep the resolution and the redirect in ONE
+    place so they cannot drift; (c) make tests **hermetic by default** for user data (always redirect into the
+    working tree, mirror the real root for READ fidelity, expose an explicit escape hatch) rather than
+    "leave it alone when it happens to be writable" — writability is not the property you want.
+    **Companion trap (same session):** a test helper that called a **non-idempotent** tool twice leaked a file
+    per test — `saveVia` read the error via `mcpIsError` AND the payload via `mcpValue`, and each `save_patch`
+    writes a NEW uniquely-suffixed preset, so every MCP save created two files and only one was tracked for
+    cleanup. Call a mutating tool ONCE per assertion; assert on the single result.

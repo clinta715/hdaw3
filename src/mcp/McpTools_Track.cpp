@@ -339,10 +339,10 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"add_track_with_fx",
-        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth,drum_synth}, or provide pluginId for a VST3/CLAP plugin (fxType is then inferred as \"plugin\"). Returns compact JSON {trackId, routed, trackID, fxType} — the same creation shape add_track returns, plus the echoed fxType; `trackId` is the new track's INDEX and `trackID` its STABLE identity (design B1, unchanged by a later splice). RPC project.addTrackWithFx takes these SAME argument names, runs the SAME composite (src/common/AddTrackWithFx.h) and returns the identical payload, refusing an ungateable pluginId with the identical text.",
+        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth,drum_synth,reese_bass}, or provide pluginId for a VST3/CLAP plugin (fxType is then inferred as \"plugin\"). Returns compact JSON {trackId, routed, trackID, fxType} — the same creation shape add_track returns, plus the echoed fxType; `trackId` is the new track's INDEX and `trackID` its STABLE identity (design B1, unchanged by a later splice). RPC project.addTrackWithFx takes these SAME argument names, runs the SAME composite (src/common/AddTrackWithFx.h) and returns the identical payload, refusing an ungateable pluginId with the identical text.",
         objSchema({{"name",     QJsonObject{{"type","string"}}},
                    {"fxType",   QJsonObject{{"type","string"},
-                       {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth","drum_synth"}}}},
+                       {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth","drum_synth","reese_bass"}}}},
                    {"pluginId", QJsonObject{{"type","string"}}},
                    {"color",    QJsonObject{{"type","integer"}}},
                    {"parentBus",QJsonObject{{"type","integer"}}}}, {"name"}),

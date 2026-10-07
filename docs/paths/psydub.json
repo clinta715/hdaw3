@@ -171,6 +171,18 @@
           "recipe": { "note": "skip the mid-bass track entirely" },
           "gate": { "mix_report": "body band not more than 12 dB below sub" },
           "evidence": "untested"
+        },
+        {
+          "id": "reese-neuro",
+          "name": "Reese / neuro — detuned saw wall with a tempo-synced wobble",
+          "why": "reese_bass is the internal engine with an actual saw oscillator, an in-slot LFO and glide — the textbook reese/neuro basis plus a dub wobble that growl_bass (no saw, no LFO) and sub_synth (fixed 2-voice unison) cannot reach.",
+          "recipe": {
+            "add_track_with_fx": { "fxType": "reese_bass" },
+            "set_internal_fx_param": [ { "parameter": "Voice Count", "value": 7 }, { "parameter": "Detune Cents", "value": 27 }, { "parameter": "Stereo Spread", "value": 0.6 }, { "parameter": "Osc Shape", "value": "Saw" }, { "parameter": "Sub Level", "value": 0.35 }, { "parameter": "Drive dB", "value": 8 }, { "parameter": "Drive Type", "value": "Tanh" }, { "parameter": "LFO Sync", "value": 1 }, { "parameter": "LFO Rate (beats)", "value": 0.5 }, { "parameter": "LFO Cutoff Amt", "value": 0.8 } ],
+            "level": "Output Level 0.35 default; 7 voices cannot clip (the in-slot soft ceiling is knee 1.0 / span 0.5), so stage level AFTER the synth with auto_gain_to_target rather than by pushing the slot"
+          },
+          "gate": { "audition_plugin": "audible=1", "auto_gain_to_target": "measuredRms > 0.03" },
+          "evidence": "untested"
         }
       ]
     },

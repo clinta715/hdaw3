@@ -125,6 +125,12 @@
    "durability": "valuetree",
    "engine": "drum_synth",
    "paramCount": 67
+  },
+  {
+   "appliesVia": "set_internal_fx_param",
+   "durability": "valuetree",
+   "engine": "reese_bass",
+   "paramCount": 40
   }
  ],
  "excludedStages": [

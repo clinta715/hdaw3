@@ -195,8 +195,8 @@
   },
 
   "internalEngines": {
-    "verifiedOn": "2026-09-30",
-    "note": "Per-engine classification for the 15 internal fxTypes, whose param surface is generated from the in-source static C++ tables (see build_device_map.py INTERNAL_ENGINES). These rules apply ONLY to the internal engines - the VA engines above keep their global grammar byte-stable. Every param carries the table row's file:line citation plus the verbatim default/min/max. Enums are recorded only where the source documents them; undocumented enums say so.",
+    "verifiedOn": "2026-10-07",
+    "note": "Per-engine classification for the 16 internal fxTypes, whose param surface is generated from the in-source static C++ tables (see build_device_map.py INTERNAL_ENGINES). These rules apply ONLY to the internal engines - the VA engines above keep their global grammar byte-stable. Every param carries the table row's file:line citation plus the verbatim default/min/max. Enums are recorded only where the source documents them; undocumented enums say so.",
     "engines": {
       "eq": {
         "appliesVia": "set_internal_fx_param",
@@ -547,6 +547,57 @@
           "Note Map": { "enum": { "0": "Fixed (every note plays Voice)", "1": "GM (General MIDI drum map)" },
             "note": "Fixed is the DEFAULT: HDAW's own generators emit a key-derived kick pitch (diaRoot(keyRoot,2) = 36..47) and put one role per track, so GM resolution would misroute those notes. GM is for a single track carrying a real GM drum clip." },
           "Key Track": { "note": "0 = pitched voices (Kick/Tom Low/Tom Mid/Tom High) use their fixed base frequency; 1 = they follow the incoming note, so a key-derived kick tunes to the key." }
+        }
+      },
+      "reese_bass": {
+        "appliesVia": "set_internal_fx_param",
+        "durability": "valuetree",
+        "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render. Table comes from ReeseBassEngine::paramDefs(); TrackFXSlot derives its advertised defs from it.",
+        "categoryRules": [
+          { "id": "rb", "match": ["voice count", "detune", "spread", "scatter", "osc shape", "sub level", "sub octave", "sync", "comb", "drive", "filter", "cutoff", "res", "key track", "attack", "decay", "sustain", "release", "amp", "output", "lfo", "glide", "legato", "bend", "velocity"], "category": "reese-bass" }
+        ],
+        "categoryDefaults": {
+          "reese-bass": { "tier": "identity", "intents": ["osc-mix"] }
+        },
+        "unitRules": [
+          { "id": "rb-bend", "match": ["pitch bend"], "unit": "semitones" }
+        ],
+        "intentRules": [
+          { "id": "rb-width", "match": ["voice count", "detune cents", "stereo spread"], "intents": ["detune-width"], "tier": "identity" },
+          { "id": "rb-shape", "match": ["osc shape"], "intents": ["osc-wave"], "tier": "identity" },
+          { "id": "rb-oscmix", "match": ["phase scatter", "sub level", "sub octave"], "intents": ["osc-mix"], "tier": "identity" },
+          { "id": "rb-sync", "match": ["sync amount", "sync ratio"], "intents": ["fm-metal"], "tier": "movement" },
+          { "id": "rb-combmix", "match": ["comb amount", "drive mix"], "intents": ["fx-mix"], "tier": "movement" },
+          { "id": "rb-sweep", "match": ["comb frequency", "filter cutoff", "filter env amt", "lfo cutoff amt"], "intents": ["filter-sweep"], "tier": "movement" },
+          { "id": "rb-res", "match": ["comb feedback", "filter res"], "intents": ["resonance"], "tier": "movement" },
+          { "id": "rb-drive", "match": ["drive db", "drive type", "lfo drive amt", "velocity"], "intents": ["distortion-drive"], "tier": "movement" },
+          { "id": "rb-ftype", "match": ["filter type"], "intents": ["filter-type"], "tier": "identity" },
+          { "id": "rb-keytrack", "match": ["key track"], "intents": ["key-vel-track"], "tier": "identity" },
+          { "id": "rb-fenv", "match": ["filter attack", "filter decay", "filter sustain", "filter release"], "intents": ["env-shape"], "tier": "identity" },
+          { "id": "rb-aenv", "match": ["amp attack", "amp decay", "amp sustain", "amp release"], "intents": ["amp-env"], "tier": "identity" },
+          { "id": "rb-out", "match": ["output level"], "intents": ["mix-balance"], "tier": "identity" },
+          { "id": "rb-lfoshape", "match": ["lfo shape"], "intents": ["mod-source"], "tier": "identity" },
+          { "id": "rb-lforate", "match": ["lfo rate", "lfo sync", "lfo phase"], "intents": ["mod-rate"], "tier": "movement" },
+          { "id": "rb-lfopitch", "match": ["lfo pitch amt"], "intents": ["vibrato"], "tier": "movement" },
+          { "id": "rb-glide", "match": ["glide"], "intents": ["glide-portamento"], "tier": "identity" },
+          { "id": "rb-mono", "match": ["legato"], "intents": ["polyphony"], "tier": "identity" },
+          { "id": "rb-bend", "match": ["pitch bend"], "intents": ["pitch-bend"], "tier": "identity" }
+        ],
+        "paramNotes": {
+          "Osc Shape": { "enum": { "0": "Saw", "1": "Square", "2": "Triangle" },
+            "note": "ReeseBassEngine::OscShape (ReeseBassEngine.h). Saw/Square are PolyBLEP band-limited in place; Triangle has no step." },
+          "Drive Type": { "enum": { "0": "Tanh", "1": "Atan", "2": "Hard", "3": "Fold" } },
+          "Filter Type": { "enum": { "0": "lowpass", "1": "highpass", "2": "bandpass" } },
+          "LFO Shape": { "enum": { "0": "Sine", "1": "Tri", "2": "Square", "3": "SawDown" } },
+          "LFO Sync": { "enum": { "0": "free (LFO Rate is Hz)", "1": "tempo-synced (LFO Rate is beats)" },
+            "note": "Synced rate = LFO Rate in beats, converted with the project BPM forwarded from Track::processBlock." },
+          "Mono Legato": { "enum": { "0": "poly (up to 2 note slots)", "1": "mono legato (default)" },
+            "note": "Mono retargets with Glide and keeps the envelopes running on a legato overlap." },
+          "Sub Level": { "note": "Sine sub-oscillator at Sub Octave below the played note; Voice Count does not affect it." },
+          "Phase Scatter": { "note": "Deterministic unison start-phase spread (phase_i = scatter * i / (N-1)) - no random source, so renders are reproducible." },
+          "Sync Amount": { "note": "Crossfades free-running oscillators into the hard-synced ones. Sync Ratio is inert (bit-identical) while this is 0." },
+          "Comb Amount": { "note": "Stereo feedback comb wet amount. 0 is a bit-exact bypass of the whole comb stage." },
+          "Velocity->Drive": { "note": "Velocity adds up to 24 dB of drive. At 0 the render is velocity-independent." }
         }
       }
     }

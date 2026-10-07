@@ -24,8 +24,9 @@ QJsonObject buildPsyFmModMatrixView (ProjectModel& model,
     using DR = PsyFmModRoute::Dest;
 
     // Source-name mapping: the matrix engine indexes the pool directly
-    // (0 ratioSweepLFO, 1 feedbackLFO, 2 modWheel, 3 velocity); BarClock
-    // exists only as a track-level mod target and is not a pool source.
+    // (0 ratioSweepLFO, 1 feedbackLFO, 2 modWheel, 3 velocity, 4 barClock);
+    // BarClock IS a pool source (PsyFmModSourcePool::barClockValue, written by
+    // PsyFmEngine::onBarBoundary).
     auto sourceNameUpper = [](SR s) -> const char* {
         switch (s) {
             case SR::RatioSweepLFO: return "RatioSweepLFO";
@@ -49,13 +50,14 @@ QJsonObject buildPsyFmModMatrixView (ProjectModel& model,
         }
         return "Op1Ratio";
     };
-    // Mirrors PsyFmModMatrix::sourceIndexFor (BarClock is not a pool source).
+    // Mirrors PsyFmModMatrix::sourceIndexFor (BarClock is pool index 4).
     auto poolIndexFor = [](SR s) -> int {
         switch (s) {
             case SR::RatioSweepLFO: return 0;
             case SR::FeedbackLFO:   return 1;
             case SR::ModWheel:      return 2;
             case SR::Velocity:      return 3;
+            case SR::BarClock:      return 4;
             default: return -1;
         }
     };
@@ -172,6 +174,7 @@ QJsonObject buildPsyFmModMatrixView (ProjectModel& model,
     srcVals["feedbackLFO"]   = (double) pool.getSourceValue(1);
     srcVals["modWheel"]      = (double) pool.modWheelValue;
     srcVals["velocity"]      = (double) pool.velocityValue;
+    srcVals["barClock"]      = (double) pool.barClockValue;
     out["sourceValues"] = srcVals;
 
     return out;

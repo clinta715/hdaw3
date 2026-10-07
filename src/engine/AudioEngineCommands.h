@@ -364,6 +364,12 @@ public:
     HDAW::ChainPreset exportFxChain(int trackIndex) override;
     bool applyFxChain(int trackIndex, const HDAW::ChainPreset& preset,
                       juce::String* error = nullptr) override;
+    // ── Slot patches: the SLOT-SCOPED sibling (see ProjectCommands.h) ──
+    // exportPatch snapshots ONE slot; applyPatch writes slot 0 of the patch
+    // INTO an existing slot (no append, no removal, one undo, one rebuild).
+    HDAW::ChainPreset exportPatch(int trackIndex, int slotIndex) override;
+    bool applyPatch(int trackIndex, int slotIndex, const HDAW::ChainPreset& patch,
+                    juce::String* error = nullptr) override;
     int getTrackCount() const override;
     int getTrackID(int trackIndex) const override;
     void setSamplerSample(int trackIndex, int slotIndex,

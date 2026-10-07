@@ -1,0 +1,981 @@
+{
+ "appliesVia": "set_internal_fx_param",
+ "counts": {
+  "identity": 22,
+  "indexMapped": 40,
+  "movement": 18,
+  "offsetMapped": 0,
+  "total": 40,
+  "trap": 0,
+  "unclassified": 0
+ },
+ "durability": "valuetree",
+ "durabilityNote": "Internal FX params live in the project ValueTree; set_internal_fx_param writes them in REAL units and they survive save/load and offline render. Table comes from ReeseBassEngine::paramDefs(); TrackFXSlot derives its advertised defs from it.",
+ "engine": "reese_bass",
+ "params": [
+  {
+   "category": "reese-bass",
+   "default": 7.0,
+   "index": 0,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 7.0,
+   "min": 1.0,
+   "name": "Voice Count",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:62",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:62"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "enum"
+  },
+  {
+   "category": "reese-bass",
+   "default": 20.0,
+   "index": 1,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 100.0,
+   "min": 0.0,
+   "name": "Detune Cents",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:63",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:63"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "cents"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.5,
+   "index": 2,
+   "intents": [
+    "detune-width"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Stereo Spread",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:64",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:64"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "enum": {
+    "0": "Saw",
+    "1": "Square",
+    "2": "Triangle"
+   },
+   "index": 3,
+   "intents": [
+    "osc-wave"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Osc Shape",
+   "note": "ReeseBassEngine::OscShape (ReeseBassEngine.h). Saw/Square are PolyBLEP band-limited in place; Triangle has no step.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:65",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:65"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "enum"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.5,
+   "index": 4,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Phase Scatter",
+   "note": "Deterministic unison start-phase spread (phase_i = scatter * i / (N-1)) - no random source, so renders are reproducible.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:66",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:66"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.3,
+   "index": 5,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Sub Level",
+   "note": "Sine sub-oscillator at Sub Octave below the played note; Voice Count does not affect it.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:67",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:67"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": -1.0,
+   "index": 6,
+   "intents": [
+    "osc-mix"
+   ],
+   "max": 0.0,
+   "min": -2.0,
+   "name": "Sub Octave",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:68",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:68"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "index": 7,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Sync Amount",
+   "note": "Crossfades free-running oscillators into the hard-synced ones. Sync Ratio is inert (bit-identical) while this is 0.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:69",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:69"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "boolean"
+  },
+  {
+   "category": "reese-bass",
+   "default": 1.0,
+   "index": 8,
+   "intents": [
+    "fm-metal"
+   ],
+   "max": 4.0,
+   "min": 1.0,
+   "name": "Sync Ratio",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:70",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:70"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "ratio"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "index": 9,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Comb Amount",
+   "note": "Stereo feedback comb wet amount. 0 is a bit-exact bypass of the whole comb stage.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:71",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:71"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 80.0,
+   "index": 10,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 2000.0,
+   "min": 20.0,
+   "name": "Comb Frequency",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:72",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:72"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "hz"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.7,
+   "index": 11,
+   "intents": [
+    "resonance"
+   ],
+   "max": 0.95,
+   "min": 0.0,
+   "name": "Comb Feedback",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:73",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:73"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 6.0,
+   "index": 12,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 40.0,
+   "min": 0.0,
+   "name": "Drive dB",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:74",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:74"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "db"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "enum": {
+    "0": "Tanh",
+    "1": "Atan",
+    "2": "Hard",
+    "3": "Fold"
+   },
+   "index": 13,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "Drive Type",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:75",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:75"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "enum"
+  },
+  {
+   "category": "reese-bass",
+   "default": 1.0,
+   "index": 14,
+   "intents": [
+    "fx-mix"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Drive Mix",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:76",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:76"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 1200.0,
+   "index": 15,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 20000.0,
+   "min": 20.0,
+   "name": "Filter Cutoff",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:77",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:77"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "hz"
+  },
+  {
+   "category": "reese-bass",
+   "default": 2.0,
+   "index": 16,
+   "intents": [
+    "resonance"
+   ],
+   "max": 20.0,
+   "min": 0.1,
+   "name": "Filter Res",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:78",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:78"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "enum": {
+    "0": "lowpass",
+    "1": "highpass",
+    "2": "bandpass"
+   },
+   "index": 17,
+   "intents": [
+    "filter-type"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Filter Type",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:79",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:79"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "enum"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.4,
+   "index": 18,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Env Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:80",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:80"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "index": 19,
+   "intents": [
+    "key-vel-track"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Key Track",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:81",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:81"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "boolean"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.01,
+   "index": 20,
+   "intents": [
+    "env-shape"
+   ],
+   "max": 2.0,
+   "min": 0.001,
+   "name": "Filter Attack",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:82",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:82"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "seconds"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.4,
+   "index": 21,
+   "intents": [
+    "env-shape"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Filter Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:83",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:83"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "seconds"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.3,
+   "index": 22,
+   "intents": [
+    "env-shape"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Filter Sustain",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:84",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:84"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.2,
+   "index": 23,
+   "intents": [
+    "env-shape"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Filter Release",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:85",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:85"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "seconds"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.005,
+   "index": 24,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 2.0,
+   "min": 0.001,
+   "name": "Amp Attack",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:86",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:86"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "seconds"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.2,
+   "index": 25,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Amp Decay",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:87",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:87"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "seconds"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.85,
+   "index": 26,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Amp Sustain",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:88",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:88"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.08,
+   "index": 27,
+   "intents": [
+    "amp-env"
+   ],
+   "max": 5.0,
+   "min": 0.001,
+   "name": "Amp Release",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:89",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:89"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "seconds"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.35,
+   "index": 28,
+   "intents": [
+    "mix-balance"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Output Level",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:90",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:90"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "enum": {
+    "0": "Sine",
+    "1": "Tri",
+    "2": "Square",
+    "3": "SawDown"
+   },
+   "index": 29,
+   "intents": [
+    "mod-source"
+   ],
+   "max": 3.0,
+   "min": 0.0,
+   "name": "LFO Shape",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:91",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:91"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "enum"
+  },
+  {
+   "category": "reese-bass",
+   "default": 1.0,
+   "index": 30,
+   "intents": [
+    "mod-rate"
+   ],
+   "max": 8.0,
+   "min": 0.0625,
+   "name": "LFO Rate (beats)",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:92",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:92"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "beats"
+  },
+  {
+   "category": "reese-bass",
+   "default": 1.0,
+   "enum": {
+    "0": "free (LFO Rate is Hz)",
+    "1": "tempo-synced (LFO Rate is beats)"
+   },
+   "index": 31,
+   "intents": [
+    "mod-rate"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Sync",
+   "note": "Synced rate = LFO Rate in beats, converted with the project BPM forwarded from Track::processBlock.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:93",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:93"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "boolean"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "index": 32,
+   "intents": [
+    "filter-sweep"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Cutoff Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:94",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:94"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "hz"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "index": 33,
+   "intents": [
+    "vibrato"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Pitch Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:95",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:95"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "index": 34,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Drive Amt",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:96",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:96"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "index": 35,
+   "intents": [
+    "mod-rate"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "LFO Phase",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:97",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:97"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.0,
+   "index": 36,
+   "intents": [
+    "glide-portamento"
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "Glide",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:98",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:98"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "seconds"
+  },
+  {
+   "category": "reese-bass",
+   "default": 1.0,
+   "enum": {
+    "0": "poly (up to 2 note slots)",
+    "1": "mono legato (default)"
+   },
+   "index": 37,
+   "intents": [
+    "polyphony"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Mono Legato",
+   "note": "Mono retargets with Glide and keeps the envelopes running on a legato overlap.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:99",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:99"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "boolean"
+  },
+  {
+   "category": "reese-bass",
+   "default": 2.0,
+   "index": 38,
+   "intents": [
+    "pitch-bend"
+   ],
+   "max": 12.0,
+   "min": 0.0,
+   "name": "Pitch Bend Range",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:100",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:100"
+   ],
+   "stages": [
+    "sound-selector"
+   ],
+   "tier": "identity",
+   "trapReason": null,
+   "unit": "semitones"
+  },
+  {
+   "category": "reese-bass",
+   "default": 0.3,
+   "index": 39,
+   "intents": [
+    "distortion-drive"
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "Velocity->Drive",
+   "note": "Velocity adds up to 24 dB of drive. At 0 the render is velocity-independent.",
+   "offset": null,
+   "roles": [],
+   "source": "src/engine/ReeseBassEngine.h:101",
+   "sources": [
+    "src/engine/ReeseBassEngine.h:101"
+   ],
+   "stages": [
+    "fx-automation-engineer"
+   ],
+   "tier": "movement",
+   "trapReason": null,
+   "unit": "scalar"
+  }
+ ],
+ "schema": "hdaw.device.param.map.v1",
+ "source": {
+  "evidence": "in-source static param table (see per-param sources)",
+  "tables": "src/engine/ReeseBassEngine.h"
+ },
+ "verifiedOn": "2026-10-07"
+}

@@ -36,6 +36,11 @@
 // project.setFxSidechain route shares with the MCP set_fx_sidechain tool, so
 // the payload and every refusal are byte-identical by construction.
 #include "../../common/FxSidechain.h"
+// SLOT-SCOPED PATCH verbs (project.savePatch / loadPatch / listPatches): the
+// ONE shared reader/body/command call the MCP save_patch / load_patch /
+// list_patches tools run (src/common/PatchPreset.h), so the payload and every
+// refusal are byte-identical on both surfaces by construction.
+#include "../../common/PatchPreset.h"
 // Slice C (2026-10-02): the ONE intent resolver the MCP setters
 // (set_internal_fx_param / set_fx_param) also call, so project.setFxSlotParam
 // resolves — and refuses — with byte-identical text.
@@ -892,6 +897,10 @@ DispatchResult dispatchProject(ProjectCommands& c, const juce::ValueTree& trackL
         out["ok"] = true;
         return { false, out };
     }
+    // Slot-scoped PATCH verbs (project.savePatch / loadPatch / listPatches) are
+    // NOT handled here: they need AudioEngine context (ProjectModel + ReadModel +
+    // the concrete command layer), so FrontendRouter routes them to
+    // dispatchPatchVerbs BEFORE this function — the setFxSidechain precedent.
     if (m == "sampler.setSample") {
         int ti, si; std::string filePath; int root = 60;
         if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
@@ -1485,6 +1494,28 @@ DispatchResult dispatchSetFxSidechain(AudioEngine& engine, const QJsonValue& par
     const auto r = HDAW::fxSidechainToolText(engine, paramsObject(params));
     if (!r.ok) return makeError(-32602, r.text);
     return { false, QJsonDocument::fromJson(r.text.toUtf8()).object() };
+}
+
+DispatchResult dispatchPatchVerbs(AudioEngine& engine, const QString& m, const QJsonValue& params)
+{
+    const auto o = paramsObject(params);
+    if (m == "savePatch") {
+        const auto r = HDAW::savePatchToolText(engine, o);
+        if (!r.ok) return makeError(-32602, r.text);
+        return { false, QJsonDocument::fromJson(r.text.toUtf8()).object() };
+    }
+    if (m == "loadPatch") {
+        const auto r = HDAW::loadPatchToolText(engine, o);
+        if (!r.ok) return makeError(-32602, r.text);
+        // "ok": the tool's own literal, handed back as the payload string.
+        return { false, r.text };
+    }
+    if (m == "listPatches") {
+        const auto r = HDAW::listPatchesToolText(engine, o);
+        if (!r.ok) return makeError(-32602, r.text);
+        return { false, QJsonDocument::fromJson(r.text.toUtf8()).array() };
+    }
+    return makeError(-32601, "unknown patch method");
 }
 
 // project.addTrackWithFx {name, fxType?, pluginId?, color?, parentBus?} — the

@@ -28,6 +28,14 @@ DispatchResult dispatchAddTrackWithFx(AudioEngine& engine, const QJsonValue& par
 // shared reader/body as the MCP set_fx_sidechain tool
 // (src/common/FxSidechain.h) — identical payload and refusals.
 DispatchResult dispatchSetFxSidechain(AudioEngine& engine, const QJsonValue& params);
+// project.savePatch / loadPatch / listPatches — the SLOT-SCOPED PATCH twins of
+// the MCP save_patch / load_patch / list_patches tools. They need engine context
+// (ProjectModel + ReadModel + the concrete command layer), so FrontendRouter
+// routes these methods here BEFORE dispatchProject — the setFxSidechain /
+// addTrackWithFx precedent. The body is the SAME ONE shared reader the tools run
+// (common/PatchPreset.h): identical payload and refusals by construction.
+DispatchResult dispatchPatchVerbs(AudioEngine& engine, const QString& subMethod,
+                                  const QJsonValue& params);
 // project.endBatch also needs engine context: its optional verify hook runs the
 // shared render→verdict path (common/BatchEnd.h).
 DispatchResult dispatchEndBatch(AudioEngine& engine, const QJsonValue& params);

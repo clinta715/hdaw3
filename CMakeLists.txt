@@ -235,6 +235,8 @@ add_library(hdaw_engine STATIC
     src/engine/DrumSynthEngine.cpp
     src/engine/FmSynthEngine.cpp
     src/engine/GrowlBassEngine.cpp
+    src/engine/ReeseBassEngine.h
+    src/engine/ReeseBassEngine.cpp
     src/engine/PsyArpEngine.cpp
     src/engine/PsyFmOperator.cpp
     src/engine/PsyFmModMatrix.cpp

@@ -775,3 +775,118 @@ TEST (PsyArpEngine, StepRateSlotWiringPrepareAndLive)
     for (double d : sortedSpacings (late))
         EXPECT_NEAR (d, 1.0, 0.06);
 }
+
+// ============================================================================
+// Project tempo wiring: setBpm (Track::processBlock -> TrackFXSlot::setTempo)
+// ============================================================================
+// Before setBpm existed, bpm_ had no setter at all: the project tempo never
+// reached PsyArpEngine, so every psyarp slot ran its step clock and delay at a
+// hard 120 BPM. The observable effect is the step timing: at 140 BPM one 1/8
+// step is 0.5 * 60/140 s, not 0.5 * 60/120 s.
+
+TEST (PsyArpEngine, SetBpmChangesStepTiming)
+{
+    struct Run
+    {
+        std::vector<float>  samples;
+        std::vector<double> onsets;
+        double beatsPerSample = 0.0;
+        double peak           = 0.0;
+    };
+
+    // Held chord for 24 beats (a FIXED musical length, so the step COUNT is
+    // tempo-independent and only the wall-clock spacing moves), 1/8 steps,
+    // FX disabled for a clean gated envelope.
+    const auto renderHeldEighth = [](double bpm) {
+        PsyArpEngine engine;
+        engine.setPatternShape (1);          // Asym332
+        engine.setOctaveRange (1);
+        engine.setStepRateIndex (1);         // 1/8 -> 0.5-beat steps
+        engine.setOscShape (1);              // Square: strong envelope
+        engine.setOscUnisonVoices (1);
+        engine.setFilterCutoffHz (6000.0f);
+        engine.setFilterResonance (20.0f);   // max damping: no ring through the gate
+        engine.setDelayWetLevel (0.0f);
+        engine.setReverbWetOnDry (0.0f);
+        engine.setReverbWetOnDelay (0.0f);
+        engine.setPhaserEnabled (false);
+        engine.setOutputLevel (1.0f);
+        engine.prepare (kSampleRate, kBlockSize);
+        engine.setBpm (bpm);
+
+        const double beatsPerSample = bpm / 60.0 / kSampleRate;
+        const double beatsPerBlock  = (double) kBlockSize * beatsPerSample;
+        const double holdBeats      = 24.0;
+        const int totalBlocks = (int) std::ceil ((holdBeats + 0.5) / beatsPerBlock) + 4;
+        const int offBlock    = (int) std::floor (holdBeats / beatsPerBlock);
+
+        Run r;
+        r.beatsPerSample = beatsPerSample;
+        juce::AudioBuffer<float> buffer (2, kBlockSize);
+        juce::MidiBuffer midi;
+        const int held[] = { 36, 43, 48 };
+        for (int b = 0; b < totalBlocks; ++b)
+        {
+            midi.clear();
+            if (b == 0)
+                for (int n : held)
+                    midi.addEvent (juce::MidiMessage::noteOn (1, n, (juce::uint8) 100), 0);
+            if (b == offBlock)
+                for (int n : held)
+                    midi.addEvent (juce::MidiMessage::noteOff (1, n), 0);
+
+            engine.render (buffer, midi);
+            const auto* p = buffer.getReadPointer (0);
+            for (int s = 0; s < kBlockSize; ++s)
+            {
+                r.samples.push_back (p[s]);
+                r.peak = std::max (r.peak, (double) std::fabs (p[s]));
+            }
+        }
+        r.onsets = detectOnsets (r.samples, beatsPerSample, 0.05, holdBeats);
+        return r;
+    };
+
+    const Run at120 = renderHeldEighth (120.0);
+    const Run at140 = renderHeldEighth (140.0);
+
+    const auto check = [](const Run& r, double bpm) {
+        ASSERT_GT (r.peak, 0.3) << "expected a strong dry arp signal at " << bpm << " BPM";
+        ASSERT_FALSE (r.onsets.empty());
+        EXPECT_NEAR (r.onsets.front(), 0.5, 0.06) << "bpm " << bpm;
+
+        for (double t : r.onsets)
+            EXPECT_LT (gridDistanceFor (t, 0.5), 0.06)
+                << "every onset must sit on the 0.5-beat (1/8) grid at bpm " << bpm;
+
+        const auto sp = sortedSpacings (r.onsets);
+        ASSERT_FALSE (sp.empty()) << "bpm " << bpm;
+        for (double d : sp)
+            EXPECT_NEAR (d, 0.5, 0.06) << "every step gap must be one 1/8 step at bpm " << bpm;
+
+        // Same 24 held beats -> the same step count at both tempos.
+        EXPECT_GE ((int) r.onsets.size(), 40) << "bpm " << bpm;
+        EXPECT_LE ((int) r.onsets.size(), 52) << "bpm " << bpm;
+
+        // Wall clock: one 0.5-beat step is 0.5 * 60/bpm seconds ==
+        // 0.5 / beatsPerSample samples. This is the direct assertion that the
+        // tempo reached the engine's step clock (a hard 120 BPM would stretch
+        // the 140 run's beat-domain gaps by 140/120 and blow this by >5%).
+        const double expectedSamples = 0.5 / r.beatsPerSample;
+        const double actualSamples   = sp[sp.size() / 2] / r.beatsPerSample;
+        EXPECT_NEAR (actualSamples / expectedSamples, 1.0, 0.05) << "bpm " << bpm;
+    };
+
+    check (at120, 120.0);
+    check (at140, 140.0);
+
+    // Identical note material, different tempo quantisation: the first second
+    // of the two renders cannot be bit-identical (at 140 BPM the step
+    // boundaries land ~14% earlier in samples).
+    const size_t n = std::min<size_t> (44100, std::min (at120.samples.size(), at140.samples.size()));
+    ASSERT_GT (n, 0u);
+    bool identical = true;
+    for (size_t i = 0; i < n; ++i)
+        if (at120.samples[i] != at140.samples[i]) { identical = false; break; }
+    EXPECT_FALSE (identical) << "140 BPM must not render identical samples to 120 BPM";
+}

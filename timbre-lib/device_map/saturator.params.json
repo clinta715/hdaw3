@@ -25,9 +25,9 @@
    "name": "Drive dB",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:233",
+   "source": "src/engine/TrackFXSlot.h:235",
    "sources": [
-    "src/engine/TrackFXSlot.h:233"
+    "src/engine/TrackFXSlot.h:235"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -54,9 +54,9 @@
    "name": "Type",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:234",
+   "source": "src/engine/TrackFXSlot.h:236",
    "sources": [
-    "src/engine/TrackFXSlot.h:234"
+    "src/engine/TrackFXSlot.h:236"
    ],
    "stages": [
     "sound-selector"
@@ -77,9 +77,9 @@
    "name": "Asymmetry",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:235",
+   "source": "src/engine/TrackFXSlot.h:237",
    "sources": [
-    "src/engine/TrackFXSlot.h:235"
+    "src/engine/TrackFXSlot.h:237"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -100,9 +100,9 @@
    "name": "Mix",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:236",
+   "source": "src/engine/TrackFXSlot.h:238",
    "sources": [
-    "src/engine/TrackFXSlot.h:236"
+    "src/engine/TrackFXSlot.h:238"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -124,9 +124,9 @@
    "note": "Trims the WET path only.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:237",
+   "source": "src/engine/TrackFXSlot.h:239",
    "sources": [
-    "src/engine/TrackFXSlot.h:237"
+    "src/engine/TrackFXSlot.h:239"
    ],
    "stages": [
     "sound-selector"
@@ -148,9 +148,9 @@
    "note": "Applies to the Bitcrush curve only.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:238",
+   "source": "src/engine/TrackFXSlot.h:240",
    "sources": [
-    "src/engine/TrackFXSlot.h:238"
+    "src/engine/TrackFXSlot.h:240"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -165,5 +165,5 @@
   "evidence": "in-source static param table (see per-param sources)",
   "tables": "src/engine/TrackFXSlot.h"
  },
- "verifiedOn": "2026-09-30"
+ "verifiedOn": "2026-10-07"
 }

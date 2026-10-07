@@ -249,6 +249,57 @@ means the child is still booting (retry) — check `get_fx_capture_status` and t
 plugin-host log before concluding the slot is broken.**
 Evidence: `PluginBootGate.*` (platform suite) + the `list_fx_params` description.
 
+### Slot-scoped PATCH verbs (`save_patch` / `load_patch` / `list_patches`) — NEW 2026-10-06
+
+A PATCH is **ONE slot's full state**: params + the `psyFmMatrix` movement +
+`psyFmSweepRate` + sampler/slice/plugin state, persisted by
+`ChainLibrary::patchLibrary()` under `<userData>/HDAW/patches`. RPC twins:
+`project.savePatch` / `loadPatch` / `listPatches` (identical argument names and
+refusal text — one shared reader, `src/common/PatchPreset.h`).
+
+It is the SLOT-SCOPED sibling of the CHAIN pair, and the distinction matters:
+`load_fx_chain` is CHAIN-scoped — it PRESERVES the target's instrument slots and
+APPENDS the preset's, so loading a 1-slot `psy_fm` chain onto a track that
+already had a `psy_fm` slot produced **TWO** `psy_fm` slots with the target
+untouched (measured defect, reported `{"ok":true,"warnings":[]}`).
+`load_patch` writes INTO the addressed slot — never appends, never removes — and
+refuses an out-of-range slot index, an empty preset and an fxType/plugin-id
+mismatch (each a real error, never a silent no-op).
+
+**Use `save_patch`/`load_patch` for one sound; `save_fx_chain`/`load_fx_chain`
+for a whole chain.** A patch is the right unit when a layer agent dials a sound
+and it should outlive the track.
+
+**Movement travels with the patch.** `psyFmMatrix` is
+`PsyFmState::encodeRoutes` (`source:dest:depth;…`), so a patch's modulation is
+part of the patch. One documented asymmetry: a patch whose matrix is EMPTY does
+NOT clear the target's matrix (the target's existing routes are preserved, so a
+matrix-less patch can never silently wipe a slot's routing); a patch WITH routes
+overwrites wholesale.
+
+**Internal patch bank**: `compositions/psy_fm_bank/` ships 20 authored `psy_fm`
+patches across bass/lead/stab/pad/perc/riser (`corpus.json` = design,
+`saved.json` = ids, `audit.json` = measurements; `scripts/author_psy_fm_bank.py`
+re-authors, `scripts/audit_psy_fm_bank.py` re-gates). All 20 measure audible +
+non-clipping through `verify_part`. This closes the asymmetry where the VA
+engines had 4,854 selectable patches and the internal palette had ~15 presets.
+
+**Shipped factory bass roster**: `list_patches` also carries 12 code-seeded
+built-in bass patches (`source:"factory"`, ids `_factory/<Name>.json`, listable
+and loadable but never deletable): 6 `reese_bass` (Reese Classic, Neuro Sync
+Stab, Psy Wobble, Dub Sub Reese, Rolling Mid Reese, Fold Gnarl), 4 `growl_bass`
+(Growl Rolling Sub, Growl Hard Acid, Growl Digital Grit, Growl Vocal) and 2
+`sub_synth` (Sub Pure, Sub Acid 303). They seed `HDAW/patches/_factory/` the way
+the chain roster seeds `HDAW/chains/_factory/`, so every session starts with a
+bass vocabulary instead of hand-dialing; `load_patch` applies one through the
+slot-scoped path above.
+
+**Patch QA**: `param_verity_corpus {trackId, slotIndex}` is the gate that a patch
+cannot ship with silently inert params — it sweeps a slot's params and reports
+which actually change the render (`anyAudible` / `maxAbsRmsDelta` per param).
+Measured on one bank patch: 8 of 13 sampled params audible; the inert ones were
+exactly the operators its algorithm does not use (correct, not a defect).
+
 ### Engine access: three host variants (2026-09-29)
 pi-hosted agents call
 `await mcp({server: 'hdaw-http', tool: '<tool>', args: {...}})`; omp-harness

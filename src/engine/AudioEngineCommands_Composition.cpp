@@ -831,7 +831,7 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
         && HDAW::TrackFXSlot::getParamDefsForType(p.fxType).empty())
     {
         result.error = "unknown fxType: " + p.fxType
-                     + " (internal instruments: fm_synth, psy_fm, growl_bass, psyarp, sampler, sub_synth, drum_synth)";
+                     + " (internal instruments: fm_synth, psy_fm, growl_bass, psyarp, sampler, sub_synth, drum_synth, reese_bass)";
         return result;
     }
 

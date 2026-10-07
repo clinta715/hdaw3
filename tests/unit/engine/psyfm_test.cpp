@@ -7,6 +7,8 @@
 #include "engine/PsyFmState.h"
 #include "engine/TrackFXSlot.h"
 #include <cmath>
+#include <functional>
+#include <initializer_list>
 #include <iostream>
 #include <thread>
 #include <atomic>
@@ -332,6 +334,162 @@ TEST_F(PsyFmEngineTest, OnBarBoundaryAdvancesRiserLfo) {
     float initialRate = engine.getModSourcePool().ratioSweepLFORateHz;
     engine.onBarBoundary(8);
     EXPECT_GT(engine.getModSourcePool().ratioSweepLFORateHz, initialRate);
+}
+
+// ── Performance sources + bar clock must be REAL sources ──────────────
+// Symptom (before this fix): noteOn discarded the velocity, the MIDI loop had
+// no controller branch, and onBarBoundary never ran (no caller) — so a
+// `velocity`/`modWheel` route read a permanently-zero pool and `barClock`
+// silently aliased the ratio-sweep LFO (sourceIndexFor's `default: return 0`).
+// Lesson 38: assert the OBSERVABLE effect — the rendered samples must differ.
+//
+// Determinism note: the ADSR/oscillator phase advance every block, so two
+// consecutive renders of the SAME engine differ regardless of the sources.
+// Every comparison below therefore restarts from a fresh engine whose state is
+// identical except for the source under test.
+
+namespace {
+// Render ONE block of a fresh growlBass engine (optionally with `route`), and
+// return channel 0. `setup` runs after the matrix is installed.
+bool buffersDiffer (const std::vector<float>& a, const std::vector<float>& b)
+{
+    if (a.size() != b.size()) return true;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (a[i] != b[i]) return true;
+    return false;
+}
+
+std::vector<float> renderFreshPsyFm (int velocity, bool route,
+                                     bool sendCc1, std::function<void(PsyFmEngine&)> setup)
+{
+    PsyFmEngine e;
+    e.prepare (44100.0, 512);
+    e.setAlgorithm (growlBassAlgorithm);
+    PsyFmModMatrix m;
+    if (route)
+        m.addRoute ({ PsyFmModRoute::Source::Velocity,
+                      PsyFmModRoute::Dest::Op6Feedback, 0.8f });
+    // Installed in BOTH cases: an empty matrix replaces prepare()'s default
+    // feedback-LFO route, so the routed/unrouted variants differ only in the
+    // velocity route.
+    e.setModMatrix (std::move (m));
+    if (setup) setup (e);
+
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) velocity), 0);
+    if (sendCc1)
+        midi.addEvent (juce::MidiMessage::controllerEvent (1, 1, 127), 0);
+    juce::AudioBuffer<float> buf (1, 512);
+    buf.clear();
+    e.render (buf, midi);
+    return std::vector<float> (buf.getReadPointer (0), buf.getReadPointer (0) + 512);
+}
+} // namespace
+
+TEST_F(PsyFmEngineTest, VelocitySourceChangesRenderWhenRouted) {
+    const auto soft = renderFreshPsyFm (20, /*route*/ true, false, nullptr);
+    const auto loud = renderFreshPsyFm (127, /*route*/ true, false, nullptr);
+    EXPECT_TRUE (buffersDiffer (soft, loud))
+        << "velocity 20 vs 127 must change a render driven by a velocity route";
+
+    // Inert without a route: identical inputs, identical (bit-exact) render.
+    const auto softUnrouted = renderFreshPsyFm (20, /*route*/ false, false, nullptr);
+    const auto loudUnrouted = renderFreshPsyFm (127, /*route*/ false, false, nullptr);
+    EXPECT_FALSE (buffersDiffer (softUnrouted, loudUnrouted))
+        << "the velocity source must not affect an unrouted matrix";
+}
+
+TEST_F(PsyFmEngineTest, ModWheelSourceFollowsCc1) {
+    auto withWheelRoute = [](bool sendCc1) {
+        PsyFmEngine e;
+        e.prepare (44100.0, 512);
+        e.setAlgorithm (growlBassAlgorithm);
+        PsyFmModMatrix m;
+        m.addRoute ({ PsyFmModRoute::Source::ModWheel,
+                      PsyFmModRoute::Dest::Op6Feedback, 0.8f });
+        e.setModMatrix (std::move (m));
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+        if (sendCc1)
+            midi.addEvent (juce::MidiMessage::controllerEvent (1, 1, 127), 0);
+        juce::AudioBuffer<float> buf (1, 512);
+        buf.clear();
+        e.render (buf, midi);
+        return std::vector<float> (buf.getReadPointer (0), buf.getReadPointer (0) + 512);
+    };
+
+    EXPECT_TRUE (buffersDiffer (withWheelRoute (false), withWheelRoute (true)))
+        << "CC1 must move a render driven by a modWheel route";
+
+    // Direct observable of the new render() branch: the pool follows CC1.
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::controllerEvent (1, 1, 64), 0);
+    juce::AudioBuffer<float> buf (1, 512);
+    buf.clear();
+    engine.render (buf, midi);
+    EXPECT_NEAR (engine.getModSourcePool().modWheelValue, 64.0f / 127.0f, 1e-6f);
+}
+
+TEST_F(PsyFmEngineTest, BarClockIsARealSourceAndIdempotent) {
+    // route: BarClock → Op6Feedback 0.6. `bars` are the onBarBoundary calls to
+    // make BEFORE the single render, on a fresh engine each time.
+    auto renderAfterBars = [](std::initializer_list<int> bars) {
+        PsyFmEngine e;
+        e.prepare (44100.0, 512);
+        e.setAlgorithm (growlBassAlgorithm);
+        PsyFmModMatrix m;
+        m.addRoute ({ PsyFmModRoute::Source::BarClock,
+                      PsyFmModRoute::Dest::Op6Feedback, 0.6f });
+        e.setModMatrix (std::move (m));
+        for (int b : bars) e.onBarBoundary (b);
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+        juce::AudioBuffer<float> buf (1, 512);
+        buf.clear();
+        e.render (buf, midi);
+        return std::vector<float> (buf.getReadPointer (0), buf.getReadPointer (0) + 512);
+    };
+
+    const auto r0 = renderAfterBars ({ 0 });        // barClock 0.0
+    const auto r1 = renderAfterBars ({ 2 });        // barClock 0.5
+    EXPECT_TRUE (buffersDiffer (r0, r1))
+        << "a BarClock route must move the render when the bar moves";
+
+    // Once per bar: the second call for bar 2 must be a no-op, so the state —
+    // and therefore the render from an otherwise-identical engine — is equal.
+    const auto r2 = renderAfterBars ({ 2, 2 });
+    EXPECT_FALSE (buffersDiffer (r1, r2))
+        << "onBarBoundary must be idempotent for a repeated bar index";
+
+    // Same-engine pool assertions (the sharpest view of idempotency: the
+    // every-8-bars acceleration must not compound).
+    PsyFmEngine e;
+    e.prepare (44100.0, 512);
+    e.onBarBoundary (2);
+    const float rateAfterFirst = e.getModSourcePool().ratioSweepLFORateHz;
+    const float clockAfterFirst = e.getModSourcePool().barClockValue;
+    e.onBarBoundary (2);
+    EXPECT_FLOAT_EQ (e.getModSourcePool().ratioSweepLFORateHz, rateAfterFirst);
+    EXPECT_FLOAT_EQ (e.getModSourcePool().barClockValue, clockAfterFirst);
+
+    e.onBarBoundary (8);                             // accelerate: 0.2 * 1.3
+    EXPECT_GT (e.getModSourcePool().ratioSweepLFORateHz, rateAfterFirst);
+    e.onBarBoundary (8);                             // idempotent, no 1.3^2
+    EXPECT_NEAR (e.getModSourcePool().ratioSweepLFORateHz, 0.2f * 1.3f, 1e-6f);
+
+    // Rewind/loop back: the base rate is restored (and stays base on repeat).
+    e.onBarBoundary (1);
+    EXPECT_NEAR (e.getModSourcePool().ratioSweepLFORateHz, 0.2f, 1e-6f);
+    EXPECT_NEAR (e.getModSourcePool().barClockValue, 0.25f, 1e-6f);
+    e.onBarBoundary (1);
+    EXPECT_NEAR (e.getModSourcePool().ratioSweepLFORateHz, 0.2f, 1e-6f);
+
+    // setBaseRatioSweepRateHz shares one value with the rewind branch.
+    e.setBaseRatioSweepRateHz (0.75f);
+    EXPECT_NEAR (e.getModSourcePool().ratioSweepLFORateHz, 0.75f, 1e-6f);
+    e.onBarBoundary (9);                             // forward, not a %8 bar
+    e.onBarBoundary (3);                             // rewind
+    EXPECT_NEAR (e.getModSourcePool().ratioSweepLFORateHz, 0.75f, 1e-6f);
 }
 
 TEST_F(PsyFmEngineTest, AlgorithmFunctionsDontCrash) {

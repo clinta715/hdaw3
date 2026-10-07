@@ -34,6 +34,14 @@
 #   * a file whose shape it cannot understand is reported and exits NON-ZERO:
 #     drift must be loud, never a silent regression.
 #
+# v4 (2026-10-07, pi-fabric 0.109.0): the worker-site schema read moved INSIDE
+# the try and the fs import gained a bundler alias (fs2.readFileSync), so the
+# v3 worker regex (hardcoded "fs.") refused and drift went loud again (the
+# re-apply extension had also been retired to .disabled, so upgrades silently
+# reverted the fix). v4 captures the fs alias from the actual read line and
+# re-reads the schema defensively with it. Verification probe moved to
+# scripts/advisor_probe.mjs (locates the validator chunk dynamically).
+#
 # Re-applied automatically at session start by .pi/extensions/advisor-prose-patch.ts.
 # Idempotent.
 
@@ -44,7 +52,8 @@ from pathlib import Path
 
 DIST = Path.home() / ".pi" / "agent" / "npm" / "node_modules" / "pi-fabric" / "dist"
 INVARIANT = "Structured agent output was invalid"
-MARKER = "advisor directive-prose coercion v3 (2026-09-29)"
+MARKER_V3 = "advisor directive-prose coercion v3 (2026-09-29)"
+MARKER = "advisor directive-prose coercion v4 (2026-10-07)"
 MESSAGE_CAP = 2400
 
 CATCH_RE = re.compile(r'(\} catch \((\w+)\) \{\n)(\s*)((\w+)\.status = "failed";)')
@@ -99,12 +108,16 @@ def patch_worker_site(src, pos):
     if not m:
         return None
     window = src[max(0, opener - 700):opener]
-    if not re.search(r'const \w+ = JSON\.parse\(fs\.readFileSync\(options\.schemaFile, "utf8"\)\);', window):
+    # v4: the read may live inside the try and the fs import may be aliased by
+    # the bundler (fs2, fs3, ...). Capture whichever identifier the file uses.
+    mfs = re.search(r'const \w+ = JSON\.parse\((\w+)\.readFileSync\(options\.schemaFile, "utf8"\)\);', window)
+    if not mfs:
         return None
+    fs_alias = mfs.group(1)
     indent = m.group(3)
     i = indent
     ref = (
-        f'{i}const schemaRef = (() => {{ try {{ return JSON.parse(fs.readFileSync(options.schemaFile, "utf8")); }} catch {{ return null; }} }})();\n'
+        f'{i}const schemaRef = (() => {{ try {{ return JSON.parse({fs_alias}.readFileSync(options.schemaFile, "utf8")); }} catch {{ return null; }} }})();\n'
         f'{i}const directiveSchema = schemaRef && schemaRef.properties && schemaRef.properties.action && Array.isArray(schemaRef.properties.action.enum) && schemaRef.properties.action.enum.includes("silent"); // {MARKER}\n'
         f'{i}if (!directiveSchema) {{\n'
     )
@@ -127,8 +140,8 @@ def process(path: Path) -> bool:
     except OSError as e:
         print(f"{path}: unreadable ({e})", file=sys.stderr)
         return False
-    if MARKER in src:
-        print(path.name + ": already v3")
+    if MARKER in src or MARKER_V3 in src:
+        print(path.name + ": already patched (v3/v4 marker present)")
         return True
     if INVARIANT not in src:
         return True  # not a validator file
@@ -150,7 +163,7 @@ def process(path: Path) -> bool:
     if not ok:
         return False
     path.write_text(work, encoding="utf-8", newline="")
-    print(path.name + ": patched v3 (backup " + backup.name + ")")
+    print(path.name + ": patched v4 (backup " + backup.name + ")")
     return True
 
 

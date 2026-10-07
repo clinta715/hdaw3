@@ -26,9 +26,9 @@
    "note": "32 DX7-style operator arrangements (0..31); individual arrangements are not enumerated in source (PsyFmAlgorithms covers the psy_fm sibling, not this engine).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:255",
+   "source": "src/engine/TrackFXSlot.h:257",
    "sources": [
-    "src/engine/TrackFXSlot.h:255"
+    "src/engine/TrackFXSlot.h:257"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -49,9 +49,9 @@
    "name": "Feedback",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:256",
+   "source": "src/engine/TrackFXSlot.h:258",
    "sources": [
-    "src/engine/TrackFXSlot.h:256"
+    "src/engine/TrackFXSlot.h:258"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -72,9 +72,9 @@
    "name": "Output Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:257",
+   "source": "src/engine/TrackFXSlot.h:259",
    "sources": [
-    "src/engine/TrackFXSlot.h:257"
+    "src/engine/TrackFXSlot.h:259"
    ],
    "stages": [
     "sound-selector"
@@ -95,9 +95,9 @@
    "name": "OP1 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:258",
+   "source": "src/engine/TrackFXSlot.h:260",
    "sources": [
-    "src/engine/TrackFXSlot.h:258"
+    "src/engine/TrackFXSlot.h:260"
    ],
    "stages": [
     "sound-selector"
@@ -118,9 +118,9 @@
    "name": "OP2 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:259",
+   "source": "src/engine/TrackFXSlot.h:261",
    "sources": [
-    "src/engine/TrackFXSlot.h:259"
+    "src/engine/TrackFXSlot.h:261"
    ],
    "stages": [
     "sound-selector"
@@ -141,9 +141,9 @@
    "name": "OP3 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:260",
+   "source": "src/engine/TrackFXSlot.h:262",
    "sources": [
-    "src/engine/TrackFXSlot.h:260"
+    "src/engine/TrackFXSlot.h:262"
    ],
    "stages": [
     "sound-selector"
@@ -164,9 +164,9 @@
    "name": "OP4 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:261",
+   "source": "src/engine/TrackFXSlot.h:263",
    "sources": [
-    "src/engine/TrackFXSlot.h:261"
+    "src/engine/TrackFXSlot.h:263"
    ],
    "stages": [
     "sound-selector"
@@ -187,9 +187,9 @@
    "name": "OP5 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:262",
+   "source": "src/engine/TrackFXSlot.h:264",
    "sources": [
-    "src/engine/TrackFXSlot.h:262"
+    "src/engine/TrackFXSlot.h:264"
    ],
    "stages": [
     "sound-selector"
@@ -210,9 +210,9 @@
    "name": "OP6 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:263",
+   "source": "src/engine/TrackFXSlot.h:265",
    "sources": [
-    "src/engine/TrackFXSlot.h:263"
+    "src/engine/TrackFXSlot.h:265"
    ],
    "stages": [
     "sound-selector"
@@ -233,9 +233,9 @@
    "name": "OP1 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:264",
+   "source": "src/engine/TrackFXSlot.h:266",
    "sources": [
-    "src/engine/TrackFXSlot.h:264"
+    "src/engine/TrackFXSlot.h:266"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -256,9 +256,9 @@
    "name": "OP2 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:265",
+   "source": "src/engine/TrackFXSlot.h:267",
    "sources": [
-    "src/engine/TrackFXSlot.h:265"
+    "src/engine/TrackFXSlot.h:267"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -279,9 +279,9 @@
    "name": "OP3 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:266",
+   "source": "src/engine/TrackFXSlot.h:268",
    "sources": [
-    "src/engine/TrackFXSlot.h:266"
+    "src/engine/TrackFXSlot.h:268"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -302,9 +302,9 @@
    "name": "OP4 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:267",
+   "source": "src/engine/TrackFXSlot.h:269",
    "sources": [
-    "src/engine/TrackFXSlot.h:267"
+    "src/engine/TrackFXSlot.h:269"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -325,9 +325,9 @@
    "name": "OP5 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:268",
+   "source": "src/engine/TrackFXSlot.h:270",
    "sources": [
-    "src/engine/TrackFXSlot.h:268"
+    "src/engine/TrackFXSlot.h:270"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -348,9 +348,9 @@
    "name": "OP6 Coarse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:269",
+   "source": "src/engine/TrackFXSlot.h:271",
    "sources": [
-    "src/engine/TrackFXSlot.h:269"
+    "src/engine/TrackFXSlot.h:271"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -371,9 +371,9 @@
    "name": "OP1 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:270",
+   "source": "src/engine/TrackFXSlot.h:272",
    "sources": [
-    "src/engine/TrackFXSlot.h:270"
+    "src/engine/TrackFXSlot.h:272"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -394,9 +394,9 @@
    "name": "OP2 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:271",
+   "source": "src/engine/TrackFXSlot.h:273",
    "sources": [
-    "src/engine/TrackFXSlot.h:271"
+    "src/engine/TrackFXSlot.h:273"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -417,9 +417,9 @@
    "name": "OP3 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:272",
+   "source": "src/engine/TrackFXSlot.h:274",
    "sources": [
-    "src/engine/TrackFXSlot.h:272"
+    "src/engine/TrackFXSlot.h:274"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -440,9 +440,9 @@
    "name": "OP4 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:273",
+   "source": "src/engine/TrackFXSlot.h:275",
    "sources": [
-    "src/engine/TrackFXSlot.h:273"
+    "src/engine/TrackFXSlot.h:275"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -463,9 +463,9 @@
    "name": "OP5 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:274",
+   "source": "src/engine/TrackFXSlot.h:276",
    "sources": [
-    "src/engine/TrackFXSlot.h:274"
+    "src/engine/TrackFXSlot.h:276"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -486,9 +486,9 @@
    "name": "OP6 Fine",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:275",
+   "source": "src/engine/TrackFXSlot.h:277",
    "sources": [
-    "src/engine/TrackFXSlot.h:275"
+    "src/engine/TrackFXSlot.h:277"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -509,9 +509,9 @@
    "name": "LFO Rate",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:276",
+   "source": "src/engine/TrackFXSlot.h:278",
    "sources": [
-    "src/engine/TrackFXSlot.h:276"
+    "src/engine/TrackFXSlot.h:278"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -532,9 +532,9 @@
    "name": "LFO Delay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:277",
+   "source": "src/engine/TrackFXSlot.h:279",
    "sources": [
-    "src/engine/TrackFXSlot.h:277"
+    "src/engine/TrackFXSlot.h:279"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -555,9 +555,9 @@
    "name": "LFO Pitch Depth",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:278",
+   "source": "src/engine/TrackFXSlot.h:280",
    "sources": [
-    "src/engine/TrackFXSlot.h:278"
+    "src/engine/TrackFXSlot.h:280"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -578,9 +578,9 @@
    "name": "LFO Amp Depth",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:279",
+   "source": "src/engine/TrackFXSlot.h:281",
    "sources": [
-    "src/engine/TrackFXSlot.h:279"
+    "src/engine/TrackFXSlot.h:281"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -602,9 +602,9 @@
    "note": "0..3 enum; values are not enumerated in FmSynthEngine source - treat as undocumented.",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:280",
+   "source": "src/engine/TrackFXSlot.h:282",
    "sources": [
-    "src/engine/TrackFXSlot.h:280"
+    "src/engine/TrackFXSlot.h:282"
    ],
    "stages": [
     "sound-selector"
@@ -619,5 +619,5 @@
   "evidence": "in-source static param table (see per-param sources)",
   "tables": "src/engine/TrackFXSlot.h"
  },
- "verifiedOn": "2026-09-30"
+ "verifiedOn": "2026-10-07"
 }

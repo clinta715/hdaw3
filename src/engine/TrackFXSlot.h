@@ -20,6 +20,7 @@
 #include "engine/FmSynthEngine.h"
 #include "engine/DrumSynthEngine.h"
 #include "engine/GrowlBassEngine.h"
+#include "engine/ReeseBassEngine.h"
 #include "engine/SaturatorEngine.h"
 #include "DecodedSoundPool.h"
 #include "PsyArpEngine.h"
@@ -119,7 +120,8 @@ public:
     {
         return { "reverb", "compressor", "eq", "delay", "chorus", "flanger",
                  "phaser", "filter", "saturator", "sampler", "fm_synth",
-                 "growl_bass", "psyarp", "psy_fm", "sub_synth", "drum_synth" };
+                 "growl_bass", "psyarp", "psy_fm", "sub_synth", "drum_synth",
+                 "reese_bass" };
     }
 
     static juce::String internalFxTypeNamesText()
@@ -519,6 +521,22 @@ public:
                 {65, "Send Reverb Size",        3.5f,  0.1f, 10.0f },
                 {66, "Send Reverb Mix",         0.25f, 0.0f,  1.0f },
             };
+        // Detuned-supersaw reese / neuro bass with a tempo-synced wobble LFO.
+        // The table comes from ReeseBassEngine (InternalFilter precedent): the
+        // DSP that consumes these values owns the names/ranges, so the slot's
+        // advertised def and the DSP's own clamp cannot drift apart. The 40
+        // indices are FROZEN at ship (reese_bass_test.cpp pins the order).
+        if (type == "reese_bass")
+        {
+            std::vector<InternalParamDef> defs;
+            defs.reserve((size_t) ReeseBassEngine::kNumParams);
+            for (int i = 0; i < ReeseBassEngine::kNumParams; ++i)
+            {
+                const auto& d = ReeseBassEngine::paramDefs()[(size_t) i];
+                defs.push_back({ i, juce::String(d.name), d.def, d.min, d.max });
+            }
+            return defs;
+        }
         return {};
     }
 
@@ -556,6 +574,8 @@ public:
             activeType = ActiveType::SubSynth;
         else if (type == "drum_synth")
             activeType = ActiveType::DrumSynth;
+        else if (type == "reese_bass")
+            activeType = ActiveType::ReeseBass;
         else if (type == "saturator")
             activeType = ActiveType::Saturator;
         else if (type == "plugin")
@@ -618,9 +638,17 @@ public:
     // in the shared InternalDelay (slice C3).
     //
     // Also forwarded to the drum_synth send-bus delay so its
-    // "Send Delay Time (beats)" (param 62) follows the project tempo. Null for
-    // every other slot kind, so the guard keeps this a no-op there.
-    void setTempo(double bpm) { delay.setTempo(bpm); if (drumSynth) drumSynth->setTempo(bpm); }
+    // "Send Delay Time (beats)" (param 62) follows the project tempo, to the
+    // psyarp slot so its step clock / delay beats map to real seconds, and to
+    // the reese_bass engine so its tempo-synced wobble LFO
+    // ("LFO Rate (beats)"/"LFO Sync") tracks the project tempo every block.
+    // Null for every other slot kind, so the guard keeps this a no-op there.
+    void setTempo(double bpm) { delay.setTempo(bpm); if (drumSynth) drumSynth->setTempo(bpm); if (psyArp) psyArp->setBpm(bpm); if (reeseBass) reeseBass->setTempo(bpm); }
+
+    // Per-block transport bar index forwarded from Track::processBlock (audio
+    // thread). Drives the psy_fm bar clock (the riser preset's accelerate-
+    // every-8-bars route). No-op for every other slot kind.
+    void setTransportBar(int bar) { if (psyFm) psyFm->onBarBoundary(bar); }
 
     // Multi-sampler chain accumulation (2026-09-26): the chain loop
     // (Track::processBlock) marks every sampler slot AFTER the first engaged
@@ -1134,6 +1162,18 @@ public:
                 growlBass->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
                 break;
             }
+            case ActiveType::ReeseBass:
+            {
+                if (!reeseBass)
+                    reeseBass = std::make_unique<ReeseBassEngine>();
+                reeseBass->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
+                // Push all 40 frozen rows in the pinned order (guard each row:
+                // a short/legacy vector must not read past its end).
+                for (int i = 0; i < ReeseBassEngine::kNumParams; ++i)
+                    if (internalParamValues.size() > (size_t) i)
+                        reeseBass->setParam(i, internalParamValues[(size_t) i]);
+                break;
+            }
             case ActiveType::PsyArp:
             {
                 if (!psyArp)
@@ -1439,6 +1479,17 @@ public:
             return;
         }
 
+        if (activeType == ActiveType::ReeseBass)
+        {
+            if (reeseBass)
+            {
+                buffer.clear();
+                reeseBass->render(buffer, midiMessages);
+                midiMessages.clear();
+            }
+            return;
+        }
+
         if (activeType == ActiveType::PsyArp)
         {
             if (psyArp)
@@ -1607,6 +1658,7 @@ public:
         filter.reset();
         if (fmSynth)   fmSynth->prepare(sampleRate_, 0);
         if (growlBass) growlBass->prepare(sampleRate_, 0);
+        if (reeseBass) reeseBass->prepare(sampleRate_, 0);
         if (psyArp)    psyArp->prepare(sampleRate_, 0);
         if (psyFm)     psyFm->prepare(sampleRate_, 0);
         if (subSynth)  subSynth->prepare(sampleRate_, 0);
@@ -1924,9 +1976,11 @@ public:
     void applySweepRate (float hz)
     {
         if (activeType != ActiveType::PsyFm || ! psyFm) return;
-        // Plain float store â€” same tolerance as the Track::processBlock FM
-        // modulation pass writing the pool from the audio thread.
-        psyFm->getModSourcePool().ratioSweepLFORateHz = hz;
+        // Stores the BASE rate and resets the live pool rate together, so
+        // onBarBoundary's rewind branch restores this value (not a hardcoded
+        // default). Plain float store — same tolerance as the Track::processBlock
+        // FM modulation pass writing the pool from the audio thread.
+        psyFm->setBaseRatioSweepRateHz (hz);
     }
 
     /// Rebuild path (Gate 1/10): restore matrix + sweep rate from the slot
@@ -1944,6 +1998,7 @@ public:
             applySweepRate (static_cast<float> (static_cast<double> (sweep)));
     }
     GrowlBassEngine* growlBassEngine() { return growlBass.get(); }
+    ReeseBassEngine* reeseBassEngine() { return reeseBass.get(); }
 
     // Multi-sampler key-range routing: when both are >= 0, only MIDI notes
     // in [keyRangeLow_, keyRangeHigh_] are rendered by this sampler; notes
@@ -1958,7 +2013,7 @@ private:
     juce::MemoryBlock stateBaseline_;
     bool hasStateBaseline_ = false;
     bool stateRestoredFromTree_ = false;
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm, SubSynth, Saturator, DrumSynth };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm, SubSynth, Saturator, DrumSynth, ReeseBass };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -2002,6 +2057,7 @@ private:
     std::unique_ptr<DrumSynthEngine> drumSynth;
     std::unique_ptr<FmSynthEngine> fmSynth;
     std::unique_ptr<GrowlBassEngine> growlBass;
+    std::unique_ptr<ReeseBassEngine> reeseBass;
     std::unique_ptr<PsyArpEngine> psyArp;
     std::unique_ptr<PsyFmEngine> psyFm;
     // Saturator: two engines so each channel keeps its own DC-blocker state;
@@ -2491,6 +2547,18 @@ private:
                         break;
                     }
                 }
+                break;
+            }
+            case ActiveType::ReeseBass:
+            {
+                // The value arriving here is already def-clamped by
+                // setInternalParam/loadParamsFromTree; the engine repeats the
+                // clamp and rounds the integer-valued rows (Voice Count, Osc
+                // Shape, Sub Octave, Drive Type, Filter Type, LFO Shape, LFO
+                // Sync, Mono Legato), same convention as GrowlBass, so the live
+                // engine's readback is the single source of truth.
+                if (!reeseBass) return;
+                reeseBass->setParam(paramIndex, value);
                 break;
             }
             default:

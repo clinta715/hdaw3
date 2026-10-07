@@ -89,6 +89,7 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/psyfm_filter_test.cpp
     unit/engine/psyfm_presets_test.cpp
     unit/engine/drum_synth_test.cpp
+    unit/engine/reese_bass_test.cpp
     unit/engine/dx7_sysex_import_test.cpp
     unit/engine/virus_sysex_import_test.cpp
     unit/engine/slice_detector_test.cpp
@@ -142,6 +143,7 @@ hdaw_test_exe(hdaw_tests_engine SOURCES
     unit/engine/pattern_library_test.cpp
     unit/engine/chain_library_test.cpp
     unit/engine/fx_chain_preset_test.cpp
+    unit/engine/patch_preset_test.cpp
     unit/engine/arranger_test.cpp
     unit/engine/bar_snap_test.cpp
     unit/engine/ghost_clips_test.cpp
@@ -224,6 +226,7 @@ hdaw_test_exe(hdaw_tests_mcp SOURCES
     integration/mcp/device_params_test.cpp
     integration/mcp/sidechain_parity_test.cpp
     integration/mcp/internal_fx_intent_test.cpp
+    integration/mcp/patch_preset_parity_test.cpp
 )
 
 # frontend: 26 TUs — JSON-RPC router surface + parity ratchets.

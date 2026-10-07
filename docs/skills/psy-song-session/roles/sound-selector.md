@@ -11,6 +11,9 @@ write notes, automation, or arrangement structure.
 `set_tempo`, `set_scale`, `add_track_with_fx`, `add_fx`, `remove_fx`, `set_fx_param`,
 `set_internal_fx_param`, `set_fx_params` (BATCH param writes), `set_lfo_params`
 (BATCH), `list_fx_params`, `list_fx_chains`, `load_fx_chain`,
+`save_patch`, `load_patch`, `list_patches` (SLOT-scoped: one slot's state +
+its psyFmMatrix movement; the patch unit, as opposed to a whole chain),
+`save_fx_chain`,
 `load_plugin_preset`, `load_plugin_preset_file`, `list_plugin_presets`,
 `search_plugin_presets`, `fm_synth_load_preset`, `fm_synth_import_sysex`,
 `sub_synth_import_sysex`, `apply_sub_synth_mod_preset`, `psy_fm_load_preset`, `sampler_set_sample`,
@@ -31,7 +34,14 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
 2. **Palette per role** (kick, bass, hat, snare, clap, arp, stab, pad, lead, riser):
    create one track per role with `add_track_with_fx` (internal FX preferred for
    determinism: psy_fm for melodic acid roles, sub_synth for bass/chords, sampler
-   for drum one-shots).
+   for drum one-shots). For the **bass** role pick the engine by idiom: `reese_bass`
+   for rolling / reese / psy-dub-wobble bass (detuned saw wall + a tempo-synced
+   in-slot wobble LFO — the only internal engine with a saw oscillator, an LFO and
+   glide), `growl_bass` for the growl/acid variants (built-in waveshaper +
+   sidechain), `sub_synth` for a pure sub layer.
+   **The shipped factory roster now covers 12 bass patches across these three bass
+   engines** (`list_patches`, `source:"factory"`) — start from a patch (§7b) rather
+   than dialing.
 3. **Load sounds**: presets via `load_plugin_preset`/`load_plugin_preset_file`
    (.fxp/.syx) or psytrance Virus banks via `sub_synth_import_sysex` —
    always confirm the returned patch NAME. Internal presets via `psy_fm_load_preset`.
@@ -88,9 +98,29 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    ROUTED kick→bass sidechain (`set_fx_sidechain`) belong to the FX & Automation
    Engineer, who runs after the Arranger. Record the loaded FX chain in the
    audition evidence.
+7b. **Prefer an existing PATCH over dialing from scratch.** For an internal synth
+   role, `list_patches` first and `load_patch` a bank patch onto the slot — one
+   call restores the WHOLE sound (params + its `psyFmMatrix` movement), against
+   ~20 `set_fx_params` writes for a hand-dialed equivalent. A bank ships at
+   `compositions/psy_fm_bank/` (20 `psy_fm` patches across bass/lead/stab/pad/
+   perc/riser, all auditioned); extend it
+   (`scripts/author_psy_fm_bank.py`) rather than re-dialing a sound that already
+   exists, and `save_patch` any sound you dial that the bank lacks, so the next
+   session starts from a bigger vocabulary. Do NOT use `load_fx_chain` for this:
+   it is CHAIN-scoped and appends the preset's instrument as a SECOND slot.
+   Gate a new patch with `param_verity_corpus` (which of its params actually
+   change the render — a patch with silently inert params is a defect).
+   **Bass patches ship ready-made**: `list_patches` today returns 12 factory bass
+   patches (`source:"factory"`) across the three bass engines — 6 `reese_bass`
+   (`Reese Classic`, `Neuro Sync Stab`, `Psy Wobble`, `Dub Sub Reese`, `Rolling Mid
+   Reese`, `Fold Gnarl`), 4 `growl_bass` (`Growl Rolling Sub`, `Growl Hard Acid`,
+   `Growl Digital Grit`, `Growl Vocal`) and 2 `sub_synth` (`Sub Pure`, `Sub Acid
+   303`). Load one onto a bass slot with `load_patch` instead of dialing, and pick
+   the engine by idiom (`reese_bass` for rolling/reese/wobble, `growl_bass` for
+   growl/acid, `sub_synth` for a pure sub).
 8. **Record the palette + shortlists**: for each role — trackIndex, instrument,
-   committed default preset/chain, 2–3 alternate candidates, modulation default,
-   and audition evidence — into the brief's `palette` section and
+   committed default preset/chain/patch id, 2–3 alternate candidates, modulation
+   default, and audition evidence — into the brief's `palette` section and
    `paletteTrackMap`. Layer agents consume this as starting material and report
    their final local choice in their handoff. Shortlist depth (repetition guard):
    audition AT LEAST 3 candidates per melodic role and 2 per drum role before
@@ -104,7 +134,7 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
   engine/transport/project you are attached to.
 - `add_track_with_fx` takes the full internal instrument enum (schema-enforced:
   eq/compressor/reverb/delay/chorus/flanger/phaser/filter/saturator/sampler/
-  fm_synth/growl_bass/psyarp/psy_fm/sub_synth/drum_synth); `add_fx` takes the SAME
+  fm_synth/growl_bass/reese_bass/psyarp/psy_fm/sub_synth/drum_synth); `add_fx` takes the SAME
   set. A hosted plugin needs a resolvable `pluginId` on either tool — there is no
   type "outside the enum" that a plain `add_fx` can admit.
 - `apply_sub_synth_mod_preset` is all-or-nothing: a bad presetId or a

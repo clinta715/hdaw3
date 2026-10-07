@@ -25,9 +25,9 @@
    "name": "Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:242",
+   "source": "src/engine/TrackFXSlot.h:244",
    "sources": [
-    "src/engine/TrackFXSlot.h:242"
+    "src/engine/TrackFXSlot.h:244"
    ],
    "stages": [
     "sound-selector"
@@ -48,9 +48,9 @@
    "name": "Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:243",
+   "source": "src/engine/TrackFXSlot.h:245",
    "sources": [
-    "src/engine/TrackFXSlot.h:243"
+    "src/engine/TrackFXSlot.h:245"
    ],
    "stages": [
     "sound-selector"
@@ -71,9 +71,9 @@
    "name": "Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:244",
+   "source": "src/engine/TrackFXSlot.h:246",
    "sources": [
-    "src/engine/TrackFXSlot.h:244"
+    "src/engine/TrackFXSlot.h:246"
    ],
    "stages": [
     "sound-selector"
@@ -94,9 +94,9 @@
    "name": "Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:245",
+   "source": "src/engine/TrackFXSlot.h:247",
    "sources": [
-    "src/engine/TrackFXSlot.h:245"
+    "src/engine/TrackFXSlot.h:247"
    ],
    "stages": [
     "sound-selector"
@@ -117,9 +117,9 @@
    "name": "Transpose",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:246",
+   "source": "src/engine/TrackFXSlot.h:248",
    "sources": [
-    "src/engine/TrackFXSlot.h:246"
+    "src/engine/TrackFXSlot.h:248"
    ],
    "stages": [
     "sound-selector"
@@ -140,9 +140,9 @@
    "name": "SampleStart",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:247",
+   "source": "src/engine/TrackFXSlot.h:249",
    "sources": [
-    "src/engine/TrackFXSlot.h:247"
+    "src/engine/TrackFXSlot.h:249"
    ],
    "stages": [
     "sound-selector"
@@ -163,9 +163,9 @@
    "name": "Hold",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:248",
+   "source": "src/engine/TrackFXSlot.h:250",
    "sources": [
-    "src/engine/TrackFXSlot.h:248"
+    "src/engine/TrackFXSlot.h:250"
    ],
    "stages": [
     "sound-selector"
@@ -186,9 +186,9 @@
    "name": "Glide",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:249",
+   "source": "src/engine/TrackFXSlot.h:251",
    "sources": [
-    "src/engine/TrackFXSlot.h:249"
+    "src/engine/TrackFXSlot.h:251"
    ],
    "stages": [
     "sound-selector"
@@ -213,9 +213,9 @@
    "name": "Reverse",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:250",
+   "source": "src/engine/TrackFXSlot.h:252",
    "sources": [
-    "src/engine/TrackFXSlot.h:250"
+    "src/engine/TrackFXSlot.h:252"
    ],
    "stages": [
     "sound-selector"
@@ -236,9 +236,9 @@
    "name": "SampleEnd",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:251",
+   "source": "src/engine/TrackFXSlot.h:253",
    "sources": [
-    "src/engine/TrackFXSlot.h:251"
+    "src/engine/TrackFXSlot.h:253"
    ],
    "stages": [
     "sound-selector"
@@ -253,5 +253,5 @@
   "evidence": "in-source static param table (see per-param sources)",
   "tables": "src/engine/TrackFXSlot.h"
  },
- "verifiedOn": "2026-09-30"
+ "verifiedOn": "2026-10-07"
 }

@@ -121,6 +121,12 @@ static DispatchResult dispatchInner(AudioEngine& engine, const QString& method,
         // engine-context reason as addTrackWithFx above. It runs the shared body
         // (common/FxSidechain.h) the MCP set_fx_sidechain tool runs.
         if (m == "setFxSidechain") return dispatchSetFxSidechain(engine, params);
+        // savePatch / loadPatch / listPatches need AudioEngine context
+        // (ProjectModel + ReadModel + the concrete command layer), the same
+        // reason as setFxSidechain above; they run the shared bodies the MCP
+        // save_patch / load_patch / list_patches tools run (common/PatchPreset.h).
+        if (m == "savePatch" || m == "loadPatch" || m == "listPatches")
+            return dispatchPatchVerbs(engine, m, params);
         // endBatch's optional verify hook renders + composes the release verdict,
         // so it needs engine context too (common/BatchEnd.h).
         if (m == "endBatch")       return dispatchEndBatch(engine, params);

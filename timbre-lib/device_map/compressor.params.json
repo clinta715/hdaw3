@@ -25,9 +25,9 @@
    "name": "Threshold",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:148",
+   "source": "src/engine/TrackFXSlot.h:150",
    "sources": [
-    "src/engine/TrackFXSlot.h:148"
+    "src/engine/TrackFXSlot.h:150"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -48,9 +48,9 @@
    "name": "Ratio",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:149",
+   "source": "src/engine/TrackFXSlot.h:151",
    "sources": [
-    "src/engine/TrackFXSlot.h:149"
+    "src/engine/TrackFXSlot.h:151"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -71,9 +71,9 @@
    "name": "Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:150",
+   "source": "src/engine/TrackFXSlot.h:152",
    "sources": [
-    "src/engine/TrackFXSlot.h:150"
+    "src/engine/TrackFXSlot.h:152"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -94,9 +94,9 @@
    "name": "Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:151",
+   "source": "src/engine/TrackFXSlot.h:153",
    "sources": [
-    "src/engine/TrackFXSlot.h:151"
+    "src/engine/TrackFXSlot.h:153"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -111,5 +111,5 @@
   "evidence": "in-source static param table (see per-param sources)",
   "tables": "src/engine/TrackFXSlot.h"
  },
- "verifiedOn": "2026-09-30"
+ "verifiedOn": "2026-10-07"
 }

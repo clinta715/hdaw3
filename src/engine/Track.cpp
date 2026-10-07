@@ -652,6 +652,26 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         if (auto pos = ph->getPosition())
             bpm = pos->getBpm().orFallback(120.0);
 
+    // Bars from the playhead for the psy_fm bar clock: ppq is in quarter
+    // notes, a bar of N/D is N*4/D quarter notes. Defaults to 0 when
+    // unavailable. getBarCount() would be simpler but the app's playhead
+    // never sets it, so it is always absent.
+    int transportBar = 0;
+    if (auto* ph2 = getPlayHead())
+        if (auto pos2 = ph2->getPosition())
+        {
+            const double ppq = pos2->getPpqPosition().orFallback(0.0);
+            double barQuarters = 4.0;
+            if (pos2->getTimeSignature().hasValue())
+            {
+                const auto ts = pos2->getTimeSignature().orFallback(
+                    juce::AudioPlayHead::TimeSignature { 4, 4 });
+                if (ts.denominator > 0)
+                    barQuarters = (double) ts.numerator * 4.0 / (double) ts.denominator;
+            }
+            transportBar = (int) std::floor(ppq / barQuarters);
+        }
+
     // Apply MIDI FX (arpeggiator etc.) first, then the audio FX chain
     // (DSP + plugins). The MIDI FX transforms midiMessages so the instrument
     // slot in the audio chain receives the arpeggiated/processed MIDI.
@@ -700,6 +720,7 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
             if (slot)
             {
                 slot->setTempo(bpm);
+                slot->setTransportBar(transportBar);
                 slot->setSamplerAccumulate(samplerSounded);
                 slot->applyAutomation();
                 slot->process(buffer, midiMessages);

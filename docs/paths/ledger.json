@@ -259,6 +259,119 @@
         "add_fx fxType enum has internal INSTRUMENTS (sub_synth / fm_synth / psy_fm / sampler / psyarp / growl_bass) - a minimal audible walk needs no CLAP plugins and no audio route, only offline exports.",
         "Internal-synth instrument slots occupy FX slot 0: the first insert FX lands in slot 1, so its compound pid starts at 200, not 100."
       ]
+    },
+    "rift_dub": {
+      "date": "2026-10-06",
+      "tree": "docs/paths/psydub.json",
+      "seed": 7548320328,
+      "walked": "ledger-driven; every node committed a branch not previously used together - a corpus-import palette (DX7 sysex into fm_synth, Virus sysex into sub_synth), the internal drum_synth as the whole percussion section, 132 BPM / G Dorian, shared-return dub space, staging-pass mix",
+      "path": {
+        "foundation": "dub-132-g-dorian",
+        "palette_theme": "corpus-import",
+        "rhythm_feel": "half-time-dub-drummachine",
+        "bass_character": "dx7-corpus-bass",
+        "space": "shared-return",
+        "arrangement": "two-drop-classic",
+        "texture": "none",
+        "movement": "gesture-lanes-only",
+        "mix": "staging-pass"
+      },
+      "verdict": {
+        "mix_verdict": "PASS",
+        "render": "compositions/rift_dub/rift_dub_final.wav",
+        "durationSeconds": 264.8,
+        "rms": 0.1276,
+        "peak": 0.713,
+        "clippingOk": true,
+        "loudnessOk": true,
+        "structureOk": true,
+        "modulationOk": true,
+        "sectionArc": {
+          "intro": 0.028,
+          "build1": 0.152,
+          "drop1": 0.151,
+          "breakdown": 0.097,
+          "build2": 0.152,
+          "drop2": 0.151,
+          "outro": 0.028
+        }
+      },
+      "branch_results": {
+        "corpus-import": "MEASURED OK - 2377 DX7 voices decoded from 19,197 .syx (1003 + 777 + 597 sidecars) and 2,477 Virus patches decoded from 20 banks. fm_synth imported DX7 singles/cartridges natively; sub_synth imported Virus ONLY after SMF unwrapping to raw 267/524-byte singles (11 of 19 banks usable). All committed voices auditioned audible=1.",
+        "half-time-dub-drummachine": "MEASURED OK - 3 drum_synth slots covers a full kit; Note Map=1 (GM) + Key Track=0 is mandatory or pitched voices detune across the map.",
+        "dx7-corpus-bass": "MEASURED OK - DX7 FM bass at 0.13-0.17 solo rms with no plugin child (no isolation/latency risk).",
+        "shared-return": "MEASURED OK - one delay bus (Division 4 = dotted-1/8, Feedback 0.52, Mix 1.0) + one reverb bus (Room 0.78, Wet 1.0), 12 sends, ridden by delayThrow lanes on 3 tracks.",
+        "gesture-lanes-only": "MEASURED OK - 10 gesture lanes across 8 tracks; every sounding track modulation-covered (audit_modulation_coverage 9/9 fullyCovered, 0 attentionRequired).",
+        "staging-pass": "MEASURED OK - master 0.55 after one fix loop; first render pinned the peak at 1.0 (clipping gate FAIL) and the gain pass cleared it to 0.713."
+      },
+      "cost": {
+        "wallClockMinutes": 95,
+        "engineRestarts": 2,
+        "note": "two headless engine deaths: one after a burst of windowed verify_part renders, one immediately after the first full export - both recovered from the rift_dub.hdaw checkpoint with no data loss; windowed renders are the expensive/fragile path, the async export + mix_verdict path is stable."
+      },
+      "taught": [
+        "Virus banks in this collection ship mostly as SMF-wrapped sysex: sub_synth_import_sysex cannot read them, but unwrapping the F0..F7 blocks to a concatenated raw .syx makes 11 of 19 banks import (TI 524-byte and B/C 267-byte singles both work as concatenated streams).",
+        "set_fx_sidechain with only {enabled} CLEARS the stored route (readback source 0, level 0.0); always re-supply sourceTrackId. On this build the armed route read back consistently but the destination compressor's threshold/ratio/attack and set_fx_bypass produced no measurable render change.",
+        "Two headless crashes in one session both followed heavy render activity; the checkpoint-save discipline (save after every mutation group) made both free."
+      ]
+    },
+    "rift_dub_var2": {
+      "date": "2026-10-06",
+      "tree": "docs/paths/psydub.json",
+      "seed": 3164049777,
+      "walked": "re-walk of the rift_dub recipe on the internal PATCH BANK: psy_fm voices are sourced from the authored bank via list_patches/load_patch instead of being dialed per session, and the bank ENABLES a 10th role (an offbeat acid line) the earlier palettes had no patch for",
+      "path": {
+        "foundation": "dub-132-g-dorian",
+        "palette_theme": "corpus-import-plus-internal-bank",
+        "rhythm_feel": "half-time-dub-drummachine",
+        "bass_character": "dx7-corpus-bass",
+        "space": "shared-return",
+        "arrangement": "two-drop-plus-mini",
+        "texture": "none",
+        "movement": "gesture-lanes-only",
+        "mix": "staging-pass"
+      },
+      "verdict": {
+        "mix_verdict": "PASS",
+        "render": "compositions/rift_dub_var2/rift_dub_var2_final.wav",
+        "durationSeconds": 296,
+        "rms": 0.118,
+        "peak": 0.6815,
+        "clippingOk": true,
+        "loudnessOk": true,
+        "structureOk": true,
+        "modulationOk": true,
+        "sectionArc": {
+          "intro": 0.035,
+          "build1": 0.1347,
+          "drop1": 0.1365,
+          "break1": 0.0895,
+          "drop1b": 0.1364,
+          "break2": 0.0923,
+          "build2": 0.1326,
+          "drop2": 0.1351,
+          "outro": 0.0577
+        }
+      },
+      "branch_results": {
+        "corpus-import-plus-internal-bank": "MEASURED OK - 3 psy_fm roles loaded from the 20-patch internal bank in ONE call each (vs ~20 param writes hand-dialed); the saved project carries each patch's psyFmMatrix verbatim (modWheel:op6Feedback:0.9 / ratioSweepLFO:op4Ratio:0.3;barClock:op6Ratio:0.2 / barClock:op6Feedback:0.35) and its authored params (Filter Cutoff 4000/3000/900). load_patch -> save is durable; the bank ENABLED a new 10th acid role.",
+        "two-drop-plus-mini": "MEASURED OK - 9 sections incl. a second short main (drop1b) between two breakdowns; drop/build ratio 1.013.",
+        "shared-return": "MEASURED OK - delay (dotted-1/8, fb 0.52, Mix 1.0) + reverb (Mix 1.0) on 20 sends.",
+        "gesture-lanes-only": "MEASURED OK - audit_modulation_coverage 10/10 fullyCovered, 0 attentionRequired.",
+        "staging-pass": "MEASURED OK - sources trimmed then auto_gain_tracks (10/10) with global scale; master 0.34."
+      },
+      "cost": {
+        "wallClockMinutes": 70,
+        "engineRestarts": 0,
+        "note": "~3 full renders were needed, but all were CRAFT iterations (a drop-level outro), not failures; the release gate PASSED on the first render."
+      },
+      "taught": [
+        "The internal patch bank is a REAL palette substrate, not a convenience: load_patch restored a whole psy_fm sound (params + movement) in ONE call, and its existence made a 10th role possible without writing a synth engine.",
+        "An arrangement script that keys behaviour off the section KIND must remember the outro's kind is 'other', not 'outro': keying on the kind sent the outro through the DENSE branch and gave it a full 42-note bassline (outro measured 0.114 vs the intended decay) - key on the section NAME, or enumerate the kinds you mean.",
+        "Empty clips are not harmless: a 0-note clip at beat 0 makes auto_gain_to_target see a SILENT track (it measures the earliest clip) and makes audit_song_structure count a role as sounding in that section. Remove them.",
+        "render_and_verify's default timeoutMs is 600000 (10 min); a ~296 s project needs more - pass timeoutMs explicitly for long renders.",
+        "load_patch applies state but records NO provenance - nothing on the slot says which bank patch it came from. A `patchId` slot property (mirroring get_clip_provenance) would close that."
+      ]
     }
   },
   "branch_stats": {
@@ -270,9 +383,12 @@
       "c-minor-corpus-match",
       "canary-master",
       "cm9-three-voices",
+      "corpus-import",
       "deep-phrygian",
+      "dub-132-g-dorian",
       "dub-cave",
       "dub-throw",
+      "dx7-corpus-bass",
       "field-plus-rave",
       "filter-arc",
       "four-on-floor-backbeat",
@@ -280,6 +396,7 @@
       "gesture-lanes-only",
       "growl-wobble",
       "half-time-dub",
+      "half-time-dub-drummachine",
       "hypno-half-time",
       "internal-core",
       "kickless-breakdown",
@@ -306,6 +423,7 @@
       "measure-dont-guess",
       "sample-led",
       "seven-layer-seeded",
+      "shared-return",
       "slow-burn",
       "staging-pass",
       "sub-only",

@@ -39,6 +39,7 @@ plugin FX add CPU, latency, isolation and state-round-trip risk.
 | **JE8086** | Roland JP-8080 | **461** | Chorus, Multi-Effects, Delay, RingMod, Pan/AutoPan | `je8086_patch.py` (3689 `.syx`); `je8086.json` (40) | `set_fx_param` **by name** (`je8086_param_index_map.json`) · `apply_matrix_preset` · `load_je8086_preset` (DT1 dumps — **applied since 2026-09-20** via the wrapper's UserPatch→temp-performance retarget) |
 | **fm_synth / PsyFm** | internal FM | its own params — modulate the slot's OWN params (`100+slotIndex*100+paramIndex`); the 300–308 FM target space is **NOT** reachable (`pid >= 100` is tested first, so 306 decodes as track-FX slot 2 param 6) | internal | `fm_synth_load_preset` / `psy_fm_load_preset` | `set_fx_param`/automation. **Dexed is NOT core** — `fm_synth`/PsyFm is the FM engine |
 | **sub_synth** | internal | its own params + internal LFO | internal | `apply_sub_synth_mod_preset` (6 factory mod presets) | params / automation |
+| **reese_bass · detuned-supersaw reese/neuro bass with a tempo-synced wobble LFO** | internal | its own **40** params — `list_device_params {engine:"reese_bass"}` (40 indexed, 0 trap / 0 unclassified) | internal, all in-slot: up to 7 detuned unison saws (PolyBLEP) + sub + hard sync + feedback comb + 4-curve drive + state-variable filter (LP/HP/BP) + wobble LFO — no separate FX needed | 12 factory BASS PATCHES (`list_patches`, `source:"factory"`: 6 `reese_bass`, 4 `growl_bass`, 2 `sub_synth`) | `set_internal_fx_param` (REAL units) / `load_patch`; create with `add_track_with_fx {name, fxType:"reese_bass"}` or `add_fx {trackId, fxType:"reese_bass"}`. No plugin, no samples, no ROM |
 | **sampler · drum machine** | internal | own params | internal FX chain | file library | `set_fx_param`, sample load. Slicing: `detect_sampler_slices {sliceMode: transient \| grid \| aligned, sliceGrid?, sliceSensitivity?, fromNorm?, toNorm?}` — `aligned` least-squares-fits tempo+phase to the detected onsets, so a wobbling/live-played source is sliced where it actually plays. `recut_sampler_slices {fromNorm, toNorm, keepOverrides?}` re-detects ONLY inside that window (the per-band statistics describe the piece, not the file) and preserves boundaries outside it; `set_sampler_slice_overrides {slicePointsOverride: [normalized…]}` pins frames the re-cut never moves (default `keepOverrides` true), and `sliceMeta` carries `frame:bandMask:strength` per boundary |
 | **drum_synth · 11-voice TR-909-style analog drum kit** (Kick, Snare, Clap, Rim, 3 Toms, Closed/Open Hat, Crash, Ride) | internal | own params (no plugin params) | internal FX chain | none — synthesised, no samples required | `set_fx_param` / `set_internal_fx_param`; `add_fx {fxType:"drum_synth"}`. `Voice` selects the instrument (Fixed note map); `Note Map=GM` plays a standard GM drum clip. Params 51..66 are a per-voice send bus: 11 per-instrument `Send` amounts (51..61) into ONE shared in-slot feedback delay + reverb, shaped by `Send Delay Time (beats)` / `Send Delay Feedback` / `Send Delay Mix` / `Send Reverb Size` / `Send Reverb Mix` |
 
@@ -112,6 +113,13 @@ wrapper's `parameterDescriptions_*.json` and rebuilt):
   `DelayTime`, `ChorusEnabled`, `MixRingMod`).
 * **NodalRed2x** — `RingMod` and `Distortion` only (everything else belongs in
   HDAW internal FX).
+* **Internal instruments (no plugin at all)** — `fm_synth`/`psy_fm`, `sub_synth`,
+  `reese_bass`, `growl_bass`, `psyarp`, `drum_synth`, `sampler`, and the core FX
+  types expose EVERY param as a host parameter (there is no device boundary to
+  traverse). Automate them with the track-FX compound pid
+  `100 + slotIndex*100 + paramIndex` (`list_fx_params` shows the indices; the
+  300–308 FM targets stay unreachable — see §2's `fm_synth` row). `reese_bass`
+  carries its own in-slot `LFO *` params (29–35), so a wobble needs no track LFO.
 
 ### Movement tooling
 
@@ -282,6 +290,11 @@ host parameters) → `get_fx_capture_status` → `audition_plugin` (reference de
   (derived-parameter collapse) — use type-level params or a whole-patch dump.
 * **Vavra's non-public params** cannot be published (measured); the remaining 277
   sheet values are covered by the dump route instead.
+* **`reese_bass` is documented, not yet measured.** The engine, its 40 params, its
+  device map (`list_device_params {engine:"reese_bass"}`, 40 indexed, 0 trap) and the
+  12 factory bass patches ship wired, but no render/ear pass has been recorded for
+  its idiom recipes or its factory patches — treat their capability claims as
+  `documented` and gate any use with `audition_plugin` + `auto_gain_to_target`.
 
 **Extending** — the corpus pipeline that produces all of the above:
 

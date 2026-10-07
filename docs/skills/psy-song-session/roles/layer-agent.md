@@ -27,7 +27,7 @@ BEFORE writing (G1-G4 below), then write, then self-gate.
 | --- | --- |
 | Reads | `get_project_summary`, `list_tracks`, `list_fx_params`, `get_internal_fx_param`, `get_song_plan`, `get_cells`, `list_clips`, `list_notes`, `snapshot_project`, `engine_info`, `list_fx`, `query_notes`, `query_clips`, `whoami`, `tool_help` |
 | Measurement | `export_audio` (async — poll the job with `poll_job` / `engine_info` while exporting), `mix_report` (`{filePath, fromPlan: true, wait: false}` + `poll_job`), `analyze_tuning` (`{wavPath, role, wait: false}` + `poll_job`), `get_waveform_peaks` (`{path}`), `validate_sample`, `verify_part`, `verify_window` (render the WHOLE project, gate ONE beat window's promoted stats — ≈ one full export) |
-| Writes | `add_track_with_fx`, `add_fx`, `remove_fx`, `set_fx_sidechain` (routed compressor key — your slot only), `set_internal_fx_param`, `set_fx_param`, `set_fx_params` (BATCH), `set_lfo_params` (BATCH), `list_fx_params` (verify after write), `sampler_set_sample`, `psy_fm_load_preset`, `apply_sub_synth_mod_preset`, `set_track` (volume / mute / pan ONLY), `add_midi_clip`, `add_notes` (batch), `set_note_velocities`, `set_notes_gain` (batch), `set_clips_edit` (batch), `add_automation_lane`, `set_automation_points`, `automation_preset`, `add_lfo`, `set_lfo_param`, `set_fader_authoritative`, `add_midi_fx` (transpose etc.) |
+| Writes | `add_track_with_fx`, `add_fx`, `remove_fx`, `set_fx_sidechain` (routed compressor key — your slot only), `set_internal_fx_param`, `set_fx_param`, `set_fx_params` (BATCH), `set_lfo_params` (BATCH), `list_fx_params` (verify after write), `save_patch`, `load_patch`, `list_patches`, `sampler_set_sample`, `psy_fm_load_preset`, `apply_sub_synth_mod_preset`, `set_track` (volume / mute / pan ONLY), `add_midi_clip`, `add_notes` (batch), `set_note_velocities`, `set_notes_gain` (batch), `set_clips_edit` (batch), `add_automation_lane`, `set_automation_points`, `automation_preset`, `add_lfo`, `set_lfo_param`, `set_fader_authoritative`, `add_midi_fx` (transpose etc.) |
 
 **FORBIDDEN:** `export_audio` is allowed for MEASUREMENT renders only (your
 gates, your temp wavs). NEVER call `load_project` / `save_project` — the
@@ -72,6 +72,14 @@ A gate that fails is fixed on YOUR layer (register, level, FX), then re-
 measured. Never fix the mix by editing someone else's layer.
 
 ## Writing your layer (discipline)
+
+- **Persist a sound you dialed.** If your layer's identity is a sound you built
+  rather than a bank/corpus patch, `save_patch {trackId, slotIndex, name}` it —
+  the patch carries your params AND the slot's `psyFmMatrix` movement, so it is
+  reusable next session instead of re-dialed. `list_patches` first: a bank patch
+  loaded with `load_patch` is one call against ~20 param writes, and it restores
+  the movement too. (`load_fx_chain` is CHAIN-scoped and would append a SECOND
+  instrument slot — do not use it for this.)
 
 - **Identity first:** choose and report one explicit `patternIntent` and one
   `soundIntent` before writing notes. Examples: bass = `stabby-short-hard` or

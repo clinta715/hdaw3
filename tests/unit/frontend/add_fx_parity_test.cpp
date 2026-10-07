@@ -239,6 +239,57 @@ TEST_F(AddFxParityTest, InternalFxTypeStillSucceedsOnBothSurfaces) {
     EXPECT_FALSE(rpc("project.addFxSlot", rpcArgs).isError);
 }
 
+// The newest internal instrument (reese_bass) is reachable on BOTH surfaces with
+// the SAME argument object, and the two MCP enum surfaces refuse a bogus fxType
+// with BYTE-IDENTICAL text (both enums are the same list, so the validator's
+// "allowed" set is the same bytes).
+TEST_F(AddFxParityTest, ReeseBassFxTypeAcceptedOnBothSurfaces) {
+    auto fxTypeAt = [this](int trackIndex, int slotIndex) {
+        return engine->getProjectModel().getTrackListTree()
+            .getChild(trackIndex).getChildWithName(IDs::FX_CHAIN)
+            .getChild(slotIndex).getProperty(IDs::fxType).toString().toStdString();
+    };
+
+    // MCP add_fx: accepted, and the slot really carries the new type.
+    const QJsonObject mcpArgs{ { "trackId", 0 }, { "fxType", "reese_bass" } };
+    const auto r = mcpResult("add_fx", mcpArgs);
+    EXPECT_FALSE(r.value("isError").toBool()) << mcpText("add_fx", mcpArgs).toStdString();
+    EXPECT_TRUE(mcpText("add_fx", mcpArgs).startsWith("slot="));
+    EXPECT_EQ(fxTypeAt(0, 0), "reese_bass");
+
+    // RPC twin: accepted too (the route passes any fxType through).
+    const QJsonObject rpcArgs{ { "trackIndex", 0 }, { "fxType", "reese_bass" } };
+    EXPECT_FALSE(rpc("project.addFxSlot", rpcArgs).isError);
+    EXPECT_EQ(fxTypeAt(0, 1), "reese_bass");
+
+    // add_track_with_fx accepts it as well (the enum surface).
+    const QJsonObject atwArgs{ { "name", "Reese" }, { "fxType", "reese_bass" } };
+    EXPECT_FALSE(mcpIsError("add_track_with_fx", atwArgs))
+        << mcpText("add_track_with_fx", atwArgs).toStdString();
+    EXPECT_EQ(fxTypeAt(1, 0), "reese_bass");
+}
+
+TEST_F(AddFxParityTest, BogusFxTypeRefusedIdenticallyByBothEnumTools) {
+    // Both MCP tools carry the SAME fxType enum, so the schema gate emits the
+    // same bytes for the same bad value — and the allowed set names reese_bass.
+    const QJsonObject bad{ { "trackId", 0 }, { "fxType", "not_a_real_fx" } };
+    const QJsonObject badTrack{ { "name", "Bogus" }, { "fxType", "not_a_real_fx" } };
+
+    EXPECT_TRUE(mcpIsError("add_fx", bad));
+    EXPECT_TRUE(mcpIsError("add_track_with_fx", badTrack));
+
+    const QString fxText = mcpText("add_fx", bad);
+    const QString trackText = mcpText("add_track_with_fx", badTrack);
+    EXPECT_TRUE(fxText.contains("value \"not_a_real_fx\" not in enum")) << fxText.toStdString();
+    EXPECT_TRUE(fxText.contains("\"reese_bass\""))
+        << "the allowed set must list the new type: " << fxText.toStdString();
+    EXPECT_EQ(fxText, trackText) << "both enum tools refuse with identical bytes";
+
+    // The refused add_fx left no slot behind.
+    EXPECT_EQ(engine->getProjectModel().getTrackListTree()
+                  .getChild(0).getChildWithName(IDs::FX_CHAIN).getNumChildren(), 0);
+}
+
 TEST_F(AddFxParityTest, ResolvablePluginIdStillSucceedsOnBothSurfaces) {
     // A .clap path resolves WITHOUT any scan cache (extension fallback) — the
     // deterministic accept path. Instantiation of the missing file degrades to

@@ -22,6 +22,7 @@ float PsyFmModSourcePool::getSourceValue (int sourceIndex) const
         case 1: return std::sin (2.0 * 3.14159265358979323846 * feedbackPhase_) * 0.5f + 0.5f;
         case 2: return modWheelValue;
         case 3: return velocityValue;
+        case 4: return barClockValue;
         default: return 0.0f;
     }
 }
@@ -46,6 +47,7 @@ int PsyFmModMatrix::sourceIndexFor (PsyFmModRoute::Source s) const
         case PsyFmModRoute::Source::FeedbackLFO:   return 1;
         case PsyFmModRoute::Source::ModWheel:      return 2;
         case PsyFmModRoute::Source::Velocity:      return 3;
+        case PsyFmModRoute::Source::BarClock:      return 4;
         default: return 0;
     }
 }

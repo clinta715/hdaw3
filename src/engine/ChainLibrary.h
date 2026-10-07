@@ -4,6 +4,24 @@
 #include <mutex>
 #include <vector>
 
+// Qt's qobjectdefs.h does `#define slots` (an object-like macro expanding to
+// nothing), which collides with `ChainPreset::Slot`'s container member that is
+// literally named `slots`: in a Qt TU the declaration below parses as
+// `std::vector<Slot> ;` -> "declaration does not declare anything", and every
+// use (`p.slots.empty()`) as `p.` -> "expected unqualified-id before '.'".
+// Measured 2026-10-06 while wiring the patch verbs (PatchPreset.h compiled
+// fine, but tests/integration/mcp/patch_preset_parity_test.cpp includes THIS
+// header directly in a Qt TU and broke).
+//
+// The macro is therefore dropped for the body of this header and RESTORED at the
+// end: Qt's `slots` must stay defined-and-empty for every later `public slots:`
+// in a Qt TU (undefining it permanently makes `public slots:` a parse error in
+// e.g. McpServer.h). Capture the fact it was defined, undef, restore after.
+#ifdef slots
+#  define HDAW_CHAINLIB_DEFER_QT_SLOTS 1
+#  undef slots
+#endif
+
 namespace HDAW {
 
 // Named FX-chain preset: an ordered list of FX slots that can be saved to
@@ -46,16 +64,39 @@ struct ChainPreset {
 
 class ChainLibrary {
 public:
-    explicit ChainLibrary(const juce::File& root);
+    // Which built-in roster the ctor seeds into <root>/_factory/:
+    //   None    — seed nothing (a bare library over a caller-owned root).
+    //   Chains  — the FX-chain roster: one file per factoryChainDefs() entry.
+    //   Patches — the bass PATCH roster: one SINGLE-SLOT file per
+    //             factoryPatchDefs() entry (a patch is one slot's state, so the
+    //             chain factory roster is NOT patch content and vice versa).
+    // An enum rather than two bools so a call site cannot silently pass the
+    // wrong flag (`ChainLibrary(dir, true)` cannot be read as "seed patches").
+    enum class Roster { None, Chains, Patches };
+    explicit ChainLibrary(const juce::File& root, Roster roster = Roster::Chains);
     static const ChainLibrary& userLibrary();  // userApplicationDataDirectory/HDAW/chains (mirror src/mcp/McpTools_CompositionPattern.cpp)
+    // Sibling root for SLOT PATCHES: userApplicationDataDirectory/HDAW/patches.
+    // Same savePreset/listPresets/loadPreset/deletePreset semantics as
+    // userLibrary(); factory-seeded with the 12 built-in bass PATCHES
+    // (Roster::Patches, create-if-missing like the chain roster), then carries
+    // whatever the user saves.
+    static const ChainLibrary& patchLibrary();
     juce::String savePreset(const ChainPreset& p) const;   // root/user/<sanitized>.json, uniquified -N
     std::vector<ChainPreset> listPresets() const;    // scan *.json in _factory/ then user/ (factory first), like PatternLibrary.cpp:428
     ChainPreset loadPreset(const juce::String& id) const;
     bool deletePreset(const juce::String& id) const;       // refuses ids under _factory/
 private:
-    void seedFactoryPresetsIfMissing();    // ctor tail: write each built-in _factory/<name>.json only if absent
+    void seedFactoryPresetsIfMissing();       // Roster::Chains tail: write each built-in chain _factory/<name>.json only if absent
+    void seedPatchFactoryPresetsIfMissing();  // Roster::Patches tail: same discipline, one-slot factoryPatchDefs() files
     juce::File root_, userDir_;
     mutable std::mutex mutex_;
 };
 
 } // namespace HDAW
+
+// Restore Qt's `slots` for every TU that includes this header (see the note at
+// the top): its empty definition is what keeps a later `public slots:` valid.
+#ifdef HDAW_CHAINLIB_DEFER_QT_SLOTS
+#  undef HDAW_CHAINLIB_DEFER_QT_SLOTS
+#  define slots
+#endif

@@ -50,6 +50,18 @@ Seven principles from the production sessions. They extend §0 and inform
      1=SoftAtan, 2=Hard, 3=Bitcrush) plus `Drive dB` (0–40) and an
      internal filter (LP/BP, cutoff/res/env-amount). This covers the
      "instrument filter + distortion" in one slot.
+   - **reese_bass** (added 2026-10-07) is the other internal bass route:
+     a detuned saw wall (`Voice Count` 1–7, `Detune Cents`) with built-in
+     waveshaping (`Drive Type` 0=Tanh, 1=Atan, 2=Hard, 3=Fold + `Drive dB`
+     0–40 + `Drive Mix`), a feedback comb (`Comb Amount`/`Comb Frequency`),
+     and its own filter (LP/**HP**/BP, cutoff/res/env-amount). Crucially it
+     also carries a **tempo-synced wobble LFO** (`LFO Sync` 1 + `LFO Rate
+     (beats)` + `LFO Cutoff Amt`/`LFO Pitch Amt`/`LFO Drive Amt`), so the
+     filter movement that used to need an external LFO is in-engine. Where
+     `growl_bass` has no saw oscillator, no LFO, no glide/legato and one
+     filter stage, a reese (detuned saw wall + tempo-synced wobble) is now
+     available in-engine — growl for the growl/acid variants, reese for the
+     rolling/reese/psy-dub-wobble variants.
    - Add 1–2 external `filter` FX slots after for the second (and third)
      filter pass. Automate the last filter's cutoff for movement.
    - Alternative: `psy_fm` with high feedback (param_6 = base feedback)
@@ -87,9 +99,10 @@ Seven principles from the production sessions. They extend §0 and inform
 
 ---
 
-## 0.6 Instrument + routing traps (measured 2026-10-03)
+## 0.6 Instrument + routing traps (measured 2026-10-03; trap 6 added 2026-10-07)
 
-Five traps that cost real debugging time in the `psy_demo` drum-machine session.
+Six traps that cost real debugging time in the `psy_demo` drum-machine session
+(trap 6, the `reese_bass` mono-legato trap, added with that engine on 2026-10-07).
 Each is verified against the running engine, not folklore.
 
 1. **`drum_synth` is one kit per slot — set `Note Map` + `Key Track` first.**
@@ -111,6 +124,7 @@ Each is verified against the running engine, not folklore.
 3. **`sub_synth` defaults to MONO.** `Polyphony` (param 24) defaults to 0;
    a chord written as simultaneous notes collapses to one voice. Set
    `Polyphony = 1` before writing pad/chord material.
+   (`reese_bass` has the same class of trap — see trap 6 below.)
 
 4. **`apply_movement_plan` defaults to Volume (`paramID 1`).** With only
    `preset` + a beat window, every event automates the fader, which then
@@ -126,6 +140,15 @@ Each is verified against the running engine, not folklore.
    drop-kind section (`isDropKind = maina|mainb|finale|drop`), so an
    outro typed `finale` is audited as a drop — type it `other` unless it
    really is a payoff drop.
+
+6. **`reese_bass` defaults to MONO LEGATO.** `Mono Legato` (param 37)
+   defaults to 1, so a chord written as simultaneous notes on a default
+   `reese_bass` slot collapses onto the legato stack — the upper voices are
+   silently lost, exactly like the `sub_synth` mono trap (trap 3). Mono is
+   right for a bass engine, so the default is correct; but before writing
+   any stacked/chordal material on a `reese_bass` track, set
+   `Mono Legato = 0` (2-note poly) — otherwise even a 2-note interval reads
+   as a legato retarget rather than a chord.
 
 ---
 
@@ -878,7 +901,7 @@ status: `docs/hardware-va-suite.md`.
 The second half of this guide moved verbatim to
 [`docs/psytrance-va-and-production.md`](psytrance-va-and-production.md): §4D
 hardware VA detail, §5 production stack, §5a Jordan cave-dub FX preset, §5b FM
-synthesis, §5c internal instruments (growl_bass/psyarp/sub_synth), §6 mix +
+synthesis, §5c internal instruments (growl_bass/reese_bass/psyarp/sub_synth), §6 mix +
 master, §7 verify loop, §8 export housekeeping, §8.5 MCP launcher, §9 contract
 traps, §10 evidence locations. The per-plugin status log that used to live in
 `hardware-va-suite.md` §9 moved to

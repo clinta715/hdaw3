@@ -86,6 +86,23 @@ product pillar and should be reached for wherever it fits:
   live plugin state; the save persists it into the tree for offline renders.
   Constraint: the serializer's size-regression guard protects plugin states
   across load→save cycles (see docs/plans/2026-09-12-plugin-state-durability.md).
+  **Slot-scoped PATCH verbs (`save_patch` / `load_patch` / `list_patches`, RPC
+  `project.savePatch` / `loadPatch` / `listPatches`; 2026-10-06).** A PATCH is ONE
+  slot's full state, persisted under `userApplicationDataDirectory/HDAW/patches`.
+  It is the SLOT-SCOPED sibling of the chain pair: `save_fx_chain`/`load_fx_chain`
+  are chain-scoped — `load_fx_chain` preserves the target's instrument slots and
+  APPENDS the preset's, so loading a 1-slot `psy_fm` chain onto a track that
+  already had a `psy_fm` slot produced TWO slots with the target untouched
+  (measured). `save_patch` snapshots one slot (params + `psyFmMatrix` +
+  `psyFmSweepRate` + sampler/slice/plugin state) and `load_patch` writes it INTO
+  the addressed slot — never appends, never removes — refusing an out-of-range
+  index, an empty preset and an fxType/plugin-id mismatch. The patch carries its
+  **movement**: `psyFmMatrix` is `PsyFmState::encodeRoutes` (`source:dest:depth;…`),
+  so a patch's modulation travels with it. A bank at
+  `compositions/psy_fm_bank/` seeds the internal palette:
+  `scripts/author_psy_fm_bank.py` authors it through `save_patch` and verifies each
+  round-trip; `scripts/audit_psy_fm_bank.py` gates usability with `verify_part`
+  (20/20 patches audible + non-clipping across bass/lead/stab/pad/perc/riser).
   **Patch pipelines:** every device with a bank library has a decoder writing
   searchable sidecars — `virus_patch.py` (`.virus.json`), `nl2x_patch.py`
   (`.nl2x.json`), `je8086_patch.py` (`.je8086.json` + an exploded per-patch tree),
@@ -109,9 +126,10 @@ product pillar and should be reached for wherever it fits:
   `docs/hardware-va-suite.md`.
 
 - **Device parameter maps (2026-09-30)** — `list_device_params` now serves ALL
-  21 engines: the 5 VA CLAPs (corpus route) AND the 16 internal fxTypes
+  22 engines: the 5 VA CLAPs (corpus route) AND the 17 internal fxTypes
   (`eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator,
-  sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth`), whose
+  sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth,
+  reese_bass`), whose
   maps are generated straight from the in-source static C++ def tables (verbatim
   default/min/max + per-param `source` file:line citation + documented enums;
   `appliesVia: set_internal_fx_param`, `durability: valuetree`). Regenerate with

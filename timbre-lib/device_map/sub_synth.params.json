@@ -32,9 +32,9 @@
    "note": "SubtractiveSynthEngine Waveform enum (SubtractiveSynthEngine.h:83-89).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:388",
+   "source": "src/engine/TrackFXSlot.h:390",
    "sources": [
-    "src/engine/TrackFXSlot.h:388"
+    "src/engine/TrackFXSlot.h:390"
    ],
    "stages": [
     "sound-selector"
@@ -55,9 +55,9 @@
    "name": "Osc1 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:389",
+   "source": "src/engine/TrackFXSlot.h:391",
    "sources": [
-    "src/engine/TrackFXSlot.h:389"
+    "src/engine/TrackFXSlot.h:391"
    ],
    "stages": [
     "sound-selector"
@@ -85,9 +85,9 @@
    "note": "SubtractiveSynthEngine Waveform enum (SubtractiveSynthEngine.h:83-89).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:390",
+   "source": "src/engine/TrackFXSlot.h:392",
    "sources": [
-    "src/engine/TrackFXSlot.h:390"
+    "src/engine/TrackFXSlot.h:392"
    ],
    "stages": [
     "sound-selector"
@@ -108,9 +108,9 @@
    "name": "Osc2 Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:391",
+   "source": "src/engine/TrackFXSlot.h:393",
    "sources": [
-    "src/engine/TrackFXSlot.h:391"
+    "src/engine/TrackFXSlot.h:393"
    ],
    "stages": [
     "sound-selector"
@@ -131,9 +131,9 @@
    "name": "Osc2 Detune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:392",
+   "source": "src/engine/TrackFXSlot.h:394",
    "sources": [
-    "src/engine/TrackFXSlot.h:392"
+    "src/engine/TrackFXSlot.h:394"
    ],
    "stages": [
     "sound-selector"
@@ -154,9 +154,9 @@
    "name": "Sub Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:393",
+   "source": "src/engine/TrackFXSlot.h:395",
    "sources": [
-    "src/engine/TrackFXSlot.h:393"
+    "src/engine/TrackFXSlot.h:395"
    ],
    "stages": [
     "sound-selector"
@@ -182,9 +182,9 @@
    "name": "Sub Octave",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:394",
+   "source": "src/engine/TrackFXSlot.h:396",
    "sources": [
-    "src/engine/TrackFXSlot.h:394"
+    "src/engine/TrackFXSlot.h:396"
    ],
    "stages": [
     "sound-selector"
@@ -205,9 +205,9 @@
    "name": "Cutoff",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:395",
+   "source": "src/engine/TrackFXSlot.h:397",
    "sources": [
-    "src/engine/TrackFXSlot.h:395"
+    "src/engine/TrackFXSlot.h:397"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -228,9 +228,9 @@
    "name": "Resonance",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:396",
+   "source": "src/engine/TrackFXSlot.h:398",
    "sources": [
-    "src/engine/TrackFXSlot.h:396"
+    "src/engine/TrackFXSlot.h:398"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -251,9 +251,9 @@
    "name": "Drive",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:397",
+   "source": "src/engine/TrackFXSlot.h:399",
    "sources": [
-    "src/engine/TrackFXSlot.h:397"
+    "src/engine/TrackFXSlot.h:399"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -274,9 +274,9 @@
    "name": "Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:398",
+   "source": "src/engine/TrackFXSlot.h:400",
    "sources": [
-    "src/engine/TrackFXSlot.h:398"
+    "src/engine/TrackFXSlot.h:400"
    ],
    "stages": [
     "sound-selector"
@@ -297,9 +297,9 @@
    "name": "Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:399",
+   "source": "src/engine/TrackFXSlot.h:401",
    "sources": [
-    "src/engine/TrackFXSlot.h:399"
+    "src/engine/TrackFXSlot.h:401"
    ],
    "stages": [
     "sound-selector"
@@ -320,9 +320,9 @@
    "name": "Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:400",
+   "source": "src/engine/TrackFXSlot.h:402",
    "sources": [
-    "src/engine/TrackFXSlot.h:400"
+    "src/engine/TrackFXSlot.h:402"
    ],
    "stages": [
     "sound-selector"
@@ -343,9 +343,9 @@
    "name": "Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:401",
+   "source": "src/engine/TrackFXSlot.h:403",
    "sources": [
-    "src/engine/TrackFXSlot.h:401"
+    "src/engine/TrackFXSlot.h:403"
    ],
    "stages": [
     "sound-selector"
@@ -366,9 +366,9 @@
    "name": "Output Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:402",
+   "source": "src/engine/TrackFXSlot.h:404",
    "sources": [
-    "src/engine/TrackFXSlot.h:402"
+    "src/engine/TrackFXSlot.h:404"
    ],
    "stages": [
     "sound-selector"
@@ -389,9 +389,9 @@
    "name": "Legato",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:403",
+   "source": "src/engine/TrackFXSlot.h:405",
    "sources": [
-    "src/engine/TrackFXSlot.h:403"
+    "src/engine/TrackFXSlot.h:405"
    ],
    "stages": [
     "sound-selector"
@@ -412,9 +412,9 @@
    "name": "Portamento",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:404",
+   "source": "src/engine/TrackFXSlot.h:406",
    "sources": [
-    "src/engine/TrackFXSlot.h:404"
+    "src/engine/TrackFXSlot.h:406"
    ],
    "stages": [
     "sound-selector"
@@ -436,9 +436,9 @@
    "note": "0..3 int enum; individual values are not enumerated in source (clampFilterType).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:405",
+   "source": "src/engine/TrackFXSlot.h:407",
    "sources": [
-    "src/engine/TrackFXSlot.h:405"
+    "src/engine/TrackFXSlot.h:407"
    ],
    "stages": [
     "sound-selector"
@@ -459,9 +459,9 @@
    "name": "Filter Env Amount",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:406",
+   "source": "src/engine/TrackFXSlot.h:408",
    "sources": [
-    "src/engine/TrackFXSlot.h:406"
+    "src/engine/TrackFXSlot.h:408"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -483,9 +483,9 @@
    "name": "Filter Attack",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:407",
+   "source": "src/engine/TrackFXSlot.h:409",
    "sources": [
-    "src/engine/TrackFXSlot.h:407"
+    "src/engine/TrackFXSlot.h:409"
    ],
    "stages": [
     "sound-selector"
@@ -507,9 +507,9 @@
    "name": "Filter Decay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:408",
+   "source": "src/engine/TrackFXSlot.h:410",
    "sources": [
-    "src/engine/TrackFXSlot.h:408"
+    "src/engine/TrackFXSlot.h:410"
    ],
    "stages": [
     "sound-selector"
@@ -531,9 +531,9 @@
    "name": "Filter Sustain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:409",
+   "source": "src/engine/TrackFXSlot.h:411",
    "sources": [
-    "src/engine/TrackFXSlot.h:409"
+    "src/engine/TrackFXSlot.h:411"
    ],
    "stages": [
     "sound-selector"
@@ -555,9 +555,9 @@
    "name": "Filter Release",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:410",
+   "source": "src/engine/TrackFXSlot.h:412",
    "sources": [
-    "src/engine/TrackFXSlot.h:410"
+    "src/engine/TrackFXSlot.h:412"
    ],
    "stages": [
     "sound-selector"
@@ -578,9 +578,9 @@
    "name": "Pitch Bend Range",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:411",
+   "source": "src/engine/TrackFXSlot.h:413",
    "sources": [
-    "src/engine/TrackFXSlot.h:411"
+    "src/engine/TrackFXSlot.h:413"
    ],
    "stages": [
     "sound-selector"
@@ -605,9 +605,9 @@
    "name": "Polyphony",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:412",
+   "source": "src/engine/TrackFXSlot.h:414",
    "sources": [
-    "src/engine/TrackFXSlot.h:412"
+    "src/engine/TrackFXSlot.h:414"
    ],
    "stages": [
     "sound-selector"
@@ -629,9 +629,9 @@
    "note": "osc2 -> osc1 phase-mod amount; 0 = off (default, bit-identical).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:416",
+   "source": "src/engine/TrackFXSlot.h:418",
    "sources": [
-    "src/engine/TrackFXSlot.h:416"
+    "src/engine/TrackFXSlot.h:418"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -657,9 +657,9 @@
    "note": "24 dB applies to lowpass mode only (SubtractiveSynthEngine.h:45-47).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:417",
+   "source": "src/engine/TrackFXSlot.h:419",
    "sources": [
-    "src/engine/TrackFXSlot.h:417"
+    "src/engine/TrackFXSlot.h:419"
    ],
    "stages": [
     "sound-selector"
@@ -687,9 +687,9 @@
    "note": "Same clampWave domain as the osc waves (SubtractiveSynthEngine).",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:420",
+   "source": "src/engine/TrackFXSlot.h:422",
    "sources": [
-    "src/engine/TrackFXSlot.h:420"
+    "src/engine/TrackFXSlot.h:422"
    ],
    "stages": [
     "sound-selector"
@@ -710,9 +710,9 @@
    "name": "LFO Rate",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:421",
+   "source": "src/engine/TrackFXSlot.h:423",
    "sources": [
-    "src/engine/TrackFXSlot.h:421"
+    "src/engine/TrackFXSlot.h:423"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -734,9 +734,9 @@
    "name": "LFO Cutoff Amt",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:422",
+   "source": "src/engine/TrackFXSlot.h:424",
    "sources": [
-    "src/engine/TrackFXSlot.h:422"
+    "src/engine/TrackFXSlot.h:424"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -757,9 +757,9 @@
    "name": "LFO Pitch Amt",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:423",
+   "source": "src/engine/TrackFXSlot.h:425",
    "sources": [
-    "src/engine/TrackFXSlot.h:423"
+    "src/engine/TrackFXSlot.h:425"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -780,9 +780,9 @@
    "name": "LFO Amp Amt",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:424",
+   "source": "src/engine/TrackFXSlot.h:426",
    "sources": [
-    "src/engine/TrackFXSlot.h:424"
+    "src/engine/TrackFXSlot.h:426"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -803,9 +803,9 @@
    "name": "LFO FM Amt",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:425",
+   "source": "src/engine/TrackFXSlot.h:427",
    "sources": [
-    "src/engine/TrackFXSlot.h:425"
+    "src/engine/TrackFXSlot.h:427"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -820,5 +820,5 @@
   "evidence": "in-source static param table (see per-param sources)",
   "tables": "src/engine/TrackFXSlot.h"
  },
- "verifiedOn": "2026-09-30"
+ "verifiedOn": "2026-10-07"
 }

@@ -45,6 +45,45 @@ never builds it.
   band, key-track opens the cutoff two octaves up, env-amount opens it over the
   note, and pre-change default renders are hash-pinned (`PsyFmBackCompat`).
 
+### Unreleased — bass variation: internal `reese_bass` + a shipped bass palette (2026-10-07)
+
+Plan + full evidence: `docs/plans/2026-10-06-bass-variation.md`.
+
+- **New internal instrument `reese_bass`** — a detuned-supersaw **reese / neuro bass**
+  with a **tempo-synced wobble LFO**, `fxType:"reese_bass"` (a NEW type; the other
+  internal engines are unchanged). 40 params (`list_device_params
+  {engine:"reese_bass"}`): 7 detuned unison voices (PolyBLEP saw/square, naive
+  triangle) + sine sub-oscillator + hard sync + stereo feedback comb + a 4-curve
+  drive + a LP/HP/BP state-variable filter (env amount + key track) + two ADSRs +
+  a wobble LFO synced to the project BPM (rate in beats) + glide/mono-legato +
+  stereo spread, summed through a memoryless soft ceiling into `Output Level`.
+  Defaults are conservative: `Sync Amount`, `Comb Amount` and all three LFO
+  amounts at 0 are **bit-exact bypasses** of their stages; `Mono Legato` defaults
+  to 1 (mono, glide on retarget) because a bass normally is; velocity is audible
+  through `Velocity->Drive`. Deterministic (no random source anywhere), realtime-
+  safe, and the param table is the single source of truth that `TrackFXSlot`
+  derives its advertised defs from. It exists because `growl_bass` has **no saw
+  oscillator at all**, no LFO, no glide and one filter stage, and `sub_synth`'s
+  unison is a fixed 2 voices — so a reese (many detuned saws) and a tempo-synced
+  wobble were both unreachable.
+- **12 factory bass patches**, seeded into `HDAW/patches/_factory/` (the patch
+  library is now factory-seeded — `ChainLibrary::Roster`; the chain roster stays
+  chain-only): 6 `reese_bass` (`Reese Classic`, `Neuro Sync Stab`, `Psy Wobble`,
+  `Dub Sub Reese`, `Rolling Mid Reese`, `Fold Gnarl`), 4 `growl_bass`, 2
+  `sub_synth`. `list_patches` reports them with `source:"factory"`; `load_patch`
+  restores one in a single call. **3 new factory FX chains** (`Bass Filter Sweep`,
+  `Bass Mid Growl`, `Bass Dub Throw`; the roster is now 11).
+- **Four silent-movement defects fixed**: the `psy_fm` modulation matrix's
+  `velocity` and `modWheel` sources were **permanently 0** (no writer existed), and
+  `barClock` silently aliased the ratio-sweep LFO with `onBarBoundary` never called
+  — all three are real now (velocity latched on note-on, `modWheel` from MIDI CC1,
+  the bar clock driven from the playhead each block and idempotent per bar). The
+  `psyarp` engine never received the project tempo (its `bpm_` was stuck at 120,
+  so its step grid and beat-based delay were wrong at any other BPM) — now
+  forwarded every block. Live-verified per source with
+  `psy_fm_mod_matrix_debug` and `mix_diff`.
+- Device map corpus 258 → 306 internal params across 22 engines.
+
 ### v0.39.4 — O1 device-name validation, internal-engine device maps (2026-09-30)
 
 - **O1 closed (plan Phase 6):** `set_audio_output_device` / `audio.setOutputDevice` refuse an
@@ -54,9 +93,10 @@ never builds it.
   QSettings skipped on every failure. 6 gtests, green across openable-device and
   listed-but-unopenable runs on this box (the latter exercises the rollback branch).
   (`set_audio_input_device` has the same defect — open follow-up.)
-- **`list_device_params` covers all 16 internal fxTypes** (258 params at this release — 266 now,
-  psyarp 21→24 and psy_fm 33→38 after the 2026-10-05 internal synth expansion: fm_synth 26,
-  sub_synth 33, psy_fm 38, growl_bass 26, psyarp 24, sampler 10, drum_synth 67, + the core FX). Generated deterministically by
+- **`list_device_params` covers all 17 internal fxTypes** (258 params at this release — 306 now,
+  psyarp 21→24, psy_fm 33→38, reese_bass 40 after the 2026-10-05/10-07 internal synth expansion:
+  fm_synth 26, sub_synth 33, psy_fm 38, growl_bass 26, psyarp 24, sampler 10, drum_synth 67,
+  reese_bass 40, + the core FX). Generated deterministically by
   `timbre-lib/build_device_map.py` from the in-source C++ param tables (every entry cites
   `file:line`); the 5 VA maps are byte-unchanged. The wire carries
   `index/default/min/max/source/enum` on both surfaces (parity ledger byte-unchanged); pins assert

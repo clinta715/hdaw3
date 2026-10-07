@@ -14,6 +14,11 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
+// SLOT-SCOPED PATCH verbs: the ONE shared reader/body/command call the
+// project.savePatch / project.loadPatch / project.listPatches RPC routes share
+// (src/common/PatchPreset.h), so the payload and every refusal are
+// byte-identical on both surfaces by construction.
+#include "../common/PatchPreset.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -78,7 +83,7 @@ s.registerTool({"list_fx_chains",
         }});
 
 s.registerTool({"load_fx_chain",
-        "Load a saved FX chain preset onto a track: instrument slots (sampler/sub_synth/psy_fm/fm_synth/growl_bass/psyarp/drum_synth) are preserved; FX slots are replaced and appended after them in one undo unit. Give id or name (name must resolve to exactly one preset). Ids may be user presets or built-in factory presets (\"_factory/<File_Name>.json\" from list_fx_chains — the 8 psytrance per-role chains); name resolution covers factory presets too. " +
+        "Load a saved FX chain preset onto a track: instrument slots (sampler/sub_synth/psy_fm/fm_synth/growl_bass/psyarp/drum_synth/reese_bass) are preserved; FX slots are replaced and appended after them in one undo unit. Give id or name (name must resolve to exactly one preset). Ids may be user presets or built-in factory presets (\"_factory/<File_Name>.json\" from list_fx_chains — the 11 psytrance per-role chains); name resolution covers factory presets too. " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"trackID", QJsonObject{{"type","integer"}}},
@@ -143,6 +148,50 @@ s.registerTool({"delete_fx_chain",
             if (!HDAW::ChainLibrary::userLibrary().deletePreset(juce::String(id.toStdString())))
                 return McpToolResult::text("preset not found or not deletable: " + id, true);
             return McpToolResult::text("ok");
+        }});
+
+// ── Slot-scoped PATCH verbs (the SLOT-SCOPED sibling of the chain tools) ────
+// A patch is ONE slot's full state; applyPatch writes it INTO the addressed
+// slot — never appends, never removes. Both surfaces run the SAME shared body
+// (common/PatchPreset.h), so the payload and every refusal are byte-identical
+// by construction (AGENTS.md "RPC parity by construction").
+s.registerTool({"save_patch",
+        "Save ONE FX slot's full state as a named patch (params, plugin state, sampler + slice, psy-fm matrix/sweep). " +
+        mcp::stableRefRuleText("trackID", "trackId") +
+        " Returns compact JSON {\"id\":\"user/<name>.json\"}.",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"name",      QJsonObject{{"type","string"}}}},
+                  {"slotIndex","name"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const auto r = HDAW::savePatchToolText(*e, a);
+            return McpToolResult::text(r.text, !r.ok);
+        }});
+
+s.registerTool({"load_patch",
+        "Load a saved patch INTO the addressed FX slot: params, plugin state, sampler + slice and psy-fm state are rewritten. The slot must already exist and match the patch's fxType — the patch never appends or removes a slot. Ids may be user patches or built-in factory patches (\"_factory/<Name>.json\" from list_patches — the 12 shipped bass patches). " +
+        mcp::stableRefRuleText("trackID", "trackId") +
+        " An unknown patch id is refused.",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"trackID",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"id",        QJsonObject{{"type","string"}}}},
+                  {"slotIndex","id"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const auto r = HDAW::loadPatchToolText(*e, a);
+            return McpToolResult::text(r.text, !r.ok);
+        }});
+
+s.registerTool({"list_patches",
+        "List saved slot patches (id, name, fxType, slotCount, source). Includes built-in factory patches (source \"factory\": 12 bass patches shipped with HDAW — 6 reese_bass, 4 growl_bass, 2 sub_synth, e.g. Reese Classic, Growl Rolling Sub, Sub Pure; they can be listed and loaded but never deleted) and user-saved patches (source \"user\").",
+        objSchema(QJsonObject{}, QJsonArray{}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const auto r = HDAW::listPatchesToolText(*e, a);
+            return McpToolResult::text(r.text, !r.ok);
         }});
 
 }

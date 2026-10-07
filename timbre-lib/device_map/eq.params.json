@@ -25,9 +25,9 @@
    "name": "Frequency",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:155",
+   "source": "src/engine/TrackFXSlot.h:157",
    "sources": [
-    "src/engine/TrackFXSlot.h:155"
+    "src/engine/TrackFXSlot.h:157"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -48,9 +48,9 @@
    "name": "Q",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:156",
+   "source": "src/engine/TrackFXSlot.h:158",
    "sources": [
-    "src/engine/TrackFXSlot.h:156"
+    "src/engine/TrackFXSlot.h:158"
    ],
    "stages": [
     "sound-selector"
@@ -71,9 +71,9 @@
    "name": "Gain",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:157",
+   "source": "src/engine/TrackFXSlot.h:159",
    "sources": [
-    "src/engine/TrackFXSlot.h:157"
+    "src/engine/TrackFXSlot.h:159"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -88,5 +88,5 @@
   "evidence": "in-source static param table (see per-param sources)",
   "tables": "src/engine/TrackFXSlot.h"
  },
- "verifiedOn": "2026-09-30"
+ "verifiedOn": "2026-10-07"
 }

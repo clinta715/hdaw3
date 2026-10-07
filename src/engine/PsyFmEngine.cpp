@@ -169,10 +169,37 @@ void PsyFmEngine::snapshotModState (std::vector<PsyFmModRoute>& outRoutes,
 
 void PsyFmEngine::onBarBoundary (int barCounter)
 {
-    // Example: every 8 bars, speed up the riser LFO
-    if (barCounter % 8 == 0)
-        sources_.ratioSweepLFORateHz = juce::jmin (
-            sources_.ratioSweepLFORateHz * 1.3f, 40.0f);
+    // Idempotent per bar: Track::processBlock forwards the transport bar index
+    // every block, so this runs many times per bar. Only the first call for a
+    // new bar may move the pool.
+    if (barCounter == lastBar_)
+        return;
+
+    if (barCounter < lastBar_)
+    {
+        // Rewind / loop back to an earlier bar: restore the base sweep rate so
+        // the riser does not keep the acceleration it accumulated last pass.
+        sources_.ratioSweepLFORateHz = baseRatioSweepRateHz_;
+    }
+    else if (barCounter % 8 == 0)
+    {
+        // Riser accelerate-every-8-bars route.
+        sources_.ratioSweepLFORateHz = juce::jmin (sources_.ratioSweepLFORateHz * 1.3f, 40.0f);
+    }
+
+    lastBar_ = barCounter;
+
+    // Phrase position within the 4-bar phrase: 0, 0.25, 0.5, 0.75. `%` on a
+    // negative bar (a rewind past bar 0) must stay non-negative, hence the
+    // double modulo.
+    const int phraseBar = ((barCounter % 4) + 4) % 4;
+    sources_.barClockValue = static_cast<float> (phraseBar) * 0.25f;
+}
+
+void PsyFmEngine::setBaseRatioSweepRateHz (float hz) noexcept
+{
+    baseRatioSweepRateHz_ = hz;
+    sources_.ratioSweepLFORateHz = hz;
 }
 
 // ── Inspection ──
@@ -270,6 +297,11 @@ void PsyFmEngine::noteOn (int channel, int pitch, int velocity)
     // where the filter is bypassed and never written).
     voiceFilters_[static_cast<size_t> (v - voices_)].reset();
 
+    // Velocity is an ENGINE-WIDE pool source, not per voice: the matrix is
+    // applied once per block (before the voice loop), so a per-voice velocity
+    // could not reach it — block rate is the only granularity the matrix has.
+    sources_.velocityValue = static_cast<float> (velocity) / 127.0f;
+
     float freqHz = static_cast<float> (juce::MidiMessage::getMidiNoteInHertz (pitch));
     for (auto& op : v->operators)
     {
@@ -327,6 +359,11 @@ void PsyFmEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
             noteOn (msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
         else if (msg.isNoteOff())
             noteOff (msg.getChannel(), msg.getNoteNumber());
+        else if (msg.isController() && msg.getControllerNumber() == 1)
+            // CC1 (mod wheel) -> pool source. Runs BEFORE the advanceControlRate/
+            // matrix_.apply pass below in the same render call, so a CC landing
+            // in this block already shapes it.
+            sources_.modWheelValue = static_cast<float> (msg.getControllerValue()) / 127.0f;
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
             allNotesOff();
     }

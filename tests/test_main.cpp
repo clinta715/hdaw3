@@ -485,7 +485,10 @@ void mirrorUserDataAssets (const std::filesystem::path& realRoaming,
     }
 
     // Registry/template/pattern trees. section-templates may not exist.
-    for (const char* dirName : { "libraries", "chains", "section-templates", "patterns", "MIDI" })
+    // `patches` is the slot-scoped patch library (ChainLibrary::patchLibrary) -
+    // mirrored so a test that lists patches sees the real roster rather than an
+    // empty one; writes stay in the scratch tree.
+    for (const char* dirName : { "libraries", "chains", "patches", "section-templates", "patterns", "MIDI" })
         copyTreeMirrored (srcRoot / dirName, dstRoot / dirName, stats);
 
     std::string summary = "user data mirror = " + std::to_string (stats.copied) + " files, "
@@ -498,16 +501,35 @@ void mirrorUserDataAssets (const std::filesystem::path& realRoaming,
 }
 
 // Point the process' profile at `profile` so that JUCE's
-// File::getSpecialLocation (userApplicationDataDirectory) - resolved by shell32 as
-// the registry value %USERPROFILE%\AppData\Roaming - lands inside the working
-// tree. Sets BOTH the CRT and the Win32 process environment (see writeEnvVar):
-// shell32's folder lookup reads the process env block on its FIRST query.
+// File::getSpecialLocation (userApplicationDataDirectory) lands inside the
+// working tree, and return that resolved root.
+//
+// PLATFORM SPLIT (measured 2026-10-06): the two platforms resolve it through
+// entirely different mechanisms, so a Windows-only redirect silently did
+// NOTHING on Linux:
+//   * Windows - shell32's SHGetSpecialFolderPathW(CSIDL_APPDATA) = the registry
+//     value %USERPROFILE%\AppData\Roaming expanded against the process
+//     USERPROFILE, read from the process env block on its FIRST query. Hence
+//     USERPROFILE + APPDATA + LOCALAPPDATA, set here before anything queries a
+//     shell folder.
+//   * Linux - juce_Files_linux.cpp:135 resolves it as
+//     resolveXDGFolder("XDG_CONFIG_HOME", "~/.config"): a FILE lookup (it reads
+//     ~/.config/user-dirs.dirs) which does NOT consult the XDG_CONFIG_HOME
+//     environment variable at all, and `~` itself expands from HOME
+//     (juce_Files_linux.cpp:121). So HOME is the lever, and the resolved root is
+//     <profile>/.config - NOT <profile>/AppData/Roaming.
+//     MEASURED SYMPTOM of the missing split: the harness reported "user data dir
+//     redirected to .../userdata/AppData/Roaming" on Linux, but JUCE kept
+//     resolving ~/.config, so the suite wrote into the REAL user data (17
+//     test-generated patch presets accumulated in ~/.config/HDAW/patches).
 std::filesystem::path redirectUserScope (const std::filesystem::path& profile, const std::string& reason)
 {
+    std::error_code ec;
+
+#if defined (_WIN32)
     const auto roaming = profile / "AppData" / "Roaming";
     const auto local   = profile / "AppData" / "Local";
 
-    std::error_code ec;
     std::filesystem::create_directories (roaming, ec);
     std::filesystem::create_directories (local, ec);
 
@@ -517,14 +539,37 @@ std::filesystem::path redirectUserScope (const std::filesystem::path& profile, c
 
     report ("user data dir redirected to " + roaming.string() + " (" + reason + ")");
     return roaming;
+#else
+    const auto config = profile / ".config";
+
+    std::filesystem::create_directories (config, ec);
+
+    writeEnvVar ("HOME", profile.string());
+
+    report ("user data dir redirected to " + config.string() + " (" + reason + ")");
+    return config;
+#endif
 }
 
 // Decide once, at the very top of main, which user-scope root the suite uses.
+//
+// HERMETIC BY DEFAULT (changed 2026-10-06): the suite ALWAYS runs against a
+// scratch user-data root and mirrors the real one for READ fidelity. It used to
+// use the real root whenever that root happened to be writable, which is how
+// test-generated presets accumulated in the developer's actual ~/.config/HDAW
+// (measured: 17 leaked patch presets; the same class of state leak that turns a
+// later real run into a confusing failure). A test process must never mutate
+// user data. HDAW_TEST_USERDATA picks the scratch PROFILE root explicitly;
+// HDAW_TEST_REAL_USERDATA=1 opts back into the machine's real root (debugging
+// only - writes then land in the real tree).
 void configureTestUserDataDir()
 {
-    // The REAL roaming root, resolved before any redirect overwrites APPDATA /
-    // USERPROFILE: it is the source of the read mirror above.
-    const auto realRoaming = []() -> std::filesystem::path {
+    // The REAL user-data root, resolved before any redirect (it is the source of
+    // the read mirror). Platform-specific, mirroring JUCE's own resolution:
+    // Windows = %APPDATA% (shell32 CSIDL_APPDATA) or <%USERPROFILE%\AppData\Roaming>;
+    // Linux   = $HOME/.config (juce_Files_linux.cpp:135).
+    const auto realUserData = []() -> std::filesystem::path {
+#if defined (_WIN32)
         const std::string appData = readEnvVar ("APPDATA");
         if (! appData.empty())
             return makeAbsolute (std::filesystem::path (appData));
@@ -532,17 +577,23 @@ void configureTestUserDataDir()
         if (! up.empty())
             return makeAbsolute (std::filesystem::path (up)) / "AppData" / "Roaming";
         return {};
+#else
+        const std::string home = readEnvVar ("HOME");
+        if (! home.empty())
+            return makeAbsolute (std::filesystem::path (home)) / ".config";
+        return {};
+#endif
     }();
 
-    auto redirectAndMirror = [&realRoaming] (const std::filesystem::path& profile,
-                                             const std::string& reason) {
-        const auto scratchRoaming = redirectUserScope (profile, reason);
-        if (! realRoaming.empty() && realRoaming != scratchRoaming)
-            mirrorUserDataAssets (realRoaming, scratchRoaming);
+    auto redirectAndMirror = [&realUserData] (const std::filesystem::path& profile,
+                                              const std::string& reason) {
+        const auto scratch = redirectUserScope (profile, reason);
+        if (! realUserData.empty() && realUserData != scratch)
+            mirrorUserDataAssets (realUserData, scratch);
     };
 
-    // 1. Explicit override: HDAW_TEST_USERDATA is the PROFILE root (what USERPROFILE
-    //    becomes); the engine's userApplicationDataDirectory is <profile>/AppData/Roaming.
+    // 1. Explicit override: HDAW_TEST_USERDATA is the PROFILE root (what
+    //    HOME / USERPROFILE becomes).
     const std::string overrideRoot = readEnvVar ("HDAW_TEST_USERDATA");
     if (! overrideRoot.empty())
     {
@@ -551,31 +602,29 @@ void configureTestUserDataDir()
         return;
     }
 
-    // 2. Probe the root the engine actually writes: <USERPROFILE>/AppData/Roaming.
-    const auto profile = makeAbsolute (std::filesystem::path (readEnvVar ("USERPROFILE")));
-    const auto userData = profile / "AppData" / "Roaming";
-    std::string why;
-    if (! profile.empty() && probeDirIsWritable (userData, why))
+    // 2. Escape hatch for debugging against the machine's real user data
+    //    (accepts that test writes then land in the real tree).
+    if (readEnvVar ("HDAW_TEST_REAL_USERDATA") == "1")
     {
-        // 3. Normal environment: leave the profile exactly as inherited.
-        report ("user data dir = " + userData.string() + " (default, verified writable)");
+        report ("user data dir = " + realUserData.string()
+                + " (HDAW_TEST_REAL_USERDATA=1 - real user data, writes NOT isolated)");
         return;
     }
-    if (profile.empty())
-        why = "USERPROFILE is not set";
 
-    // 4. Unwritable (sandbox): redirect into the working tree, as for temp.
+    // 3. Default: hermetic. Redirect into the working tree, per-PID so a
+    //    shard-parallel run (many processes sharing .tmp_tests) cannot collide,
+    //    and mirror the real root's read-side assets in.
     std::error_code ec;
     const auto cwd = std::filesystem::current_path (ec);
     if (ec)
     {
-        report ("WARNING: user data dir " + userData.string() + " unusable (" + why
-                + ") and current_path() failed: " + ec.message());
+        report ("WARNING: user data dir not isolated, current_path() failed: " + ec.message());
         return;
     }
 
-    redirectAndMirror (makeAbsolute (cwd / ".tmp_tests" / "userdata"),
-                       "default unwritable: " + why);
+    redirectAndMirror (makeAbsolute (cwd / ".tmp_tests" / "userdata")
+                           / std::to_string (currentProcessId()),
+                       "hermetic test run");
 }
 
 // Force this TEST PROCESS onto an isolated INI-backed QSettings store inside the

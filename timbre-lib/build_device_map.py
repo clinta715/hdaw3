@@ -33,12 +33,13 @@ OUT = REPO / "timbre-lib" / "device_map"
 
 ENGINES = ["je8086", "nodalred2x", "xenia", "virus", "vavra"]
 
-# The 15 internal fxTypes. Their parameter surface is STATIC C++ TABLES, a
+# The 16 internal fxTypes. Their parameter surface is STATIC C++ TABLES, a
 # stronger single source of truth than the VA corpus route: the DSP that
 # consumes the values owns the names/ranges, so the advertised def and the
 # clamp cannot drift. 13 of the tables live as `{ idx, "Name", def, min, max }`
-# literal rows inside TrackFXSlot.h's getParamDefsForType(); delay and filter
-# delegate to their own headers (paramDefs() rows have no explicit index).
+# literal rows inside TrackFXSlot.h's getParamDefsForType(); delay, filter and
+# reese_bass delegate to their own headers (paramDefs() rows carry no explicit
+# index — TrackFXSlot derives its advertised list from the same table).
 INTERNAL_ENGINES = {
     "eq":         {"file": "src/engine/TrackFXSlot.h",    "table": "eq"},
     "compressor": {"file": "src/engine/TrackFXSlot.h",    "table": "compressor"},
@@ -56,6 +57,7 @@ INTERNAL_ENGINES = {
     "psy_fm":     {"file": "src/engine/TrackFXSlot.h",    "table": "psy_fm"},
     "sub_synth":  {"file": "src/engine/TrackFXSlot.h",    "table": "sub_synth"},
     "drum_synth": {"file": "src/engine/TrackFXSlot.h",    "table": "drum_synth"},
+    "reese_bass": {"file": "src/engine/ReeseBassEngine.h", "table": None},
 }
 
 _NUM = r"-?\d+(?:\.\d+)?f?"

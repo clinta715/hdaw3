@@ -94,5 +94,5 @@
   "evidence": "in-source static param table (see per-param sources)",
   "tables": "src/engine/InternalFilter.h"
  },
- "verifiedOn": "2026-09-30"
+ "verifiedOn": "2026-10-07"
 }

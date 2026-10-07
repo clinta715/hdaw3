@@ -2,7 +2,7 @@
  * advisor-prose-patch: keep the pi-fabric advisor directive-prose coercion
  * applied across pi-fabric upgrades.
  *
- * scripts/patch_pi_fabric_advisor.py (v3) makes directive-mode actors whose
+ * scripts/patch_pi_fabric_advisor.py (v3/v4) makes directive-mode actors whose
  * model answers in prose (or empty output) produce a valid
  * {"action":"message"|"silent"} value instead of failing the run with
  * "Structured agent output was invalid". Its v1/v2 predecessors anchored on a
@@ -33,7 +33,7 @@ async function reapply(): Promise<void> {
       return;
     }
     await new Promise<void>((resolve) => {
-      execFile("python", [script], { cwd: root, timeout: 30000, windowsHide: true }, (err, stdout) => {
+      execFile(process.platform === "win32" ? "python" : "python3", [script], { cwd: root, timeout: 30000, windowsHide: true }, (err, stdout) => {
         const out = String(stdout || "").trim();
         if (err) {
           console.error("[advisor-prose-patch] patch FAILED (advisor prose answers will error until fixed): " + (err.message || err));

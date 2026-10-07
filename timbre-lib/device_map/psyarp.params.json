@@ -32,9 +32,9 @@
    "name": "Osc Shape",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:313",
+   "source": "src/engine/TrackFXSlot.h:315",
    "sources": [
-    "src/engine/TrackFXSlot.h:313"
+    "src/engine/TrackFXSlot.h:315"
    ],
    "stages": [
     "sound-selector"
@@ -55,9 +55,9 @@
    "name": "Unison Voices",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:314",
+   "source": "src/engine/TrackFXSlot.h:316",
    "sources": [
-    "src/engine/TrackFXSlot.h:314"
+    "src/engine/TrackFXSlot.h:316"
    ],
    "stages": [
     "sound-selector"
@@ -78,9 +78,9 @@
    "name": "Unison Detune",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:315",
+   "source": "src/engine/TrackFXSlot.h:317",
    "sources": [
-    "src/engine/TrackFXSlot.h:315"
+    "src/engine/TrackFXSlot.h:317"
    ],
    "stages": [
     "sound-selector"
@@ -106,9 +106,9 @@
    "name": "Pattern Shape",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:316",
+   "source": "src/engine/TrackFXSlot.h:318",
    "sources": [
-    "src/engine/TrackFXSlot.h:316"
+    "src/engine/TrackFXSlot.h:318"
    ],
    "stages": [
     "sound-selector"
@@ -129,9 +129,9 @@
    "name": "Octave Range",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:317",
+   "source": "src/engine/TrackFXSlot.h:319",
    "sources": [
-    "src/engine/TrackFXSlot.h:317"
+    "src/engine/TrackFXSlot.h:319"
    ],
    "stages": [
     "sound-selector"
@@ -152,9 +152,9 @@
    "name": "Bars Per Motif",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:318",
+   "source": "src/engine/TrackFXSlot.h:320",
    "sources": [
-    "src/engine/TrackFXSlot.h:318"
+    "src/engine/TrackFXSlot.h:320"
    ],
    "stages": [
     "sound-selector"
@@ -175,9 +175,9 @@
    "name": "Filter Cutoff",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:319",
+   "source": "src/engine/TrackFXSlot.h:321",
    "sources": [
-    "src/engine/TrackFXSlot.h:319"
+    "src/engine/TrackFXSlot.h:321"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -198,9 +198,9 @@
    "name": "Filter Resonance",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:320",
+   "source": "src/engine/TrackFXSlot.h:322",
    "sources": [
-    "src/engine/TrackFXSlot.h:320"
+    "src/engine/TrackFXSlot.h:322"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -221,9 +221,9 @@
    "name": "Filter Sweep Bars",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:321",
+   "source": "src/engine/TrackFXSlot.h:323",
    "sources": [
-    "src/engine/TrackFXSlot.h:321"
+    "src/engine/TrackFXSlot.h:323"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -244,9 +244,9 @@
    "name": "Delay Time (beats)",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:322",
+   "source": "src/engine/TrackFXSlot.h:324",
    "sources": [
-    "src/engine/TrackFXSlot.h:322"
+    "src/engine/TrackFXSlot.h:324"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -267,9 +267,9 @@
    "name": "Delay Feedback",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:323",
+   "source": "src/engine/TrackFXSlot.h:325",
    "sources": [
-    "src/engine/TrackFXSlot.h:323"
+    "src/engine/TrackFXSlot.h:325"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -294,9 +294,9 @@
    "name": "Delay Ping-Pong",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:324",
+   "source": "src/engine/TrackFXSlot.h:326",
    "sources": [
-    "src/engine/TrackFXSlot.h:324"
+    "src/engine/TrackFXSlot.h:326"
    ],
    "stages": [
     "sound-selector"
@@ -317,9 +317,9 @@
    "name": "Delay Wet",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:325",
+   "source": "src/engine/TrackFXSlot.h:327",
    "sources": [
-    "src/engine/TrackFXSlot.h:325"
+    "src/engine/TrackFXSlot.h:327"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -340,9 +340,9 @@
    "name": "Reverb Size",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:326",
+   "source": "src/engine/TrackFXSlot.h:328",
    "sources": [
-    "src/engine/TrackFXSlot.h:326"
+    "src/engine/TrackFXSlot.h:328"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -363,9 +363,9 @@
    "name": "Reverb Wet on Dry",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:327",
+   "source": "src/engine/TrackFXSlot.h:329",
    "sources": [
-    "src/engine/TrackFXSlot.h:327"
+    "src/engine/TrackFXSlot.h:329"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -386,9 +386,9 @@
    "name": "Reverb Wet on Delay",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:328",
+   "source": "src/engine/TrackFXSlot.h:330",
    "sources": [
-    "src/engine/TrackFXSlot.h:328"
+    "src/engine/TrackFXSlot.h:330"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -413,9 +413,9 @@
    "name": "Phaser Enable",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:329",
+   "source": "src/engine/TrackFXSlot.h:331",
    "sources": [
-    "src/engine/TrackFXSlot.h:329"
+    "src/engine/TrackFXSlot.h:331"
    ],
    "stages": [
     "sound-selector"
@@ -436,9 +436,9 @@
    "name": "Phaser Rate",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:330",
+   "source": "src/engine/TrackFXSlot.h:332",
    "sources": [
-    "src/engine/TrackFXSlot.h:330"
+    "src/engine/TrackFXSlot.h:332"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -459,9 +459,9 @@
    "name": "Phaser Depth",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:331",
+   "source": "src/engine/TrackFXSlot.h:333",
    "sources": [
-    "src/engine/TrackFXSlot.h:331"
+    "src/engine/TrackFXSlot.h:333"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -482,9 +482,9 @@
    "name": "Output Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:332",
+   "source": "src/engine/TrackFXSlot.h:334",
    "sources": [
-    "src/engine/TrackFXSlot.h:332"
+    "src/engine/TrackFXSlot.h:334"
    ],
    "stages": [
     "sound-selector"
@@ -510,9 +510,9 @@
    "name": "Step Rate",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:333",
+   "source": "src/engine/TrackFXSlot.h:335",
    "sources": [
-    "src/engine/TrackFXSlot.h:333"
+    "src/engine/TrackFXSlot.h:335"
    ],
    "stages": [
     "sound-selector"
@@ -538,9 +538,9 @@
    "name": "Filter Type",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:334",
+   "source": "src/engine/TrackFXSlot.h:336",
    "sources": [
-    "src/engine/TrackFXSlot.h:334"
+    "src/engine/TrackFXSlot.h:336"
    ],
    "stages": [
     "sound-selector"
@@ -561,9 +561,9 @@
    "name": "Pulse Width",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:335",
+   "source": "src/engine/TrackFXSlot.h:337",
    "sources": [
-    "src/engine/TrackFXSlot.h:335"
+    "src/engine/TrackFXSlot.h:337"
    ],
    "stages": [
     "fx-automation-engineer"
@@ -584,9 +584,9 @@
    "name": "Noise Level",
    "offset": null,
    "roles": [],
-   "source": "src/engine/TrackFXSlot.h:336",
+   "source": "src/engine/TrackFXSlot.h:338",
    "sources": [
-    "src/engine/TrackFXSlot.h:336"
+    "src/engine/TrackFXSlot.h:338"
    ],
    "stages": [
     "sound-selector"
@@ -601,5 +601,5 @@
   "evidence": "in-source static param table (see per-param sources)",
   "tables": "src/engine/TrackFXSlot.h"
  },
- "verifiedOn": "2026-09-30"
+ "verifiedOn": "2026-10-07"
 }

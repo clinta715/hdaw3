@@ -145,12 +145,12 @@ void registerFxSlotTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"add_fx",
-        "Add an FX slot. fxType enumerates the INTERNAL types only: {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth,drum_synth}. For a VST3/CLAP plugin pass pluginId INSTEAD of fxType — fxType:\"plugin\" is NOT accepted (\"plugin\" is read-only output of list_fx, never an input). " +
+        "Add an FX slot. fxType enumerates the INTERNAL types only: {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth,drum_synth,reese_bass}. For a VST3/CLAP plugin pass pluginId INSTEAD of fxType — fxType:\"plugin\" is NOT accepted (\"plugin\" is read-only output of list_fx, never an input). " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
                   {"trackID",  QJsonObject{{"type","integer"}}},
                   {"fxType",   QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth","drum_synth"}}}},
+                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth","drum_synth","reese_bass"}}}},
                    {"pluginId", QJsonObject{{"type","string"}}},
                    {"position", QJsonObject{{"type","integer"}}}}),
         "fx",
@@ -301,7 +301,7 @@ s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot. " +
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth). Plugin (CLAP) params additionally report hasRange/minVal/maxVal/defaultVal/plainValue/stepped plus minText/maxText/defaultText (real units) so writes can be mapped meaningfully; hasRange=false means blind normalized 0..1 (VST3, older children). A plugin slot whose isolated child is still BOOTING (the emulated devices warm up for ~12 s) publishes no parameters yet: the call waits briefly for them rather than answering instantly, so an EMPTY params list right after add_fx/load means the child is still booting (retry) or the slot is genuinely broken/paramless — check get_fx_capture_status and the plugin-host log before concluding it is broken. " +
+s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth, reese_bass). Plugin (CLAP) params additionally report hasRange/minVal/maxVal/defaultVal/plainValue/stepped plus minText/maxText/defaultText (real units) so writes can be mapped meaningfully; hasRange=false means blind normalized 0..1 (VST3, older children). A plugin slot whose isolated child is still BOOTING (the emulated devices warm up for ~12 s) publishes no parameters yet: the call waits briefly for them rather than answering instantly, so an EMPTY params list right after add_fx/load means the child is still booting (retry) or the slot is genuinely broken/paramless — check get_fx_capture_status and the plugin-host log before concluding it is broken. " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"trackID",   QJsonObject{{"type","integer"}}},
@@ -420,7 +420,7 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
-s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex, paramName, or intent (the param's musical intent id from the Device Parameter Map — list_device_params / device.listParams; INTERNAL FX only). Precedence: paramIndex/paramName first (unchanged — paramName wins over paramIndex when both are given), intent is consulted only when neither is given. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth). For PLUGIN slots the write is live AND persisted as a slot-level offline-replay override (returned as 'ok overrides=N'), so it also reaches export_audio / audition_plugin / verify_part renders and save/load; list_fx_params marks such params 'overridden', clear_fx_param_overrides removes them. For INTERNAL FX the ValueTree param_N property is the durable source. " +
+s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex, paramName, or intent (the param's musical intent id from the Device Parameter Map — list_device_params / device.listParams; INTERNAL FX only). Precedence: paramIndex/paramName first (unchanged — paramName wins over paramIndex when both are given), intent is consulted only when neither is given. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth, reese_bass). For PLUGIN slots the write is live AND persisted as a slot-level offline-replay override (returned as 'ok overrides=N'), so it also reaches export_audio / audition_plugin / verify_part renders and save/load; list_fx_params marks such params 'overridden', clear_fx_param_overrides removes them. For INTERNAL FX the ValueTree param_N property is the durable source. " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"trackID",   QJsonObject{{"type","integer"}}},
@@ -853,7 +853,7 @@ s.registerTool({"get_master_fx_params",
         }});
 
 s.registerTool({"set_internal_fx_param",
-        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, and drum_synth. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Address the param by paramIndex, paramName (the name list_fx_params returns; case-insensitive), or intent (the param's musical intent id from the Device Parameter Map — see list_device_params). Precedence: paramIndex/paramName first (unchanged — paramName wins over paramIndex when both are given), intent is consulted only when neither is given. An intent that matches no param, or MORE than one, is refused with the candidates — never guessed. Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex — out-of-range values are silently clamped (lesson 23). " +
+        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth, and reese_bass. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Address the param by paramIndex, paramName (the name list_fx_params returns; case-insensitive), or intent (the param's musical intent id from the Device Parameter Map — see list_device_params). Precedence: paramIndex/paramName first (unchanged — paramName wins over paramIndex when both are given), intent is consulted only when neither is given. An intent that matches no param, or MORE than one, is refused with the candidates — never guessed. Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex — out-of-range values are silently clamped (lesson 23). " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"trackID",   QJsonObject{{"type","integer"}}},
@@ -942,7 +942,7 @@ s.registerTool({"apply_sub_synth_mod_preset",
         }});
 
 s.registerTool({"get_internal_fx_param",
-        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units â€” the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, and drum_synth. Returns {params:[{index,name,value,defaultValue,minValue,maxValue,valueNormalized,defaultNormalized}]}; untouched params report their default value. valueNormalized/defaultNormalized are the SAME values on the 0..1 axis set_fx_param accepts. Reads the project ValueTree (source of truth â€” no render, no DSP access, read-only). " +
+        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units â€” the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth, drum_synth, and reese_bass. Returns {params:[{index,name,value,defaultValue,minValue,maxValue,valueNormalized,defaultNormalized}]}; untouched params report their default value. valueNormalized/defaultNormalized are the SAME values on the 0..1 axis set_fx_param accepts. Reads the project ValueTree (source of truth â€” no render, no DSP access, read-only). " +
         mcp::stableRefRuleText("trackID", "trackId"),
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"trackID",   QJsonObject{{"type","integer"}}},

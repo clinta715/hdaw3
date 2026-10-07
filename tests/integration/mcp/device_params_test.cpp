@@ -414,7 +414,8 @@ TEST_F(DeviceParamsInternalTest, IndexModeListsInternalEngines)
     for (const char* id : { "eq", "compressor", "reverb", "delay", "chorus",
                             "flanger", "phaser", "filter", "saturator",
                             "sampler", "fm_synth", "growl_bass", "psyarp",
-                            "psy_fm", "sub_synth", "drum_synth" })
+                            "psy_fm", "sub_synth", "drum_synth",
+                            "reese_bass" })
         EXPECT_TRUE(engines.contains(QString::fromLatin1(id))) << id;
 }
 
@@ -459,6 +460,40 @@ TEST_F(DeviceParamsInternalTest, SubSynthCutoffRangeFromTable)
     EXPECT_TRUE(cutoff.value("source").toString().contains("TrackFXSlot.h:"));
 }
 
+// reese_bass: the 40-row map comes straight from ReeseBassEngine::paramDefs()
+// (its `source` citations point at the header), with default/min/max projected
+// verbatim and the units/lengths matching the engine contract.
+TEST_F(DeviceParamsInternalTest, ReeseBassMapMatchesEngineTable)
+{
+    const auto o = callJson("list_device_params", { { "engine", "reese_bass" } });
+    ASSERT_FALSE(o.isEmpty());
+    EXPECT_EQ(o.value("matched").toInt(), 40);
+    EXPECT_EQ(o.value("params").toArray().size(), 40);
+
+    const auto cutoff = findParam(o, "Filter Cutoff");
+    ASSERT_FALSE(cutoff.isEmpty());
+    EXPECT_EQ(cutoff.value("category").toString(), QString("reese-bass"));
+    EXPECT_EQ(cutoff.value("unit").toString(), QString("hz"));
+    EXPECT_EQ(cutoff.value("index").toInt(), 15);
+    EXPECT_DOUBLE_EQ(cutoff.value("default").toDouble(), 1200.0);
+    EXPECT_DOUBLE_EQ(cutoff.value("min").toDouble(), 20.0);
+    EXPECT_DOUBLE_EQ(cutoff.value("max").toDouble(), 20000.0);
+    EXPECT_TRUE(cutoff.value("source").toString().contains("ReeseBassEngine.h:"));
+
+    // The tempo-synced wobble rate declares `beats` (not Hz) — the reese/psy
+    // wobble is a project-tempo division.
+    const auto lfoRate = findParam(o, "LFO Rate (beats)");
+    ASSERT_FALSE(lfoRate.isEmpty());
+    EXPECT_EQ(lfoRate.value("unit").toString(), QString("beats"));
+    EXPECT_EQ(lfoRate.value("index").toInt(), 30);
+
+    // Osc Shape carries the enum documentation from the engine header.
+    const auto shape = findParam(o, "Osc Shape");
+    ASSERT_FALSE(shape.isEmpty());
+    EXPECT_EQ(shape.value("enum").toObject().value("0").toString(), QString("Saw"));
+    EXPECT_EQ(shape.value("enum").toObject().value("2").toString(), QString("Triangle"));
+}
+
 // delay: Division carries the enum documentation from InternalDelay.
 TEST_F(DeviceParamsInternalTest, DelayDivisionCarriesEnumDoc)
 {
@@ -501,7 +536,8 @@ TEST_F(DeviceParamsInternalTest, InternalParamsDeclareVocabularyUnit)
     for (const char* id : { "eq", "compressor", "reverb", "delay", "chorus",
                             "flanger", "phaser", "filter", "saturator",
                             "sampler", "fm_synth", "growl_bass", "psyarp",
-                            "psy_fm", "sub_synth", "drum_synth" })
+                            "psy_fm", "sub_synth", "drum_synth",
+                            "reese_bass" })
     {
         const auto o = callJson("list_device_params",
                                 { { "engine", QString::fromLatin1(id) } });
@@ -626,7 +662,8 @@ TEST_F(DeviceParamsInternalTest, InternalMapsCarryInternalRoute)
     for (const char* id : { "eq", "compressor", "reverb", "delay", "chorus",
                             "flanger", "phaser", "filter", "saturator",
                             "sampler", "fm_synth", "growl_bass", "psyarp",
-                            "psy_fm", "sub_synth", "drum_synth" })
+                            "psy_fm", "sub_synth", "drum_synth",
+                            "reese_bass" })
     {
         const auto o = callJson("list_device_params",
                                 { { "engine", QString::fromLatin1(id) } });

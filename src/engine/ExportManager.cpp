@@ -8,6 +8,60 @@
 
 namespace HDAW {
 
+namespace {
+
+// Post a FIFO probe to the message queue and wait (bounded) for it to be
+// dispatched. Every message queued BEFORE the probe has been handled by then.
+//
+// Why the render thread needs this (2026-10-06 crash, core-verified): the
+// render graph's AudioProcessorGraph accesses (rebuildFromValueTree /
+// releaseResources / clear) call topologyChanged -> rebuild(UpdateKind::sync),
+// and because this render thread is NOT the message thread JUCE throws the
+// work onto the pump via LockingAsyncUpdater -> handleAsyncUpdate ->
+// NodeStates::applySettings, which mutates `preparedNodes` UNDER nodeStates'
+// mutex. NodeStates::clear() and removeNode() mutate that SAME std::set
+// WITHOUT the mutex — so when the pump is applying settings while the render
+// thread clears the graph, the red-black tree corrupts and the next erase
+// double-frees:
+//
+//   glibc: fatal "double free or corruption (out)"
+//     _int_free_merge_chunk
+//     -> std::_Rb_tree<AudioProcessorGraph::NodeID>::_M_erase
+//     -> juce::NodeStates::clear()          juce_AudioProcessorGraph.cpp:497
+//     -> AudioProcessorGraph::clear()       :1978
+//     -> ExportManager::renderThreadFunc    ExportManager.cpp:683
+//
+// Draining before/after each teardown step guarantees the graph's async work
+// is fully applied while nothing else is mutating it, and that no posted
+// message outlives the graph (whose Pimpl/updater handleAsyncUpdate would then
+// touch freed state).
+//
+// CallbackMessage and AsyncUpdaterMessage are both MessageManager::MessageBase
+// posts on the same queue, so the probe cannot overtake earlier work (the same
+// FIFO assumption the export bake wait above relies on). Bounded: a wedged pump
+// must never hang the exporter — the render itself is already complete.
+void drainRenderGraphAsyncWork(uint32_t timeoutMs)
+{
+    if (juce::MessageManager::getInstance() == nullptr)
+        return;
+
+    auto settled = std::make_shared<std::atomic<bool>>(false);
+    struct ProbeMessage final : public juce::CallbackMessage
+    {
+        std::shared_ptr<std::atomic<bool>> flag;
+        explicit ProbeMessage(std::shared_ptr<std::atomic<bool>> f) : flag(std::move(f)) {}
+        void messageCallback() override { flag->store(true, std::memory_order_release); }
+    };
+    (new ProbeMessage(settled))->post();
+
+    const auto deadline = juce::Time::getMillisecondCounter() + timeoutMs;
+    while (!settled->load(std::memory_order_acquire)
+           && juce::Time::getMillisecondCounter() < deadline)
+        juce::Thread::sleep(1);
+}
+
+} // namespace
+
 ExportManager::ExportManager() = default;
 
 void ExportManager::cancelAndJoin(uint32_t drainTimeoutMs)
@@ -672,7 +726,15 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
     }
 
 finish:
+        // Serialize the render graph's queued async rebuilds against its own
+        // teardown. Draining BEFORE releaseResources/clear keeps the pump's
+        // NodeStates::applySettings from racing their unlocked preparedNodes
+        // mutations (the double-free traced to this site — see
+        // drainRenderGraphAsyncWork); draining AFTER clear() guarantees no
+        // posted message outlives the graph.
+        drainRenderGraphAsyncWork(5000);
         renderGraph.releaseResources();
+        drainRenderGraphAsyncWork(5000);
         // Destroy the render graph's nodes BEFORE clearing render mode:
         // node destruction runs ~CLAPPluginInstance → deactivate(), which
         // thread-checking plugins (Odin2) require to happen on the host's
@@ -681,6 +743,7 @@ finish:
         // ~AudioProcessorGraph, which the scope close below runs before
         // render mode is cleared.
         renderGraph.clear();
+        drainRenderGraphAsyncWork(5000);
     }
 
     proxy::setRenderCancelRequested(false);

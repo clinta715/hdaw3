@@ -348,7 +348,7 @@ automatically - no manual compensation.
 
 ### Preset toolkit (factory chains + preset tools)
 
-HDAW ships 8 built-in factory chains (internal FX only, seeded to
+HDAW ships 11 built-in factory chains (internal FX only, seeded to
 `_factory/*.json` on first run, edits on disk survive upgrades, never
 deletable). `list_fx_chains` returns them with `source:"factory"` and ids
 `_factory/<File_Name>.json`; user chains carry `source:"user"`.
@@ -357,6 +357,9 @@ deletable). `list_fx_chains` returns them with `source:"factory"` and ids
 | --- | --- | --- |
 | `Kick Punch` | kick | saturator 14 dB SoftTanh mix 0.6 → eq 55 Hz −3 dB (sub) → eq 4 kHz +3 dB (click) |
 | `Bass Glue` | bass | eq 120 Hz +1.5 dB → compressor −18 dB 3:1 → saturator 8 dB gentle |
+| `Bass Filter Sweep` | bass | filter LP 500 Hz res 5.5 (the second filter pass — sweep it with an automation lane) → saturator 12 dB SoftAtan mix 0.35 |
+| `Bass Mid Growl` | bass | eq 700 Hz +3 dB → saturator 24 dB Hard asym 0.2 mix 0.6 → filter LP 4 kHz res 1.2 (keeps the grit off the hats) |
+| `Bass Dub Throw` | bass | eq 160 Hz −4 dB (keeps repeats out of the sub) → delay SyncToTempo dotted-1/8 fb 0.55 mix 0.35 → reverb size 0.3 wet 0.25 |
 | `Hat Air` | hats | eq 9 kHz +3 dB → reverb size 0.25 damp 0.3 wet 0.30 (short/bright) |
 | `Pad Shimmer` | pads | chorus 0.6 Hz depth 0.45 → reverb size 0.92 wet 0.42 (large/lush) |
 | `Acid Lead` | lead/arp | filter LP 1.2 kHz res 4.5 → delay SyncToTempo dotted-1/8 fb 0.45 |
@@ -385,13 +388,13 @@ delay/reverb, then the fader) — deviate for a role-specific or measured reason
 parallel/send space instead of an insert), not by accident.
 
 1. **Instrument slot FIRST — on instrument/MIDI tracks only.** Internal
-   instruments are FX slots (`psy_fm`, `sub_synth`, `growl_bass`, `psyarp`,
-   `fm_synth`, `sampler`, `drum_synth`), so a *synth* track's chain starts with
-   one (`add_track_with_fx {name, fxType}` or `add_track` + `add_fx {trackId,
-   fxType}` — both take the SAME internal vocabulary: eq / compressor / reverb /
-   delay / chorus / flanger / phaser / filter / saturator / sampler / fm_synth /
-   growl_bass / psyarp / psy_fm / sub_synth / drum_synth; use `pluginId` for a
-   hosted VST3/CLAP). An **audio-clip track has no instrument slot** and starts
+   instruments are FX slots (`psy_fm`, `sub_synth`, `growl_bass`, `reese_bass`,
+   `psyarp`, `fm_synth`, `sampler`, `drum_synth`), so a *synth* track's chain
+   starts with one (`add_track_with_fx {name, fxType}` or `add_track` + `add_fx
+   {trackId, fxType}` — both take the SAME internal vocabulary: eq / compressor /
+   reverb / delay / chorus / flanger / phaser / filter / saturator / sampler /
+   fm_synth / growl_bass / reese_bass / psyarp / psy_fm / sub_synth / drum_synth;
+   use `pluginId` for a hosted VST3/CLAP). An **audio-clip track has no instrument slot** and starts
    directly with processing FX; **buses/returns use their own bus-FX path**
    (`add_bus {fxType}`, five types only). Slot order IS the signal order.
 2. **Prefer a factory chain over hand-building**, and batch what you do build.
@@ -641,9 +644,19 @@ Envelope recipes: pluck = atk 0.001, dec 0.15, sus 0.0, rel 0.1; pad = atk 0.5, 
 - **Stabs:** `psy_fm` + `metallicPluck` preset. Fast envelope on non-integer operators.
 - **Risers:** `psy_fm` + `riser` preset. Bar clock auto-speeds ratio-sweep LFO.
 
+**Matrix sources (fixed 2026-10-07).** The `psy_fm_set_mod_route` sources
+`velocity`, `modWheel` and `barClock` were previously inert — `velocity` and
+`modWheel` read a permanently-0 value, and `barClock` aliased the ratio-sweep LFO
+rather than reporting the bar. All three now work: `velocity` is latched on
+note-on, `modWheel` follows MIDI CC1, and `barClock` is driven from the playhead
+each block (idempotent per bar) — so "mod wheel → feedback" and "bar clock
+auto-speeds the ratio sweep" above are real routings, not aspirational ones.
+`ratioSweepLFO` and `feedbackLFO` are unchanged.
+
 ## 5c. Psytrance internal instruments (new in v0.25.1)
 
-Two purpose-built psytrance synths ship as internal FX types. They
+Four purpose-built psytrance synths ship as internal FX types —
+`growl_bass`, `psyarp`, `sub_synth` and `reese_bass` (added 2026-10-07). They
 complement the `psy_fm` synth (§5b) — use them as the primary instruments
 for the corresponding roles.
 
@@ -724,6 +737,11 @@ Osc Shape=4 (Noise) or a little Noise Level adds air/percussive edge.
 scale (F harmonic minor mode=7, root=5). Degrees 0–6 map to
 {F,G,Ab,Bb,C,Db,E}. Feed the resulting MIDI pitches into the psyarp clip.
 
+**Tempo (fixed 2026-10-07).** `psyarp` previously never received the project
+tempo (its internal `bpm_` sat at 120), so `Step Rate` and `Delay Time (beats)`
+were wrong at any other BPM. The project tempo is now forwarded every block, so
+the step grid and the beat-synced delay follow the transport at any tempo.
+
 ### sub_synth — modulation-matrix factory presets
 
 ```
@@ -758,11 +776,129 @@ one parameter. So after importing, read the slot back
 before auditioning; `audition_plugin {trackIndex, slotIndex}` reports `audible` and
 is the gate, not the import's `ok`.
 
+### reese_bass — detuned-supersaw reese/neuro bass with a tempo-synced wobble LFO
+
+```
+add_track_with_fx { name: "Reese Bass", fxType: "reese_bass" }
+add_fx           { trackId, fxType: "reese_bass" }        # same enum
+set_internal_fx_param { trackId, slotIndex, paramIndex: N, value: V }
+list_device_params    { engine: "reese_bass" }            # 40 params, musical intents
+```
+
+No plugin, no samples, no ROM — an internal instrument like `growl_bass`, created
+through the same enum (`add_track_with_fx` / `add_fx`). Signal path per note slot:
+N detuned unison saws (PolyBLEP) + hard-sync crossfade + sub sine → panned stereo
+sum → stereo feedback comb → stereo drive (4 curves, velocity + LFO drive) → stereo
+TPT state-variable filter (LP/HP/BP) with filter env + key track + LFO cutoff → amp
+envelope → per-channel memoryless soft ceiling → `Output Level`.
+
+**Why it exists — the `growl_bass` gaps.** The existing bass engines each miss one
+idiom. `growl_bass` has **no saw oscillator at all** (`Mod Shape` is only
+Sin/Tri/Square and the carrier and modulator share it), **no LFO**, **no
+glide/legato**, **no HP mode**, and only **one filter stage**. `psy_fm` is FM (no
+subtractive saw wall). `sub_synth`'s unison is a fixed **2** detuned copies. So the
+textbook reese/neuro basis — many detuned saws beating against each other — plus a
+tempo-synced wobble were both unreachable before this engine.
+
+| Index | Name | Range | Role |
+| ------- | ------ | ------- | ------ |
+| | **— unison / detune —** | | |
+| 0 | Voice Count | 1–7 (def 7) | Detuned unison saws inside ONE note slot — the reese wall |
+| 1 | Detune Cents | 0–100 (def 20) | Beating width between the unison voices |
+| 2 | Stereo Spread | 0–1 (def 0.5) | Pans the unison sum L/R (width without a chorus) |
+| 3 | Osc Shape | 0=Saw, 1=Square, 2=Triangle (def 0) | Carrier waveform (Saw = the textbook reese) |
+| 4 | Phase Scatter | 0–1 (def 0.5) | Deterministic per-voice start phase (no random source) |
+| | **— sub —** | | |
+| 5 | Sub Level | 0–1 (def 0.3) | Octave-down sine blended for weight |
+| 6 | Sub Octave | −2–0 (def −1) | Sub register |
+| | **— sync —** | | |
+| 7 | Sync Amount | 0–1 (def 0) | Hard-sync crossfade amount (**0 = bit-exact bypass**) |
+| 8 | Sync Ratio | 1–4 (def 1) | Sync/overshoot ratio (neuro bite) |
+| | **— comb —** | | |
+| 9 | Comb Amount | 0–1 (def 0) | Feedback comb amount (**0 = bit-exact bypass**) |
+| 10 | Comb Frequency | 20–2000 Hz (def 80) | Comb delay length |
+| 11 | Comb Feedback | 0–0.95 (def 0.7) | Comb resonance |
+| | **— drive —** | | |
+| 12 | Drive dB | 0–40 (def 6) | Waveshaper drive (principle 2) |
+| 13 | Drive Type | 0=Tanh, 1=Atan, 2=Hard, 3=Fold (def 0) | Waveshape curve |
+| 14 | Drive Mix | 0–1 (def 1) | Dry/wet around the shaper |
+| | **— filter —** | | |
+| 15 | Filter Cutoff | 20–20000 Hz (def 1200) | Principle 2: the instrument filter |
+| 16 | Filter Res | 0.1–20 (def 2) | Resonance |
+| 17 | Filter Type | 0=LP, 1=HP, 2=BP (def 0) | HP (absent on `growl_bass`) and BP are now available |
+| 18 | Filter Env Amt | 0–1 (def 0.4) | Filter-envelope depth |
+| 19 | Filter Key Track | 0–1 (def 0) | Cutoff follows the MIDI note |
+| | **— envelopes —** | | |
+| 20 | Filter Attack | 0.001–2 s (def 0.01) | Filter env attack |
+| 21 | Filter Decay | 0.001–5 s (def 0.4) | Filter env decay |
+| 22 | Filter Sustain | 0–1 (def 0.3) | Filter env sustain |
+| 23 | Filter Release | 0.001–5 s (def 0.2) | Filter env release |
+| 24 | Amp Attack | 0.001–2 s (def 0.005) | Amp env attack |
+| 25 | Amp Decay | 0.001–5 s (def 0.2) | Amp env decay |
+| 26 | Amp Sustain | 0–1 (def 0.85) | Amp env sustain |
+| 27 | Amp Release | 0.001–5 s (def 0.08) | Amp env release |
+| | **— output —** | | |
+| 28 | Output Level | 0–1 (def 0.35) | Slot output (see the soft ceiling below) |
+| | **— LFO (the wobble) —** | | |
+| 29 | LFO Shape | 0=Sine, 1=Tri, 2=Square, 3=SawDown (def 0) | Wobble waveform |
+| 30 | LFO Rate (beats) | 0.0625–8 (def 1) | Wobble rate in beats when synced |
+| 31 | LFO Sync | 0/1 (def 1) | 1 = tempo-synced from the project BPM; 0 = param 30 is Hz |
+| 32 | LFO Cutoff Amt | 0–1 (def 0) | Cutoff wobble depth (**0 = bit-exact bypass**) |
+| 33 | LFO Pitch Amt | 0–1 (def 0) | Pitch wobble depth (**0 = bit-exact bypass**) |
+| 34 | LFO Drive Amt | 0–1 (def 0) | Drive wobble depth (**0 = bit-exact bypass**) |
+| 35 | LFO Phase | 0–1 (def 0) | LFO start phase (align or offset the wobble) |
+| | **— glide / poly / bend —** | | |
+| 36 | Glide | 0–2 s (def 0) | Portamento time |
+| 37 | Mono Legato | 0/1 (def **1**) | 1 = mono legato (up to 2 note slots), 0 = poly |
+| 38 | Pitch Bend Range | 0–12 st (def 2) | Bend depth |
+| 39 | Velocity->Drive | 0–1 (def 0.3) | Velocity adds up to 24 dB of extra drive |
+
+**Defaults are deliberately conservative.** `Sync Amount` (7), `Comb Amount` (9)
+and all three LFO amounts (32/33/34) default to 0 and are **bit-exact bypasses** —
+the default voice is the plain detuned-saw bed. `Output Level` is 0.35 and the voice
+sum runs through a memoryless soft ceiling (knee 1.0, span 0.5), so 7 detuned voices
+cannot clip the slot on their own.
+
+**Anti-aliasing.** Saw and Square are PolyBLEP band-limited in place (the same
+discipline as `psyarp`/`sub_synth`), so high notes do not spray aliases; Triangle is
+naive but has no step, so there is nothing to alias.
+
+**`Mono Legato` defaults to 1 — mono, glide on retarget, envelopes keep running
+across a legato overlap** (a reese bass is normally mono). Set it to 0 for 2-note
+poly. **Velocity is audible** through `Velocity->Drive`; set it to 0 for a
+velocity-independent render. **The engine is deterministic** — no random source
+anywhere, including the unison phase scatter — so two renders of the same project
+are bit-identical.
+
+`set_internal_fx_param` writes **REAL units** (Hz, dB, seconds); `list_fx_params
+{trackId, slotIndex}` reads them back with `valueNormalized`. `list_device_params
+{engine:"reese_bass"}` gives the 40 indexed params by musical intent (0 trap / 0
+unclassified).
+
+**Idiom recipes** (all param sets you can write directly):
+
+| Idiom | Param set |
+| ------- | --------- |
+| **Classic reese bed** | Voice Count 7, Detune Cents 25–30, Stereo Spread 0.6, Osc Shape Saw, Sub Level 0.35, Drive dB 8 (Tanh) — no sync, no comb |
+| **Neuro sync stab** | Sync Amount 0.8–0.9, Sync Ratio 2, Drive Type Hard, Drive dB 20, short Amp Decay (~0.15) with low Sustain, Velocity->Drive 0.6 |
+| **Psy wobble** | LFO Sync 1, LFO Rate 0.5 (a 1/8-note wobble) or 0.25 (1/16), LFO Shape Sine, LFO Cutoff Amt 0.8–0.9, Filter Cutoff 700, Filter Res 6 |
+| **Dub sub reese** | Voice Count 3, Sub Level 0.9, Sub Octave −2, Filter Cutoff 500, Drive dB 4, slow LFO Cutoff Amt 0.3 at LFO Rate 1 |
+| **Fold gnarl** | Drive Type Fold, Drive dB 26, Drive Mix 0.7, Comb Amount 0.5 at Comb Frequency 120, Velocity->Drive 0.7 |
+
+**Factory content.** 12 factory BASS PATCHES ship (`list_patches`, `source:"factory"`,
+ids `_factory/<Name>.json`, loadable via `load_patch {trackId, slotIndex, id}` and
+never deletable): `Reese Classic`, `Neuro Sync Stab`, `Psy Wobble`, `Dub Sub Reese`,
+`Rolling Mid Reese`, `Fold Gnarl` (all `reese_bass`); `Growl Rolling Sub`, `Growl Hard
+Acid`, `Growl Digital Grit`, `Growl Vocal` (all `growl_bass`); `Sub Pure`, `Sub Acid
+303` (both `sub_synth`). Three new factory FX chains join the roster (now 11): `Bass
+Filter Sweep`, `Bass Mid Growl`, `Bass Dub Throw` — alongside the existing `Bass Glue`.
+
 ### Combining the instruments
 
 | Role | Instrument | Why |
 | ------ | ----------- | ----- |
 | Bass | growl_bass | Dedicated growl, built-in waveshaper + filter + sidechain |
+| Rolling / reese / wobble bass | reese_bass | Detuned saw wall + tempo-synced wobble LFO; covers what `growl_bass` cannot (saw oscillator, in-slot LFO, glide/legato, HP mode, multi-stage tone) |
 | Arp lead | psyarp | Dedicated arpeggiator, built-in sweep + phaser + delay |
 | Stab/acid lead | psy_fm (acidLead preset) | High-feedback screaming tones |
 | FX/blips | psy_fm (metallicPluck preset) | Non-integer ratios, alien perc |

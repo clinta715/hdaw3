@@ -11,6 +11,11 @@ struct PsyFmModSourcePool
     float feedbackLFORateHz   = 0.1f;
     float modWheelValue = 0.0f;
     float velocityValue = 0.0f;
+    // Transport bar clock, written by PsyFmEngine::onBarBoundary (the
+    // riser route's accelerate-every-8-bars + phrase position). 0..0.75 of the
+    // 4-bar phrase, and a real pool source (index 4) — it used to alias the
+    // ratio-sweep LFO, so a BarClock route silently moved the wrong thing.
+    float barClockValue = 0.0f;
     float feedbackOffset = 0.0f;  // additive offset on the base feedback (read by PsyFmModMatrix::apply)
 
     void advanceControlRate (int numSamples, double sampleRate);

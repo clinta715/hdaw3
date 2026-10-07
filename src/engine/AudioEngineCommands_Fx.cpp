@@ -2119,6 +2119,115 @@ int AudioEngineCommands::getTrackID(int trackIndex) const
     return static_cast<int>(trackList.getChild(trackIndex).getProperty(IDs::trackID, 0));
 }
 
+namespace {
+
+// Export pre-pass: capture live plugin state into the FX_CHAIN tree, so
+// parameters tweaked through a plugin's own UI are exported. Same pattern as
+// ProjectSerializer::save (ProjectSerializer.cpp:64-84). Export is read-only
+// (no undo), hence the nullptr manager, matching save(). Shared by
+// exportFxChain (whole chain) and exportPatch (one slot).
+void captureLivePluginStateIntoTree(const juce::ValueTree& trackTree,
+                                    int trackIndex, MainAudioProcessor* proc)
+{
+    if (proc == nullptr)
+        return;
+    auto* track = proc->getTrack(trackIndex);
+    if (track == nullptr)
+        return;
+
+    auto& fxChain = track->getFXChain();
+    auto fxChainTree = trackTree.getChildWithName(IDs::FX_CHAIN);
+    if (!fxChainTree.isValid())
+        return;
+
+    for (size_t si = 0; si < fxChain.size(); ++si)
+    {
+        auto& slot = fxChain[si];
+        if (!slot || !slot->isPlugin() || !slot->getPluginInstance())
+            continue;
+
+        juce::MemoryBlock state;
+        slot->getPluginInstance()->getStateInformation(state);
+        slot->noteStateSample(state);
+
+        // Match by pluginID (same pattern as Track::rebuildFXChain).
+        if (static_cast<int>(si) < fxChainTree.getNumChildren())
+        {
+            auto slotTree = fxChainTree.getChild(static_cast<int>(si));
+            if (slotTree.getProperty(IDs::pluginID).toString() == slot->getPluginID())
+            {
+                if (state.getSize() > 0 && !slot->stateLooksUnchangedSinceBoot(state))
+                    slotTree.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
+            }
+        }
+    }
+}
+
+// Snapshot ONE FX_SLOT tree node into a ChainPreset::Slot — the export schema
+// of a single slot (params / plugin / sampler+slice / psy_fm matrix). Shared
+// by exportFxChain's walk and exportPatch, so the two can never drift.
+HDAW::ChainPreset::Slot snapshotFxSlot(const juce::ValueTree& slotTree)
+{
+    HDAW::ChainPreset::Slot s;
+    s.fxType = slotTree.getProperty(IDs::fxType, "").toString();
+    s.bypassed = static_cast<bool>(slotTree.getProperty(IDs::bypassed, false));
+    s.name = slotTree.getProperty(IDs::name, "").toString();
+
+    // Internal params: one "param_N" entry per def (ReadModelImpl
+    // getInternalFxParams pattern). Missing props read as the def default.
+    if (s.fxType.isNotEmpty() && s.fxType != "plugin" && s.fxType != "none")
+    {
+        auto defs = HDAW::TrackFXSlot::getParamDefsForType(s.fxType);
+        for (const auto& d : defs)
+        {
+            juce::String propName = "param_" + juce::String(d.index);
+            const double v = static_cast<double>(
+                slotTree.getProperty(juce::Identifier(propName),
+                                     static_cast<double>(d.defaultValue)));
+            s.params[propName] = v;
+        }
+    }
+
+    if (s.fxType == "plugin")
+    {
+        s.plugin.id = slotTree.getProperty(IDs::pluginID, "").toString();
+        s.plugin.format = slotTree.getProperty(IDs::pluginFormat, "").toString();
+        s.plugin.path = slotTree.getProperty(IDs::pluginPath, "").toString();
+        s.plugin.stateBase64 = slotTree.getProperty(IDs::pluginState, "").toString();
+    }
+
+    if (s.fxType == "sampler")
+    {
+        static const char* const kKeys[] = {
+            "sampleFile", "mode", "rootNote", "mono", "playReverse",
+            "transpose", "baseNote", "sampleStart", "sampleEnd",
+            "loopStart", "loopEnd", "loopEnabled", "sliceMode",
+            "sliceGrid", "sliceSensitivity", "keyRangeLow", "keyRangeHigh",
+            "slicePointsOverride", "sliceMeta",
+        };
+        for (const auto* k : kKeys)
+        {
+            juce::Identifier id(k);
+            if (slotTree.hasProperty(id))
+                s.sampler[k] = slotTree.getProperty(id).toString();
+        }
+        s.slicePoints = slotTree.getProperty("slicePoints", "").toString();
+        s.slicePointsOverride = slotTree.getProperty("slicePointsOverride", "").toString();
+        s.sliceMeta = slotTree.getProperty("sliceMeta", "").toString();
+    }
+
+    if (s.fxType == "psy_fm")
+    {
+        s.psyFmMatrix = slotTree.getProperty("psyFmMatrix", "").toString();
+        s.psyFmSweepRate =
+            static_cast<double>(slotTree.getProperty("psyFmSweepRate", 0.0));
+    }
+
+    return s;
+}
+
+} // namespace
+
 HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
 {
     HDAW::ChainPreset preset;
@@ -2127,41 +2236,9 @@ HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
         return preset;
 
     // 1. Pre-pass: capture live plugin state into the tree, so parameters
-    // tweaked through a plugin's own UI are exported. Same pattern as
-    // ProjectSerializer::save (ProjectSerializer.cpp:64-84). Export is a
-    // read-only op (no undo), hence the nullptr manager, matching save().
-    if (auto* proc = engine_.getMainProcessor())
-    {
-        if (auto* track = proc->getTrack(trackIndex))
-        {
-            auto& fxChain = track->getFXChain();
-            auto fxChainTree = trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
-            if (fxChainTree.isValid())
-            {
-                for (size_t si = 0; si < fxChain.size(); ++si)
-                {
-                    auto& slot = fxChain[si];
-                    if (!slot || !slot->isPlugin() || !slot->getPluginInstance())
-                        continue;
-
-                    juce::MemoryBlock state;
-                    slot->getPluginInstance()->getStateInformation(state);
-                    slot->noteStateSample(state);
-
-                    // Match by pluginID (same pattern as Track::rebuildFXChain).
-                    if (static_cast<int>(si) < fxChainTree.getNumChildren())
-                    {
-                        auto slotTree = fxChainTree.getChild(static_cast<int>(si));
-                        if (slotTree.getProperty(IDs::pluginID).toString() == slot->getPluginID())
-                        {
-                            if (state.getSize() > 0 && !slot->stateLooksUnchangedSinceBoot(state))
-                                slotTree.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // tweaked through a plugin's own UI are exported. Read-only (no undo).
+    captureLivePluginStateIntoTree(trackList.getChild(trackIndex), trackIndex,
+                                   engine_.getMainProcessor());
 
     // 2. Walk the FX_CHAIN children (Track.cpp:740-746 resolveFXChainTree).
     auto fxChainTree = trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
@@ -2169,67 +2246,29 @@ HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
         return preset;
 
     for (int i = 0; i < fxChainTree.getNumChildren(); ++i)
-    {
-        auto slotTree = fxChainTree.getChild(i);
-        HDAW::ChainPreset::Slot s;
-        s.fxType = slotTree.getProperty(IDs::fxType, "").toString();
-        s.bypassed = static_cast<bool>(slotTree.getProperty(IDs::bypassed, false));
-        s.name = slotTree.getProperty(IDs::name, "").toString();
-
-        // Internal params: one "param_N" entry per def (ReadModelImpl
-        // getInternalFxParams pattern). Missing props read as the def default.
-        if (s.fxType.isNotEmpty() && s.fxType != "plugin" && s.fxType != "none")
-        {
-            auto defs = HDAW::TrackFXSlot::getParamDefsForType(s.fxType);
-            for (const auto& d : defs)
-            {
-                juce::String propName = "param_" + juce::String(d.index);
-                const double v = static_cast<double>(
-                    slotTree.getProperty(juce::Identifier(propName),
-                                         static_cast<double>(d.defaultValue)));
-                s.params[propName] = v;
-            }
-        }
-
-        if (s.fxType == "plugin")
-        {
-            s.plugin.id = slotTree.getProperty(IDs::pluginID, "").toString();
-            s.plugin.format = slotTree.getProperty(IDs::pluginFormat, "").toString();
-            s.plugin.path = slotTree.getProperty(IDs::pluginPath, "").toString();
-            s.plugin.stateBase64 = slotTree.getProperty(IDs::pluginState, "").toString();
-        }
-
-        if (s.fxType == "sampler")
-        {
-            static const char* const kKeys[] = {
-                "sampleFile", "mode", "rootNote", "mono", "playReverse",
-                "transpose", "baseNote", "sampleStart", "sampleEnd",
-                "loopStart", "loopEnd", "loopEnabled", "sliceMode",
-                "sliceGrid", "sliceSensitivity", "keyRangeLow", "keyRangeHigh",
-                "slicePointsOverride", "sliceMeta",
-            };
-            for (const auto* k : kKeys)
-            {
-                juce::Identifier id(k);
-                if (slotTree.hasProperty(id))
-                    s.sampler[k] = slotTree.getProperty(id).toString();
-            }
-            s.slicePoints = slotTree.getProperty("slicePoints", "").toString();
-            s.slicePointsOverride = slotTree.getProperty("slicePointsOverride", "").toString();
-            s.sliceMeta = slotTree.getProperty("sliceMeta", "").toString();
-        }
-
-        if (s.fxType == "psy_fm")
-        {
-            s.psyFmMatrix = slotTree.getProperty("psyFmMatrix", "").toString();
-            s.psyFmSweepRate =
-                static_cast<double>(slotTree.getProperty("psyFmSweepRate", 0.0));
-        }
-
-        preset.slots.push_back(std::move(s));
-    }
+        preset.slots.push_back(snapshotFxSlot(fxChainTree.getChild(i)));
 
     return preset;
+}
+
+HDAW::ChainPreset AudioEngineCommands::exportPatch(int trackIndex, int slotIndex)
+{
+    HDAW::ChainPreset patch;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return patch;
+
+    // Same read-only live-plugin capture as exportFxChain (no undo, no rebuild).
+    auto trackTree = trackList.getChild(trackIndex);
+    captureLivePluginStateIntoTree(trackTree, trackIndex, engine_.getMainProcessor());
+
+    auto fxChainTree = trackTree.getChildWithName(IDs::FX_CHAIN);
+    if (!fxChainTree.isValid() || slotIndex < 0
+        || slotIndex >= fxChainTree.getNumChildren())
+        return patch; // empty slots = the documented error signal
+
+    patch.slots.push_back(snapshotFxSlot(fxChainTree.getChild(slotIndex)));
+    return patch;
 }
 
 namespace {
@@ -2274,7 +2313,7 @@ bool isPreservedInstrumentFxType(const juce::String& type)
 {
     return type == "sampler" || type == "sub_synth" || type == "psy_fm"
         || type == "fm_synth" || type == "growl_bass" || type == "psyarp"
-        || type == "drum_synth";
+        || type == "drum_synth" || type == "reese_bass";
 }
 } // namespace
 
@@ -2484,6 +2523,208 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
     }
 
     // 4. ONE rebuild for the whole apply.
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+    endTransaction();
+    return true;
+}
+
+bool AudioEngineCommands::applyPatch(int trackIndex, int slotIndex,
+                                     const HDAW::ChainPreset& patch,
+                                     juce::String* error)
+{
+    auto fail = [&](const juce::String& msg) -> bool {
+        if (error != nullptr)
+            *error = msg;
+        return false;
+    };
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return fail("applyPatch: invalid track index " + juce::String(trackIndex));
+
+    if (patch.slots.empty())
+        return fail("applyPatch: preset has no slots");
+
+    // The target slot must ALREADY exist: a patch writes INTO a slot, it never
+    // appends one (that is the chain verb's job) and never silently no-ops.
+    auto slotTree = findFxSlot(trackIndex, slotIndex);
+    if (!slotTree.isValid())
+        return fail("applyPatch: slot " + juce::String(slotIndex)
+                    + " not found on track " + juce::String(trackIndex));
+
+    const auto& s = patch.slots[0];
+    const juce::String where = "applyPatch: slot 0";
+    const juce::String targetType = slotTree.getProperty(IDs::fxType, "").toString();
+
+    // 1. Gate 9 — validate EVERYTHING before any write (same pre-pass as
+    // applyFxChain, narrowed to the single carried slot).
+    if (s.fxType.isEmpty())
+        return fail(where + ": empty fxType");
+    if (s.fxType != targetType)
+        return fail("applyPatch: fxType mismatch — patch is '" + s.fxType
+                    + "', target slot " + juce::String(slotIndex) + " is '"
+                    + targetType + "'");
+
+    const bool isPlugin = (s.fxType == "plugin");
+    const bool isNone = (s.fxType == "none");
+    auto defs = HDAW::TrackFXSlot::getParamDefsForType(s.fxType);
+
+    if (defs.empty() && !isPlugin && !isNone)
+        return fail(where + ": unknown fxType '" + s.fxType + "' (valid: "
+                    + HDAW::TrackFXSlot::internalFxTypeNamesText() + ", plugin, none)");
+
+    if (isPlugin || isNone)
+    {
+        // No defs exist for these types, so any param would be a stray prop.
+        if (!s.params.empty())
+            return fail(where + ": stray params on '" + s.fxType + "' slot");
+        if (isPlugin && s.plugin.id.isEmpty())
+            return fail(where + ": plugin slot is missing its plugin id");
+        // A plugin slot's identity IS its plugin id: applying one plugin's
+        // state blob to a different plugin's slot would write garbage the
+        // host cannot interpret, so it is a type mismatch (same family as the
+        // fxType refusal above). Only refused when BOTH ids are known.
+        if (isPlugin)
+        {
+            const juce::String targetPluginId =
+                slotTree.getProperty(IDs::pluginID, "").toString();
+            if (targetPluginId.isNotEmpty() && s.plugin.id != targetPluginId)
+                return fail("applyPatch: plugin id mismatch — patch is '"
+                            + s.plugin.id + "', target slot "
+                            + juce::String(slotIndex) + " is '" + targetPluginId + "'");
+        }
+    }
+    else
+    {
+        for (const auto& kv : s.params)
+        {
+            if (parsePresetParamIndex(kv.first, static_cast<int>(defs.size())) < 0)
+                return fail(where + ": param '" + kv.first + "' is out of range for '"
+                            + s.fxType + "'");
+        }
+    }
+
+    // 2. ONE undo unit. No slot is added or removed anywhere below — only the
+    // addressed slot's own properties are rewritten.
+    auto& um = engine_.getProjectModel().getUndoManager();
+    beginTransaction("Apply FX slot patch");
+
+    slotTree.setProperty(IDs::bypassed, s.bypassed, &um);
+    if (s.name.isNotEmpty())
+        slotTree.setProperty(IDs::name, s.name, &um);
+
+    // Params through the write-side clamp (lesson 23 — an unclamped value once
+    // poisoned exports); setFxSlotParam performs no rebuild itself.
+    for (const auto& kv : s.params)
+    {
+        const int idx = parsePresetParamIndex(kv.first, static_cast<int>(defs.size()));
+        // Re-checked: indices were validated pre-write; a miss here can only
+        // mean the tree changed under us — fail loudly, never write a stray prop.
+        if (idx < 0)
+        {
+            if (auto* proc = engine_.getMainProcessor())
+                proc->rebuildTrackFX(trackIndex);
+            endTransaction();
+            return fail("applyPatch: param '" + kv.first + "' rejected during apply");
+        }
+        setFxSlotParam(trackIndex, slotIndex, idx, static_cast<float>(kv.second));
+    }
+
+    if (s.fxType == "plugin")
+    {
+        // setFxSlotPlugin path (:339-351), minus its per-call rebuild. The id
+        // itself is NOT written — applyPatch never re-identifies the slot.
+        if (s.plugin.format.isNotEmpty())
+            slotTree.setProperty(IDs::pluginFormat, s.plugin.format, &um);
+        if (s.plugin.path.isNotEmpty())
+            slotTree.setProperty(IDs::pluginPath, s.plugin.path, &um);
+        if (s.plugin.stateBase64.isNotEmpty())
+            slotTree.setProperty(IDs::pluginState, s.plugin.stateBase64, &um);
+    }
+
+    if (s.fxType == "sampler")
+    {
+        // Sampler file fallback: stored absolute path → engine-side library
+        // filename search → slot WITHOUT sample + HDAW_LOG warning (Gate 2:
+        // warn, never silently pass). Same logic as applyFxChain.
+        auto it = s.sampler.find("sampleFile");
+        if (it != s.sampler.end() && it->second.isNotEmpty())
+        {
+            juce::String resolved;
+            juce::File stored(it->second);
+            if (stored.existsAsFile())
+            {
+                resolved = stored.getFullPathName();
+            }
+            else
+            {
+                const juce::String base = stored.getFileName();
+                auto hits = engine_.getFileLibraryManager().search(
+                    base, "audio", {}, -1.0, -1.0, -1.0, -1.0, {}, 0, 10);
+                for (const auto& h : hits)
+                {
+                    if (juce::File(h.path).existsAsFile())
+                    {
+                        resolved = juce::File(h.path).getFullPathName();
+                        break;
+                    }
+                }
+                if (resolved.isEmpty())
+                    HDAW_LOG("FxChainPreset",
+                             ("applyPatch: sample '" + it->second
+                              + "' not found; applying sampler slot without sample")
+                                 .toStdString());
+            }
+            if (resolved.isNotEmpty())
+                slotTree.setProperty(juce::Identifier("sampleFile"), resolved, &um);
+        }
+
+        for (const auto& kv : s.sampler)
+        {
+            if (kv.first == "sampleFile")
+                continue; // handled above
+            juce::Identifier id(kv.first);
+            if (isSamplerIntKey(kv.first))
+                slotTree.setProperty(id, kv.second.getIntValue(), &um);
+            else if (isSamplerBoolKey(kv.first))
+                slotTree.setProperty(id,
+                                     kv.second.getIntValue() != 0
+                                         || kv.second.trim().equalsIgnoreCase("true"),
+                                     &um);
+            else if (isSamplerDoubleKey(kv.first))
+                slotTree.setProperty(id, kv.second.getDoubleValue(), &um);
+            else
+                slotTree.setProperty(id, kv.second, &um);
+        }
+        if (s.slicePoints.isNotEmpty())
+            slotTree.setProperty(juce::Identifier("slicePoints"), s.slicePoints, &um);
+        if (s.slicePointsOverride.isNotEmpty())
+            slotTree.setProperty(juce::Identifier("slicePointsOverride"),
+                                 s.slicePointsOverride, &um);
+        if (s.sliceMeta.isNotEmpty())
+            slotTree.setProperty(juce::Identifier("sliceMeta"), s.sliceMeta, &um);
+    }
+
+    if (s.fxType == "psy_fm")
+    {
+        // setFxSlotPsyFmPreset/setFxSlotPsyFmModRoute path, batched: matrix +
+        // sweep rate are plain tree props restored by loadPsyFmStateFromTree
+        // on the single rebuild below.
+        //
+        // DECISION (documented per the implementation contract): a patch whose
+        // psyFmMatrix is EMPTY does NOT clear the target's matrix — the
+        // target's existing routes are preserved. Mirrors the existing
+        // applyFxChain guard, so a matrix-less patch can never silently wipe a
+        // slot's routing. A patch with routes always overwrites wholesale
+        // (the patch is the slot's whole state, not a merge).
+        if (s.psyFmMatrix.isNotEmpty())
+            slotTree.setProperty(juce::Identifier("psyFmMatrix"), s.psyFmMatrix, &um);
+        slotTree.setProperty(juce::Identifier("psyFmSweepRate"),
+                             static_cast<double>(s.psyFmSweepRate), &um);
+    }
+
+    // 3. ONE rebuild for the whole patch.
     if (auto* proc = engine_.getMainProcessor())
         proc->rebuildTrackFX(trackIndex);
     endTransaction();
